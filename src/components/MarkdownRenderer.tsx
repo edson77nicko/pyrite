@@ -43,12 +43,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             e.stopPropagation()
             onNavigate(destination)
           }}
-          className="inline-flex items-center gap-1 text-violet-400 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/60 border border-violet-800/50 hover:border-violet-600 rounded-md px-1.5 py-0.5 mx-0.5 font-medium transition-all text-xs group shadow-sm"
+          className="inline-flex items-center text-violet-400 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/60 border border-violet-800/50 hover:border-violet-600 rounded-md px-1.5 py-0.5 mx-0.5 font-medium transition-all text-xs group shadow-sm cursor-pointer"
           title={`Navegar para nota: ${destination}`}
         >
-          <span className="text-violet-500 font-bold group-hover:text-violet-400">[[</span>
-          <span className="underline decoration-violet-500/40 underline-offset-2">{displayName}</span>
-          <span className="text-violet-500 font-bold group-hover:text-violet-400">]]</span>
+          <span className="underline decoration-violet-500/40 group-hover:decoration-violet-300 underline-offset-2">{displayName}</span>
         </button>
       )
       cursor = match.index + match[0].length

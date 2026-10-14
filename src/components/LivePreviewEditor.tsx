@@ -19,7 +19,8 @@ import {
   Link2,
   Divide,
   Plus,
-  Code
+  Code,
+  FileText
 } from 'lucide-react'
 import {
   type LiveBlock,
@@ -66,7 +67,8 @@ interface SlashCommandItem {
 function renderInlineFormatted(
   text: string,
   isFocused: boolean,
-  onNavigate?: (title: string) => void
+  onNavigate?: (title: string) => void,
+  allNotes?: Note[]
 ): React.ReactNode {
   if (!text) return '\u00A0'
 
@@ -81,31 +83,61 @@ function renderInlineFormatted(
     if (part.startsWith('[[') && part.endsWith(']]') && part.length >= 4) {
       const inner = part.slice(2, -2)
       const [target, alias] = inner.split('|')
-      const displayName = (alias || target).split('#')[0].trim()
       const destination = target.split('#')[0].trim()
+      const displayName = (alias || target).split('#')[0].trim()
+      const exists = allNotes ? allNotes.some(n => n.title.toLowerCase().trim() === destination.toLowerCase().trim()) : true
 
       if (!isFocused) {
+        // Obsidian style: brackets [[ and ]] are completely hidden! Clean clickable link
         return (
-          <button
+          <span
             key={`wiki-${idx}`}
-            type="button"
+            role="button"
+            tabIndex={0}
+            title={exists ? `Abrir nota: "${destination}"` : `Criar nota: "${destination}"`}
+            onMouseDown={e => {
+              if (e.button === 0) {
+                e.preventDefault()
+                e.stopPropagation()
+                if (onNavigate) onNavigate(destination)
+              }
+            }}
             onClick={e => {
+              e.preventDefault()
               e.stopPropagation()
               if (onNavigate) onNavigate(destination)
             }}
-            className="inline-flex items-center gap-0.5 text-violet-400 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/60 border border-violet-800/50 rounded px-1.5 py-0 mx-0.5 text-xs font-medium cursor-pointer transition-colors"
+            className={`inline-flex items-center cursor-pointer font-medium transition-all select-none rounded px-1.5 py-0 mx-0.5 text-xs ${
+              exists
+                ? 'text-violet-400 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/60 border border-violet-800/40 hover:border-violet-600/70 shadow-sm'
+                : 'text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80 hover:border-violet-500/60'
+            }`}
           >
-            <span className="text-violet-500 font-bold">[[</span>
-            <span className="underline decoration-violet-500/40 underline-offset-2">{displayName}</span>
-            <span className="text-violet-500 font-bold">]]</span>
-          </button>
+            <span className="underline decoration-violet-500/40 hover:decoration-violet-300 underline-offset-2">
+              {displayName}
+            </span>
+          </span>
         )
       } else {
+        // When focused for editing: reveal [[ and ]] in muted violet syntax color
         return (
-          <span key={`wiki-${idx}`} className="inline-flex items-center">
-            <span className="text-violet-500/60 font-mono text-xs select-none">[[</span>
-            <span className="text-violet-300 underline decoration-violet-500/40">{inner}</span>
-            <span className="text-violet-500/60 font-mono text-xs select-none">]]</span>
+          <span
+            key={`wiki-${idx}`}
+            className="inline-flex items-center text-violet-300 font-normal"
+            title={`Ctrl + Clique para abrir "${destination}"`}
+            onMouseDown={e => {
+              if (e.ctrlKey || e.metaKey) {
+                e.preventDefault()
+                e.stopPropagation()
+                if (onNavigate) onNavigate(destination)
+              }
+            }}
+          >
+            <span className="text-violet-400/80 font-mono text-xs">[[</span>
+            <span className="underline decoration-violet-500/40 hover:text-violet-200 cursor-text">
+              {inner}
+            </span>
+            <span className="text-violet-400/80 font-mono text-xs">]]</span>
           </span>
         )
       }
@@ -217,6 +249,7 @@ function renderInlineFormatted(
 
 export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   note,
+  allNotes = [],
   displayMode,
   onUpdateContent,
   onNavigate,
@@ -230,6 +263,13 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
   // Slash command popover state
   const [slashMenu, setSlashMenu] = useState<{
+    blockId: string
+    query: string
+    index: number
+  } | null>(null)
+
+  // Wikilink [[ auto-complete popover state
+  const [wikiSuggest, setWikiSuggest] = useState<{
     blockId: string
     query: string
     index: number
@@ -581,6 +621,33 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     )
   })
 
+  // Filter notes for [[ Wikilink auto-complete
+  const filteredWikiNotes = allNotes.filter(n => {
+    if (!wikiSuggest?.query) return true
+    return n.title.toLowerCase().includes(wikiSuggest.query.toLowerCase())
+  })
+
+  // Select a wikilink suggestion to insert [[Note Title]]
+  const handleSelectWikiSuggestion = (targetNoteTitle: string, blockId: string) => {
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === blockId)
+      if (idx === -1) return prev
+      const current = prev[idx]
+      const wikiIdx = current.text.lastIndexOf('[[')
+      if (wikiIdx === -1) return prev
+      const beforeWiki = current.text.slice(0, wikiIdx)
+      const afterWiki = current.text.slice(wikiIdx + 2)
+      const rest = afterWiki.includes(']]') ? afterWiki.slice(afterWiki.indexOf(']]') + 2) : ''
+      const newText = `${beforeWiki}[[${targetNoteTitle}]] ${rest}`
+      const updated = [...prev]
+      updated[idx] = { ...current, text: newText }
+      syncMarkdown(updated)
+      setFocusTarget({ blockId, position: newText.length })
+      return updated
+    })
+    setWikiSuggest(null)
+  }
+
   // Toggle task checkbox in-place
   const handleToggleTask = (blockId: string) => {
     setBlocks(prev => {
@@ -615,6 +682,23 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       }
     } else {
       setSlashMenu(null)
+    }
+
+    // Detect Wikilink [[ trigger
+    const wikiIdx = rawText.lastIndexOf('[[')
+    if (wikiIdx !== -1) {
+      const afterWiki = rawText.slice(wikiIdx + 2)
+      if (!afterWiki.includes(']]') && !afterWiki.includes('\n') && afterWiki.length < 35) {
+        setWikiSuggest({
+          blockId,
+          query: afterWiki.trim(),
+          index: 0
+        })
+      } else {
+        setWikiSuggest(null)
+      }
+    } else {
+      setWikiSuggest(null)
     }
 
     setBlocks(prev => {
@@ -717,6 +801,35 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       if (e.key === 'Escape') {
         e.preventDefault()
         setSlashMenu(null)
+        return
+      }
+    }
+
+    // If wikilink suggestion menu is active, intercept arrow keys, Enter, and Escape
+    if (wikiSuggest && filteredWikiNotes.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setWikiSuggest(prev => (prev ? { ...prev, index: (prev.index + 1) % filteredWikiNotes.length } : null))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setWikiSuggest(prev =>
+          prev ? { ...prev, index: (prev.index - 1 + filteredWikiNotes.length) % filteredWikiNotes.length } : null
+        )
+        return
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const targetNote = filteredWikiNotes[wikiSuggest.index] || filteredWikiNotes[0]
+        if (targetNote) {
+          handleSelectWikiSuggestion(targetNote.title, wikiSuggest.blockId)
+          return
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setWikiSuggest(null)
         return
       }
     }
@@ -938,10 +1051,11 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         document.execCommand('italic', false)
       },
       insertWikiLink: (target: string) => {
-        if (!activeBlockId) return
         setBlocks(prev => {
+          const targetId = activeBlockId || prev[prev.length - 1]?.id
+          if (!targetId) return prev
           const updated = prev.map(b =>
-            b.id === activeBlockId ? { ...b, text: `${b.text} [[${target}]]` } : b
+            b.id === targetId ? { ...b, text: b.text ? `${b.text} [[${target}]]` : `[[${target}]]` } : b
           )
           syncMarkdown(updated)
           return updated
@@ -1114,7 +1228,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                     # 
                   </span>
                 )}
-                {renderInlineFormatted(block.text, isFocused, onNavigate)}
+                {renderInlineFormatted(block.text, isFocused, onNavigate, allNotes)}
               </h1>
             </div>
           )
@@ -1148,7 +1262,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                     ## 
                   </span>
                 )}
-                {renderInlineFormatted(block.text, isFocused, onNavigate)}
+                {renderInlineFormatted(block.text, isFocused, onNavigate, allNotes)}
               </h2>
             </div>
           )
@@ -1182,7 +1296,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                     ### 
                   </span>
                 )}
-                {renderInlineFormatted(block.text, isFocused, onNavigate)}
+                {renderInlineFormatted(block.text, isFocused, onNavigate, allNotes)}
               </h3>
             </div>
           )
@@ -1227,7 +1341,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                   block.checked ? 'line-through text-zinc-500' : 'text-zinc-200'
                 } ${isFocused ? 'ring-1 ring-violet-500/30' : ''}`}
               >
-                {renderInlineFormatted(block.text, isFocused, onNavigate)}
+                {renderInlineFormatted(block.text, isFocused, onNavigate, allNotes)}
               </div>
             </div>
           )
@@ -1257,7 +1371,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                   isFocused ? 'ring-1 ring-violet-500/30' : ''
                 }`}
               >
-                {renderInlineFormatted(block.text, isFocused, onNavigate)}
+                {renderInlineFormatted(block.text, isFocused, onNavigate, allNotes)}
               </div>
             </div>
           )
@@ -1289,7 +1403,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                   isFocused ? 'ring-1 ring-violet-500/30' : ''
                 }`}
               >
-                {renderInlineFormatted(block.text, isFocused, onNavigate)}
+                {renderInlineFormatted(block.text, isFocused, onNavigate, allNotes)}
               </div>
             </div>
           )
@@ -1395,7 +1509,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                                 onBlur={e => handleTableCellChange(block.id, rIdx, cIdx, e.currentTarget.innerText)}
                                 className="px-4 py-2 text-zinc-300 border-r border-zinc-800/40 last:border-r-0 focus:outline-none focus:bg-violet-950/30"
                               >
-                                {renderInlineFormatted(cellValue, false, onNavigate)}
+                                {renderInlineFormatted(cellValue, false, onNavigate, allNotes)}
                               </td>
                             )
                           })}
@@ -1456,7 +1570,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 onPaste={e => handlePaste(e, idx)}
                 className="focus:outline-none leading-relaxed select-text"
               >
-                {renderInlineFormatted(block.text, isFocused, onNavigate)}
+                {renderInlineFormatted(block.text, isFocused, onNavigate, allNotes)}
               </div>
             </blockquote>
           )
@@ -1501,7 +1615,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 onPaste={e => handlePaste(e, idx)}
                 className="pl-6 space-y-1 text-zinc-300 focus:outline-none leading-relaxed select-text whitespace-pre-wrap"
               >
-                {renderInlineFormatted(block.text, isFocused, onNavigate)}
+                {renderInlineFormatted(block.text, isFocused, onNavigate, allNotes)}
               </div>
             </div>
           )
@@ -1592,8 +1706,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
               suppressContentEditableWarning
               onFocus={() => setActiveBlockId(block.id)}
               onBlur={() => {
-                // If slash menu not open, blur
-                if (!slashMenu && activeBlockId === block.id) {
+                // If neither menu is open, blur
+                if (!slashMenu && !wikiSuggest && activeBlockId === block.id) {
                   setActiveBlockId(null)
                 }
               }}
@@ -1604,7 +1718,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 isFocused ? 'ring-1 ring-violet-500/30' : ''
               }`}
             >
-              {renderInlineFormatted(block.text, isFocused, onNavigate)}
+              {renderInlineFormatted(block.text, isFocused, onNavigate, allNotes)}
             </p>
 
             {/* Floating Slash Command (/) Menu attached right to the active block */}
@@ -1635,6 +1749,44 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                         <div className="truncate">
                           <div className="text-xs font-medium text-zinc-100">{cmd.title}</div>
                           <div className="text-[10px] text-zinc-500 truncate">{cmd.subtitle}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Floating Wikilink [[ Auto-complete Menu */}
+            {isFocused && wikiSuggest && wikiSuggest.blockId === block.id && filteredWikiNotes.length > 0 && (
+              <div className="absolute left-0 top-full mt-1 z-50 w-72 bg-zinc-900 border border-violet-500/70 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md">
+                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet-400 border-b border-zinc-800 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <span className="font-mono text-violet-300">[[</span> Link para Nota
+                  </span>
+                  <span className="text-zinc-500 font-mono text-[10px]">↵ Inserir</span>
+                </div>
+                <div className="max-h-56 overflow-y-auto space-y-0.5 pt-1 scrollbar-none">
+                  {filteredWikiNotes.map((targetNote, nIdx) => {
+                    const isSelected = nIdx === wikiSuggest.index
+                    return (
+                      <div
+                        key={targetNote.id}
+                        onMouseDown={e => {
+                          e.preventDefault()
+                          handleSelectWikiSuggestion(targetNote.title, block.id)
+                        }}
+                        onMouseEnter={() => setWikiSuggest(prev => (prev ? { ...prev, index: nIdx } : null))}
+                        className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'bg-violet-600/30 text-violet-200 border border-violet-500/40 shadow-sm'
+                            : 'text-zinc-300 hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <FileText className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                        <div className="truncate flex-1">
+                          <div className="text-xs font-medium text-zinc-100 truncate">{targetNote.title}</div>
+                          <div className="text-[10px] text-zinc-500 truncate">{targetNote.folder}</div>
                         </div>
                       </div>
                     )
