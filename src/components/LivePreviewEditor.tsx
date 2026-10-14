@@ -8,7 +8,6 @@ import {
   AlertTriangle,
   AlertCircle
 } from 'lucide-react'
-
 import {
   type LiveBlock,
   parseMarkdownToBlocks,
@@ -34,6 +33,165 @@ export interface LivePreviewEditorProps {
   editorRef?: React.Ref<LivePreviewEditorHandle>
 }
 
+/**
+ * Formats inline Markdown syntax tokens (like **, *, ==, ~~, `, [[...]])
+ * 
+ * In Obsidian Live Preview:
+ * - When line is NOT focused: syntax tokens (**, *, ==) are HIDDEN. Only formatted text is shown.
+ * - When line IS focused: syntax tokens appear in subtle muted color so they can be edited!
+ */
+function renderInlineFormatted(
+  text: string,
+  isFocused: boolean,
+  onNavigate?: (title: string) => void
+): React.ReactNode {
+  if (!text) return '\u00A0'
+
+  // Token regex for: [[wikilink]], **bold**, ==highlight==, ~~strike~~, `code`, *italic*
+  const tokenRegex = /(\[\[.*?\]\]|\*\*.*?\*\*|==.*?==|~~.*?~~|`.*?`|\*[^*]+?\*)/g
+  const parts = text.split(tokenRegex)
+
+  return parts.map((part, idx) => {
+    if (!part) return null
+
+    // 1. Wikilinks [[Target]] or [[Target|Alias]]
+    if (part.startsWith('[[') && part.endsWith(']]') && part.length >= 4) {
+      const inner = part.slice(2, -2)
+      const [target, alias] = inner.split('|')
+      const displayName = (alias || target).split('#')[0].trim()
+      const destination = target.split('#')[0].trim()
+
+      if (!isFocused) {
+        return (
+          <button
+            key={`wiki-${idx}`}
+            type="button"
+            onClick={e => {
+              e.stopPropagation()
+              if (onNavigate) onNavigate(destination)
+            }}
+            className="inline-flex items-center gap-0.5 text-violet-400 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/60 border border-violet-800/50 rounded px-1.5 py-0 mx-0.5 text-xs font-medium cursor-pointer transition-colors"
+          >
+            <span className="text-violet-500 font-bold">[[</span>
+            <span className="underline decoration-violet-500/40 underline-offset-2">{displayName}</span>
+            <span className="text-violet-500 font-bold">]]</span>
+          </button>
+        )
+      } else {
+        return (
+          <span key={`wiki-${idx}`} className="inline-flex items-center">
+            <span className="text-violet-500/60 font-mono text-xs select-none">[[</span>
+            <span className="text-violet-300 underline decoration-violet-500/40">{inner}</span>
+            <span className="text-violet-500/60 font-mono text-xs select-none">]]</span>
+          </span>
+        )
+      }
+    }
+
+    // 2. Bold **text**
+    if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
+      const inner = part.slice(2, -2)
+      if (!isFocused) {
+        return (
+          <strong key={`b-${idx}`} className="font-semibold text-zinc-100">
+            {inner}
+          </strong>
+        )
+      } else {
+        return (
+          <strong key={`b-${idx}`} className="font-semibold text-zinc-100">
+            <span className="text-zinc-500/80 font-mono text-xs font-normal select-none">**</span>
+            {inner}
+            <span className="text-zinc-500/80 font-mono text-xs font-normal select-none">**</span>
+          </strong>
+        )
+      }
+    }
+
+    // 3. Highlight ==text==
+    if (part.startsWith('==') && part.endsWith('==') && part.length >= 4) {
+      const inner = part.slice(2, -2)
+      if (!isFocused) {
+        return (
+          <mark key={`m-${idx}`} className="bg-amber-400/25 text-amber-200 px-1 py-0.5 rounded font-normal">
+            {inner}
+          </mark>
+        )
+      } else {
+        return (
+          <mark key={`m-${idx}`} className="bg-amber-400/25 text-amber-200 px-1 py-0.5 rounded font-normal">
+            <span className="text-amber-500/70 font-mono text-xs select-none">==</span>
+            {inner}
+            <span className="text-amber-500/70 font-mono text-xs select-none">==</span>
+          </mark>
+        )
+      }
+    }
+
+    // 4. Strikethrough ~~text~~
+    if (part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) {
+      const inner = part.slice(2, -2)
+      if (!isFocused) {
+        return (
+          <del key={`d-${idx}`} className="line-through text-zinc-500">
+            {inner}
+          </del>
+        )
+      } else {
+        return (
+          <del key={`d-${idx}`} className="line-through text-zinc-500">
+            <span className="text-zinc-600 font-mono text-xs select-none">~~</span>
+            {inner}
+            <span className="text-zinc-600 font-mono text-xs select-none">~~</span>
+          </del>
+        )
+      }
+    }
+
+    // 5. Code `text`
+    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+      const inner = part.slice(1, -1)
+      if (!isFocused) {
+        return (
+          <code key={`c-${idx}`} className="bg-zinc-800 text-amber-300 px-1 py-0.5 rounded font-mono text-xs">
+            {inner}
+          </code>
+        )
+      } else {
+        return (
+          <code key={`c-${idx}`} className="bg-zinc-800 text-amber-300 px-1 py-0.5 rounded font-mono text-xs">
+            <span className="text-zinc-500 font-mono text-xs select-none">`</span>
+            {inner}
+            <span className="text-zinc-500 font-mono text-xs select-none">`</span>
+          </code>
+        )
+      }
+    }
+
+    // 6. Italic *text*
+    if (part.startsWith('*') && part.endsWith('*') && part.length >= 2) {
+      const inner = part.slice(1, -1)
+      if (!isFocused) {
+        return (
+          <em key={`i-${idx}`} className="italic text-zinc-200">
+            {inner}
+          </em>
+        )
+      } else {
+        return (
+          <em key={`i-${idx}`} className="italic text-zinc-200">
+            <span className="text-zinc-500/80 font-mono text-xs font-normal select-none">*</span>
+            {inner}
+            <span className="text-zinc-500/80 font-mono text-xs font-normal select-none">*</span>
+          </em>
+        )
+      }
+    }
+
+    return <span key={`txt-${idx}`}>{part}</span>
+  })
+}
+
 export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   note,
   displayMode,
@@ -46,7 +204,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null)
 
-  // Focus target management
+  // Focus target management (only for programmatic navigation like Enter, Backspace, Arrow keys)
   const [focusTarget, setFocusTarget] = useState<{
     blockId: string
     position: 'start' | 'end' | number
@@ -66,7 +224,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     }
   }, [note.id, note.content])
 
-  // Caret placement effect when focusTarget changes
+  // Caret placement effect ONLY when focusTarget is explicitly set
   useEffect(() => {
     if (!focusTarget) return
     const el = document.querySelector(`[data-block-id="${focusTarget.blockId}"]`) as HTMLElement
@@ -134,7 +292,6 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       const current = prev[index]
 
       // Live Markdown triggers on-the-fly:
-      // If typing in a paragraph and user typed `# `, transform instantly to H1!
       if (current.type === 'paragraph') {
         if (rawText.startsWith('# ')) {
           const updated = [...prev]
@@ -468,84 +625,49 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
   const isEditable = displayMode === 'live'
 
-  // Inline formatting helper for reading view
-  const renderFormattedText = (text: string) => {
-    if (!text) return '\u00A0' // keep line height
-
-    // Check for [[wikilinks]]
-    if (text.includes('[[')) {
-      const parts: React.ReactNode[] = []
-      let cursor = 0
-      const regex = /\[\[(.*?)\]\]/g
-      let match
-
-      while ((match = regex.exec(text)) !== null) {
-        if (match.index > cursor) {
-          parts.push(text.substring(cursor, match.index))
-        }
-        const rawTarget = match[1]
-        const [targetName, alias] = rawTarget.split('|')
-        const displayName = (alias || targetName).split('#')[0].trim()
-        const destination = targetName.split('#')[0].trim()
-
-        parts.push(
-          <button
-            key={`wiki-${match.index}`}
-            type="button"
-            onClick={e => {
-              e.stopPropagation()
-              onNavigate(destination)
-            }}
-            className="inline-flex items-center gap-0.5 text-violet-400 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/60 border border-violet-800/50 rounded px-1.5 py-0 mx-0.5 text-xs font-medium cursor-pointer transition-colors"
-          >
-            <span className="text-violet-500 font-bold">[[</span>
-            <span className="underline decoration-violet-500/40 underline-offset-2">{displayName}</span>
-            <span className="text-violet-500 font-bold">]]</span>
-          </button>
-        )
-        cursor = match.index + match[0].length
-      }
-
-      if (cursor < text.length) {
-        parts.push(text.substring(cursor))
-      }
-      return parts
-    }
-
-    return text
-  }
-
   return (
     <div
       className={`w-full min-h-[500px] flex flex-col font-sans ${fontSizeClass} pb-24`}
-      onClick={() => {
-        // Clicking below content focuses the last block
-        if (isEditable && blocks.length > 0) {
+      onClick={(e) => {
+        // ONLY if clicking directly on the empty background area below all blocks:
+        if (e.target === e.currentTarget && isEditable && blocks.length > 0) {
           const last = blocks[blocks.length - 1]
           setFocusTarget({ blockId: last.id, position: 'end' })
         }
       }}
     >
       {blocks.map((block, idx) => {
-        const isFocused = activeBlockId === block.id
+        const isFocused = isEditable && activeBlockId === block.id
 
         // Heading 1 (Large Serif Header matching Obsidian screenshot)
         if (block.type === 'h1') {
           return (
-            <div key={block.id} className="relative group my-3">
+            <div
+              key={block.id}
+              onClick={e => e.stopPropagation()}
+              className="relative group my-3"
+            >
               <h1
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
                 onFocus={() => setActiveBlockId(block.id)}
+                onBlur={() => {
+                  if (activeBlockId === block.id) setActiveBlockId(null)
+                }}
                 onInput={e => handleInput(block.id, e)}
                 onKeyDown={e => handleKeyDown(e, block.id, idx)}
                 onPaste={e => handlePaste(e, idx)}
                 className={`text-2xl font-serif font-bold text-zinc-100 tracking-tight pb-1 border-b border-zinc-800/60 focus:outline-none transition-all rounded px-0.5 ${
-                  isFocused && isEditable ? 'ring-1 ring-violet-500/30' : ''
+                  isFocused ? 'ring-1 ring-violet-500/30' : ''
                 }`}
               >
-                {!isFocused && !isEditable ? renderFormattedText(block.text) : block.text}
+                {isFocused && (
+                  <span className="text-violet-400/60 font-mono text-base mr-1.5 select-none font-normal">
+                    # 
+                  </span>
+                )}
+                {renderInlineFormatted(block.text, isFocused, onNavigate)}
               </h1>
             </div>
           )
@@ -554,20 +676,32 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         // Heading 2 (Medium Serif Header matching "Antes de criar", "Etapa 1")
         if (block.type === 'h2') {
           return (
-            <div key={block.id} className="relative group mt-6 mb-2">
+            <div
+              key={block.id}
+              onClick={e => e.stopPropagation()}
+              className="relative group mt-6 mb-2"
+            >
               <h2
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
                 onFocus={() => setActiveBlockId(block.id)}
+                onBlur={() => {
+                  if (activeBlockId === block.id) setActiveBlockId(null)
+                }}
                 onInput={e => handleInput(block.id, e)}
                 onKeyDown={e => handleKeyDown(e, block.id, idx)}
                 onPaste={e => handlePaste(e, idx)}
                 className={`text-xl font-serif font-semibold text-zinc-200 tracking-tight pb-0.5 focus:outline-none transition-all rounded px-0.5 ${
-                  isFocused && isEditable ? 'ring-1 ring-violet-500/30' : ''
+                  isFocused ? 'ring-1 ring-violet-500/30' : ''
                 }`}
               >
-                {!isFocused && !isEditable ? renderFormattedText(block.text) : block.text}
+                {isFocused && (
+                  <span className="text-violet-400/60 font-mono text-sm mr-1.5 select-none font-normal">
+                    ## 
+                  </span>
+                )}
+                {renderInlineFormatted(block.text, isFocused, onNavigate)}
               </h2>
             </div>
           )
@@ -576,20 +710,32 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         // Heading 3
         if (block.type === 'h3') {
           return (
-            <div key={block.id} className="relative group mt-4 mb-1.5">
+            <div
+              key={block.id}
+              onClick={e => e.stopPropagation()}
+              className="relative group mt-4 mb-1.5"
+            >
               <h3
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
                 onFocus={() => setActiveBlockId(block.id)}
+                onBlur={() => {
+                  if (activeBlockId === block.id) setActiveBlockId(null)
+                }}
                 onInput={e => handleInput(block.id, e)}
                 onKeyDown={e => handleKeyDown(e, block.id, idx)}
                 onPaste={e => handlePaste(e, idx)}
                 className={`text-lg font-serif font-medium text-zinc-200 tracking-tight focus:outline-none transition-all rounded px-0.5 ${
-                  isFocused && isEditable ? 'ring-1 ring-violet-500/30' : ''
+                  isFocused ? 'ring-1 ring-violet-500/30' : ''
                 }`}
               >
-                {!isFocused && !isEditable ? renderFormattedText(block.text) : block.text}
+                {isFocused && (
+                  <span className="text-violet-400/60 font-mono text-xs mr-1.5 select-none font-normal">
+                    ### 
+                  </span>
+                )}
+                {renderInlineFormatted(block.text, isFocused, onNavigate)}
               </h3>
             </div>
           )
@@ -598,7 +744,11 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         // Checklist Item (Square checkbox + In-place editable text matching Obsidian screenshot)
         if (block.type === 'task') {
           return (
-            <div key={block.id} className="flex items-start gap-2.5 my-1.5 group select-none">
+            <div
+              key={block.id}
+              onClick={e => e.stopPropagation()}
+              className="flex items-start gap-2.5 my-1.5 group select-none"
+            >
               <button
                 type="button"
                 onClick={e => {
@@ -620,14 +770,17 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 contentEditable={isEditable}
                 suppressContentEditableWarning
                 onFocus={() => setActiveBlockId(block.id)}
+                onBlur={() => {
+                  if (activeBlockId === block.id) setActiveBlockId(null)
+                }}
                 onInput={e => handleInput(block.id, e)}
                 onKeyDown={e => handleKeyDown(e, block.id, idx)}
                 onPaste={e => handlePaste(e, idx)}
                 className={`flex-1 text-[13px] md:text-sm leading-relaxed focus:outline-none transition-all rounded px-1 select-text ${
                   block.checked ? 'line-through text-zinc-500' : 'text-zinc-200'
-                } ${isFocused && isEditable ? 'ring-1 ring-violet-500/30' : ''}`}
+                } ${isFocused ? 'ring-1 ring-violet-500/30' : ''}`}
               >
-                {!isFocused && !isEditable ? renderFormattedText(block.text) : block.text}
+                {renderInlineFormatted(block.text, isFocused, onNavigate)}
               </div>
             </div>
           )
@@ -636,21 +789,28 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         // Bullet list item
         if (block.type === 'bullet') {
           return (
-            <div key={block.id} className="flex items-start gap-2.5 my-1 group">
+            <div
+              key={block.id}
+              onClick={e => e.stopPropagation()}
+              className="flex items-start gap-2.5 my-1 group"
+            >
               <span className="text-zinc-500 mt-1 select-none text-base leading-none">•</span>
               <div
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
                 onFocus={() => setActiveBlockId(block.id)}
+                onBlur={() => {
+                  if (activeBlockId === block.id) setActiveBlockId(null)
+                }}
                 onInput={e => handleInput(block.id, e)}
                 onKeyDown={e => handleKeyDown(e, block.id, idx)}
                 onPaste={e => handlePaste(e, idx)}
                 className={`flex-1 text-[13px] md:text-sm text-zinc-300 leading-relaxed focus:outline-none transition-all rounded px-1 select-text ${
-                  isFocused && isEditable ? 'ring-1 ring-violet-500/30' : ''
+                  isFocused ? 'ring-1 ring-violet-500/30' : ''
                 }`}
               >
-                {!isFocused && !isEditable ? renderFormattedText(block.text) : block.text}
+                {renderInlineFormatted(block.text, isFocused, onNavigate)}
               </div>
             </div>
           )
@@ -659,7 +819,11 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         // Numbered list item
         if (block.type === 'number') {
           return (
-            <div key={block.id} className="flex items-start gap-2 my-1 group">
+            <div
+              key={block.id}
+              onClick={e => e.stopPropagation()}
+              className="flex items-start gap-2 my-1 group"
+            >
               <span className="text-zinc-500 font-mono text-xs mt-0.5 select-none shrink-0 min-w-[16px]">
                 {idx + 1}.
               </span>
@@ -668,14 +832,17 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 contentEditable={isEditable}
                 suppressContentEditableWarning
                 onFocus={() => setActiveBlockId(block.id)}
+                onBlur={() => {
+                  if (activeBlockId === block.id) setActiveBlockId(null)
+                }}
                 onInput={e => handleInput(block.id, e)}
                 onKeyDown={e => handleKeyDown(e, block.id, idx)}
                 onPaste={e => handlePaste(e, idx)}
                 className={`flex-1 text-[13px] md:text-sm text-zinc-300 leading-relaxed focus:outline-none transition-all rounded px-1 select-text ${
-                  isFocused && isEditable ? 'ring-1 ring-violet-500/30' : ''
+                  isFocused ? 'ring-1 ring-violet-500/30' : ''
                 }`}
               >
-                {!isFocused && !isEditable ? renderFormattedText(block.text) : block.text}
+                {renderInlineFormatted(block.text, isFocused, onNavigate)}
               </div>
             </div>
           )
@@ -686,6 +853,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           return (
             <blockquote
               key={block.id}
+              onClick={e => e.stopPropagation()}
               className="my-3 pl-4 border-l-2 border-violet-500/80 italic text-zinc-400 text-xs py-0.5"
             >
               <div
@@ -693,12 +861,15 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 contentEditable={isEditable}
                 suppressContentEditableWarning
                 onFocus={() => setActiveBlockId(block.id)}
+                onBlur={() => {
+                  if (activeBlockId === block.id) setActiveBlockId(null)
+                }}
                 onInput={e => handleInput(block.id, e)}
                 onKeyDown={e => handleKeyDown(e, block.id, idx)}
                 onPaste={e => handlePaste(e, idx)}
                 className="focus:outline-none leading-relaxed select-text"
               >
-                {!isFocused && !isEditable ? renderFormattedText(block.text) : block.text}
+                {renderInlineFormatted(block.text, isFocused, onNavigate)}
               </div>
             </blockquote>
           )
@@ -723,6 +894,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           return (
             <div
               key={block.id}
+              onClick={e => e.stopPropagation()}
               className={`my-4 p-3.5 rounded-xl border-l-4 ${calloutTheme} text-xs space-y-1.5 shadow-sm`}
             >
               <div className="flex items-center gap-2 font-semibold">
@@ -734,12 +906,15 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 contentEditable={isEditable}
                 suppressContentEditableWarning
                 onFocus={() => setActiveBlockId(block.id)}
+                onBlur={() => {
+                  if (activeBlockId === block.id) setActiveBlockId(null)
+                }}
                 onInput={e => handleInput(block.id, e)}
                 onKeyDown={e => handleKeyDown(e, block.id, idx)}
                 onPaste={e => handlePaste(e, idx)}
                 className="pl-6 space-y-1 text-zinc-300 focus:outline-none leading-relaxed select-text whitespace-pre-wrap"
               >
-                {!isFocused && !isEditable ? renderFormattedText(block.text) : block.text}
+                {renderInlineFormatted(block.text, isFocused, onNavigate)}
               </div>
             </div>
           )
@@ -750,6 +925,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           return (
             <div
               key={block.id}
+              onClick={e => e.stopPropagation()}
               className="my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/90 text-xs font-mono shadow-lg"
             >
               <div className="flex items-center justify-between px-3.5 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400">
@@ -780,6 +956,9 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 contentEditable={isEditable}
                 suppressContentEditableWarning
                 onFocus={() => setActiveBlockId(block.id)}
+                onBlur={() => {
+                  if (activeBlockId === block.id) setActiveBlockId(null)
+                }}
                 onInput={e => handleInput(block.id, e)}
                 onKeyDown={e => handleKeyDown(e, block.id, idx)}
                 className="p-4 overflow-x-auto text-zinc-300 leading-relaxed focus:outline-none select-text whitespace-pre font-mono"
@@ -803,7 +982,11 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
               data-block-id={block.id}
               contentEditable={isEditable}
               suppressContentEditableWarning
+              onClick={e => e.stopPropagation()}
               onFocus={() => setActiveBlockId(block.id)}
+              onBlur={() => {
+                if (activeBlockId === block.id) setActiveBlockId(null)
+              }}
               onInput={e => handleInput(block.id, e)}
               onKeyDown={e => handleKeyDown(e, block.id, idx)}
               className="h-5 my-0.5 focus:outline-none rounded px-0.5"
@@ -820,15 +1003,19 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             data-block-id={block.id}
             contentEditable={isEditable}
             suppressContentEditableWarning
+            onClick={e => e.stopPropagation()}
             onFocus={() => setActiveBlockId(block.id)}
+            onBlur={() => {
+              if (activeBlockId === block.id) setActiveBlockId(null)
+            }}
             onInput={e => handleInput(block.id, e)}
             onKeyDown={e => handleKeyDown(e, block.id, idx)}
             onPaste={e => handlePaste(e, idx)}
             className={`text-[13px] md:text-sm text-zinc-300 leading-relaxed my-1.5 focus:outline-none transition-all rounded px-0.5 select-text ${
-              isFocused && isEditable ? 'ring-1 ring-violet-500/30' : ''
+              isFocused ? 'ring-1 ring-violet-500/30' : ''
             }`}
           >
-            {!isFocused && !isEditable ? renderFormattedText(block.text) : block.text || '\u00A0'}
+            {renderInlineFormatted(block.text, isFocused, onNavigate)}
           </p>
         )
       })}

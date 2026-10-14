@@ -145,6 +145,13 @@ O Obsidian tradicional depende de você criar todos os links manualmente. No Pyr
 - [ ] Escassez presente
 - [ ] Tudo acima do fold
 
+## Rastreamento & Conversão
+- Início e conclusão de checkout (e-commerce).
+- Visualização de página de obrigado (thank you page).
+- [ ] Ativar **Google Signals** para análise de audiência cross-device.
+- [ ] Configurar **relatório de funil** (Exploration → Funnel) para mapear o caminho do usuário até a conversão.
+- [ ] Verificar que **dados pessoais não são enviados** para o GA4 (e-mails, CPFs, nomes em URLs ou parâmetros — violação da LGPD e dos Termos do Google).
+
 ## Perguntas
 - [ ] Pergunta 1: Segmentação de perfil
 - [ ] Pergunta 2: Identificação do problema principal
@@ -160,11 +167,16 @@ export function loadNotes(): Note[] {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) {
       const parsed: Note[] = JSON.parse(saved)
-      if (!parsed.some(n => n.id === 'note-quiz-checklist')) {
-        const quiz = INITIAL_NOTES.find(n => n.id === 'note-quiz-checklist')!
-        const merged = [quiz, ...parsed]
+      const quizIndex = parsed.findIndex(n => n.id === 'note-quiz-checklist')
+      const targetQuiz = INITIAL_NOTES.find(n => n.id === 'note-quiz-checklist')!
+      if (quizIndex === -1) {
+        const merged = [targetQuiz, ...parsed]
         saveNotes(merged)
         return merged
+      } else if (!parsed[quizIndex].content.includes('Google Signals')) {
+        parsed[quizIndex] = targetQuiz
+        saveNotes(parsed)
+        return parsed
       }
       return parsed
     }
