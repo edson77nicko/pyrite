@@ -9,8 +9,6 @@ import {
   FolderPlus,
   Trash2,
   HardDrive,
-  ChevronRight,
-  ChevronDown,
   Calendar,
   Star
 } from 'lucide-react'
@@ -173,18 +171,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div
           onClick={() => toggleFolder(node.fullPath)}
           className="flex items-center justify-between px-2 py-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 cursor-pointer text-xs font-medium group transition-colors"
-          style={{ paddingLeft: `${depth * 12 + 8}px` }}
         >
-          <div className="flex items-center gap-1.5 truncate">
+          <div className="flex items-center gap-2 truncate">
             {isCollapsed ? (
-              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              <Folder className="w-4 h-4 text-violet-400/90 shrink-0 transition-transform" />
             ) : (
-              <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-            )}
-            {isCollapsed ? (
-              <Folder className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-            ) : (
-              <FolderOpen className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+              <FolderOpen className="w-4 h-4 text-violet-300 shrink-0 transition-transform" />
             )}
             <span className="truncate">{node.name}</span>
           </div>
@@ -216,9 +208,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Folder Children (Subfolders & Notes) */}
+        {/* Folder Children (Subfolders & Notes) - Indented with tree depth line */}
         {!isCollapsed && (
-          <div className="space-y-0.5">
+          <div className="relative ml-3.5 pl-2 border-l border-zinc-800/80 hover:border-zinc-700/80 transition-colors space-y-0.5 my-0.5">
+            {node.notes.length === 0 && node.children.length === 0 && (
+              <div className="px-2 py-1 text-[11px] text-zinc-600 italic">
+                Pasta vazia
+              </div>
+            )}
+
             {/* Direct Notes */}
             {node.notes.map(note => {
               const isActive = note.id === currentNoteId
@@ -231,9 +229,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ? 'bg-violet-950/60 text-violet-300 font-medium border border-violet-800/50'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                   }`}
-                  style={{ paddingLeft: `${(depth + 1) * 12 + 10}px` }}
                 >
-                  <div className="flex items-center gap-1.5 truncate">
+                  <div className="flex items-center gap-2 truncate">
                     <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-violet-400' : 'text-zinc-500'}`} />
                     <span className="truncate">{note.title}</span>
                   </div>
