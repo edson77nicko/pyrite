@@ -17,6 +17,7 @@ import {
   Folder,
   Plus,
   X,
+  Table,
   Sliders
 } from 'lucide-react'
 
@@ -79,6 +80,7 @@ export const Editor: React.FC<EditorProps> = ({
   const handleFormatItalic = () => liveEditorRef.current?.toggleItalic()
   const handleFormatTask = () => liveEditorRef.current?.setBlockType('task')
   const handleFormatCode = () => liveEditorRef.current?.insertCodeBlock()
+  const handleFormatTable = () => liveEditorRef.current?.insertTable()
   const handleFormatLink = () => {
     const target = prompt('Nome da nota para linkar:')
     if (target) liveEditorRef.current?.insertWikiLink(target)
@@ -179,6 +181,9 @@ export const Editor: React.FC<EditorProps> = ({
               </button>
               <button onClick={handleFormatTask} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Lista de Tarefas">
                 <ListTodo className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={handleFormatTable} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Tabela Markdown">
+                <Table className="w-3.5 h-3.5" />
               </button>
               <button onClick={handleFormatCode} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Bloco de Código">
                 <Code className="w-3.5 h-3.5" />

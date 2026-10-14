@@ -6,7 +6,20 @@ import {
   Info,
   Lightbulb,
   AlertTriangle,
-  AlertCircle
+  AlertCircle,
+  Heading1,
+  Heading2,
+  Heading3,
+  ListTodo,
+  List,
+  ListOrdered,
+  Table as TableIcon,
+  Code as CodeIcon,
+  Sparkles,
+  Link2,
+  Divide,
+  Plus,
+  Code
 } from 'lucide-react'
 import {
   type LiveBlock,
@@ -21,6 +34,7 @@ export interface LivePreviewEditorHandle {
   insertWikiLink: (target: string) => void
   insertCodeBlock: () => void
   insertCallout: (type: string) => void
+  insertTable: () => void
 }
 
 export interface LivePreviewEditorProps {
@@ -31,6 +45,15 @@ export interface LivePreviewEditorProps {
   onNavigate: (title: string) => void
   fontSizeClass?: string
   editorRef?: React.Ref<LivePreviewEditorHandle>
+}
+
+interface SlashCommandItem {
+  id: string
+  title: string
+  subtitle: string
+  icon: React.ReactNode
+  keywords: string[]
+  execute: (blockId: string, index: number) => void
 }
 
 /**
@@ -203,6 +226,14 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   const [blocks, setBlocks] = useState<LiveBlock[]>(() => parseMarkdownToBlocks(note.content))
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null)
+  const [rawTableEditId, setRawTableEditId] = useState<string | null>(null)
+
+  // Slash command popover state
+  const [slashMenu, setSlashMenu] = useState<{
+    blockId: string
+    query: string
+    index: number
+  } | null>(null)
 
   // Focus target management (only for programmatic navigation like Enter, Backspace, Arrow keys)
   const [focusTarget, setFocusTarget] = useState<{
@@ -221,6 +252,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       setBlocks(parseMarkdownToBlocks(note.content))
       setActiveBlockId(null)
       setFocusTarget(null)
+      setSlashMenu(null)
+      setRawTableEditId(null)
     }
   }, [note.id, note.content])
 
@@ -271,6 +304,283 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     [onUpdateContent]
   )
 
+  // Clean text from slash trigger
+  const cleanSlashFromText = (text: string) => {
+    const slashIdx = text.lastIndexOf('/')
+    if (slashIdx !== -1) {
+      return text.slice(0, slashIdx).trim()
+    }
+    return text.trim()
+  }
+
+  // Registry of Slash Commands
+  const SLASH_COMMANDS: SlashCommandItem[] = [
+    {
+      id: 'h1',
+      title: 'Título 1',
+      subtitle: 'Cabeçalho principal grande',
+      icon: <Heading1 className="w-4 h-4 text-violet-400" />,
+      keywords: ['h1', 'titulo 1', 'header', 'grande'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          const current = updated[index]
+          updated[index] = { ...current, type: 'h1', text: cleanSlashFromText(current.text) }
+          syncMarkdown(updated)
+          setFocusTarget({ blockId, position: 'end' })
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'h2',
+      title: 'Título 2',
+      subtitle: 'Subseção média',
+      icon: <Heading2 className="w-4 h-4 text-blue-400" />,
+      keywords: ['h2', 'titulo 2', 'subtitulo', 'medio'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          const current = updated[index]
+          updated[index] = { ...current, type: 'h2', text: cleanSlashFromText(current.text) }
+          syncMarkdown(updated)
+          setFocusTarget({ blockId, position: 'end' })
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'h3',
+      title: 'Título 3',
+      subtitle: 'Subtítulo pequeno',
+      icon: <Heading3 className="w-4 h-4 text-cyan-400" />,
+      keywords: ['h3', 'titulo 3', 'pequeno'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          const current = updated[index]
+          updated[index] = { ...current, type: 'h3', text: cleanSlashFromText(current.text) }
+          syncMarkdown(updated)
+          setFocusTarget({ blockId, position: 'end' })
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'task',
+      title: 'Lista de Tarefas',
+      subtitle: 'Caixa de seleção interativa',
+      icon: <ListTodo className="w-4 h-4 text-emerald-400" />,
+      keywords: ['task', 'tarefa', 'check', 'checklist', 'todo'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          const current = updated[index]
+          updated[index] = { ...current, type: 'task', text: cleanSlashFromText(current.text), checked: false }
+          syncMarkdown(updated)
+          setFocusTarget({ blockId, position: 'end' })
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'bullet',
+      title: 'Lista com Marcadores',
+      subtitle: 'Tópicos simples com marcadores',
+      icon: <List className="w-4 h-4 text-amber-400" />,
+      keywords: ['bullet', 'lista', 'topicos', 'marcador'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          const current = updated[index]
+          updated[index] = { ...current, type: 'bullet', text: cleanSlashFromText(current.text) }
+          syncMarkdown(updated)
+          setFocusTarget({ blockId, position: 'end' })
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'number',
+      title: 'Lista Numerada',
+      subtitle: 'Sequência ordenada de passos',
+      icon: <ListOrdered className="w-4 h-4 text-orange-400" />,
+      keywords: ['number', 'numero', 'ordenada', 'passos'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          const current = updated[index]
+          updated[index] = { ...current, type: 'number', text: cleanSlashFromText(current.text) }
+          syncMarkdown(updated)
+          setFocusTarget({ blockId, position: 'end' })
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'table',
+      title: 'Tabela Markdown',
+      subtitle: 'Grade de dados com colunas e linhas',
+      icon: <TableIcon className="w-4 h-4 text-purple-400" />,
+      keywords: ['tabela', 'table', 'grade', 'linhas', 'colunas'],
+      execute: (blockId, index) => {
+        const defaultTable = `| Coluna 1 | Coluna 2 | Coluna 3 |\n| --- | --- | --- |\n| Exemplo 1 | Detalhe | Ativo |\n| Exemplo 2 | Detalhe | Pendente |`
+        setBlocks(prev => {
+          const updated = [...prev]
+          updated[index] = { id: blockId, type: 'table', text: defaultTable }
+          syncMarkdown(updated)
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'callout-note',
+      title: 'Callout de Nota',
+      subtitle: 'Destaque azul informativo',
+      icon: <Info className="w-4 h-4 text-blue-400" />,
+      keywords: ['callout', 'nota', 'info', 'box'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          updated[index] = {
+            id: blockId,
+            type: 'callout',
+            calloutType: 'NOTE',
+            text: 'Observação importante aqui...'
+          }
+          syncMarkdown(updated)
+          setFocusTarget({ blockId, position: 'end' })
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'callout-tip',
+      title: 'Callout de Dica',
+      subtitle: 'Caixa verde com ideia útil',
+      icon: <Sparkles className="w-4 h-4 text-emerald-400" />,
+      keywords: ['tip', 'dica', 'truque', 'verde'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          updated[index] = {
+            id: blockId,
+            type: 'callout',
+            calloutType: 'TIP',
+            text: 'Dica valiosa para aplicar...'
+          }
+          syncMarkdown(updated)
+          setFocusTarget({ blockId, position: 'end' })
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'callout-warning',
+      title: 'Callout de Aviso',
+      subtitle: 'Alerta âmbar para cuidados',
+      icon: <AlertTriangle className="w-4 h-4 text-amber-400" />,
+      keywords: ['warning', 'aviso', 'alerta', 'cuidado'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          updated[index] = {
+            id: blockId,
+            type: 'callout',
+            calloutType: 'WARNING',
+            text: 'Atenção a este ponto crítico...'
+          }
+          syncMarkdown(updated)
+          setFocusTarget({ blockId, position: 'end' })
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'code',
+      title: 'Bloco de Código',
+      subtitle: 'Código syntax highlight',
+      icon: <CodeIcon className="w-4 h-4 text-rose-400" />,
+      keywords: ['code', 'codigo', 'ts', 'js', 'bloco'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          updated[index] = {
+            id: blockId,
+            type: 'code',
+            codeLang: 'ts',
+            text: '// seu código aqui\nconsole.log("Pyrite");'
+          }
+          syncMarkdown(updated)
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'hr',
+      title: 'Linha Divisória',
+      subtitle: 'Separador horizontal sutil',
+      icon: <Divide className="w-4 h-4 text-zinc-400" />,
+      keywords: ['hr', 'linha', 'divisoria', 'separador'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          updated[index] = { id: blockId, type: 'hr', text: '' }
+          const newP: LiveBlock = {
+            id: `blk_p_${Date.now()}`,
+            type: 'paragraph',
+            text: ''
+          }
+          updated.splice(index + 1, 0, newP)
+          syncMarkdown(updated)
+          setFocusTarget({ blockId: newP.id, position: 'start' })
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    },
+    {
+      id: 'wikilink',
+      title: 'Link Bidirecional',
+      subtitle: 'Conectar com outra nota [[...]]',
+      icon: <Link2 className="w-4 h-4 text-violet-400" />,
+      keywords: ['link', 'wikilink', 'conectar', 'referencia'],
+      execute: (blockId, index) => {
+        setBlocks(prev => {
+          const updated = [...prev]
+          const current = updated[index]
+          const cleaned = cleanSlashFromText(current.text)
+          updated[index] = { ...current, text: `${cleaned}[[` }
+          syncMarkdown(updated)
+          setFocusTarget({ blockId, position: 'end' })
+          return updated
+        })
+        setSlashMenu(null)
+      }
+    }
+  ]
+
+  const filteredSlashCommands = SLASH_COMMANDS.filter(cmd => {
+    if (!slashMenu?.query) return true
+    const q = slashMenu.query.toLowerCase().trim()
+    return (
+      cmd.title.toLowerCase().includes(q) ||
+      cmd.id.toLowerCase().includes(q) ||
+      cmd.keywords.some(k => k.toLowerCase().includes(q))
+    )
+  })
+
   // Toggle task checkbox in-place
   const handleToggleTask = (blockId: string) => {
     setBlocks(prev => {
@@ -284,6 +594,28 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   const handleInput = (blockId: string, e: React.FormEvent<HTMLElement>) => {
     isTypingRef.current = true
     const rawText = e.currentTarget.innerText || ''
+
+    // Detect Slash Command trigger: "/"
+    const slashIdx = rawText.lastIndexOf('/')
+    if (slashIdx !== -1) {
+      const charBefore = rawText[slashIdx - 1]
+      if (!charBefore || charBefore === ' ' || charBefore === '\n') {
+        const query = rawText.slice(slashIdx + 1)
+        if (!query.includes(' ') && query.length < 20) {
+          setSlashMenu({
+            blockId,
+            query,
+            index: 0
+          })
+        } else {
+          setSlashMenu(null)
+        }
+      } else {
+        setSlashMenu(null)
+      }
+    } else {
+      setSlashMenu(null)
+    }
 
     setBlocks(prev => {
       const index = prev.findIndex(b => b.id === blockId)
@@ -360,6 +692,35 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
   // Handle smart keyboard navigation (Enter, Backspace, Arrows)
   const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>, _blockId: string, index: number) => {
+    // If slash menu is active, intercept arrow keys and Enter
+    if (slashMenu && filteredSlashCommands.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSlashMenu(prev => (prev ? { ...prev, index: (prev.index + 1) % filteredSlashCommands.length } : null))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSlashMenu(prev =>
+          prev ? { ...prev, index: (prev.index - 1 + filteredSlashCommands.length) % filteredSlashCommands.length } : null
+        )
+        return
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const targetCommand = filteredSlashCommands[slashMenu.index] || filteredSlashCommands[0]
+        if (targetCommand) {
+          targetCommand.execute(slashMenu.blockId, index)
+          return
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSlashMenu(null)
+        return
+      }
+    }
+
     const current = blocks[index]
     if (!current) return
 
@@ -611,6 +972,19 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           syncMarkdown(updated)
           return updated
         })
+      },
+      insertTable: () => {
+        const defaultTable = `| Coluna 1 | Coluna 2 | Coluna 3 |\n| --- | --- | --- |\n| Item 1 | Detalhe | Ativo |\n| Item 2 | Detalhe | Pendente |`
+        const newBlock: LiveBlock = {
+          id: `blk_table_${Date.now()}`,
+          type: 'table',
+          text: defaultTable
+        }
+        setBlocks(prev => {
+          const updated = [...prev, newBlock]
+          syncMarkdown(updated)
+          return updated
+        })
       }
     }),
     [activeBlockId, syncMarkdown]
@@ -621,6 +995,79 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     navigator.clipboard.writeText(codeStr)
     setCopiedCodeId(blockId)
     setTimeout(() => setCopiedCodeId(null), 2000)
+  }
+
+  // Table manipulation helpers
+  const handleTableCellChange = (blockId: string, rowIndex: number, colIndex: number, newText: string) => {
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === blockId)
+      if (idx === -1) return prev
+      const current = prev[idx]
+      const lines = current.text.split('\n').filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'))
+      if (lines.length < 2) return prev
+
+      const headerCells = lines[0].split('|').slice(1, -1).map(c => c.trim())
+      const separator = lines[1]
+      const dataRows = lines.slice(2).map(l => l.split('|').slice(1, -1).map(c => c.trim()))
+
+      if (rowIndex === -1) {
+        // Changing header cell
+        headerCells[colIndex] = newText
+      } else {
+        if (!dataRows[rowIndex]) dataRows[rowIndex] = []
+        dataRows[rowIndex][colIndex] = newText
+      }
+
+      const newHeaderStr = `| ${headerCells.join(' | ')} |`
+      const newDataRowsStr = dataRows.map(row => `| ${row.join(' | ')} |`).join('\n')
+      const finalTableText = `${newHeaderStr}\n${separator}\n${newDataRowsStr}`
+
+      const updated = [...prev]
+      updated[idx] = { ...current, text: finalTableText }
+      syncMarkdown(updated)
+      return updated
+    })
+  }
+
+  const handleAddTableRow = (blockId: string) => {
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === blockId)
+      if (idx === -1) return prev
+      const current = prev[idx]
+      const lines = current.text.split('\n').filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'))
+      if (lines.length < 2) return prev
+
+      const cols = lines[0].split('|').slice(1, -1).length
+      const emptyRow = `| ${Array(cols).fill('Novo').join(' | ')} |`
+      const newText = `${current.text.trim()}\n${emptyRow}`
+
+      const updated = [...prev]
+      updated[idx] = { ...current, text: newText }
+      syncMarkdown(updated)
+      return updated
+    })
+  }
+
+  const handleAddTableColumn = (blockId: string) => {
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === blockId)
+      if (idx === -1) return prev
+      const current = prev[idx]
+      const lines = current.text.split('\n').filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'))
+      if (lines.length < 2) return prev
+
+      const newLines = lines.map((line, lIdx) => {
+        if (lIdx === 1) {
+          return line.replace(/\|\s*$/, ' --- |')
+        }
+        return line.replace(/\|\s*$/, ` Nova Coluna |`)
+      })
+
+      const updated = [...prev]
+      updated[idx] = { ...current, text: newLines.join('\n') }
+      syncMarkdown(updated)
+      return updated
+    })
   }
 
   const isEditable = displayMode === 'live'
@@ -848,6 +1295,146 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           )
         }
 
+        // Markdown Table Block
+        if (block.type === 'table') {
+          const tableLines = block.text.split('\n').filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'))
+          const hasValidTable = tableLines.length >= 2
+          const headerCells = hasValidTable ? tableLines[0].split('|').slice(1, -1).map(c => c.trim()) : ['Coluna 1', 'Coluna 2']
+          const bodyRows = hasValidTable ? tableLines.slice(2).map(l => l.split('|').slice(1, -1).map(c => c.trim())) : []
+
+          return (
+            <div
+              key={block.id}
+              onClick={e => e.stopPropagation()}
+              className="my-5 rounded-xl border border-zinc-800 bg-zinc-950/40 overflow-hidden shadow-lg group relative"
+            >
+              {/* Table header bar */}
+              <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400">
+                <div className="flex items-center gap-1.5 font-medium text-zinc-300">
+                  <TableIcon className="w-3.5 h-3.5 text-violet-400" />
+                  <span>Tabela Markdown</span>
+                </div>
+
+                {isEditable && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleAddTableRow(block.id)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
+                      title="Adicionar linha"
+                    >
+                      <Plus className="w-3 h-3 text-emerald-400" />
+                      <span>Linha</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddTableColumn(block.id)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
+                      title="Adicionar coluna"
+                    >
+                      <Plus className="w-3 h-3 text-cyan-400" />
+                      <span>Coluna</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRawTableEditId(rawTableEditId === block.id ? null : block.id)}
+                      className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                      title="Alternar edição direta do código da tabela"
+                    >
+                      <Code className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {rawTableEditId === block.id && isEditable ? (
+                <div className="p-3 bg-zinc-950 font-mono text-xs">
+                  <textarea
+                    value={block.text}
+                    onChange={e => {
+                      const updated = [...blocks]
+                      updated[idx] = { ...block, text: e.target.value }
+                      setBlocks(updated)
+                      syncMarkdown(updated)
+                    }}
+                    rows={tableLines.length + 1}
+                    className="w-full bg-transparent text-zinc-200 focus:outline-none resize-none font-mono"
+                  />
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-900/80 border-b border-zinc-800 text-zinc-200">
+                        {headerCells.map((head, cIdx) => (
+                          <th
+                            key={cIdx}
+                            contentEditable={isEditable}
+                            suppressContentEditableWarning
+                            onBlur={e => handleTableCellChange(block.id, -1, cIdx, e.currentTarget.innerText)}
+                            className="px-4 py-2.5 font-semibold text-zinc-200 border-r border-zinc-800/60 last:border-r-0 focus:outline-none focus:bg-violet-950/30"
+                          >
+                            {head}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/60">
+                      {bodyRows.map((row, rIdx) => (
+                        <tr
+                          key={rIdx}
+                          className="hover:bg-zinc-900/40 transition-colors odd:bg-zinc-950/40 even:bg-zinc-900/20"
+                        >
+                          {headerCells.map((_, cIdx) => {
+                            const cellValue = row[cIdx] || ''
+                            return (
+                              <td
+                                key={cIdx}
+                                contentEditable={isEditable}
+                                suppressContentEditableWarning
+                                onBlur={e => handleTableCellChange(block.id, rIdx, cIdx, e.currentTarget.innerText)}
+                                className="px-4 py-2 text-zinc-300 border-r border-zinc-800/40 last:border-r-0 focus:outline-none focus:bg-violet-950/30"
+                              >
+                                {renderInlineFormatted(cellValue, false, onNavigate)}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )
+        }
+
+        // Math Block $$ ... $$
+        if (block.type === 'math') {
+          return (
+            <div
+              key={block.id}
+              onClick={e => e.stopPropagation()}
+              className="my-4 p-4 rounded-xl border border-amber-800/30 bg-amber-950/20 text-center font-serif text-lg text-amber-200 shadow-md relative group"
+            >
+              <div
+                data-block-id={block.id}
+                contentEditable={isEditable}
+                suppressContentEditableWarning
+                onFocus={() => setActiveBlockId(block.id)}
+                onBlur={() => {
+                  if (activeBlockId === block.id) setActiveBlockId(null)
+                }}
+                onInput={e => handleInput(block.id, e)}
+                onKeyDown={e => handleKeyDown(e, block.id, idx)}
+                className="focus:outline-none select-text tracking-wide"
+              >
+                {block.text}
+              </div>
+            </div>
+          )
+        }
+
         // Blockquote
         if (block.type === 'quote') {
           return (
@@ -998,25 +1585,64 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
         // Standard Paragraph
         return (
-          <p
-            key={block.id}
-            data-block-id={block.id}
-            contentEditable={isEditable}
-            suppressContentEditableWarning
-            onClick={e => e.stopPropagation()}
-            onFocus={() => setActiveBlockId(block.id)}
-            onBlur={() => {
-              if (activeBlockId === block.id) setActiveBlockId(null)
-            }}
-            onInput={e => handleInput(block.id, e)}
-            onKeyDown={e => handleKeyDown(e, block.id, idx)}
-            onPaste={e => handlePaste(e, idx)}
-            className={`text-[13px] md:text-sm text-zinc-300 leading-relaxed my-1.5 focus:outline-none transition-all rounded px-0.5 select-text ${
-              isFocused ? 'ring-1 ring-violet-500/30' : ''
-            }`}
-          >
-            {renderInlineFormatted(block.text, isFocused, onNavigate)}
-          </p>
+          <div key={block.id} className="relative group" onClick={e => e.stopPropagation()}>
+            <p
+              data-block-id={block.id}
+              contentEditable={isEditable}
+              suppressContentEditableWarning
+              onFocus={() => setActiveBlockId(block.id)}
+              onBlur={() => {
+                // If slash menu not open, blur
+                if (!slashMenu && activeBlockId === block.id) {
+                  setActiveBlockId(null)
+                }
+              }}
+              onInput={e => handleInput(block.id, e)}
+              onKeyDown={e => handleKeyDown(e, block.id, idx)}
+              onPaste={e => handlePaste(e, idx)}
+              className={`text-[13px] md:text-sm text-zinc-300 leading-relaxed my-1.5 focus:outline-none transition-all rounded px-0.5 select-text ${
+                isFocused ? 'ring-1 ring-violet-500/30' : ''
+              }`}
+            >
+              {renderInlineFormatted(block.text, isFocused, onNavigate)}
+            </p>
+
+            {/* Floating Slash Command (/) Menu attached right to the active block */}
+            {isFocused && slashMenu && slashMenu.blockId === block.id && filteredSlashCommands.length > 0 && (
+              <div className="absolute left-0 top-full mt-1 z-50 w-72 bg-zinc-900 border border-violet-500/60 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md">
+                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet-400 border-b border-zinc-800 flex items-center justify-between">
+                  <span>Comandos Rápidos</span>
+                  <span className="text-zinc-500 font-mono text-[10px]">↵ Inserir</span>
+                </div>
+                <div className="max-h-56 overflow-y-auto space-y-0.5 pt-1 scrollbar-none">
+                  {filteredSlashCommands.map((cmd, cIdx) => {
+                    const isSelected = cIdx === slashMenu.index
+                    return (
+                      <div
+                        key={cmd.id}
+                        onMouseDown={e => {
+                          e.preventDefault()
+                          cmd.execute(block.id, idx)
+                        }}
+                        onMouseEnter={() => setSlashMenu(prev => (prev ? { ...prev, index: cIdx } : null))}
+                        className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'bg-violet-600/30 text-violet-200 border border-violet-500/30'
+                            : 'text-zinc-300 hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        {cmd.icon}
+                        <div className="truncate">
+                          <div className="text-xs font-medium text-zinc-100">{cmd.title}</div>
+                          <div className="text-[10px] text-zinc-500 truncate">{cmd.subtitle}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         )
       })}
     </div>

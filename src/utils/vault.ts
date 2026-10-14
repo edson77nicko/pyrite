@@ -152,6 +152,13 @@ O Obsidian tradicional depende de você criar todos os links manualmente. No Pyr
 - [ ] Configurar **relatório de funil** (Exploration → Funnel) para mapear o caminho do usuário até a conversão.
 - [ ] Verificar que **dados pessoais não são enviados** para o GA4 (e-mails, CPFs, nomes em URLs ou parâmetros — violação da LGPD e dos Termos do Google).
 
+## Tabela de Métricas do Funil
+| Etapa do Funil | Métrica Chave | Meta Mínima | Status Atual |
+| --- | --- | --- | --- |
+| Topo de Funil | Taxa de Cliques (CTR) | > 3.5% | No Alvo |
+| Meio de Funil | Taxa de Resposta | > 65% | Em Análise |
+| Fundo de Funil | Conversão de Vendas | > 4.2% | Otimizando |
+
 ## Perguntas
 - [ ] Pergunta 1: Segmentação de perfil
 - [ ] Pergunta 2: Identificação do problema principal
@@ -173,7 +180,7 @@ export function loadNotes(): Note[] {
         const merged = [targetQuiz, ...parsed]
         saveNotes(merged)
         return merged
-      } else if (!parsed[quizIndex].content.includes('Google Signals')) {
+      } else if (!parsed[quizIndex].content.includes('Tabela de Métricas')) {
         parsed[quizIndex] = targetQuiz
         saveNotes(parsed)
         return parsed

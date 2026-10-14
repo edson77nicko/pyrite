@@ -12,6 +12,8 @@ export interface LiveBlock {
     | 'quote'
     | 'callout'
     | 'code'
+    | 'table'
+    | 'math'
     | 'hr'
     | 'empty'
   text: string
@@ -48,6 +50,38 @@ export function parseMarkdownToBlocks(markdown: string): LiveBlock[] {
         type: 'code',
         text: codeLines.join('\n'),
         codeLang: lang
+      })
+      continue
+    }
+
+    // Math block $$...$$
+    if (line.trim().startsWith('$$')) {
+      const mathLines: string[] = []
+      i++
+      while (i < lines.length && !lines[i].trim().startsWith('$$')) {
+        mathLines.push(lines[i])
+        i++
+      }
+      i++ // skip closing $$
+      blocks.push({
+        id: `blk_math_${i}_${Math.random().toString(36).slice(2, 6)}`,
+        type: 'math',
+        text: mathLines.join('\n')
+      })
+      continue
+    }
+
+    // Markdown Table: lines starting and ending with |
+    if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+      const tableLines: string[] = []
+      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+        tableLines.push(lines[i].trim())
+        i++
+      }
+      blocks.push({
+        id: `blk_table_${i}_${Math.random().toString(36).slice(2, 6)}`,
+        type: 'table',
+        text: tableLines.join('\n')
       })
       continue
     }
@@ -230,6 +264,10 @@ export function blocksToMarkdown(blocks: LiveBlock[]): string {
           return '---'
         case 'empty':
           return ''
+        case 'table':
+          return b.text
+        case 'math':
+          return `$$\n${b.text}\n$$`
         case 'quote':
           return b.text
             .split('\n')
