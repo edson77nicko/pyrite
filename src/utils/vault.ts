@@ -121,16 +121,52 @@ O Obsidian tradicional depende de você criar todos os links manualmente. No Pyr
 > [!TIP]
 > Experimente abrir o painel lateral de IA à direita e clique em "Descobrir Conexões"!
 `
+  },
+  {
+    id: 'note-quiz-checklist',
+    title: 'Checklist do Quiz',
+    folder: 'Quizzes',
+    tags: ['quiz', 'marketing', 'checklist'],
+    createdAt: Date.now() - 3600000 * 2,
+    updatedAt: Date.now() - 3600000 * 1,
+    content: `# Checklist do Quiz
+
+## Antes de criar
+- [ ] Modelei o quiz de pelo menos 2 top ofertas do nicho
+- [ ] Defini o número de etapas (mínimo 30)
+- [ ] Defini os tipos de perguntas (SPIN)
+- [ ] Planejei os breaks e onde eles entram
+- [ ] Definida a tela de loading e diagnóstico personalizado
+
+## Etapa 1
+- [ ] Headline com promessa direta ou diagnóstico
+- [ ] Imagem relevante (before/after, expert ou produto)
+- [ ] Botão posicionado como valor
+- [ ] Escassez presente
+- [ ] Tudo acima do fold
+
+## Perguntas
+- [ ] Pergunta 1: Segmentação de perfil
+- [ ] Pergunta 2: Identificação do problema principal
+- [ ] Pergunta 3: Tentativas anteriores e frustrações
+`
   }
 ]
 
-export const INITIAL_FOLDERS = ['Início', 'Engenharia', 'Metodologia', 'Criatividade', 'Inovação']
+export const INITIAL_FOLDERS = ['Início', 'Engenharia', 'Metodologia', 'Criatividade', 'Inovação', 'Quizzes']
 
 export function loadNotes(): Note[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) {
-      return JSON.parse(saved)
+      const parsed: Note[] = JSON.parse(saved)
+      if (!parsed.some(n => n.id === 'note-quiz-checklist')) {
+        const quiz = INITIAL_NOTES.find(n => n.id === 'note-quiz-checklist')!
+        const merged = [quiz, ...parsed]
+        saveNotes(merged)
+        return merged
+      }
+      return parsed
     }
   } catch (err) {
     console.error('Failed to load notes from localStorage', err)

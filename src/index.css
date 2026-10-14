@@ -2,9 +2,9 @@
 
 @layer base {
   :root {
-    --bg-main: #1e1e24;
-    --bg-sidebar: #18181b;
-    --bg-header: #141416;
+    --bg-main: #18181c;
+    --bg-sidebar: #141417;
+    --bg-header: #101013;
     --border-color: #27272a;
     --accent: #8b5cf6;
     --text-primary: #f4f4f5;
@@ -18,10 +18,14 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: #121214;
   color: #e4e4e7;
   user-select: none;
+}
+
+.font-serif {
+  font-family: 'Lora', Georgia, Cambria, 'Times New Roman', Times, serif;
 }
 
 /* Custom scrollbars like Obsidian */
