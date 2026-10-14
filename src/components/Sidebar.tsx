@@ -17,6 +17,7 @@ interface SidebarProps {
   notes: Note[]
   folders: string[]
   currentNoteId?: string
+  vaultPath?: string | null
   onSelectNote: (noteId: string) => void
   onCreateNote: (folder?: string) => void
   onCreateFolder: (name: string, parentFolder?: string) => void
@@ -24,6 +25,7 @@ interface SidebarProps {
   onToggleFavorite: (noteId: string) => void
   onOpenDailyNote: () => void
   onOpenLocalFolder: () => void
+  onOpenInExplorer?: () => void
   isOpen: boolean
 }
 
@@ -38,6 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   notes,
   folders,
   currentNoteId,
+  vaultPath,
   onSelectNote,
   onCreateNote,
   onCreateFolder,
@@ -45,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleFavorite,
   onOpenDailyNote,
   onOpenLocalFolder,
+  onOpenInExplorer,
   isOpen
 }) => {
   const [search, setSearch] = useState('')
@@ -275,24 +279,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <div className="w-64 h-full bg-[#121215] border-r border-zinc-800 flex flex-col select-none shrink-0 text-xs">
       {/* 1. Vault Header */}
       <div className="p-3 border-b border-zinc-800 bg-[#0f0f12] flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center font-bold text-xs text-white shadow-md">
+        <div className="flex items-center gap-2.5 truncate flex-1 mr-2">
+          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center font-bold text-xs text-white shadow-md shrink-0">
             💎
           </div>
-          <div>
-            <span className="font-semibold text-zinc-100 text-xs tracking-wide">Pyrite Vault</span>
-            <div className="text-[10px] text-zinc-500">Local-First</div>
+          <div className="truncate">
+            <span className="font-semibold text-zinc-100 text-xs tracking-wide truncate block">
+              {vaultPath ? vaultPath.split(/[/\\]/).filter(Boolean).pop() : 'Pyrite Vault'}
+            </span>
+            <div className="text-[10px] text-zinc-500 truncate" title={vaultPath || 'Armazenamento local'}>
+              {vaultPath ? 'Cofre Local (.md)' : 'Local-First'}
+            </div>
           </div>
         </div>
 
-        <button
-          onClick={onOpenLocalFolder}
-          className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-violet-300 hover:bg-zinc-800/80 px-2 py-1 rounded-md transition-colors border border-zinc-800"
-          title="Importar pasta e subpastas locais do PC"
-        >
-          <HardDrive className="w-3 h-3 text-violet-400" />
-          <span>Importar</span>
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          {onOpenInExplorer && vaultPath && (
+            <button
+              onClick={onOpenInExplorer}
+              className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 rounded-md transition-colors border border-zinc-800/80"
+              title="Abrir pasta do cofre no Explorador de Arquivos do Windows"
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+            </button>
+          )}
+
+          <button
+            onClick={onOpenLocalFolder}
+            className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-violet-300 hover:bg-zinc-800/80 px-2 py-1 rounded-md transition-colors border border-zinc-800"
+            title={vaultPath ? "Trocar Pasta do Cofre" : "Importar pasta e subpastas locais do PC"}
+          >
+            <HardDrive className="w-3 h-3 text-violet-400" />
+            <span>{vaultPath ? "Cofre" : "Importar"}</span>
+          </button>
+        </div>
       </div>
 
       {/* 2. Top Quick Actions: Daily Note & New Note */}

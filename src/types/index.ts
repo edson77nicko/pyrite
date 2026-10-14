@@ -7,6 +7,7 @@ export interface Note {
   isFavorite?: boolean
   createdAt: number
   updatedAt: number
+  filePath?: string // Full path on disk when running in Electron
 }
 
 export interface Folder {

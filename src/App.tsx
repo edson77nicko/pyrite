@@ -5,7 +5,8 @@ import {
   saveNotes,
   loadFolders,
   saveFolders,
-  extractTags
+  extractTags,
+  INITIAL_NOTES
 } from './utils/vault'
 import { Ribbon } from './components/Ribbon'
 import { TabHeader } from './components/TabHeader'
@@ -33,6 +34,78 @@ export const App: React.FC = () => {
   const [currentNoteId, setCurrentNoteId] = useState<string>(() => notes[0]?.id || '')
   const [currentView, setCurrentView] = useState<ViewMode>('editor')
   const [editorDisplayMode, setEditorDisplayMode] = useState<EditorDisplayMode>('live')
+  const [vaultPath, setVaultPath] = useState<string | null>(() => {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem('pyrite_electron_vault_path') : null
+  })
+
+  // Electron Local Vault Auto-initialization (Phase 2)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.isElectron) return
+    const api = window.electronAPI
+
+    const initLocalVault = async () => {
+      try {
+        let currentPath = localStorage.getItem('pyrite_electron_vault_path')
+        if (!currentPath) {
+          currentPath = await api.getDefaultPath()
+          localStorage.setItem('pyrite_electron_vault_path', currentPath)
+        }
+        setVaultPath(currentPath)
+
+        const files = await api.readVault(currentPath)
+        if (files.length > 0) {
+          const loadedNotes: Note[] = files.map((f, i) => ({
+            id: `note_disk_${i}_${Date.now()}`,
+            title: f.title,
+            folder: f.folder,
+            content: f.content,
+            filePath: f.filePath,
+            tags: extractTags(f.content),
+            createdAt: f.createdAt,
+            updatedAt: f.updatedAt
+          }))
+          const loadedFolders = Array.from(new Set(loadedNotes.map(n => n.folder).filter(Boolean)))
+          setNotes(loadedNotes)
+          setFolders(loadedFolders.length > 0 ? loadedFolders : ['Início'])
+          saveNotes(loadedNotes)
+          if (loadedNotes[0]) {
+            setCurrentNoteId(loadedNotes[0].id)
+            setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title }])
+            setActiveTabId(`tab_${loadedNotes[0].id}`)
+          }
+        } else {
+          // If the folder is empty on first run, seed default notes directly to disk
+          for (const note of INITIAL_NOTES) {
+            await api.saveFile({
+              vaultPath: currentPath,
+              folder: note.folder,
+              title: note.title,
+              content: note.content
+            })
+          }
+          const seededFiles = await api.readVault(currentPath)
+          if (seededFiles.length > 0) {
+            const loadedNotes: Note[] = seededFiles.map((f, i) => ({
+              id: `note_disk_${i}_${Date.now()}`,
+              title: f.title,
+              folder: f.folder,
+              content: f.content,
+              filePath: f.filePath,
+              tags: extractTags(f.content),
+              createdAt: f.createdAt,
+              updatedAt: f.updatedAt
+            }))
+            setNotes(loadedNotes)
+            saveNotes(loadedNotes)
+          }
+        }
+      } catch (err) {
+        console.error('Error initializing Electron vault:', err)
+      }
+    }
+
+    initLocalVault()
+  }, [])
 
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
@@ -188,6 +261,20 @@ export const App: React.FC = () => {
     setNotes(updated)
     saveNotes(updated)
     handleSelectNote(newNote.id)
+
+    // Electron disk persistence
+    if (window.electronAPI?.isElectron && vaultPath) {
+      window.electronAPI.saveFile({
+        vaultPath,
+        folder: targetFolder,
+        title: newNote.title,
+        content: newNote.content
+      }).then(res => {
+        if (res.success && res.filePath) {
+          newNote.filePath = res.filePath
+        }
+      })
+    }
   }
 
   // Open or Create Today's Daily Note
@@ -221,6 +308,20 @@ export const App: React.FC = () => {
     setNotes(updated)
     saveNotes(updated)
     handleSelectNote(dailyNote.id)
+
+    // Electron disk persistence
+    if (window.electronAPI?.isElectron && vaultPath) {
+      window.electronAPI.saveFile({
+        vaultPath,
+        folder: 'Diário',
+        title: dailyNote.title,
+        content: dailyNote.content
+      }).then(res => {
+        if (res.success && res.filePath) {
+          dailyNote.filePath = res.filePath
+        }
+      })
+    }
   }
 
   const handleToggleFavorite = (noteId: string) => {
@@ -234,14 +335,26 @@ export const App: React.FC = () => {
       const updated = [...folders, fullFolderPath]
       setFolders(updated)
       saveFolders(updated)
+
+      // Electron disk folder creation
+      if (window.electronAPI?.isElectron && vaultPath) {
+        window.electronAPI.createFolder({ vaultPath, folderPath: fullFolderPath })
+      }
     }
   }
 
   const handleDeleteNote = (noteId: string) => {
+    const noteToDelete = notes.find(n => n.id === noteId)
     const updated = notes.filter(n => n.id !== noteId)
     setNotes(updated)
     saveNotes(updated)
     setTabs(t => t.filter(item => item.noteId !== noteId))
+
+    // Electron disk deletion (moves to Windows trash/recycle bin)
+    if (window.electronAPI?.isElectron && noteToDelete?.filePath) {
+      window.electronAPI.deleteFile(noteToDelete.filePath)
+    }
+
     if (currentNoteId === noteId) {
       setCurrentNoteId(updated[0]?.id || '')
     }
@@ -255,6 +368,20 @@ export const App: React.FC = () => {
     const updated = notes.map(n => n.id === finalNote.id ? finalNote : n)
     setNotes(updated)
     saveNotes(updated)
+
+    // Electron disk persistence on note edits
+    if (window.electronAPI?.isElectron && vaultPath) {
+      window.electronAPI.saveFile({
+        vaultPath,
+        folder: finalNote.folder || 'Início',
+        title: finalNote.title,
+        content: finalNote.content
+      }).then(res => {
+        if (res.success && res.filePath) {
+          finalNote.filePath = res.filePath
+        }
+      })
+    }
 
     setTabs(prev => prev.map(t => t.noteId === finalNote.id ? { ...t, title: finalNote.title } : t))
   }
@@ -312,8 +439,46 @@ export const App: React.FC = () => {
     return { notes: collectedNotes, folders: collectedFolders }
   }
 
-  // File System Access API: Deep Recursive Import
+  // Open / Switch Local Vault Folder (Native dialog in Electron, File System Access API in Web)
   const handleOpenLocalFolder = async () => {
+    // If running in native Electron app:
+    if (window.electronAPI?.isElectron) {
+      try {
+        const selected = await window.electronAPI.selectFolder()
+        if (selected) {
+          localStorage.setItem('pyrite_electron_vault_path', selected)
+          setVaultPath(selected)
+          const files = await window.electronAPI.readVault(selected)
+          if (files.length > 0) {
+            const loadedNotes: Note[] = files.map((f, i) => ({
+              id: `note_disk_${i}_${Date.now()}`,
+              title: f.title,
+              folder: f.folder,
+              content: f.content,
+              filePath: f.filePath,
+              tags: extractTags(f.content),
+              createdAt: f.createdAt,
+              updatedAt: f.updatedAt
+            }))
+            const loadedFolders = Array.from(new Set(loadedNotes.map(n => n.folder).filter(Boolean)))
+            setNotes(loadedNotes)
+            setFolders(loadedFolders.length > 0 ? loadedFolders : ['Início'])
+            saveNotes(loadedNotes)
+            if (loadedNotes[0]) {
+              handleSelectNote(loadedNotes[0].id)
+            }
+            alert(`Cofre carregado com sucesso!\n${loadedNotes.length} notas carregadas de:\n${selected}`)
+          } else {
+            alert(`Pasta selecionada como cofre ativo:\n${selected}\n(Nenhuma nota .md encontrada ainda nesta pasta)`)
+          }
+        }
+      } catch (err) {
+        console.error('Error selecting folder in Electron:', err)
+      }
+      return
+    }
+
+    // Web fallback: File System Access API
     if (!('showDirectoryPicker' in window)) {
       alert('A API File System Access é suportada no Chrome, Edge e Chromium. Você pode exportar ou importar seu vault em JSON.')
       return
@@ -342,6 +507,13 @@ export const App: React.FC = () => {
         console.error('Error opening folder:', err)
         alert('Não foi possível ler a pasta selecionada.')
       }
+    }
+  }
+
+  // Open active vault folder in Windows Explorer
+  const handleOpenInExplorer = () => {
+    if (window.electronAPI?.isElectron && vaultPath) {
+      window.electronAPI.openInExplorer(vaultPath)
     }
   }
 
@@ -378,6 +550,7 @@ export const App: React.FC = () => {
           notes={notes}
           folders={folders}
           currentNoteId={currentNoteId}
+          vaultPath={vaultPath}
           onSelectNote={handleSelectNote}
           onCreateNote={handleCreateNote}
           onCreateFolder={handleCreateFolder}
@@ -385,6 +558,7 @@ export const App: React.FC = () => {
           onToggleFavorite={handleToggleFavorite}
           onOpenDailyNote={handleOpenDailyNote}
           onOpenLocalFolder={handleOpenLocalFolder}
+          onOpenInExplorer={handleOpenInExplorer}
           isOpen={isLeftSidebarOpen}
         />
 

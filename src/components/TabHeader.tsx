@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import type { TabItem, EditorDisplayMode, ViewMode } from '../types'
 import {
   FileText,
@@ -10,7 +10,10 @@ import {
   Sparkles,
   Download,
   PanelRight,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Minus,
+  Square,
+  Copy
 } from 'lucide-react'
 
 interface TabHeaderProps {
@@ -48,10 +51,24 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
   onOpenSettings,
   onExportVault
 }) => {
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
+  const [isMaximized, setIsMaximized] = useState(false)
+
+  useEffect(() => {
+    if (!isElectron || !window.electronAPI) return
+    window.electronAPI.isMaximized().then(setIsMaximized)
+    const cleanup = window.electronAPI.onMaximizedChange(setIsMaximized)
+    return cleanup
+  }, [isElectron])
+
+  const handleMinimize = () => window.electronAPI?.minimize()
+  const handleMaximize = () => window.electronAPI?.maximize().then(setIsMaximized)
+  const handleClose = () => window.electronAPI?.close()
+
   return (
-    <div className="h-9 bg-[#0c0c0e] border-b border-zinc-800/80 flex items-center justify-between px-2 select-none shrink-0 z-10 text-xs">
+    <div className="h-9 bg-[#0c0c0e] border-b border-zinc-800/80 flex items-center justify-between px-2 select-none shrink-0 z-10 text-xs app-drag">
       {/* Left: Tabs List (Max 5 tabs) + New Tab Button */}
-      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-1">
+      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-1 app-no-drag">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId
           return (
@@ -91,8 +108,8 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         </button>
       </div>
 
-      {/* Right: Icon-only actions relocated from top header */}
-      <div className="flex items-center gap-1 shrink-0 ml-2">
+      {/* Right: Icon-only actions + Electron Window Controls */}
+      <div className="flex items-center gap-1 shrink-0 ml-2 app-no-drag">
         {/* Mode Switcher: Only icons, visible in editor view */}
         {currentView === 'editor' && (
           <div className="flex items-center gap-0.5 bg-zinc-900/90 border border-zinc-800 rounded-md p-0.5 mr-1 shadow-sm">
@@ -173,6 +190,33 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         >
           <SlidersHorizontal className="w-3.5 h-3.5" />
         </button>
+
+        {/* Native Electron Window Controls (Minimize, Maximize, Close) */}
+        {isElectron && (
+          <div className="flex items-center h-full ml-1.5 pl-1.5 border-l border-zinc-800/80">
+            <button
+              onClick={handleMinimize}
+              className="h-7 w-7 flex items-center justify-center rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
+              title="Minimizar Janela"
+            >
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleMaximize}
+              className="h-7 w-7 flex items-center justify-center rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
+              title={isMaximized ? "Restaurar Janela" : "Maximizar Janela"}
+            >
+              {isMaximized ? <Copy className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+            </button>
+            <button
+              onClick={handleClose}
+              className="h-7 w-7 flex items-center justify-center rounded text-zinc-400 hover:text-white hover:bg-rose-600 transition-colors"
+              title="Fechar Pyrite"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
