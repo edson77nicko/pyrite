@@ -11,12 +11,14 @@
     "dev:web": "vite --mode web",
     "build": "tsc -b && vite build",
     "build:win": "npm run build && electron-builder --win --x64",
+    "publish:win": "npm run build && electron-builder --win --x64 -p always",
     "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^1.56.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -39,6 +41,11 @@
   "build": {
     "appId": "com.pyrite.app",
     "productName": "Pyrite",
+    "publish": {
+      "provider": "github",
+      "owner": "edson77nicko",
+      "repo": "pyrite"
+    },
     "directories": {
       "output": "release"
     },

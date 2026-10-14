@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { autoUpdater } from 'electron-updater'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -52,6 +53,9 @@ function createWindow() {
   } else {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+
+  // Setup auto-updater listeners and check
+  setupAutoUpdater()
 }
 
 // Quit when all windows are closed, except on macOS.
@@ -217,6 +221,68 @@ ipcMain.handle('vault:createFolder', (_event, { vaultPath, folderPath }: { vault
   } catch (err: any) {
     return { success: false, error: err.message }
   }
+})
+
+// --- Auto Updater Logic ---
+autoUpdater.autoDownload = true
+autoUpdater.autoInstallOnAppQuit = true
+
+function setupAutoUpdater() {
+  if (!app.isPackaged) {
+    console.log('[AutoUpdater] Dev mode: Skipping automatic update check')
+    return
+  }
+
+  autoUpdater.on('checking-for-update', () => {
+    win?.webContents.send('updater:status', { status: 'checking' })
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    win?.webContents.send('updater:status', { status: 'available', version: info.version })
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    win?.webContents.send('updater:status', { status: 'not-available' })
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    win?.webContents.send('updater:status', {
+      status: 'downloading',
+      percent: Math.round(progress.percent),
+    })
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    win?.webContents.send('updater:status', { status: 'downloaded', version: info.version })
+  })
+
+  autoUpdater.on('error', (err) => {
+    console.error('[AutoUpdater] Error:', err)
+    win?.webContents.send('updater:status', { status: 'error', error: err?.message || 'Update failed' })
+  })
+
+  // Automatically check for updates 3 seconds after window opens
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.warn('[AutoUpdater] Check on start failed:', err.message)
+    })
+  }, 3000)
+}
+
+ipcMain.handle('updater:check', async () => {
+  if (!app.isPackaged) {
+    return { success: false, message: 'Dev mode' }
+  }
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    return { success: true, updateInfo: result?.updateInfo }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('updater:quitAndInstall', () => {
+  autoUpdater.quitAndInstall()
 })
 
 app.whenReady().then(createWindow)

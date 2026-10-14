@@ -27,7 +27,20 @@ export interface ElectronAPI {
   createFolder: (params: { vaultPath: string; folderPath: string }) => Promise<{ success: boolean; error?: string }>
   revealInExplorer: (filePath: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>
+
+  // Auto Updater
+  checkForUpdates: () => Promise<void>
+  quitAndInstall: () => Promise<void>
+  onUpdaterStatus: (callback: (data: UpdaterStatusData) => void) => () => void
 }
+
+export type UpdaterStatusData =
+  | { status: 'checking' }
+  | { status: 'available'; version: string }
+  | { status: 'not-available' }
+  | { status: 'downloading'; percent: number }
+  | { status: 'downloaded'; version: string }
+  | { status: 'error'; error: string }
 
 declare global {
   interface Window {

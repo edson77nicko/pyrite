@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import type { TabItem, EditorDisplayMode, ViewMode } from '../types'
+import type { UpdaterStatusData } from '../types/electron'
 import {
   FileText,
   Plus,
@@ -13,7 +14,9 @@ import {
   SlidersHorizontal,
   Minus,
   Square,
-  Copy
+  Copy,
+  RefreshCw,
+  ArrowDownToLine
 } from 'lucide-react'
 
 interface TabHeaderProps {
@@ -53,12 +56,20 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
 }) => {
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
   const [isMaximized, setIsMaximized] = useState(false)
+  const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatusData | null>(null)
 
   useEffect(() => {
     if (!isElectron || !window.electronAPI) return
     window.electronAPI.isMaximized().then(setIsMaximized)
-    const cleanup = window.electronAPI.onMaximizedChange(setIsMaximized)
-    return cleanup
+    const cleanupMaximized = window.electronAPI.onMaximizedChange(setIsMaximized)
+    const cleanupUpdater = window.electronAPI.onUpdaterStatus?.((status) => {
+      setUpdaterStatus(status)
+    })
+
+    return () => {
+      cleanupMaximized?.()
+      cleanupUpdater?.()
+    }
   }, [isElectron])
 
   const handleMinimize = () => window.electronAPI?.minimize()
@@ -181,6 +192,28 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         >
           <PanelRight className="w-3.5 h-3.5" />
         </button>
+
+        {/* Auto Update Notification Button - Only rendered if an update is ready or downloading */}
+        {updaterStatus?.status === 'downloaded' && (
+          <button
+            onClick={() => window.electronAPI?.quitAndInstall()}
+            className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 text-[11px] font-medium transition-all shadow-sm animate-pulse mr-0.5 cursor-pointer"
+            title={`Nova versão ${updaterStatus.version} pronta! Clique para reiniciar e atualizar sem reinstalar.`}
+          >
+            <RefreshCw className="w-3 h-3 text-emerald-400 animate-spin" style={{ animationDuration: '4s' }} />
+            <span className="font-semibold">Atualizar v{updaterStatus.version}</span>
+          </button>
+        )}
+
+        {updaterStatus?.status === 'downloading' && (
+          <div
+            className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-violet-950/60 border border-violet-800/50 text-violet-300 text-[11px] mr-0.5"
+            title={`Baixando atualização: ${updaterStatus.percent}%`}
+          >
+            <ArrowDownToLine className="w-3 h-3 text-violet-400 animate-bounce" />
+            <span>Baixando {updaterStatus.percent}%</span>
+          </div>
+        )}
 
         {/* Settings Button */}
         <button

@@ -37,6 +37,17 @@ const electronAPI = {
     ipcRenderer.invoke('vault:createFolder', params) as Promise<{ success: boolean; error?: string }>,
   revealInExplorer: (filePath: string) => ipcRenderer.invoke('vault:revealInExplorer', filePath),
   openInExplorer: (folderPath: string) => ipcRenderer.invoke('vault:openInExplorer', folderPath),
+
+  // Auto Updater
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  quitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
+  onUpdaterStatus: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('updater:status', handler)
+    return () => {
+      ipcRenderer.removeListener('updater:status', handler)
+    }
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)
