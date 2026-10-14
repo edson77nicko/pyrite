@@ -20,7 +20,11 @@ import {
   Divide,
   Plus,
   Code,
-  FileText
+  FileText,
+  Bold,
+  Italic,
+  Highlighter,
+  Strikethrough
 } from 'lucide-react'
 import {
   type LiveBlock,
@@ -58,10 +62,99 @@ interface SlashCommandItem {
 }
 
 /**
+/**
+ * Recursively locates text nodes within an element and sets selection range
+ * at the exact character offset across any number of nested child nodes.
+ */
+function setCaretAtCharacterOffset(element: HTMLElement, targetOffset: number) {
+  element.focus()
+  const sel = window.getSelection()
+  if (!sel) return
+
+  const range = document.createRange()
+  let currentOffset = 0
+  let nodeFound = false
+
+  function traverse(node: Node) {
+    if (nodeFound) return
+    if (node.nodeType === Node.TEXT_NODE) {
+      const textLen = node.textContent?.length || 0
+      if (currentOffset + textLen >= targetOffset) {
+        const localOffset = Math.max(0, Math.min(targetOffset - currentOffset, textLen))
+        range.setStart(node, localOffset)
+        range.setEnd(node, localOffset)
+        nodeFound = true
+        return
+      }
+      currentOffset += textLen
+    } else {
+      for (let i = 0; i < node.childNodes.length; i++) {
+        traverse(node.childNodes[i])
+      }
+    }
+  }
+
+  traverse(element)
+
+  if (!nodeFound) {
+    range.selectNodeContents(element)
+    range.collapse(false)
+  }
+
+  sel.removeAllRanges()
+  sel.addRange(range)
+}
+
+/**
+ * Accurately measures the character offset within an element based on click coordinates.
+ */
+function getCaretCharacterOffsetWithin(element: HTMLElement, clientX: number, clientY: number): number {
+  try {
+    if (document.caretRangeFromPoint) {
+      const range = document.caretRangeFromPoint(clientX, clientY)
+      if (range) {
+        const preRange = document.createRange()
+        preRange.selectNodeContents(element)
+        preRange.setEnd(range.startContainer, range.startOffset)
+        return preRange.toString().length
+      }
+    } else if ((document as any).caretPositionFromPoint) {
+      const pos = (document as any).caretPositionFromPoint(clientX, clientY)
+      if (pos && pos.offsetNode) {
+        const preRange = document.createRange()
+        preRange.selectNodeContents(element)
+        preRange.setEnd(pos.offsetNode, pos.offset)
+        return preRange.toString().length
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return 0
+}
+
+/**
+ * Accurately measures the cursor character offset within a contentEditable container.
+ */
+function getCursorCharacterOffset(container: HTMLElement): number {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return container.innerText.length
+  const range = sel.getRangeAt(0)
+  const preRange = document.createRange()
+  try {
+    preRange.selectNodeContents(container)
+    preRange.setEnd(range.startContainer, range.startOffset)
+    return preRange.toString().length
+  } catch {
+    return range.startOffset
+  }
+}
+
+/**
  * Formats inline Markdown syntax tokens (like **, *, ==, ~~, `, [[...]])
  * 
  * In Obsidian Live Preview:
- * - When line is NOT focused: syntax tokens (**, *, ==) are HIDDEN. Only formatted text is shown.
+ * - When line is NOT focused: syntax tokens (**, *, ==, [[...]]) are HIDDEN. Only formatted text is shown.
  * - When line IS focused: syntax tokens appear in subtle muted color so they can be edited!
  */
 function renderInlineFormatted(
@@ -72,8 +165,8 @@ function renderInlineFormatted(
 ): React.ReactNode {
   if (!text) return '\u00A0'
 
-  // Token regex for: [[wikilink]], **bold**, ==highlight==, ~~strike~~, `code`, *italic*
-  const tokenRegex = /(\[\[.*?\]\]|\*\*.*?\*\*|==.*?==|~~.*?~~|`.*?`|\*[^*]+?\*)/g
+  // Strict token regex: avoids greedy matching across delimiters so multiple tokens never clash!
+  const tokenRegex = /(\[\[[^\[\]\r\n]+\]\]|\*\*[^\*\r\n]+\*\*|==[^=\r\n]+==|~~[^~\r\n]+~~|`[^`\r\n]+`|\*[^\*\r\n]+\*)/g
   const parts = text.split(tokenRegex)
 
   return parts.map((part, idx) => {
@@ -95,13 +188,6 @@ function renderInlineFormatted(
             role="button"
             tabIndex={0}
             title={exists ? `Abrir nota: "${destination}"` : `Criar nota: "${destination}"`}
-            onMouseDown={e => {
-              if (e.button === 0) {
-                e.preventDefault()
-                e.stopPropagation()
-                if (onNavigate) onNavigate(destination)
-              }
-            }}
             onClick={e => {
               e.preventDefault()
               e.stopPropagation()
@@ -123,9 +209,9 @@ function renderInlineFormatted(
         return (
           <span
             key={`wiki-${idx}`}
-            className="inline-flex items-center text-violet-300 font-normal"
+            className="inline text-violet-300 font-normal"
             title={`Ctrl + Clique para abrir "${destination}"`}
-            onMouseDown={e => {
+            onClick={e => {
               if (e.ctrlKey || e.metaKey) {
                 e.preventDefault()
                 e.stopPropagation()
@@ -133,11 +219,11 @@ function renderInlineFormatted(
               }
             }}
           >
-            <span className="text-violet-400/80 font-mono text-xs">[[</span>
+            <span className="text-violet-400/80 font-mono text-xs select-text">[[</span>
             <span className="underline decoration-violet-500/40 hover:text-violet-200 cursor-text">
               {inner}
             </span>
-            <span className="text-violet-400/80 font-mono text-xs">]]</span>
+            <span className="text-violet-400/80 font-mono text-xs select-text">]]</span>
           </span>
         )
       }
@@ -155,9 +241,9 @@ function renderInlineFormatted(
       } else {
         return (
           <strong key={`b-${idx}`} className="font-semibold text-zinc-100">
-            <span className="text-zinc-500/80 font-mono text-xs font-normal select-none">**</span>
+            <span className="text-zinc-500/80 font-mono text-xs font-normal select-text">**</span>
             {inner}
-            <span className="text-zinc-500/80 font-mono text-xs font-normal select-none">**</span>
+            <span className="text-zinc-500/80 font-mono text-xs font-normal select-text">**</span>
           </strong>
         )
       }
@@ -175,9 +261,9 @@ function renderInlineFormatted(
       } else {
         return (
           <mark key={`m-${idx}`} className="bg-amber-400/25 text-amber-200 px-1 py-0.5 rounded font-normal">
-            <span className="text-amber-500/70 font-mono text-xs select-none">==</span>
+            <span className="text-amber-500/70 font-mono text-xs select-text">==</span>
             {inner}
-            <span className="text-amber-500/70 font-mono text-xs select-none">==</span>
+            <span className="text-amber-500/70 font-mono text-xs select-text">==</span>
           </mark>
         )
       }
@@ -195,9 +281,9 @@ function renderInlineFormatted(
       } else {
         return (
           <del key={`d-${idx}`} className="line-through text-zinc-500">
-            <span className="text-zinc-600 font-mono text-xs select-none">~~</span>
+            <span className="text-zinc-600 font-mono text-xs select-text">~~</span>
             {inner}
-            <span className="text-zinc-600 font-mono text-xs select-none">~~</span>
+            <span className="text-zinc-600 font-mono text-xs select-text">~~</span>
           </del>
         )
       }
@@ -215,9 +301,9 @@ function renderInlineFormatted(
       } else {
         return (
           <code key={`c-${idx}`} className="bg-zinc-800 text-amber-300 px-1 py-0.5 rounded font-mono text-xs">
-            <span className="text-zinc-500 font-mono text-xs select-none">`</span>
+            <span className="text-zinc-500 font-mono text-xs select-text">`</span>
             {inner}
-            <span className="text-zinc-500 font-mono text-xs select-none">`</span>
+            <span className="text-zinc-500 font-mono text-xs select-text">`</span>
           </code>
         )
       }
@@ -235,9 +321,9 @@ function renderInlineFormatted(
       } else {
         return (
           <em key={`i-${idx}`} className="italic text-zinc-200">
-            <span className="text-zinc-500/80 font-mono text-xs font-normal select-none">*</span>
+            <span className="text-zinc-500/80 font-mono text-xs font-normal select-text">*</span>
             {inner}
-            <span className="text-zinc-500/80 font-mono text-xs font-normal select-none">*</span>
+            <span className="text-zinc-500/80 font-mono text-xs font-normal select-text">*</span>
           </em>
         )
       }
@@ -273,9 +359,20 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     blockId: string
     query: string
     index: number
+    triggerOffset?: number
   } | null>(null)
 
-  // Focus target management (only for programmatic navigation like Enter, Backspace, Arrow keys)
+  // Floating Notion-style selection toolbar state
+  const [selectionToolbar, setSelectionToolbar] = useState<{
+    top: number
+    left: number
+    blockId: string
+    selectedText: string
+    startOffset: number
+    endOffset: number
+  } | null>(null)
+
+  // Focus target management (only for programmatic navigation like Enter, Backspace, Arrow keys, or click activation)
   const [focusTarget, setFocusTarget] = useState<{
     blockId: string
     position: 'start' | 'end' | number
@@ -293,6 +390,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       setActiveBlockId(null)
       setFocusTarget(null)
       setSlashMenu(null)
+      setWikiSuggest(null)
+      setSelectionToolbar(null)
       setRawTableEditId(null)
     }
   }, [note.id, note.content])
@@ -305,31 +404,147 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       el.focus()
       const sel = window.getSelection()
       if (sel) {
-        const range = document.createRange()
         if (focusTarget.position === 'start') {
+          const range = document.createRange()
           range.selectNodeContents(el)
           range.collapse(true)
+          sel.removeAllRanges()
+          sel.addRange(range)
         } else if (focusTarget.position === 'end') {
+          const range = document.createRange()
           range.selectNodeContents(el)
           range.collapse(false)
+          sel.removeAllRanges()
+          sel.addRange(range)
         } else if (typeof focusTarget.position === 'number') {
-          const targetNode = el.firstChild || el
-          const len = targetNode.textContent?.length || 0
-          const offset = Math.min(focusTarget.position, len)
-          try {
-            range.setStart(targetNode, offset)
-            range.setEnd(targetNode, offset)
-          } catch {
-            range.selectNodeContents(el)
-            range.collapse(false)
-          }
+          setCaretAtCharacterOffset(el, focusTarget.position)
         }
-        sel.removeAllRanges()
-        sel.addRange(range)
       }
     }
     setFocusTarget(null)
   }, [focusTarget, blocks])
+
+  // Helper to activate a block on click and accurately place the caret without jumping
+  const handleBlockMouseDown = (e: React.MouseEvent<HTMLElement>, blockId: string) => {
+    if (activeBlockId !== blockId) {
+      const offset = getCaretCharacterOffsetWithin(e.currentTarget, e.clientX, e.clientY)
+      setActiveBlockId(blockId)
+      setFocusTarget({ blockId, position: offset })
+    }
+  }
+
+  // Check text selection for Notion-style floating toolbar
+  const handleSelectionCheck = useCallback(() => {
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed || !sel.rangeCount) {
+      setSelectionToolbar(null)
+      return
+    }
+
+    const selectedText = sel.toString().trim()
+    if (!selectedText) {
+      setSelectionToolbar(null)
+      return
+    }
+
+    const range = sel.getRangeAt(0)
+    let blockEl = range.startContainer as HTMLElement | null
+    while (blockEl && !(blockEl as HTMLElement).hasAttribute?.('data-block-id')) {
+      blockEl = blockEl.parentElement
+    }
+
+    if (!blockEl) {
+      setSelectionToolbar(null)
+      return
+    }
+
+    const blockId = blockEl.getAttribute('data-block-id')
+    if (!blockId) {
+      setSelectionToolbar(null)
+      return
+    }
+
+    // Accurately determine character offset within this block
+    const preRange = document.createRange()
+    try {
+      preRange.selectNodeContents(blockEl)
+      preRange.setEnd(range.startContainer, range.startOffset)
+    } catch {
+      // fallback
+    }
+    const startOffset = preRange.toString().length
+    const endOffset = startOffset + sel.toString().length
+
+    const rect = range.getBoundingClientRect()
+    if (rect.width === 0 && rect.height === 0) {
+      setSelectionToolbar(null)
+      return
+    }
+
+    setSelectionToolbar({
+      top: Math.max(12, rect.top - 46),
+      left: Math.max(120, Math.min(window.innerWidth - 120, rect.left + rect.width / 2)),
+      blockId,
+      selectedText: sel.toString(),
+      startOffset,
+      endOffset
+    })
+  }, [])
+
+  // Notion-style wrap / unwrap applied to the current selection
+  const handleApplyWrap = (prefix: string, suffix: string) => {
+    if (!selectionToolbar) return
+    const { blockId, startOffset, endOffset, selectedText } = selectionToolbar
+
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === blockId)
+      if (idx === -1) return prev
+      const current = prev[idx]
+      const text = current.text
+
+      let newBlockText: string
+      let newCursorPos: number
+
+      // Check if already wrapped outside selection
+      const isWrappedOutside =
+        text.slice(Math.max(0, startOffset - prefix.length), startOffset) === prefix &&
+        text.slice(endOffset, endOffset + suffix.length) === suffix
+
+      if (isWrappedOutside) {
+        // Toggle OFF (unwrap)
+        const before = text.slice(0, startOffset - prefix.length)
+        const after = text.slice(endOffset + suffix.length)
+        newBlockText = `${before}${selectedText}${after}`
+        newCursorPos = before.length + selectedText.length
+      } else if (
+        selectedText.startsWith(prefix) &&
+        selectedText.endsWith(suffix) &&
+        selectedText.length >= prefix.length + suffix.length
+      ) {
+        // Selection itself has the wrap -> toggle OFF
+        const unwrapped = selectedText.slice(prefix.length, selectedText.length - suffix.length)
+        const before = text.slice(0, startOffset)
+        const after = text.slice(endOffset)
+        newBlockText = `${before}${unwrapped}${after}`
+        newCursorPos = before.length + unwrapped.length
+      } else {
+        // Toggle ON (wrap)
+        const before = text.slice(0, startOffset)
+        const after = text.slice(endOffset)
+        newBlockText = `${before}${prefix}${selectedText}${suffix}${after}`
+        newCursorPos = before.length + prefix.length + selectedText.length + suffix.length
+      }
+
+      const updated = [...prev]
+      updated[idx] = { ...current, text: newBlockText }
+      syncMarkdown(updated)
+      setFocusTarget({ blockId, position: newCursorPos })
+      return updated
+    })
+
+    window.getSelection()?.removeAllRanges()
+    setSelectionToolbar(null)
+  }
 
   // Debounced sync to note.content
   const syncMarkdown = useCallback(
@@ -633,16 +848,28 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       const idx = prev.findIndex(b => b.id === blockId)
       if (idx === -1) return prev
       const current = prev[idx]
-      const wikiIdx = current.text.lastIndexOf('[[')
+      const wikiIdx = wikiSuggest?.triggerOffset ?? current.text.lastIndexOf('[[')
       if (wikiIdx === -1) return prev
       const beforeWiki = current.text.slice(0, wikiIdx)
       const afterWiki = current.text.slice(wikiIdx + 2)
-      const rest = afterWiki.includes(']]') ? afterWiki.slice(afterWiki.indexOf(']]') + 2) : ''
-      const newText = `${beforeWiki}[[${targetNoteTitle}]] ${rest}`
+      
+      // Determine what follows this link
+      let rest = ''
+      const closeIdx = afterWiki.indexOf(']]')
+      const nextOpenIdx = afterWiki.indexOf('[[')
+      if (closeIdx !== -1 && (nextOpenIdx === -1 || closeIdx < nextOpenIdx)) {
+        rest = afterWiki.slice(closeIdx + 2)
+      } else {
+        const queryLen = wikiSuggest?.query?.length || 0
+        rest = afterWiki.slice(queryLen)
+      }
+
+      const inserted = `[[${targetNoteTitle}]]`
+      const newText = `${beforeWiki}${inserted} ${rest.trimStart()}`
       const updated = [...prev]
       updated[idx] = { ...current, text: newText }
       syncMarkdown(updated)
-      setFocusTarget({ blockId, position: newText.length })
+      setFocusTarget({ blockId, position: beforeWiki.length + inserted.length + 1 })
       return updated
     })
     setWikiSuggest(null)
@@ -684,15 +911,20 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       setSlashMenu(null)
     }
 
-    // Detect Wikilink [[ trigger
-    const wikiIdx = rawText.lastIndexOf('[[')
+    // Detect Wikilink [[ trigger relative to cursor position
+    const container = e.currentTarget as HTMLElement
+    const cursorOffset = getCursorCharacterOffset(container)
+    const textBeforeCursor = rawText.slice(0, cursorOffset)
+    const wikiIdx = textBeforeCursor.lastIndexOf('[[')
+
     if (wikiIdx !== -1) {
-      const afterWiki = rawText.slice(wikiIdx + 2)
-      if (!afterWiki.includes(']]') && !afterWiki.includes('\n') && afterWiki.length < 35) {
+      const query = textBeforeCursor.slice(wikiIdx + 2)
+      if (!query.includes(']]') && !query.includes('\n') && query.length < 35) {
         setWikiSuggest({
           blockId,
-          query: afterWiki.trim(),
-          index: 0
+          query: query.trim(),
+          index: 0,
+          triggerOffset: wikiIdx
         })
       } else {
         setWikiSuggest(null)
@@ -1189,6 +1421,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   return (
     <div
       className={`w-full min-h-[500px] flex flex-col font-sans ${fontSizeClass} pb-24`}
+      onMouseUp={handleSelectionCheck}
+      onKeyUp={handleSelectionCheck}
       onClick={(e) => {
         // ONLY if clicking directly on the empty background area below all blocks:
         if (e.target === e.currentTarget && isEditable && blocks.length > 0) {
@@ -1212,6 +1446,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
+                onMouseDown={e => isEditable && handleBlockMouseDown(e, block.id)}
                 onFocus={() => setActiveBlockId(block.id)}
                 onBlur={() => {
                   if (activeBlockId === block.id) setActiveBlockId(null)
@@ -1246,6 +1481,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
+                onMouseDown={e => isEditable && handleBlockMouseDown(e, block.id)}
                 onFocus={() => setActiveBlockId(block.id)}
                 onBlur={() => {
                   if (activeBlockId === block.id) setActiveBlockId(null)
@@ -1280,6 +1516,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
+                onMouseDown={e => isEditable && handleBlockMouseDown(e, block.id)}
                 onFocus={() => setActiveBlockId(block.id)}
                 onBlur={() => {
                   if (activeBlockId === block.id) setActiveBlockId(null)
@@ -1330,6 +1567,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
+                onMouseDown={e => isEditable && handleBlockMouseDown(e, block.id)}
                 onFocus={() => setActiveBlockId(block.id)}
                 onBlur={() => {
                   if (activeBlockId === block.id) setActiveBlockId(null)
@@ -1360,6 +1598,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
+                onMouseDown={e => isEditable && handleBlockMouseDown(e, block.id)}
                 onFocus={() => setActiveBlockId(block.id)}
                 onBlur={() => {
                   if (activeBlockId === block.id) setActiveBlockId(null)
@@ -1392,6 +1631,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
+                onMouseDown={e => isEditable && handleBlockMouseDown(e, block.id)}
                 onFocus={() => setActiveBlockId(block.id)}
                 onBlur={() => {
                   if (activeBlockId === block.id) setActiveBlockId(null)
@@ -1561,6 +1801,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
+                onMouseDown={e => isEditable && handleBlockMouseDown(e, block.id)}
                 onFocus={() => setActiveBlockId(block.id)}
                 onBlur={() => {
                   if (activeBlockId === block.id) setActiveBlockId(null)
@@ -1606,6 +1847,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 data-block-id={block.id}
                 contentEditable={isEditable}
                 suppressContentEditableWarning
+                onMouseDown={e => isEditable && handleBlockMouseDown(e, block.id)}
                 onFocus={() => setActiveBlockId(block.id)}
                 onBlur={() => {
                   if (activeBlockId === block.id) setActiveBlockId(null)
@@ -1684,6 +1926,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
               contentEditable={isEditable}
               suppressContentEditableWarning
               onClick={e => e.stopPropagation()}
+              onMouseDown={e => isEditable && handleBlockMouseDown(e, block.id)}
               onFocus={() => setActiveBlockId(block.id)}
               onBlur={() => {
                 if (activeBlockId === block.id) setActiveBlockId(null)
@@ -1704,6 +1947,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
               data-block-id={block.id}
               contentEditable={isEditable}
               suppressContentEditableWarning
+              onMouseDown={e => isEditable && handleBlockMouseDown(e, block.id)}
               onFocus={() => setActiveBlockId(block.id)}
               onBlur={() => {
                 // If neither menu is open, blur
@@ -1797,6 +2041,102 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           </div>
         )
       })}
+
+      {/* Floating Notion-style Selection Popover Toolbar */}
+      {isEditable && selectionToolbar && (
+        <div
+          style={{
+            position: 'fixed',
+            top: `${selectionToolbar.top}px`,
+            left: `${selectionToolbar.left}px`,
+            transform: 'translateX(-50%)',
+            zIndex: 9999
+          }}
+          onMouseDown={e => e.preventDefault()}
+          className="flex items-center gap-0.5 px-1.5 py-1 bg-[#18181b]/95 border border-violet-500/50 rounded-xl shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none"
+        >
+          {/* Wikilink [[...]] Button */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleApplyWrap('[[', ']]')
+            }}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium text-violet-300 hover:text-white bg-violet-600/30 hover:bg-violet-600/50 border border-violet-500/40 transition-colors shadow-sm cursor-pointer"
+            title="Conectar com Nota / Link Bidirecional [[...]]"
+          >
+            <Link2 className="w-3.5 h-3.5 text-violet-400" />
+            <span className="font-semibold text-[11px]">[[ Link ]]</span>
+          </button>
+
+          <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
+
+          {/* Bold Button */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleApplyWrap('**', '**')
+            }}
+            className="p-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+            title="Negrito (**)"
+          >
+            <Bold className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Italic Button */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleApplyWrap('*', '*')
+            }}
+            className="p-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+            title="Itálico (*)"
+          >
+            <Italic className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Highlight Button */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleApplyWrap('==', '==')
+            }}
+            className="p-1.5 rounded-lg text-amber-300 hover:text-amber-100 hover:bg-amber-950/40 transition-colors cursor-pointer"
+            title="Destaque (==)"
+          >
+            <Highlighter className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Strikethrough Button */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleApplyWrap('~~', '~~')
+            }}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+            title="Tachado (~~)"
+          >
+            <Strikethrough className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Code Button */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleApplyWrap('`', '`')
+            }}
+            className="p-1.5 rounded-lg text-emerald-400 hover:text-emerald-200 hover:bg-emerald-950/40 transition-colors cursor-pointer"
+            title="Código em linha (`)"
+          >
+            <Code className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }
