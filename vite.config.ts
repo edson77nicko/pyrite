@@ -22,4 +22,9 @@ export default defineConfig({
     ]),
     renderer(),
   ],
+  server: {
+    watch: {
+      ignored: ['**/release/**', '**/dist-electron/**', '**/release/**']
+    }
+  }
 })
