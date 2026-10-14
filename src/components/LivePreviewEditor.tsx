@@ -188,10 +188,21 @@ function renderInlineFormatted(
             role="button"
             tabIndex={0}
             title={exists ? `Abrir nota: "${destination}"` : `Criar nota: "${destination}"`}
+            onMouseDown={e => {
+              // Crucial: stop propagation so handleBlockMouseDown does NOT switch to edit mode before click
+              e.stopPropagation()
+            }}
             onClick={e => {
               e.preventDefault()
               e.stopPropagation()
               if (onNavigate) onNavigate(destination)
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.stopPropagation()
+                if (onNavigate) onNavigate(destination)
+              }
             }}
             className={`inline-flex items-center cursor-pointer font-medium transition-all select-none rounded px-1.5 py-0 mx-0.5 text-xs ${
               exists
@@ -210,20 +221,35 @@ function renderInlineFormatted(
           <span
             key={`wiki-${idx}`}
             className="inline text-violet-300 font-normal"
-            title={`Ctrl + Clique para abrir "${destination}"`}
-            onClick={e => {
-              if (e.ctrlKey || e.metaKey) {
-                e.preventDefault()
-                e.stopPropagation()
-                if (onNavigate) onNavigate(destination)
-              }
-            }}
+            title={`Abrir nota: "${destination}" (ou use o botão ↗)`}
           >
             <span className="text-violet-400/80 font-mono text-xs select-text">[[</span>
-            <span className="underline decoration-violet-500/40 hover:text-violet-200 cursor-text">
+            <span
+              className="underline decoration-violet-500/40 hover:text-violet-200 cursor-text"
+              onClick={e => {
+                if (e.ctrlKey || e.metaKey) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (onNavigate) onNavigate(destination)
+                }
+              }}
+            >
               {inner}
             </span>
             <span className="text-violet-400/80 font-mono text-xs select-text">]]</span>
+            <button
+              type="button"
+              contentEditable={false}
+              title={`Abrir nota: "${destination}"`}
+              onMouseDown={e => {
+                e.preventDefault()
+                e.stopPropagation()
+                if (onNavigate) onNavigate(destination)
+              }}
+              className="inline-flex items-center justify-center ml-0.5 px-1 py-0 text-[10px] text-violet-400 hover:text-white bg-violet-950/60 hover:bg-violet-800 rounded border border-violet-700/50 cursor-pointer align-baseline select-none opacity-80 hover:opacity-100 transition-opacity"
+            >
+              ↗
+            </button>
           </span>
         )
       }
