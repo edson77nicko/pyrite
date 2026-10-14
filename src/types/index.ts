@@ -2,7 +2,7 @@ export interface Note {
   id: string
   title: string
   content: string
-  folder: string
+  folder: string // e.g. "Início" or "Projetos/Design"
   tags: string[]
   isFavorite?: boolean
   createdAt: number
@@ -12,6 +12,7 @@ export interface Note {
 export interface Folder {
   id: string
   name: string
+  path: string
   parentId: string | null
 }
 
@@ -71,6 +72,13 @@ export interface TabItem {
 
 export type ViewMode = 'editor' | 'graph' | 'canvas'
 
-export type EditorDisplayMode = 'split' | 'edit' | 'preview'
+// Updated: Only Live Preview and Reading Mode (no split mode!)
+export type EditorDisplayMode = 'live' | 'reading'
 
 export type AccentColor = 'violet' | 'emerald' | 'cyan' | 'amber' | 'rose'
+
+export interface AppSettings {
+  accentColor: AccentColor
+  fontSize: 'small' | 'medium' | 'large'
+  editorWidth: 'compact' | 'standard' | 'wide'
+}

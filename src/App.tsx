@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import type { Note, ViewMode, EditorDisplayMode, TabItem } from './types'
+import type { Note, ViewMode, EditorDisplayMode, TabItem, AppSettings } from './types'
 import {
   loadNotes,
   saveNotes,
@@ -16,13 +16,29 @@ import { CanvasView } from './components/CanvasView'
 import { CommandPalette } from './components/CommandPalette'
 import { AiAssistant } from './components/AiAssistant'
 import { StatusBar } from './components/StatusBar'
+import { SettingsModal } from './components/SettingsModal'
+
+const DEFAULT_SETTINGS: AppSettings = {
+  accentColor: 'violet',
+  fontSize: 'medium',
+  editorWidth: 'standard'
+}
 
 export const App: React.FC = () => {
   const [notes, setNotes] = useState<Note[]>(() => loadNotes())
   const [folders, setFolders] = useState<string[]>(() => loadFolders())
   const [currentNoteId, setCurrentNoteId] = useState<string>(() => notes[0]?.id || '')
   const [currentView, setCurrentView] = useState<ViewMode>('editor')
-  const [editorDisplayMode, setEditorDisplayMode] = useState<EditorDisplayMode>('split')
+  const [editorDisplayMode, setEditorDisplayMode] = useState<EditorDisplayMode>('live')
+
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    try {
+      const saved = localStorage.getItem('pyrite_app_settings')
+      return saved ? JSON.parse(saved) : DEFAULT_SETTINGS
+    } catch {
+      return DEFAULT_SETTINGS
+    }
+  })
 
   // Multi-tabs state
   const [tabs, setTabs] = useState<TabItem[]>(() => {
@@ -36,10 +52,26 @@ export const App: React.FC = () => {
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true)
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true)
   const [isAiOpen, setIsAiOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
 
   // Current active note object
   const currentNote = notes.find(n => n.id === currentNoteId) || notes[0]
+
+  // Persist Settings and apply dynamic accent color CSS variable
+  const handleUpdateSettings = (newSettings: AppSettings) => {
+    setSettings(newSettings)
+    localStorage.setItem('pyrite_app_settings', JSON.stringify(newSettings))
+
+    const colorMap = {
+      violet: '#8b5cf6',
+      emerald: '#10b981',
+      cyan: '#06b6d4',
+      amber: '#f59e0b',
+      rose: '#ec4899'
+    }
+    document.documentElement.style.setProperty('--accent', colorMap[newSettings.accentColor] || '#8b5cf6')
+  }
 
   // Global Keyboard Shortcuts (Ctrl+P, Ctrl+O, Ctrl+G, Ctrl+N)
   useEffect(() => {
@@ -188,9 +220,9 @@ export const App: React.FC = () => {
     saveNotes(updated)
   }
 
-  const handleCreateFolder = (name: string) => {
-    if (!folders.includes(name)) {
-      const updated = [...folders, name]
+  const handleCreateFolder = (fullFolderPath: string) => {
+    if (!folders.includes(fullFolderPath)) {
+      const updated = [...folders, fullFolderPath]
       setFolders(updated)
       saveFolders(updated)
     }
@@ -200,7 +232,6 @@ export const App: React.FC = () => {
     const updated = notes.filter(n => n.id !== noteId)
     setNotes(updated)
     saveNotes(updated)
-    // Close tab if opened
     setTabs(t => t.filter(item => item.noteId !== noteId))
     if (currentNoteId === noteId) {
       setCurrentNoteId(updated[0]?.id || '')
@@ -216,7 +247,6 @@ export const App: React.FC = () => {
     setNotes(updated)
     saveNotes(updated)
 
-    // Update tab title if title changed
     setTabs(prev => prev.map(t => t.noteId === finalNote.id ? { ...t, title: finalNote.title } : t))
   }
 
@@ -233,7 +263,47 @@ export const App: React.FC = () => {
     handleUpdateNote({ ...currentNote, content: appendedContent })
   }
 
-  // File System Access API
+  // Recursive Directory Scanner (reads folder and all subfolders deeply!)
+  const scanDirectoryRecursive = async (
+    dirHandle: any,
+    currentPath = ''
+  ): Promise<{ notes: Note[]; folders: string[] }> => {
+    const collectedNotes: Note[] = []
+    const collectedFolders: string[] = []
+
+    for await (const entry of dirHandle.values()) {
+      if (entry.kind === 'file' && entry.name.endsWith('.md')) {
+        const file = await entry.getFile()
+        const text = await file.text()
+        const title = entry.name.replace(/\.md$/, '')
+        collectedNotes.push({
+          id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          title,
+          content: text,
+          folder: currentPath || dirHandle.name,
+          tags: extractTags(text),
+          createdAt: file.lastModified,
+          updatedAt: file.lastModified
+        })
+      } else if (entry.kind === 'directory') {
+        // Skip hidden and build folders
+        if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') {
+          continue
+        }
+
+        const nextPath = currentPath ? `${currentPath}/${entry.name}` : entry.name
+        collectedFolders.push(nextPath)
+
+        const sub = await scanDirectoryRecursive(entry, nextPath)
+        collectedNotes.push(...sub.notes)
+        collectedFolders.push(...sub.folders)
+      }
+    }
+
+    return { notes: collectedNotes, folders: collectedFolders }
+  }
+
+  // File System Access API: Deep Recursive Import
   const handleOpenLocalFolder = async () => {
     if (!('showDirectoryPicker' in window)) {
       alert('A API File System Access é suportada no Chrome, Edge e Chromium. Você pode exportar ou importar seu vault em JSON.')
@@ -242,42 +312,21 @@ export const App: React.FC = () => {
 
     try {
       // @ts-ignore
-      const dirHandle = await window.showDirectoryPicker()
-      const importedNotes: Note[] = []
-      const importedFolders: string[] = []
-
-      // @ts-ignore
-      for await (const entry of dirHandle.values()) {
-        if (entry.kind === 'file' && entry.name.endsWith('.md')) {
-          const file = await entry.getFile()
-          const text = await file.text()
-          const title = entry.name.replace(/\.md$/, '')
-          importedNotes.push({
-            id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-            title,
-            content: text,
-            folder: 'Local',
-            tags: extractTags(text),
-            createdAt: file.lastModified,
-            updatedAt: file.lastModified
-          })
-        }
-      }
+      const rootDirHandle = await window.showDirectoryPicker()
+      const { notes: importedNotes, folders: importedFolders } = await scanDirectoryRecursive(rootDirHandle, rootDirHandle.name)
 
       if (importedNotes.length > 0) {
-        if (!folders.includes('Local')) {
-          importedFolders.push('Local')
-        }
+        const uniqueFolders = Array.from(new Set([...folders, rootDirHandle.name, ...importedFolders]))
         const mergedNotes = [...importedNotes, ...notes]
-        const mergedFolders = [...folders, ...importedFolders]
+
         setNotes(mergedNotes)
-        setFolders(mergedFolders)
+        setFolders(uniqueFolders)
         saveNotes(mergedNotes)
-        saveFolders(mergedFolders)
+        saveFolders(uniqueFolders)
         handleSelectNote(importedNotes[0].id)
-        alert(`Sucesso! ${importedNotes.length} notas carregadas da pasta "${dirHandle.name}".`)
+        alert(`Sucesso! Importadas ${importedNotes.length} notas organizadas em ${importedFolders.length + 1} pastas e subpastas de "${rootDirHandle.name}".`)
       } else {
-        alert(`Nenhum arquivo .md encontrado na pasta selecionada.`)
+        alert(`Nenhum arquivo Markdown (.md) encontrado na pasta "${rootDirHandle.name}" e suas subpastas.`)
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
@@ -287,7 +336,7 @@ export const App: React.FC = () => {
     }
   }
 
-  // Export Vault as JSON file
+  // Export Vault as JSON
   const handleExportVault = () => {
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(notes, null, 2))
     const downloadAnchor = document.createElement('a')
@@ -311,13 +360,14 @@ export const App: React.FC = () => {
         isAiOpen={isAiOpen}
         onToggleAi={() => setIsAiOpen(o => !o)}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         onExportVault={handleExportVault}
         noteCount={notes.length}
       />
 
       {/* 2. Main Workspace Layout */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Left Sidebar (File Explorer, Daily Notes, Starred) */}
+        {/* Left Sidebar (Hierarchical Subfolders & Notes Tree) */}
         <Sidebar
           notes={notes}
           folders={folders}
@@ -347,6 +397,8 @@ export const App: React.FC = () => {
               onChangeDisplayMode={setEditorDisplayMode}
               onUpdateNote={handleUpdateNote}
               onNavigate={handleNavigate}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              settings={settings}
             />
           )}
 
@@ -395,7 +447,15 @@ export const App: React.FC = () => {
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
       />
 
-      {/* 4. Command Palette / Quick Switcher Modal */}
+      {/* 4. Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        onUpdateSettings={handleUpdateSettings}
+      />
+
+      {/* 5. Command Palette / Quick Switcher Modal */}
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}

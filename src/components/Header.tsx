@@ -8,7 +8,8 @@ import {
   PanelRight,
   Sparkles,
   Search,
-  Download
+  Download,
+  SlidersHorizontal
 } from 'lucide-react'
 
 interface HeaderProps {
@@ -21,6 +22,7 @@ interface HeaderProps {
   isAiOpen: boolean
   onToggleAi: () => void
   onOpenCommandPalette: () => void
+  onOpenSettings: () => void
   onExportVault: () => void
   noteCount: number
 }
@@ -35,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
   isAiOpen,
   onToggleAi,
   onOpenCommandPalette,
+  onOpenSettings,
   onExportVault,
   noteCount
 }) => {
@@ -101,7 +104,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
       </div>
 
-      {/* Right Section: Command Palette, AI, Export, Right Sidebar */}
+      {/* Right Section: Command Palette, Settings, AI, Export, Right Sidebar */}
       <div className="flex items-center gap-1.5">
         {/* Command Palette Button */}
         <button
@@ -116,10 +119,19 @@ export const Header: React.FC<HeaderProps> = ({
           </kbd>
         </button>
 
+        {/* Personalizar / Configurações Button */}
+        <button
+          onClick={onOpenSettings}
+          className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors border border-zinc-800/80"
+          title="Personalizar Cores, Fontes e Layout"
+        >
+          <SlidersHorizontal className="w-4 h-4 text-violet-400" />
+        </button>
+
         {/* AI Assistant Button */}
         <button
           onClick={onToggleAi}
-          className={`p-1.5 rounded transition-colors ${
+          className={`p-1.5 rounded-lg transition-colors ${
             isAiOpen
               ? 'bg-violet-950/80 text-violet-300 border border-violet-800/60'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
@@ -132,8 +144,8 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Export Vault Button */}
         <button
           onClick={onExportVault}
-          className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
-          title="Exportar Vault como JSON/Markdown"
+          className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
+          title="Exportar Vault como JSON"
         >
           <Download className="w-4 h-4" />
         </button>
@@ -141,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Right Sidebar Toggle */}
         <button
           onClick={onToggleRightSidebar}
-          className={`p-1.5 rounded transition-colors ${
+          className={`p-1.5 rounded-lg transition-colors ${
             isRightSidebarOpen ? 'text-zinc-200 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300'
           }`}
           title="Alternar Painel de Links e Metadados"

@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
-import type { Note, EditorDisplayMode, TabItem } from '../types'
+import type { Note, EditorDisplayMode, TabItem, AppSettings } from '../types'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import {
-  Columns2,
   Eye,
   Edit3,
   Heading1,
@@ -21,7 +20,8 @@ import {
   X,
   Table,
   Sparkles,
-  Info
+  Info,
+  Sliders
 } from 'lucide-react'
 
 interface EditorProps {
@@ -36,6 +36,8 @@ interface EditorProps {
   onChangeDisplayMode: (mode: EditorDisplayMode) => void
   onUpdateNote: (updated: Note) => void
   onNavigate: (title: string) => void
+  onOpenSettings: () => void
+  settings: AppSettings
 }
 
 interface SlashCommand {
@@ -57,7 +59,9 @@ export const Editor: React.FC<EditorProps> = ({
   displayMode,
   onChangeDisplayMode,
   onUpdateNote,
-  onNavigate
+  onNavigate,
+  onOpenSettings,
+  settings
 }) => {
   const [content, setContent] = useState(note.content)
   const [title, setTitle] = useState(note.title)
@@ -82,7 +86,7 @@ export const Editor: React.FC<EditorProps> = ({
     onUpdateNote({ ...note, title: newTitle, updatedAt: Date.now() })
   }
 
-  // Handle typing inside textarea
+  // Handle typing inside editor
   const handleContentChange = (newContent: string) => {
     setContent(newContent)
     onUpdateNote({ ...note, content: newContent, updatedAt: Date.now() })
@@ -160,14 +164,14 @@ export const Editor: React.FC<EditorProps> = ({
       }
     }
 
-    // 1. Tab key for 2 spaces indentation
+    // Tab key: 2 spaces indentation without losing focus
     if (e.key === 'Tab') {
       e.preventDefault()
       const start = textarea.selectionStart
       const end = textarea.selectionEnd
 
       if (e.shiftKey) {
-        // Unindent
+        // Unindent line
         const linesBefore = content.slice(0, start).split('\n')
         const currentLineIdx = linesBefore.length - 1
         const allLines = content.split('\n')
@@ -179,7 +183,7 @@ export const Editor: React.FC<EditorProps> = ({
           onUpdateNote({ ...note, content: newText, updatedAt: Date.now() })
         }
       } else {
-        // Indent
+        // Indent 2 spaces
         const newText = content.slice(0, start) + '  ' + content.slice(end)
         setContent(newText)
         onUpdateNote({ ...note, content: newText, updatedAt: Date.now() })
@@ -190,7 +194,7 @@ export const Editor: React.FC<EditorProps> = ({
       return
     }
 
-    // 2. Smart List & Task Continuation on Enter (Obsidian Behavior)
+    // Smart List & Task Continuation on Enter (Obsidian Behavior)
     if (e.key === 'Enter' && !e.shiftKey && !showSlashMenu && !showLinkSuggest) {
       const cursor = textarea.selectionStart
       const textBefore = content.slice(0, cursor)
@@ -202,7 +206,7 @@ export const Editor: React.FC<EditorProps> = ({
         e.preventDefault()
         const textAfterBullet = taskMatch[3]
         if (textAfterBullet.trim() === '') {
-          // Empty task item: clear the bullet on Enter!
+          // Empty task bullet: delete it on Enter
           const lineStart = cursor - currentLine.length
           const newText = content.slice(0, lineStart) + content.slice(cursor)
           setContent(newText)
@@ -226,7 +230,6 @@ export const Editor: React.FC<EditorProps> = ({
         e.preventDefault()
         const textAfterBullet = bulletMatch[2]
         if (textAfterBullet.trim() === '') {
-          // Empty bullet: remove it on Enter!
           const lineStart = cursor - currentLine.length
           const newText = content.slice(0, lineStart) + content.slice(cursor)
           setContent(newText)
@@ -249,7 +252,6 @@ export const Editor: React.FC<EditorProps> = ({
         e.preventDefault()
         const textAfterNum = numMatch[3]
         if (textAfterNum.trim() === '') {
-          // Empty number: remove it
           const lineStart = cursor - currentLine.length
           const newText = content.slice(0, lineStart) + content.slice(cursor)
           setContent(newText)
@@ -336,7 +338,7 @@ export const Editor: React.FC<EditorProps> = ({
     }
   }
 
-  // Formatting shortcuts
+  // Quick formatting toolbar insertion
   const insertFormatting = (prefix: string, suffix: string = '') => {
     const textarea = textareaRef.current
     if (!textarea) return
@@ -382,20 +384,33 @@ export const Editor: React.FC<EditorProps> = ({
     .filter(n => n.id !== note.id && n.title.toLowerCase().includes(suggestQuery.toLowerCase()))
     .slice(0, 5)
 
+  // Typography & Width styles based on settings
+  const widthClasses = {
+    compact: 'max-w-2xl',
+    standard: 'max-w-3xl',
+    wide: 'max-w-5xl'
+  }[settings.editorWidth]
+
+  const fontClasses = {
+    small: 'text-xs leading-relaxed',
+    medium: 'text-sm leading-relaxed',
+    large: 'text-base leading-relaxed'
+  }[settings.fontSize]
+
   return (
-    <div className="flex flex-col h-full bg-zinc-950 overflow-hidden">
-      {/* 1. Obsidian-Style Tabs Bar */}
-      <div className="h-9 bg-zinc-950 border-b border-zinc-800 flex items-center px-2 gap-1 overflow-x-auto select-none shrink-0 scrollbar-none">
+    <div className="flex flex-col h-full bg-[#101014] overflow-hidden">
+      {/* 1. Obsidian Tabs Bar */}
+      <div className="h-9 bg-[#0c0c0e] border-b border-zinc-800 flex items-center px-2 gap-1 overflow-x-auto select-none shrink-0 scrollbar-none">
         {tabs.map(tab => {
           const isActive = tab.id === activeTabId
           return (
             <div
               key={tab.id}
               onClick={() => onSelectTab(tab.id)}
-              className={`group flex items-center gap-2 h-7 px-3 rounded-t-md text-xs cursor-pointer border-t border-x transition-all max-w-[200px] ${
+              className={`group flex items-center gap-2 h-7 px-3 rounded-t-lg text-xs cursor-pointer border-t border-x transition-all max-w-[200px] ${
                 isActive
-                  ? 'bg-zinc-900 border-zinc-700/80 text-violet-300 font-medium shadow-sm'
-                  : 'bg-zinc-950 border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40'
+                  ? 'bg-[#101014] border-zinc-700/80 text-violet-300 font-medium shadow-sm'
+                  : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40'
               }`}
             >
               <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-violet-400' : 'text-zinc-600'}`} />
@@ -418,15 +433,15 @@ export const Editor: React.FC<EditorProps> = ({
 
         <button
           onClick={onNewTab}
-          className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 rounded transition-colors ml-1"
+          className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 rounded-lg transition-colors ml-1"
           title="Nova nota em aba"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* 2. Top Editor Action Toolbar */}
-      <div className="flex items-center justify-between px-6 py-2 bg-zinc-900/60 border-b border-zinc-800 text-xs text-zinc-400 shrink-0">
+      {/* 2. Top Editor Action Toolbar (No split mode - only Live Preview and Reading Mode!) */}
+      <div className="flex items-center justify-between px-6 py-2 bg-zinc-900/60 border-b border-zinc-800/80 text-xs text-zinc-400 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-zinc-300 font-medium">
             <Folder className="w-3.5 h-3.5 text-violet-400" />
@@ -438,96 +453,108 @@ export const Editor: React.FC<EditorProps> = ({
           </div>
         </div>
 
-        {/* Action icons & display mode toggle */}
+        {/* Action icons & Live vs Reading Mode toggle */}
         <div className="flex items-center gap-2">
           {/* Quick formatting toolbar */}
-          <div className="flex items-center gap-1 bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60 mr-2 shadow-inner">
-            <button onClick={() => insertFormatting('# ')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H1">
-              <Heading1 className="w-3.5 h-3.5" />
+          {displayMode === 'live' && (
+            <div className="flex items-center gap-1 bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60 mr-2 shadow-inner">
+              <button onClick={() => insertFormatting('# ')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H1">
+                <Heading1 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => insertFormatting('## ')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H2">
+                <Heading2 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => insertFormatting('**', '**')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Negrito">
+                <Bold className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => insertFormatting('*', '*')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Itálico">
+                <Italic className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => insertFormatting('[[', ']]')} className="p-1 hover:text-violet-400 hover:bg-zinc-700 rounded transition-colors" title="Link Bidirecional [[...]]">
+                <Link2 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => insertFormatting('- [ ] ')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Lista de Tarefas">
+                <ListTodo className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => insertFormatting('```ts\n', '\n```')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Bloco de Código">
+                <Code className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Mode Switcher: Edição ao Vivo vs Modo Leitura */}
+          <div className="flex items-center gap-0.5 bg-zinc-800 rounded-lg p-0.5 border border-zinc-700">
+            <button
+              onClick={() => onChangeDisplayMode('live')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                displayMode === 'live' ? 'bg-violet-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Edição ao Vivo (Edite formatado diretamente como no Obsidian)"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edição ao Vivo</span>
             </button>
-            <button onClick={() => insertFormatting('## ')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H2">
-              <Heading2 className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => insertFormatting('**', '**')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Negrito">
-              <Bold className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => insertFormatting('*', '*')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Itálico">
-              <Italic className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => insertFormatting('[[', ']]')} className="p-1 hover:text-violet-400 hover:bg-zinc-700 rounded transition-colors" title="Link Bidirecional [[...]]">
-              <Link2 className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => insertFormatting('- [ ] ')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Lista de Tarefas">
-              <ListTodo className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => insertFormatting('```ts\n', '\n```')} className="p-1 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Bloco de Código">
-              <Code className="w-3.5 h-3.5" />
+            <button
+              onClick={() => onChangeDisplayMode('reading')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                displayMode === 'reading' ? 'bg-violet-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Modo Leitura (Visualização pura)"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Leitura</span>
             </button>
           </div>
 
-          {/* View mode toggle */}
-          <div className="flex items-center gap-0.5 bg-zinc-800 rounded-lg p-0.5 border border-zinc-700">
-            <button
-              onClick={() => onChangeDisplayMode('edit')}
-              className={`p-1.5 rounded transition-colors ${
-                displayMode === 'edit' ? 'bg-violet-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Modo Código Puro"
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => onChangeDisplayMode('split')}
-              className={`p-1.5 rounded transition-colors ${
-                displayMode === 'split' ? 'bg-violet-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Modo Dividido (Live Preview)"
-            >
-              <Columns2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => onChangeDisplayMode('preview')}
-              className={`p-1.5 rounded transition-colors ${
-                displayMode === 'preview' ? 'bg-violet-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Modo Leitura"
-            >
-              <Eye className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          {/* Personalizar Button */}
+          <button
+            onClick={onOpenSettings}
+            className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors ml-1 border border-zinc-800"
+            title="Personalizar Tipografia e Aparência"
+          >
+            <Sliders className="w-3.5 h-3.5 text-violet-400" />
+          </button>
         </div>
       </div>
 
-      {/* 3. Editor Main Body */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Left Side: Markdown Source Editor */}
-        {(displayMode === 'edit' || displayMode === 'split') && (
-          <div className={`flex flex-col h-full ${displayMode === 'split' ? 'w-1/2 border-r border-zinc-800' : 'w-full'} overflow-hidden relative`}>
-            {/* Note Title Input */}
-            <div className="px-8 pt-6 pb-2">
+      {/* 3. Editor Surface (Single-Pane Unified Obsidian Style) */}
+      <div className="flex-1 overflow-y-auto px-6 py-6 flex justify-center">
+        <div className={`w-full ${widthClasses} flex flex-col`}>
+          {/* Note Title Input */}
+          <div className="pb-4 mb-2 border-b border-zinc-800/60">
+            {displayMode === 'live' ? (
               <input
                 type="text"
                 value={title}
                 onChange={(e) => handleTitleChange(e.target.value)}
                 placeholder="Título da Nota..."
-                className="w-full text-2xl font-bold bg-transparent text-zinc-100 placeholder-zinc-700 focus:outline-none tracking-tight"
+                className="w-full text-3xl font-extrabold bg-transparent text-zinc-100 placeholder-zinc-700 focus:outline-none tracking-tight font-sans"
               />
-            </div>
+            ) : (
+              <h1 className="text-3xl font-extrabold text-zinc-100 tracking-tight font-sans">
+                {title || 'Sem título'}
+              </h1>
+            )}
+          </div>
 
-            {/* Note Textarea with syntax aids */}
-            <div className="flex-1 relative px-8 pb-8 overflow-y-auto">
+          {/* Main Content Area */}
+          {displayMode === 'live' ? (
+            <div className="flex-1 relative pb-16">
               <textarea
                 ref={textareaRef}
                 value={content}
                 onChange={(e) => handleContentChange(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Escreva livremente... Use [[ para linkar notas ou digite / para comandos rápidos..."
-                className="w-full h-full bg-transparent text-xs font-mono text-zinc-200 placeholder-zinc-700 resize-none focus:outline-none leading-relaxed selectable-text"
+                placeholder="Comece a escrever... Use [[ para linkar notas ou digite / para comandos..."
+                className={`w-full min-h-[500px] h-full bg-transparent font-sans text-zinc-200 placeholder-zinc-700 resize-none focus:outline-none ${fontClasses} selectable-text tracking-wide`}
+                style={{
+                  lineHeight: '1.75',
+                }}
               />
 
-              {/* Slash Command (/) Popup Menu */}
+              {/* Slash Command (/) Popup */}
               {showSlashMenu && filteredSlashCommands.length > 0 && (
-                <div className="absolute z-40 bottom-16 left-10 w-72 bg-zinc-900 border border-violet-500/60 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md">
+                <div className="absolute z-40 bottom-16 left-0 w-72 bg-zinc-900 border border-violet-500/60 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md">
                   <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet-400 border-b border-zinc-800 flex items-center justify-between">
                     <span>Comandos Rápidos</span>
                     <span className="text-zinc-500 font-mono">↵ Inserir</span>
@@ -558,7 +585,7 @@ export const Editor: React.FC<EditorProps> = ({
 
               {/* [[ Wikilink Autocomplete Suggestion Popup */}
               {showLinkSuggest && filteredLinkSuggestions.length > 0 && (
-                <div className="absolute z-40 bottom-16 left-12 w-64 bg-zinc-900 border border-violet-500/60 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md">
+                <div className="absolute z-40 bottom-16 left-0 w-64 bg-zinc-900 border border-violet-500/60 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md">
                   <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet-400 border-b border-zinc-800 flex items-center justify-between">
                     <span>Conectar com Nota</span>
                     <span className="text-zinc-500 font-mono">[[...]]</span>
@@ -578,23 +605,20 @@ export const Editor: React.FC<EditorProps> = ({
                 </div>
               )}
             </div>
-          </div>
-        )}
-
-        {/* Right Side: Live Markdown Preview */}
-        {(displayMode === 'preview' || displayMode === 'split') && (
-          <div className={`h-full overflow-y-auto px-8 py-6 ${displayMode === 'split' ? 'w-1/2 bg-zinc-950/40' : 'w-full max-w-4xl mx-auto'}`}>
-            <MarkdownRenderer
-              content={content}
-              onNavigate={onNavigate}
-              onToggleTask={handleToggleTask}
-            />
-          </div>
-        )}
+          ) : (
+            <div className={`pb-16 font-sans ${fontClasses}`}>
+              <MarkdownRenderer
+                content={content}
+                onNavigate={onNavigate}
+                onToggleTask={handleToggleTask}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 4. Bottom Footer Info Bar */}
-      <div className="flex items-center justify-between px-6 py-1.5 bg-zinc-900/50 border-t border-zinc-800/80 text-[11px] text-zinc-500 shrink-0">
+      <div className="flex items-center justify-between px-6 py-1.5 bg-[#0c0c0e] border-t border-zinc-800/80 text-[11px] text-zinc-500 shrink-0">
         <div className="flex items-center gap-4">
           <span>{words} palavras</span>
           <span>•</span>

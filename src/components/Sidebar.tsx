@@ -21,12 +21,19 @@ interface SidebarProps {
   currentNoteId?: string
   onSelectNote: (noteId: string) => void
   onCreateNote: (folder?: string) => void
-  onCreateFolder: (name: string) => void
+  onCreateFolder: (name: string, parentFolder?: string) => void
   onDeleteNote: (noteId: string) => void
   onToggleFavorite: (noteId: string) => void
   onOpenDailyNote: () => void
   onOpenLocalFolder: () => void
   isOpen: boolean
+}
+
+interface TreeNode {
+  name: string
+  fullPath: string
+  children: TreeNode[]
+  notes: Note[]
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -45,44 +52,226 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [search, setSearch] = useState('')
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({})
   const [newFolderName, setNewFolderName] = useState('')
+  const [parentForNewFolder, setParentForNewFolder] = useState<string | null>(null)
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
 
   if (!isOpen) return null
 
-  const toggleFolder = (folder: string) => {
-    setCollapsedFolders(prev => ({ ...prev, [folder]: !prev[folder] }))
+  const toggleFolder = (folderPath: string) => {
+    setCollapsedFolders(prev => ({ ...prev, [folderPath]: !prev[folderPath] }))
+  }
+
+  const handleStartCreateFolder = (parent?: string) => {
+    setParentForNewFolder(parent || null)
+    setNewFolderName('')
+    setIsCreatingFolder(true)
   }
 
   const handleCreateFolderSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (newFolderName.trim()) {
-      onCreateFolder(newFolderName.trim())
+      const fullPath = parentForNewFolder ? `${parentForNewFolder}/${newFolderName.trim()}` : newFolderName.trim()
+      onCreateFolder(fullPath)
       setNewFolderName('')
+      setParentForNewFolder(null)
       setIsCreatingFolder(false)
     }
   }
 
+  // Filter notes by search query
   const filteredNotes = notes.filter(n => {
     const q = search.toLowerCase()
-    return n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q) || n.tags.some(t => t.toLowerCase().includes(q))
+    return (
+      n.title.toLowerCase().includes(q) ||
+      n.content.toLowerCase().includes(q) ||
+      n.tags.some(t => t.toLowerCase().includes(q))
+    )
   })
 
   // Favorite notes
   const favoriteNotes = notes.filter(n => n.isFavorite)
 
-  // Group notes by folder
-  const notesByFolder: Record<string, Note[]> = {}
-  for (const f of folders) {
-    notesByFolder[f] = []
-  }
-  notesByFolder['Sem Pasta'] = []
+  // Build hierarchical folder tree from all folder paths and notes
+  const buildTree = (): TreeNode[] => {
+    const nodeMap = new Map<string, TreeNode>()
 
-  for (const n of filteredNotes) {
-    if (notesByFolder[n.folder]) {
-      notesByFolder[n.folder].push(n)
-    } else {
-      notesByFolder['Sem Pasta'].push(n)
+    // Normalize all folders and subfolder segments
+    const allPathsSet = new Set<string>()
+    for (const f of folders) {
+      const parts = f.split('/').filter(Boolean)
+      let accumulated = ''
+      for (const part of parts) {
+        accumulated = accumulated ? `${accumulated}/${part}` : part
+        allPathsSet.add(accumulated)
+      }
     }
+
+    // Also include any folders mentioned by notes
+    for (const n of filteredNotes) {
+      if (n.folder && n.folder !== 'Sem Pasta') {
+        const parts = n.folder.split('/').filter(Boolean)
+        let accumulated = ''
+        for (const part of parts) {
+          accumulated = accumulated ? `${accumulated}/${part}` : part
+          allPathsSet.add(accumulated)
+        }
+      }
+    }
+
+    // Initialize TreeNode for each path
+    for (const path of allPathsSet) {
+      const parts = path.split('/')
+      const name = parts[parts.length - 1]
+      nodeMap.set(path, {
+        name,
+        fullPath: path,
+        children: [],
+        notes: []
+      })
+    }
+
+    // Assign notes to their exact folder
+    for (const note of filteredNotes) {
+      if (note.folder && nodeMap.has(note.folder)) {
+        nodeMap.get(note.folder)!.notes.push(note)
+      }
+    }
+
+    // Assemble parent-child hierarchy
+    const rootNodes: TreeNode[] = []
+    for (const [path, node] of nodeMap.entries()) {
+      const lastSlash = path.lastIndexOf('/')
+      if (lastSlash === -1) {
+        rootNodes.push(node)
+      } else {
+        const parentPath = path.substring(0, lastSlash)
+        const parentNode = nodeMap.get(parentPath)
+        if (parentNode) {
+          parentNode.children.push(node)
+        } else {
+          rootNodes.push(node)
+        }
+      }
+    }
+
+    return rootNodes
+  }
+
+  const rootFolderNodes = buildTree()
+
+  // Notes without a registered folder
+  const unassignedNotes = filteredNotes.filter(n => !n.folder || n.folder === 'Sem Pasta' || (!folders.includes(n.folder) && !n.folder.includes('/')))
+
+  // Recursive Tree Node Renderer
+  const renderFolderNode = (node: TreeNode, depth = 0) => {
+    const isCollapsed = !!collapsedFolders[node.fullPath]
+    const totalSubNotes = node.notes.length + node.children.reduce((acc, c) => acc + c.notes.length, 0)
+
+    return (
+      <div key={node.fullPath} className="space-y-0.5">
+        {/* Folder Header Row */}
+        <div
+          onClick={() => toggleFolder(node.fullPath)}
+          className="flex items-center justify-between px-2 py-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 cursor-pointer text-xs font-medium group transition-colors"
+          style={{ paddingLeft: `${depth * 12 + 8}px` }}
+        >
+          <div className="flex items-center gap-1.5 truncate">
+            {isCollapsed ? (
+              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            )}
+            {isCollapsed ? (
+              <Folder className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+            ) : (
+              <FolderOpen className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+            )}
+            <span className="truncate">{node.name}</span>
+          </div>
+
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onCreateNote(node.fullPath)
+              }}
+              className="p-0.5 hover:text-violet-400"
+              title={`Nova nota em ${node.fullPath}`}
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleStartCreateFolder(node.fullPath)
+              }}
+              className="p-0.5 hover:text-violet-400"
+              title={`Nova subpasta em ${node.fullPath}`}
+            >
+              <FolderPlus className="w-3 h-3" />
+            </button>
+            <span className="text-[10px] text-zinc-600 font-mono">
+              {totalSubNotes}
+            </span>
+          </div>
+        </div>
+
+        {/* Folder Children (Subfolders & Notes) */}
+        {!isCollapsed && (
+          <div className="space-y-0.5">
+            {/* Direct Notes */}
+            {node.notes.map(note => {
+              const isActive = note.id === currentNoteId
+              return (
+                <div
+                  key={note.id}
+                  onClick={() => onSelectNote(note.id)}
+                  className={`group flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
+                    isActive
+                      ? 'bg-violet-950/60 text-violet-300 font-medium border border-violet-800/50'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                  }`}
+                  style={{ paddingLeft: `${(depth + 1) * 12 + 10}px` }}
+                >
+                  <div className="flex items-center gap-1.5 truncate">
+                    <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-violet-400' : 'text-zinc-500'}`} />
+                    <span className="truncate">{note.title}</span>
+                  </div>
+
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onToggleFavorite(note.id)
+                      }}
+                      className={`p-0.5 rounded hover:text-amber-400 ${note.isFavorite ? 'text-amber-400' : 'text-zinc-500'}`}
+                      title={note.isFavorite ? 'Remover dos favoritos' : 'Favoritar nota'}
+                    >
+                      <Star className={`w-3 h-3 ${note.isFavorite ? 'fill-amber-400' : ''}`} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (confirm(`Excluir "${note.title}"?`)) {
+                          onDeleteNote(note.id)
+                        }
+                      }}
+                      className="p-0.5 hover:text-rose-400 text-zinc-500"
+                      title="Excluir nota"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Nested Subfolders */}
+            {node.children.map(child => renderFolderNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -102,10 +291,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           onClick={onOpenLocalFolder}
           className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-violet-300 hover:bg-zinc-800/80 px-2 py-1 rounded-md transition-colors border border-zinc-800"
-          title="Abrir pasta local do PC como Vault"
+          title="Importar pasta e subpastas locais do PC"
         >
           <HardDrive className="w-3 h-3 text-violet-400" />
-          <span>Pasta</span>
+          <span>Importar</span>
         </button>
       </div>
 
@@ -131,9 +320,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
 
           <button
-            onClick={() => setIsCreatingFolder(true)}
+            onClick={() => handleStartCreateFolder()}
             className="p-1 hover:text-zinc-100 hover:bg-zinc-800 rounded-md transition-colors"
-            title="Nova Pasta"
+            title="Nova Pasta Raiz"
           >
             <FolderPlus className="w-3.5 h-3.5" />
           </button>
@@ -158,7 +347,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* Create Folder Form */}
+      {/* Create Folder Modal / Inline input */}
       {isCreatingFolder && (
         <form onSubmit={handleCreateFolderSubmit} className="px-3 pb-2 flex items-center gap-1">
           <input
@@ -166,12 +355,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             autoFocus
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
-            placeholder="Nome da pasta..."
+            placeholder={parentForNewFolder ? `Subpasta em ${parentForNewFolder}...` : "Nome da pasta..."}
             className="flex-1 px-2 py-1 bg-zinc-950 border border-violet-500 rounded-md text-xs text-zinc-200 focus:outline-none"
           />
           <button
             type="submit"
-            className="px-2 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded-md text-xs"
+            className="px-2 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded-md text-xs font-medium"
           >
             Criar
           </button>
@@ -185,7 +374,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </form>
       )}
 
-      {/* 4. File Tree & Favorites */}
+      {/* 4. Hierarchical File Tree & Favorites */}
       <div className="flex-1 overflow-y-auto px-2 py-1 space-y-2">
         {/* Favoritos (Star section) */}
         {favoriteNotes.length > 0 && (
@@ -218,109 +407,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* Folders and Notes */}
-        {folders.map(folder => {
-          const folderNotes = notesByFolder[folder] || []
-          const isCollapsed = !!collapsedFolders[folder]
+        {/* Recursive Subfolders & Notes Tree */}
+        <div className="space-y-0.5">
+          {rootFolderNodes.map(node => renderFolderNode(node, 0))}
+        </div>
 
-          return (
-            <div key={folder} className="space-y-0.5">
-              {/* Folder Row */}
-              <div
-                onClick={() => toggleFolder(folder)}
-                className="flex items-center justify-between px-2 py-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 cursor-pointer text-xs font-medium group transition-colors"
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  {isCollapsed ? (
-                    <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                  ) : (
-                    <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                  )}
-                  {isCollapsed ? (
-                    <Folder className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                  ) : (
-                    <FolderOpen className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                  )}
-                  <span className="truncate">{folder}</span>
-                </div>
-
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onCreateNote(folder)
-                    }}
-                    className="p-0.5 hover:text-violet-400"
-                    title={`Nova nota em ${folder}`}
-                  >
-                    <Plus className="w-3 h-3" />
-                  </button>
-                  <span className="text-[10px] text-zinc-600 font-mono">
-                    {folderNotes.length}
-                  </span>
-                </div>
-              </div>
-
-              {/* Notes inside Folder */}
-              {!isCollapsed && (
-                <div className="pl-3 space-y-0.5 border-l border-zinc-800/80 ml-2.5">
-                  {folderNotes.map(note => {
-                    const isActive = note.id === currentNoteId
-                    return (
-                      <div
-                        key={note.id}
-                        onClick={() => onSelectNote(note.id)}
-                        className={`group flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-                          isActive
-                            ? 'bg-violet-950/60 text-violet-300 font-medium border border-violet-800/50'
-                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 truncate">
-                          <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-violet-400' : 'text-zinc-500'}`} />
-                          <span className="truncate">{note.title}</span>
-                        </div>
-
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onToggleFavorite(note.id)
-                            }}
-                            className={`p-0.5 rounded hover:text-amber-400 ${note.isFavorite ? 'text-amber-400' : 'text-zinc-500'}`}
-                            title={note.isFavorite ? 'Remover dos favoritos' : 'Favoritar nota'}
-                          >
-                            <Star className={`w-3 h-3 ${note.isFavorite ? 'fill-amber-400' : ''}`} />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              if (confirm(`Excluir "${note.title}"?`)) {
-                                onDeleteNote(note.id)
-                              }
-                            }}
-                            className="p-0.5 hover:text-rose-400 text-zinc-500"
-                            title="Excluir nota"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })}
-
-        {/* Notes without folder */}
-        {notesByFolder['Sem Pasta'] && notesByFolder['Sem Pasta'].length > 0 && (
-          <div className="pt-2">
+        {/* Unassigned notes (without folder) */}
+        {unassignedNotes.length > 0 && (
+          <div className="pt-2 border-t border-zinc-800/60">
             <div className="px-2 py-1 text-[10px] font-semibold uppercase text-zinc-500 tracking-wider">
               Avulsas
             </div>
-            {notesByFolder['Sem Pasta'].map(note => {
+            {unassignedNotes.map(note => {
               const isActive = note.id === currentNoteId
               return (
                 <div
