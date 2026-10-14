@@ -159,7 +159,7 @@ export const App: React.FC = () => {
       const newNote: Note = {
         id: `note_${Date.now()}`,
         title: title.trim(),
-        content: `# ${title.trim()}\n\nCriada via link bidirecional a partir de [[${currentNote?.title || 'Vault'}]].\n`,
+        content: `Criada via link bidirecional a partir de [[${currentNote?.title || 'Vault'}]].\n`,
         folder: currentNote?.folder || 'Início',
         tags: [],
         createdAt: Date.now(),
@@ -178,7 +178,7 @@ export const App: React.FC = () => {
     const newNote: Note = {
       id: `note_${Date.now()}`,
       title,
-      content: `# ${title}\n\nEscreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`,
+      content: `Escreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`,
       folder: targetFolder,
       tags: [],
       createdAt: Date.now(),
@@ -210,7 +210,7 @@ export const App: React.FC = () => {
     const dailyNote: Note = {
       id: `note_daily_${Date.now()}`,
       title: dailyTitle,
-      content: `# ${dailyTitle} 📅\n\n## Metas de Hoje\n- [ ] Definir prioridades do dia\n- [ ] Registrar novas ideias no [[Grafos de Conhecimento]]\n\n## Pensamentos & Notas\n\n`,
+      content: `## Metas de Hoje\n- [ ] Definir prioridades do dia\n- [ ] Registrar novas ideias no [[Grafos de Conhecimento]]\n\n## Pensamentos & Notas\n\n`,
       folder: 'Diário',
       tags: ['diário', 'produtividade'],
       createdAt: Date.now(),

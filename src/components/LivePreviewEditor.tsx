@@ -219,12 +219,45 @@ function formatInlineHtml(text: string, allNotes: Note[] = []): string {
   }).join('')
 }
 
-function markdownToHtml(md: string, allNotes: Note[]): string {
-  if (!md.trim()) {
+export function stripDuplicateTitleFromContent(content: string, title?: string): string {
+  if (!title) return content
+  const trimmed = content.trimStart()
+  if (!trimmed.startsWith('# ')) return content
+
+  const firstLineEnd = trimmed.indexOf('\n')
+  const firstLine = firstLineEnd === -1 ? trimmed : trimmed.slice(0, firstLineEnd)
+  const headingText = firstLine.slice(2).trim()
+
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\w\s]/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const normHeading = normalize(headingText)
+  const normTitle = normalize(title)
+
+  if (
+    normHeading === normTitle ||
+    normHeading.startsWith(normTitle) ||
+    normTitle.startsWith(normHeading)
+  ) {
+    return firstLineEnd === -1 ? '' : trimmed.slice(firstLineEnd).trimStart()
+  }
+
+  return content
+}
+
+function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): string {
+  const cleanMd = stripDuplicateTitleFromContent(md, noteTitle)
+  if (!cleanMd.trim()) {
     return '<p class="my-1.5 text-[13px] md:text-sm text-zinc-300 leading-relaxed"><br></p>'
   }
 
-  const lines = md.split('\n')
+  const lines = cleanMd.split('\n')
   const htmlParts: string[] = []
   let i = 0
 
@@ -369,7 +402,7 @@ function markdownToHtml(md: string, allNotes: Note[]): string {
       const taskText = taskMatch[3]
       htmlParts.push(`
         <div class="task-item flex items-start gap-2.5 my-1.5 group select-none" data-type="task">
-          <input type="checkbox" ${isChecked ? 'checked' : ''} contenteditable="false" class="task-checkbox mt-1 w-4 h-4 rounded border-zinc-600 accent-violet-600 bg-zinc-800 cursor-pointer shrink-0" />
+          <input type="checkbox" ${isChecked ? 'checked' : ''} contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0" />
           <span class="task-text flex-1 text-[13px] md:text-sm leading-relaxed ${isChecked ? 'line-through text-zinc-500' : 'text-zinc-200'}">${formatInlineHtml(taskText, allNotes)}</span>
         </div>
       `)
@@ -641,12 +674,12 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       (!isTypingRef.current && !containerRef.current.contains(document.activeElement))
     ) {
       currentNoteIdRef.current = note.id
-      containerRef.current.innerHTML = markdownToHtml(note.content, allNotes)
+      containerRef.current.innerHTML = markdownToHtml(note.content, allNotes, note.title)
       setSlashMenu(null)
       setWikiSuggest(null)
       setSelectionToolbar(null)
     }
-  }, [note.id, note.content, allNotes])
+  }, [note.id, note.content, note.title, allNotes])
 
   // Expose formatting commands to top toolbar via ref
   useImperativeHandle(editorRef, () => ({
@@ -661,7 +694,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       else if (type === 'task') {
         const taskHtml = `
           <div class="task-item flex items-start gap-2.5 my-1.5 group select-none" data-type="task">
-            <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 rounded border-zinc-600 accent-violet-600 bg-zinc-800 cursor-pointer shrink-0" />
+            <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0" />
             <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">Nova tarefa...</span>
           </div>
         `
@@ -932,7 +965,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     else if (cmdId === 'task') {
       const taskHtml = `
         <div class="task-item flex items-start gap-2.5 my-1.5 group select-none" data-type="task">
-          <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 rounded border-zinc-600 accent-violet-600 bg-zinc-800 cursor-pointer shrink-0" />
+          <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0" />
           <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">Nova tarefa...</span>
         </div>
       `

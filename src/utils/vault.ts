@@ -3,6 +3,38 @@ import type { Note, LinkEdge } from '../types'
 const STORAGE_KEY = 'pyrite_vault_notes'
 const FOLDERS_KEY = 'pyrite_vault_folders'
 
+export function stripDuplicateTitleFromContent(content: string, title?: string): string {
+  if (!title || !content) return content
+  const trimmed = content.trimStart()
+  if (!trimmed.startsWith('# ')) return content
+
+  const firstLineEnd = trimmed.indexOf('\n')
+  const firstLine = firstLineEnd === -1 ? trimmed : trimmed.slice(0, firstLineEnd)
+  const headingText = firstLine.slice(2).trim()
+
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\w\s]/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const normHeading = normalize(headingText)
+  const normTitle = normalize(title)
+
+  if (
+    normHeading === normTitle ||
+    normHeading.startsWith(normTitle) ||
+    normTitle.startsWith(normHeading)
+  ) {
+    return firstLineEnd === -1 ? '' : trimmed.slice(firstLineEnd).trimStart()
+  }
+
+  return content
+}
+
 export const INITIAL_NOTES: Note[] = [
   {
     id: 'note-welcome',
@@ -11,9 +43,7 @@ export const INITIAL_NOTES: Note[] = [
     tags: ['boas-vindas', 'pyrite', 'segundo-cérebro'],
     createdAt: Date.now() - 3600000 * 24,
     updatedAt: Date.now() - 3600000 * 12,
-    content: `# Bem-vindo ao Pyrite 💎
-
-O **Pyrite** é o seu segundo cérebro digital de alta performance, inspirado na filosofia **local-first** do [[Arquitetura do Obsidian]], mas com melhorias modernas:
+    content: `O **Pyrite** é o seu segundo cérebro digital de alta performance, inspirado na filosofia **local-first** do [[Arquitetura do Obsidian]], mas com melhorias modernas:
 
 - 🕸️ **[[Grafos de Conhecimento]]**: Visualização interativa e fluida em 2D dos seus pensamentos.
 - 🔗 **Links Bidirecionais**: Conecte ideias digitando \`[[Nome da Nota]]\`.
@@ -42,9 +72,7 @@ O **Pyrite** é o seu segundo cérebro digital de alta performance, inspirado na
     tags: ['engenharia-reversa', 'obsidian', 'arquitetura'],
     createdAt: Date.now() - 3600000 * 20,
     updatedAt: Date.now() - 3600000 * 5,
-    content: `# Arquitetura do Obsidian (Engenharia Reversa) 🔍
-
-Realizamos uma análise profunda do Obsidian (versão 1.12.7) utilizando o REA no Windows.
+    content: `Realizamos uma análise profunda do Obsidian (versão 1.12.7) utilizando o REA no Windows.
 
 ### Componentes Chave Descobertos:
 
@@ -70,9 +98,7 @@ Realizamos uma análise profunda do Obsidian (versão 1.12.7) utilizando o REA n
     tags: ['zettelkasten', 'segundo-cérebro', 'grafos'],
     createdAt: Date.now() - 3600000 * 18,
     updatedAt: Date.now() - 3600000 * 4,
-    content: `# Grafos de Conhecimento e Zettelkasten 🧠
-
-A forma tradicional de organizar informações em pastas hierárquicas é rígida e não reflete como o cérebro humano pensa por associação.
+    content: `A forma tradicional de organizar informações em pastas hierárquicas é rígida e não reflete como o cérebro humano pensa por associação.
 
 Ao usar [[Links Bidirecionais]], cada nota se torna um nó em uma rede viva interconectada:
 
@@ -91,9 +117,7 @@ Ao usar [[Links Bidirecionais]], cada nota se torna um nó em uma rede viva inte
     tags: ['canvas', 'visual', 'brainstorming'],
     createdAt: Date.now() - 3600000 * 15,
     updatedAt: Date.now() - 3600000 * 2,
-    content: `# Canvas e Pensamento Visual 🎨
-
-Nem todas as ideias cabem em uma página linear de texto. O **Canvas do Pyrite** permite espacializar pensamentos em um plano 2D infinito.
+    content: `Nem todas as ideias cabem em uma página linear de texto. O **Canvas do Pyrite** permite espacializar pensamentos em um plano 2D infinito.
 
 ### Recursos:
 - 📌 Criar cartões coloridos para diferentes categorias de ideias.
@@ -109,9 +133,7 @@ Nem todas as ideias cabem em uma página linear de texto. O **Canvas do Pyrite**
     tags: ['ia', 'produtividade', 'semântica'],
     createdAt: Date.now() - 3600000 * 10,
     updatedAt: Date.now() - 3600000 * 1,
-    content: `# Produtividade com IA no Pyrite 🤖
-
-O Obsidian tradicional depende de você criar todos os links manualmente. No Pyrite, introduzimos o conceito de **Conexões Semânticas Sugeridas**:
+    content: `O Obsidian tradicional depende de você criar todos os links manualmente. No Pyrite, introduzimos o conceito de **Conexões Semânticas Sugeridas**:
 
 1. **Auto-Resumo**: O assistente gera uma síntese executiva de notas extensas.
 2. **Sugestão de Tags**: Detecta termos recorrentes e categorias conceituais.
@@ -129,9 +151,7 @@ O Obsidian tradicional depende de você criar todos os links manualmente. No Pyr
     tags: ['quiz', 'marketing', 'checklist'],
     createdAt: Date.now() - 3600000 * 2,
     updatedAt: Date.now() - 3600000 * 1,
-    content: `# Checklist do Quiz
-
-## Antes de criar
+    content: `## Antes de criar
 - [ ] Modelei o quiz de pelo menos 2 top ofertas do nicho
 - [ ] Defini o número de etapas (mínimo 30)
 - [ ] Defini os tipos de perguntas (SPIN)
@@ -174,18 +194,32 @@ export function loadNotes(): Note[] {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) {
       const parsed: Note[] = JSON.parse(saved)
-      const quizIndex = parsed.findIndex(n => n.id === 'note-quiz-checklist')
+      let modified = false
+      const cleaned = parsed.map(n => {
+        const stripped = stripDuplicateTitleFromContent(n.content, n.title)
+        if (stripped !== n.content) {
+          modified = true
+          return { ...n, content: stripped }
+        }
+        return n
+      })
+
+      const quizIndex = cleaned.findIndex(n => n.id === 'note-quiz-checklist')
       const targetQuiz = INITIAL_NOTES.find(n => n.id === 'note-quiz-checklist')!
       if (quizIndex === -1) {
-        const merged = [targetQuiz, ...parsed]
+        const merged = [targetQuiz, ...cleaned]
         saveNotes(merged)
         return merged
-      } else if (!parsed[quizIndex].content.includes('Tabela de Métricas')) {
-        parsed[quizIndex] = targetQuiz
-        saveNotes(parsed)
-        return parsed
+      } else if (!cleaned[quizIndex].content.includes('Tabela de Métricas')) {
+        cleaned[quizIndex] = targetQuiz
+        saveNotes(cleaned)
+        return cleaned
       }
-      return parsed
+
+      if (modified) {
+        saveNotes(cleaned)
+      }
+      return cleaned
     }
   } catch (err) {
     console.error('Failed to load notes from localStorage', err)

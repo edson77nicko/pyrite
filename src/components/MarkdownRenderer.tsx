@@ -387,7 +387,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             type="checkbox"
             checked={isChecked}
             readOnly
-            className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-violet-600 focus:ring-violet-400 focus:ring-offset-zinc-900 cursor-pointer transition-colors"
+            className="task-checkbox mt-0.5 w-4 h-4 cursor-pointer"
           />
           <span className={`text-xs ${isChecked ? 'line-through text-zinc-500' : 'text-zinc-300 group-hover:text-zinc-100'} transition-colors`}>
             {renderInlineFormatted(taskText)}
