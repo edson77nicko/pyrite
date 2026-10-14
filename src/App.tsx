@@ -7,7 +7,8 @@ import {
   saveFolders,
   extractTags
 } from './utils/vault'
-import { Header } from './components/Header'
+import { Ribbon } from './components/Ribbon'
+import { TabHeader } from './components/TabHeader'
 import { Sidebar } from './components/Sidebar'
 import { RightSidebar } from './components/RightSidebar'
 import { Editor } from './components/Editor'
@@ -17,6 +18,8 @@ import { CommandPalette } from './components/CommandPalette'
 import { AiAssistant } from './components/AiAssistant'
 import { StatusBar } from './components/StatusBar'
 import { SettingsModal } from './components/SettingsModal'
+
+const MAX_TABS = 5
 
 const DEFAULT_SETTINGS: AppSettings = {
   accentColor: 'violet',
@@ -97,7 +100,7 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [notes])
 
-  // Select note and ensure tab exists
+  // Select note and ensure tab exists (Max 5 tabs, replaces oldest)
   const handleSelectNote = (noteId: string) => {
     setCurrentNoteId(noteId)
     setCurrentView('editor')
@@ -117,6 +120,12 @@ export const App: React.FC = () => {
         title: targetNote.title
       }
       setActiveTabId(newTab.id)
+
+      // Strict limit: at most 5 tabs. When opening a 6th, replace the oldest tab (FIFO).
+      if (prev.length >= MAX_TABS) {
+        const trimmed = prev.slice(prev.length - (MAX_TABS - 1))
+        return [...trimmed, newTab]
+      }
       return [...prev, newTab]
     })
   }
@@ -349,24 +358,21 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col w-screen h-screen bg-[#0f0f12] text-zinc-100 overflow-hidden font-sans">
-      {/* 1. Top Header */}
-      <Header
-        currentView={currentView}
-        onChangeView={setCurrentView}
-        isLeftSidebarOpen={isLeftSidebarOpen}
-        onToggleLeftSidebar={() => setIsLeftSidebarOpen(o => !o)}
-        isRightSidebarOpen={isRightSidebarOpen}
-        onToggleRightSidebar={() => setIsRightSidebarOpen(o => !o)}
-        isAiOpen={isAiOpen}
-        onToggleAi={() => setIsAiOpen(o => !o)}
-        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onExportVault={handleExportVault}
-        noteCount={notes.length}
-      />
-
-      {/* 2. Main Workspace Layout */}
+      {/* 1. Main Workspace Layout */}
       <div className="flex flex-1 overflow-hidden relative">
+        {/* Leftmost Ribbon Bar (Icon-only navigation like Obsidian) */}
+        <Ribbon
+          currentView={currentView}
+          onChangeView={setCurrentView}
+          isLeftSidebarOpen={isLeftSidebarOpen}
+          onToggleLeftSidebar={() => setIsLeftSidebarOpen(o => !o)}
+          onOpenDailyNote={handleOpenDailyNote}
+          onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+          isAiOpen={isAiOpen}
+          onToggleAi={() => setIsAiOpen(o => !o)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+
         {/* Left Sidebar (Hierarchical Subfolders & Notes Tree) */}
         <Sidebar
           notes={notes}
@@ -382,40 +388,54 @@ export const App: React.FC = () => {
           isOpen={isLeftSidebarOpen}
         />
 
-        {/* Central View Area */}
+        {/* Central View Area with Workspace Tab Header */}
         <main className="flex-1 h-full overflow-hidden relative bg-[#0f0f12] flex flex-col">
-          {currentView === 'editor' && currentNote && (
-            <Editor
-              note={currentNote}
-              allNotes={notes}
-              tabs={tabs}
-              activeTabId={activeTabId}
-              onSelectTab={handleSelectTab}
-              onCloseTab={handleCloseTab}
-              onNewTab={() => handleCreateNote()}
-              displayMode={editorDisplayMode}
-              onChangeDisplayMode={setEditorDisplayMode}
-              onUpdateNote={handleUpdateNote}
-              onNavigate={handleNavigate}
-              onOpenSettings={() => setIsSettingsOpen(true)}
-              settings={settings}
-            />
-          )}
+          {/* Obsidian Tab Header with right-side actions & max 5 tabs */}
+          <TabHeader
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={handleSelectTab}
+            onCloseTab={handleCloseTab}
+            onNewTab={() => handleCreateNote()}
+            currentView={currentView}
+            displayMode={editorDisplayMode}
+            onChangeDisplayMode={setEditorDisplayMode}
+            isAiOpen={isAiOpen}
+            onToggleAi={() => setIsAiOpen(o => !o)}
+            isRightSidebarOpen={isRightSidebarOpen}
+            onToggleRightSidebar={() => setIsRightSidebarOpen(o => !o)}
+            onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+            onExportVault={handleExportVault}
+          />
 
-          {currentView === 'graph' && (
-            <GraphView
-              notes={notes}
-              currentNoteId={currentNoteId}
-              onSelectNote={handleSelectNote}
-            />
-          )}
+          <div className="flex-1 overflow-hidden relative">
+            {currentView === 'editor' && currentNote && (
+              <Editor
+                note={currentNote}
+                allNotes={notes}
+                displayMode={editorDisplayMode}
+                onUpdateNote={handleUpdateNote}
+                onNavigate={handleNavigate}
+                settings={settings}
+              />
+            )}
 
-          {currentView === 'canvas' && (
-            <CanvasView
-              notes={notes}
-              onOpenNote={handleSelectNote}
-            />
-          )}
+            {currentView === 'graph' && (
+              <GraphView
+                notes={notes}
+                currentNoteId={currentNoteId}
+                onSelectNote={handleSelectNote}
+              />
+            )}
+
+            {currentView === 'canvas' && (
+              <CanvasView
+                notes={notes}
+                onOpenNote={handleSelectNote}
+              />
+            )}
+          </div>
         </main>
 
         {/* Right Sidebar (Backlinks, Outline, Tags) */}

@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
-import type { Note, EditorDisplayMode, TabItem, AppSettings } from '../types'
+import type { Note, EditorDisplayMode, AppSettings } from '../types'
 import { LivePreviewEditor, type LivePreviewEditorHandle } from './LivePreviewEditor'
 import {
-  Eye,
-  Edit3,
   Heading1,
   Heading2,
   Bold,
@@ -12,44 +10,26 @@ import {
   Code,
   Link2,
   Clock,
-  FileText,
   Tag,
   Folder,
-  Plus,
-  X,
-  Table,
-  Sliders
+  Table
 } from 'lucide-react'
 
 interface EditorProps {
   note: Note
   allNotes: Note[]
-  tabs: TabItem[]
-  activeTabId: string
-  onSelectTab: (tabId: string) => void
-  onCloseTab: (tabId: string) => void
-  onNewTab: () => void
   displayMode: EditorDisplayMode
-  onChangeDisplayMode: (mode: EditorDisplayMode) => void
   onUpdateNote: (updated: Note) => void
   onNavigate: (title: string) => void
-  onOpenSettings: () => void
   settings: AppSettings
 }
 
 export const Editor: React.FC<EditorProps> = ({
   note,
   allNotes,
-  tabs,
-  activeTabId,
-  onSelectTab,
-  onCloseTab,
-  onNewTab,
   displayMode,
-  onChangeDisplayMode,
   onUpdateNote,
   onNavigate,
-  onOpenSettings,
   settings
 }) => {
   const [content, setContent] = useState(note.content)
@@ -105,49 +85,8 @@ export const Editor: React.FC<EditorProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-[#121215] overflow-hidden">
-      {/* 1. Obsidian Tabs Bar */}
-      <div className="h-9 bg-[#0c0c0e] border-b border-zinc-800 flex items-center px-2 gap-1 overflow-x-auto select-none shrink-0 scrollbar-none">
-        {tabs.map(tab => {
-          const isActive = tab.id === activeTabId
-          return (
-            <div
-              key={tab.id}
-              onClick={() => onSelectTab(tab.id)}
-              className={`group flex items-center gap-2 h-7 px-3 rounded-t-lg text-xs cursor-pointer border-t border-x transition-all max-w-[200px] ${
-                isActive
-                  ? 'bg-[#121215] border-zinc-700/80 text-violet-300 font-medium shadow-sm'
-                  : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40'
-              }`}
-            >
-              <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-violet-400' : 'text-zinc-600'}`} />
-              <span className="truncate">{tab.title}</span>
-              {tabs.length > 1 && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onCloseTab(tab.id)
-                  }}
-                  className="p-0.5 rounded-full hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Fechar aba"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          )
-        })}
-
-        <button
-          onClick={onNewTab}
-          className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 rounded-lg transition-colors ml-1"
-          title="Nova nota em aba"
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {/* 2. Top Editor Action Toolbar (Icon-only mode switcher and formatting tools) */}
-      <div className="flex items-center justify-between px-6 py-2 bg-zinc-900/60 border-b border-zinc-800/80 text-xs text-zinc-400 shrink-0">
+      {/* Top Editor Toolbar (Breadcrumb + In-editor formatting tools) */}
+      <div className="flex items-center justify-between px-6 py-2 bg-zinc-900/40 border-b border-zinc-800/60 text-xs text-zinc-400 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-zinc-300 font-medium">
             <Folder className="w-3.5 h-3.5 text-violet-400" />
@@ -159,69 +98,35 @@ export const Editor: React.FC<EditorProps> = ({
           </div>
         </div>
 
-        {/* Action icons & Live vs Reading Mode toggle */}
-        <div className="flex items-center gap-2">
-          {/* Quick formatting toolbar */}
-          {displayMode === 'live' && (
-            <div className="flex items-center gap-1 bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60 mr-2 shadow-inner">
-              <button onClick={handleFormatH1} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H1">
-                <Heading1 className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={handleFormatH2} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H2">
-                <Heading2 className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={handleFormatBold} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Negrito">
-                <Bold className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={handleFormatItalic} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Itálico">
-                <Italic className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={handleFormatLink} className="p-1.5 hover:text-violet-400 hover:bg-zinc-700 rounded transition-colors" title="Link Bidirecional [[...]]">
-                <Link2 className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={handleFormatTask} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Lista de Tarefas">
-                <ListTodo className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={handleFormatTable} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Tabela Markdown">
-                <Table className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={handleFormatCode} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Bloco de Código">
-                <Code className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* Mode Switcher: APENAS ÍCONES (Edição ao Vivo vs Modo Leitura) */}
-          <div className="flex items-center gap-0.5 bg-zinc-800 rounded-lg p-0.5 border border-zinc-700 shadow-sm">
-            <button
-              onClick={() => onChangeDisplayMode('live')}
-              className={`p-1.5 rounded-md transition-all ${
-                displayMode === 'live' ? 'bg-violet-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Edição ao Vivo (Edite formatado diretamente como no Obsidian)"
-            >
-              <Edit3 className="w-3.5 h-3.5" />
+        {/* Quick formatting toolbar */}
+        {displayMode === 'live' && (
+          <div className="flex items-center gap-1 bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60 shadow-inner">
+            <button onClick={handleFormatH1} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H1">
+              <Heading1 className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={() => onChangeDisplayMode('reading')}
-              className={`p-1.5 rounded-md transition-all ${
-                displayMode === 'reading' ? 'bg-violet-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Modo Leitura (Visualização pura)"
-            >
-              <Eye className="w-3.5 h-3.5" />
+            <button onClick={handleFormatH2} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H2">
+              <Heading2 className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={handleFormatBold} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Negrito">
+              <Bold className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={handleFormatItalic} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Itálico">
+              <Italic className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={handleFormatLink} className="p-1.5 hover:text-violet-400 hover:bg-zinc-700 rounded transition-colors" title="Link Bidirecional [[...]]">
+              <Link2 className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={handleFormatTask} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Lista de Tarefas">
+              <ListTodo className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={handleFormatTable} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Tabela Markdown">
+              <Table className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={handleFormatCode} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Bloco de Código">
+              <Code className="w-3.5 h-3.5" />
             </button>
           </div>
-
-          {/* Personalizar Button */}
-          <button
-            onClick={onOpenSettings}
-            className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors ml-1 border border-zinc-800"
-            title="Personalizar Tipografia e Aparência"
-          >
-            <Sliders className="w-3.5 h-3.5 text-violet-400" />
-          </button>
-        </div>
+        )}
       </div>
 
       {/* 3. Editor Surface (In-place WYSIWYG Live Preview matching Obsidian screenshot) */}

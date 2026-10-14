@@ -318,7 +318,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ notes = [], onOpenNote }
           </marker>
         </defs>
 
-        {connections.map(conn => {
+        {connections.map((conn, index) => {
           const fromCard = cards.find(c => c.id === conn.from)
           const toCard = cards.find(c => c.id === conn.to)
           if (!fromCard || !toCard) return null
@@ -333,7 +333,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ notes = [], onOpenNote }
           const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
 
           return (
-            <g key={conn.id} className="cursor-pointer pointer-events-auto group" onClick={() => handleDeleteConnection(conn.id)}>
+            <g key={`${conn.id}_${index}`} className="cursor-pointer pointer-events-auto group" onClick={() => handleDeleteConnection(conn.id)}>
               <path
                 d={pathData}
                 fill="none"
