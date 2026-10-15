@@ -5,15 +5,13 @@ import {
   Link2,
   ArrowUpRight,
   List,
-  Tag,
-  Sparkles
+  Tag
 } from 'lucide-react'
 
 interface RightSidebarProps {
   currentNote?: Note
   allNotes: Note[]
   onSelectNote: (noteId: string) => void
-  onOpenAi: () => void
   isOpen: boolean
 }
 
@@ -21,7 +19,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   currentNote,
   allNotes,
   onSelectNote,
-  onOpenAi,
   isOpen
 }) => {
   const [activeTab, setActiveTab] = useState<'links' | 'outline' | 'tags'>('links')
@@ -210,17 +207,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             )}
           </div>
         )}
-      </div>
-
-      {/* AI Assistant Quick Pill */}
-      <div className="p-3 border-t border-zinc-800 bg-zinc-950/30">
-        <button
-          onClick={onOpenAi}
-          className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-lg font-medium shadow-lg shadow-violet-950/40 transition-all hover:scale-[1.02]"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Assistente IA do Vault</span>
-        </button>
       </div>
     </div>
   )

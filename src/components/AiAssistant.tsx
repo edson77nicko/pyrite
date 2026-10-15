@@ -3,15 +3,16 @@ import type { Note } from '../types'
 import { extractWikiLinks } from '../utils/vault'
 import {
   Sparkles,
-  Send,
   Bot,
   User,
   RefreshCw,
-  X
+  X,
+  ArrowUp,
+  ChevronDown
 } from 'lucide-react'
 
 interface AiAssistantProps {
-  currentNote: Note
+  currentNote?: Note
   allNotes: Note[]
   onConnectNote: (targetTitle: string) => void
   onAddTag: (tag: string) => void
@@ -31,11 +32,21 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   onAddTag,
   onClose
 }) => {
+  const effectiveNote = currentNote || allNotes[0] || {
+    id: 'vault-root',
+    title: 'Meu Vault',
+    content: '',
+    folder: 'Início',
+    tags: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  }
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'm1',
       sender: 'ai',
-      text: `Olá! Sou o assistente de IA do Pyrite. Estou analisando sua nota **"${currentNote.title}"** e todo o seu Vault. Como posso ajudar seu raciocínio hoje?`
+      text: `Olá! Sou o agente de IA do Pyrite. Estou analisando sua nota **"${effectiveNote.title}"** e todo o seu Vault. Como posso ajudar seu raciocínio hoje?`
     }
   ])
   const [input, setInput] = useState('')
@@ -48,15 +59,15 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const runSmartDiscovery = () => {
     setIsAnalyzing(true)
     setTimeout(() => {
-      const currentLinks = extractWikiLinks(currentNote.content).map(l => l.toLowerCase())
+      const currentLinks = extractWikiLinks(effectiveNote.content).map(l => l.toLowerCase())
       const currentWords = new Set(
-        currentNote.content.toLowerCase().replace(/[^a-zA-Z0-9\u00C0-\u017F\s]/g, '').split(/\s+/).filter(w => w.length > 3)
+        effectiveNote.content.toLowerCase().replace(/[^a-zA-Z0-9\u00C0-\u017F\s]/g, '').split(/\s+/).filter(w => w.length > 3)
       )
 
       const candidates: { note: Note; score: number; matchCount: number }[] = []
 
       for (const n of allNotes) {
-        if (n.id === currentNote.id) continue
+        if (n.id === effectiveNote.id) continue
         if (currentLinks.includes(n.title.toLowerCase())) continue // already explicitly linked
 
         const otherWords = n.content.toLowerCase().replace(/[^a-zA-Z0-9\u00C0-\u017F\s]/g, '').split(/\s+/).filter(w => w.length > 3)
@@ -79,13 +90,13 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       setSuggestedConnections(top3)
 
       // Generate Auto-Summary
-      const lines = currentNote.content.split('\n').filter(l => l.trim().length > 15)
+      const lines = effectiveNote.content.split('\n').filter(l => l.trim().length > 15)
       const keyPoints = lines.slice(0, 3).map(l => l.replace(/^[#\-*>\s]+/, '').trim())
       setSummary(keyPoints.join(' • ') || 'Nota em construção ou com pouco texto.')
 
       // Suggest Tags
       const potentialTags = ['conhecimento', 'produtividade', 'metodologia', 'arquitetura', 'ideias', 'estudos']
-      const newTags = potentialTags.filter(t => !currentNote.tags.includes(t)).slice(0, 3)
+      const newTags = potentialTags.filter(t => !effectiveNote.tags.includes(t)).slice(0, 3)
       setSuggestedTags(newTags)
 
       setIsAnalyzing(false)
@@ -106,13 +117,13 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     setTimeout(() => {
       let reply = ''
       if (prompt.includes('resumo') || prompt.includes('resumir')) {
-        reply = `Aqui está o resumo da nota **"${currentNote.title}"**:\n\n${summary || 'Nota trata de organização e conceitos conectados no Vault.'}`
+        reply = `Aqui está o resumo da nota **"${effectiveNote.title}"**:\n\n${summary || 'Nota trata de organização e conceitos conectados no Vault.'}`
       } else if (prompt.includes('conectar') || prompt.includes('conex')) {
         reply = `Encontrei ${suggestedConnections.length} conexões potenciais no Vault. Destaque para **[[${suggestedConnections[0]?.note.title || 'Grafos de Conhecimento'}]]**.`
       } else if (prompt.includes('obsidian') || prompt.includes('diferen')) {
         reply = `O Obsidian utiliza uma arquitetura baseada em Electron + CodeMirror + PixiJS. O **Pyrite** traz essa mesma essência local-first, porém com aceleração de IA semântica integrada e canvas sem dependências pesadas!`
       } else {
-        reply = `Analisando sua pergunta no contexto do Vault: Na nota **"${currentNote.title}"**, você aborda tópicos interconectados com **${allNotes.length} outras notas**. Recomendo cruzar esses dados usando o **Grafo de Conhecimento**!`
+        reply = `Analisando sua pergunta no contexto do Vault: Na nota **"${effectiveNote.title}"**, você aborda tópicos interconectados com **${allNotes.length} outras notas**. Recomendo cruzar esses dados usando o **Grafo de Conhecimento**!`
       }
 
       setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'ai', text: reply }])
@@ -120,56 +131,57 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   }
 
   return (
-    <div className="w-80 h-full bg-zinc-900 border-l border-zinc-800 flex flex-col select-none shrink-0 text-xs">
-      {/* Header */}
-      <div className="p-3 border-b border-zinc-800 bg-zinc-950/60 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-md">
-            <Sparkles className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="font-semibold text-zinc-100">Pyrite Copilot</div>
-            <div className="text-[10px] text-zinc-500">Inteligência do Vault</div>
-          </div>
+    <div className="w-84 h-full bg-[#0c0c0f] border-r border-zinc-800/80 flex flex-col select-none shrink-0 text-xs z-10">
+      {/* Header matching reference layout */}
+      <div className="h-10 px-3 border-b border-zinc-800/80 bg-[#0e0e12] flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700/60 text-zinc-200 text-xs max-w-[210px] truncate shadow-sm">
+          <Bot className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+          <span className="truncate font-medium">{effectiveNote.title}</span>
+          <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0 ml-0.5" />
         </div>
 
-        <button
-          onClick={onClose}
-          className="p-1 hover:text-zinc-200 text-zinc-500 rounded transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={runSmartDiscovery}
+            disabled={isAnalyzing}
+            className="p-1.5 text-zinc-400 hover:text-violet-300 hover:bg-zinc-800/60 rounded-md transition-colors"
+            title="Analisar conexões semânticas com o Vault"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin text-violet-400' : ''}`} />
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 rounded-md transition-colors"
+            title="Fechar Agente"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-4">
-        {/* Quick Action: Discover Connections */}
-        <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-zinc-300">Conexões Ocultas</span>
-            <button
-              onClick={runSmartDiscovery}
-              disabled={isAnalyzing}
-              className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-violet-600/30 hover:bg-violet-600/50 text-violet-300 rounded border border-violet-500/40 transition-colors"
-            >
-              <RefreshCw className={`w-3 h-3 ${isAnalyzing ? 'animate-spin' : ''}`} />
-              <span>{isAnalyzing ? 'Analisando...' : 'Analisar'}</span>
-            </button>
-          </div>
-
-          {suggestedConnections.length > 0 ? (
-            <div className="space-y-1.5 pt-1">
+      {/* Main Content / Chat Feed */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin">
+        {/* Semantic Suggestions */}
+        {suggestedConnections.length > 0 && (
+          <div className="p-2.5 bg-[#121216] rounded-xl border border-zinc-800/90 space-y-1.5">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-300">
+              <span className="flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-violet-400" />
+                Conexões Descobertas
+              </span>
+            </div>
+            <div className="space-y-1.5 pt-0.5">
               {suggestedConnections.map(c => (
                 <div
                   key={c.note.id}
-                  className="p-2 bg-zinc-900 rounded-lg border border-zinc-800 space-y-1"
+                  className="p-2 bg-zinc-900/90 rounded-lg border border-zinc-800/80 space-y-1"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-violet-300 truncate">[[{c.note.title}]]</span>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-medium text-violet-300 truncate text-[11px]">[[{c.note.title}]]</span>
                     <button
                       onClick={() => onConnectNote(c.note.title)}
-                      className="px-1.5 py-0.5 bg-violet-600 hover:bg-violet-500 text-white rounded text-[10px] font-medium transition-colors"
-                      title="Adicionar link na nota atual"
+                      className="px-2 py-0.5 bg-violet-600 hover:bg-violet-500 text-white rounded text-[10px] font-medium transition-colors shrink-0"
+                      title="Adicionar link na nota"
                     >
                       + Linkar
                     </button>
@@ -178,18 +190,14 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-[11px] text-zinc-500 italic">
-              Clique em Analisar para descobrir afinidades semânticas com outras notas do Vault.
-            </p>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Suggested Tags */}
         {suggestedTags.length > 0 && (
-          <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800 space-y-1.5">
-            <span className="font-semibold text-zinc-300">Tags Sugeridas</span>
-            <div className="flex flex-wrap gap-1">
+          <div className="p-2.5 bg-[#121216] rounded-xl border border-zinc-800/90 space-y-1">
+            <span className="font-semibold text-zinc-300 text-[11px]">Tags Sugeridas</span>
+            <div className="flex flex-wrap gap-1 pt-1">
               {suggestedTags.map(t => (
                 <button
                   key={t}
@@ -203,48 +211,67 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           </div>
         )}
 
-        {/* Chat History */}
-        <div className="space-y-2 pt-2 border-t border-zinc-800">
-          <div className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
-            Conversar com a Nota
-          </div>
-          <div className="space-y-2">
-            {messages.map(m => (
+        {/* Messages Feed */}
+        <div className="space-y-2.5 pt-1">
+          {messages.map(m => (
+            <div
+              key={m.id}
+              className={`flex flex-col gap-1 text-xs leading-relaxed ${
+                m.sender === 'user' ? 'items-end' : 'items-start'
+              }`}
+            >
+              <div className="text-[10px] text-zinc-500 font-medium px-1 flex items-center gap-1">
+                {m.sender === 'ai' ? (
+                  <>
+                    <Bot className="w-3 h-3 text-violet-400" />
+                    <span>Agente Pyrite</span>
+                  </>
+                ) : (
+                  <>
+                    <User className="w-3 h-3 text-zinc-400" />
+                    <span>Você</span>
+                  </>
+                )}
+              </div>
               <div
-                key={m.id}
-                className={`flex gap-2 p-2 rounded-lg text-xs leading-relaxed ${
+                className={`p-2.5 rounded-2xl max-w-[92%] ${
                   m.sender === 'user'
-                    ? 'bg-zinc-800 text-zinc-200 ml-4'
-                    : 'bg-violet-950/30 border border-violet-900/40 text-zinc-300 mr-2'
+                    ? 'bg-zinc-800 text-zinc-100 rounded-br-xs'
+                    : 'bg-[#15151a] border border-zinc-800/90 text-zinc-200 rounded-bl-xs shadow-sm'
                 }`}
               >
-                {m.sender === 'ai' ? (
-                  <Bot className="w-3.5 h-3.5 text-violet-400 shrink-0 mt-0.5" />
-                ) : (
-                  <User className="w-3.5 h-3.5 text-zinc-400 shrink-0 mt-0.5" />
-                )}
-                <div>{m.text}</div>
+                {m.text}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Chat Input */}
-      <form onSubmit={handleSendMessage} className="p-2.5 border-t border-zinc-800 bg-zinc-950/80 flex items-center gap-1.5">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Pergunte ao Vault..."
-          className="flex-1 px-3 py-1.5 bg-zinc-900 border border-zinc-700/80 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-violet-500"
-        />
-        <button
-          type="submit"
-          className="p-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors"
-        >
-          <Send className="w-3.5 h-3.5" />
-        </button>
+      {/* Modern Chat Input Card (Styled matching reference image) */}
+      <form onSubmit={handleSendMessage} className="p-2.5 border-t border-zinc-800/80 bg-[#0c0c0f]">
+        <div className="bg-[#15151a] border border-zinc-800 focus-within:border-violet-500/60 rounded-2xl p-2 transition-all shadow-inner flex flex-col gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Envie uma mensagem para o Agente..."
+            className="w-full bg-transparent px-1 pt-0.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none"
+          />
+          <div className="flex items-center justify-between pt-1 border-t border-zinc-800/40">
+            <div className="flex items-center gap-1 text-[10px] text-zinc-400 bg-zinc-900/90 border border-zinc-800 px-2 py-0.5 rounded-full max-w-[190px] truncate">
+              <span className="text-violet-400 font-bold">@</span>
+              <span className="truncate">{effectiveNote.title}</span>
+            </div>
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              className="w-6 h-6 rounded-full bg-violet-600 hover:bg-violet-500 disabled:opacity-30 disabled:hover:bg-violet-600 text-white flex items-center justify-center transition-all cursor-pointer shadow-sm shrink-0"
+              title="Enviar mensagem"
+            >
+              <ArrowUp className="w-3.5 h-3.5 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
       </form>
     </div>
   )

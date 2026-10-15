@@ -126,7 +126,7 @@ export const App: React.FC = () => {
   const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0]?.id || '')
 
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true)
-  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true)
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
   const [isAiOpen, setIsAiOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
@@ -562,9 +562,20 @@ export const App: React.FC = () => {
           isOpen={isLeftSidebarOpen}
         />
 
+        {/* AI Agent Panel - Opens beside main sidebar, to the left of the content (like reference image) */}
+        {isAiOpen && (
+          <AiAssistant
+            currentNote={currentNote}
+            allNotes={notes}
+            onConnectNote={handleConnectNote}
+            onAddTag={handleAddTag}
+            onClose={() => setIsAiOpen(false)}
+          />
+        )}
+
         {/* Central View Area with Workspace Tab Header */}
         <main className="flex-1 h-full overflow-hidden relative bg-[#0f0f12] flex flex-col">
-          {/* Obsidian Tab Header with right-side actions & max 5 tabs */}
+          {/* Obsidian Tab Header - Stays across full top of central section */}
           <TabHeader
             tabs={tabs}
             activeTabId={activeTabId}
@@ -574,8 +585,6 @@ export const App: React.FC = () => {
             currentView={currentView}
             displayMode={editorDisplayMode}
             onChangeDisplayMode={setEditorDisplayMode}
-            isAiOpen={isAiOpen}
-            onToggleAi={() => setIsAiOpen(o => !o)}
             isRightSidebarOpen={isRightSidebarOpen}
             onToggleRightSidebar={() => setIsRightSidebarOpen(o => !o)}
             onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
@@ -583,54 +592,45 @@ export const App: React.FC = () => {
             onExportVault={handleExportVault}
           />
 
-          <div className="flex-1 overflow-hidden relative">
-            {currentView === 'editor' && currentNote && (
-              <Editor
-                note={currentNote}
-                allNotes={notes}
-                displayMode={editorDisplayMode}
-                onUpdateNote={handleUpdateNote}
-                onNavigate={handleNavigate}
-                settings={settings}
-              />
-            )}
+          {/* Page area below Header: Contains Editor/Graph/Canvas and the RightSidebar (Sumário) */}
+          <div className="flex-1 flex overflow-hidden relative">
+            <div className="flex-1 overflow-hidden relative">
+              {currentView === 'editor' && currentNote && (
+                <Editor
+                  note={currentNote}
+                  allNotes={notes}
+                  displayMode={editorDisplayMode}
+                  onUpdateNote={handleUpdateNote}
+                  onNavigate={handleNavigate}
+                  settings={settings}
+                />
+              )}
 
-            {currentView === 'graph' && (
-              <GraphView
-                notes={notes}
-                currentNoteId={currentNoteId}
-                onSelectNote={handleSelectNote}
-              />
-            )}
+              {currentView === 'graph' && (
+                <GraphView
+                  notes={notes}
+                  currentNoteId={currentNoteId}
+                  onSelectNote={handleSelectNote}
+                />
+              )}
 
-            {currentView === 'canvas' && (
-              <CanvasView
-                notes={notes}
-                onOpenNote={handleSelectNote}
-              />
-            )}
+              {currentView === 'canvas' && (
+                <CanvasView
+                  notes={notes}
+                  onOpenNote={handleSelectNote}
+                />
+              )}
+            </div>
+
+            {/* Right Sidebar (Backlinks, Outline, Tags) - Height limited to page below header */}
+            <RightSidebar
+              currentNote={currentNote}
+              allNotes={notes}
+              onSelectNote={handleSelectNote}
+              isOpen={isRightSidebarOpen}
+            />
           </div>
         </main>
-
-        {/* Right Sidebar (Backlinks, Outline, Tags) */}
-        <RightSidebar
-          currentNote={currentNote}
-          allNotes={notes}
-          onSelectNote={handleSelectNote}
-          onOpenAi={() => setIsAiOpen(true)}
-          isOpen={isRightSidebarOpen}
-        />
-
-        {/* AI Copilot Panel */}
-        {isAiOpen && currentNote && (
-          <AiAssistant
-            currentNote={currentNote}
-            allNotes={notes}
-            onConnectNote={handleConnectNote}
-            onAddTag={handleAddTag}
-            onClose={() => setIsAiOpen(false)}
-          />
-        )}
       </div>
 
       {/* 3. Bottom Status Bar */}

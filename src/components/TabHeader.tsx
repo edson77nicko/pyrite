@@ -8,7 +8,6 @@ import {
   Edit3,
   Eye,
   Search,
-  Sparkles,
   Download,
   PanelRight,
   SlidersHorizontal,
@@ -28,8 +27,6 @@ interface TabHeaderProps {
   currentView: ViewMode
   displayMode: EditorDisplayMode
   onChangeDisplayMode: (mode: EditorDisplayMode) => void
-  isAiOpen: boolean
-  onToggleAi: () => void
   isRightSidebarOpen: boolean
   onToggleRightSidebar: () => void
   onOpenCommandPalette: () => void
@@ -46,8 +43,6 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
   currentView,
   displayMode,
   onChangeDisplayMode,
-  isAiOpen,
-  onToggleAi,
   isRightSidebarOpen,
   onToggleRightSidebar,
   onOpenCommandPalette,
@@ -156,19 +151,6 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           title="Buscar no Vault / Paleta de Comandos (Ctrl+P)"
         >
           <Search className="w-3.5 h-3.5" />
-        </button>
-
-        {/* AI Assistant */}
-        <button
-          onClick={onToggleAi}
-          className={`p-1.5 rounded-md transition-colors ${
-            isAiOpen
-              ? 'bg-violet-950/80 text-violet-300 border border-violet-800/60 shadow-sm'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
-          }`}
-          title="Assistente IA Copilot"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-violet-400" />
         </button>
 
         {/* Export Vault */}

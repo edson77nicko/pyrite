@@ -5,7 +5,7 @@ import {
   Share2,
   Layout,
   PanelLeft,
-  Sparkles,
+  Bot,
   Search,
   Calendar,
   SlidersHorizontal
@@ -88,6 +88,19 @@ export const Ribbon: React.FC<RibbonProps> = ({
         >
           <Layout className="w-4 h-4" />
         </button>
+
+        {/* AI Agent Icon right below Canvas */}
+        <button
+          onClick={onToggleAi}
+          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${
+            isAiOpen
+              ? 'bg-violet-600/25 text-violet-300 border border-violet-500/50 shadow-sm'
+              : 'text-zinc-400 hover:text-violet-300 hover:bg-zinc-800/50'
+          }`}
+          title="Agente de IA (Copilot do Vault)"
+        >
+          <Bot className="w-4 h-4" />
+        </button>
       </div>
 
       <div className="w-5 h-px bg-zinc-800/80 my-2" />
@@ -114,20 +127,8 @@ export const Ribbon: React.FC<RibbonProps> = ({
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* 4. Bottom Utilities: AI Assistant & Settings */}
+      {/* 4. Bottom Utilities: Settings only */}
       <div className="flex flex-col items-center gap-1">
-        <button
-          onClick={onToggleAi}
-          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${
-            isAiOpen
-              ? 'bg-violet-950/80 text-violet-300 border border-violet-800/60 shadow-sm'
-              : 'text-zinc-400 hover:text-violet-300 hover:bg-zinc-800/50'
-          }`}
-          title="Assistente IA Copilot"
-        >
-          <Sparkles className="w-4 h-4" />
-        </button>
-
         <button
           onClick={onOpenSettings}
           className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 rounded-lg transition-colors"
