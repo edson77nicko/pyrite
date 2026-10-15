@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import type { Note, EditorDisplayMode, AppSettings } from '../types'
 import { LivePreviewEditor, type LivePreviewEditorHandle } from './LivePreviewEditor'
+import { DocumentOutlineRail } from './DocumentOutlineRail'
 import {
   Heading1,
   Heading2,
@@ -35,6 +36,7 @@ export const Editor: React.FC<EditorProps> = ({
   const [content, setContent] = useState(note.content)
   const [title, setTitle] = useState(note.title)
   const liveEditorRef = useRef<LivePreviewEditorHandle>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Keep internal state in sync when note changes
   useEffect(() => {
@@ -84,7 +86,7 @@ export const Editor: React.FC<EditorProps> = ({
   }[settings.fontSize]
 
   return (
-    <div className="flex flex-col h-full bg-[#121215] overflow-hidden">
+    <div className="flex flex-col h-full bg-[#121215] overflow-hidden relative">
       {/* Top Editor Toolbar (Breadcrumb + In-editor formatting tools) */}
       <div className="flex items-center justify-between px-6 py-2 bg-zinc-900/40 border-b border-zinc-800/60 text-xs text-zinc-400 shrink-0">
         <div className="flex items-center gap-3">
@@ -130,7 +132,7 @@ export const Editor: React.FC<EditorProps> = ({
       </div>
 
       {/* 3. Editor Surface (In-place WYSIWYG Live Preview matching Obsidian screenshot) */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 flex justify-center">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 py-6 flex justify-center custom-chat-scrollbar">
         <div className={`w-full ${widthClasses} flex flex-col`}>
           {/* Note Title Input */}
           <div className="pb-4 mb-2 border-b border-zinc-800/60">
@@ -163,6 +165,13 @@ export const Editor: React.FC<EditorProps> = ({
           </div>
         </div>
       </div>
+
+      {/* In-page Minimap / Floating Outline Scroller (Dashboard Heading Rail) */}
+      <DocumentOutlineRail
+        content={content}
+        noteTitle={title}
+        scrollContainerRef={scrollContainerRef}
+      />
 
       {/* 4. Bottom Footer Info Bar */}
       <div className="flex items-center justify-between px-6 py-1.5 bg-[#0c0c0e] border-t border-zinc-800/80 text-[11px] text-zinc-500 shrink-0">
