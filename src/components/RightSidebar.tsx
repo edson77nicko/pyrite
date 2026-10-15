@@ -50,10 +50,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/40 p-1">
         <button
           onClick={() => setActiveTab('links')}
-          className={`flex-1 py-1.5 px-2 rounded flex items-center justify-center gap-1.5 font-medium transition-colors ${
+          className={`flex-1 py-1.5 px-2 rounded flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
             activeTab === 'links'
-              ? 'bg-zinc-800 text-violet-300 border border-zinc-700/60'
-              : 'text-zinc-500 hover:text-zinc-300'
+              ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
+              : 'text-zinc-500 hover:text-amber-300'
           }`}
           title="Backlinks & Links"
         >
@@ -63,10 +63,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
         <button
           onClick={() => setActiveTab('outline')}
-          className={`flex-1 py-1.5 px-2 rounded flex items-center justify-center gap-1.5 font-medium transition-colors ${
+          className={`flex-1 py-1.5 px-2 rounded flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
             activeTab === 'outline'
-              ? 'bg-zinc-800 text-violet-300 border border-zinc-700/60'
-              : 'text-zinc-500 hover:text-zinc-300'
+              ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
+              : 'text-zinc-500 hover:text-amber-300'
           }`}
           title="Sumário / Estrutura"
         >
@@ -76,10 +76,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
         <button
           onClick={() => setActiveTab('tags')}
-          className={`flex-1 py-1.5 px-2 rounded flex items-center justify-center gap-1.5 font-medium transition-colors ${
+          className={`flex-1 py-1.5 px-2 rounded flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
             activeTab === 'tags'
-              ? 'bg-zinc-800 text-violet-300 border border-zinc-700/60'
-              : 'text-zinc-500 hover:text-zinc-300'
+              ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
+              : 'text-zinc-500 hover:text-amber-300'
           }`}
           title="Tags da nota"
         >
@@ -96,7 +96,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between text-zinc-400 font-semibold tracking-wider uppercase text-[10px]">
                 <div className="flex items-center gap-1.5">
-                  <Link2 className="w-3 h-3 text-violet-400" />
+                  <Link2 className="w-3 h-3 text-amber-400" />
                   <span>Backlinks ({backlinks.length})</span>
                 </div>
               </div>
@@ -111,7 +111,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     <div
                       key={bn.id}
                       onClick={() => onSelectNote(bn.id)}
-                      className="p-1.5 bg-zinc-800/60 hover:bg-zinc-800 rounded text-zinc-300 hover:text-violet-300 cursor-pointer border border-zinc-800/80 transition-colors flex items-center justify-between"
+                      className="p-1.5 bg-zinc-800/60 hover:bg-zinc-800 rounded text-zinc-300 hover:text-amber-300 cursor-pointer border border-zinc-800/80 transition-colors flex items-center justify-between"
                     >
                       <span className="truncate">{bn.title}</span>
                       <span className="text-[10px] text-zinc-500 font-mono">[[...]]</span>
@@ -171,7 +171,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 {headings.map((h, idx) => (
                   <div
                     key={idx}
-                    className="text-zinc-300 hover:text-violet-300 cursor-pointer truncate py-1 px-1 rounded hover:bg-zinc-800/40 transition-colors"
+                    className="text-zinc-300 hover:text-amber-300 cursor-pointer truncate py-1 px-1 rounded hover:bg-zinc-800/40 transition-colors"
                     style={{ paddingLeft: `${(h.level - 1) * 12 + 4}px` }}
                   >
                     <span className="text-zinc-600 mr-1.5 font-mono">{'#'.repeat(h.level)}</span>
@@ -198,7 +198,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 {currentNote.tags.map(t => (
                   <span
                     key={t}
-                    className="bg-violet-950/60 text-violet-300 border border-violet-800/50 px-2 py-0.5 rounded-full font-mono text-xs"
+                    className="bg-amber-950/40 text-amber-300 border border-amber-800/40 px-2.5 py-0.5 rounded-full font-mono text-xs shadow-sm"
                   >
                     #{t}
                   </span>

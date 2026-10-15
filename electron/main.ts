@@ -28,7 +28,7 @@ let win: BrowserWindow | null = null
 
 function createWindow() {
   win = new BrowserWindow({
-    title: 'Pyrite',
+    title: 'Pyrita',
     width: 1300,
     height: 820,
     minWidth: 920,

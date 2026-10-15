@@ -23,7 +23,7 @@ import { SettingsModal } from './components/SettingsModal'
 const MAX_TABS = 5
 
 const DEFAULT_SETTINGS: AppSettings = {
-  accentColor: 'violet',
+  accentColor: 'amber', // Pyrita: Ouro dos Tolos / Metallic Gold
   fontSize: 'medium',
   editorWidth: 'standard'
 }
@@ -135,19 +135,28 @@ export const App: React.FC = () => {
   const currentNote = notes.find(n => n.id === currentNoteId) || notes[0]
 
   // Persist Settings and apply dynamic accent color CSS variable
-  const handleUpdateSettings = (newSettings: AppSettings) => {
-    setSettings(newSettings)
-    localStorage.setItem('pyrite_app_settings', JSON.stringify(newSettings))
-
+  const applyAccentColor = (accent: AppSettings['accentColor']) => {
     const colorMap = {
+      amber: '#f59e0b', // Dourado Pirita
       violet: '#8b5cf6',
       emerald: '#10b981',
       cyan: '#06b6d4',
-      amber: '#f59e0b',
       rose: '#ec4899'
     }
-    document.documentElement.style.setProperty('--accent', colorMap[newSettings.accentColor] || '#8b5cf6')
+    const hex = colorMap[accent] || '#f59e0b'
+    document.documentElement.style.setProperty('--accent', hex)
   }
+
+  const handleUpdateSettings = (newSettings: AppSettings) => {
+    setSettings(newSettings)
+    localStorage.setItem('pyrite_app_settings', JSON.stringify(newSettings))
+    applyAccentColor(newSettings.accentColor)
+  }
+
+  // Ensure accent is applied on initial mount
+  useEffect(() => {
+    applyAccentColor(settings.accentColor)
+  }, [settings.accentColor])
 
   // Global Keyboard Shortcuts (Ctrl+P, Ctrl+O, Ctrl+G, Ctrl+N)
   useEffect(() => {

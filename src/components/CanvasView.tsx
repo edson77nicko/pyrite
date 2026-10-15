@@ -229,7 +229,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ notes = [], onOpenNote }
       <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-zinc-900/90 backdrop-blur-md border border-zinc-800 rounded-xl p-1.5 shadow-2xl">
         <button
           onClick={() => handleAddCard()}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-medium transition-colors shadow-sm"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-zinc-950 rounded-lg text-xs font-semibold transition-all shadow-md shadow-amber-950/30 cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Novo Cartão</span>
@@ -241,7 +241,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ notes = [], onOpenNote }
               onClick={() => setShowNotePicker(p => !p)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700/60 rounded-lg text-xs font-medium transition-colors"
             >
-              <FileText className="w-3.5 h-3.5 text-violet-400" />
+              <FileText className="w-3.5 h-3.5 text-amber-400" />
               <span>Inserir Nota</span>
             </button>
 
@@ -377,7 +377,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ notes = [], onOpenNote }
               key={card.id}
               className={`canvas-card absolute rounded-2xl p-4 shadow-2xl flex flex-col justify-between border cursor-move transition-all backdrop-blur-sm ${
                 isSelected
-                  ? 'ring-2 ring-violet-500 border-transparent shadow-violet-950/40'
+                  ? 'ring-2 ring-amber-400/80 border-transparent shadow-amber-950/40'
                   : 'border-zinc-800/80 hover:border-zinc-700'
               } ${isConnectingSource ? 'ring-2 ring-amber-400' : ''}`}
               style={{
@@ -399,7 +399,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ notes = [], onOpenNote }
                         e.stopPropagation()
                         onOpenNote(card.noteId!)
                       }}
-                      className="p-1 hover:text-violet-400 rounded text-[10px]"
+                      className="p-1 hover:text-amber-400 rounded text-[10px]"
                       title="Abrir nota no Editor"
                     >
                       ↗
@@ -431,7 +431,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ notes = [], onOpenNote }
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleStartConnect(card.id)}
-                    className="p-1 hover:text-violet-400 hover:bg-zinc-800 rounded-md transition-colors"
+                    className="p-1 hover:text-amber-400 hover:bg-zinc-800 rounded-md transition-colors"
                     title="Conectar com outro cartão (clique aqui, depois no outro)"
                   >
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -452,7 +452,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ notes = [], onOpenNote }
 
       {/* 4. Canvas Helper Pill */}
       <div className="absolute bottom-5 left-5 z-20 bg-zinc-900/80 backdrop-blur-md border border-zinc-800 rounded-xl px-3.5 py-1.5 text-xs text-zinc-500 shadow-xl flex items-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
         <span>Dê duplo clique para criar um cartão em qualquer lugar</span>
       </div>
     </div>

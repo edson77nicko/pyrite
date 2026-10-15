@@ -10,11 +10,11 @@ interface SettingsModalProps {
 }
 
 const ACCENT_OPTIONS: { id: AccentColor; label: string; color: string }[] = [
-  { id: 'violet', label: 'Violeta', color: '#8b5cf6' },
+  { id: 'amber', label: 'Dourado Pirita (Ouro dos Tolos)', color: '#f59e0b' },
+  { id: 'violet', label: 'Ametista / Violeta', color: '#8b5cf6' },
   { id: 'emerald', label: 'Esmeralda', color: '#10b981' },
   { id: 'cyan', label: 'Ciano', color: '#06b6d4' },
-  { id: 'amber', label: 'Âmbar', color: '#f59e0b' },
-  { id: 'rose', label: 'Rosa', color: '#ec4899' },
+  { id: 'rose', label: 'Rubi / Rosa', color: '#ec4899' },
 ]
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -37,8 +37,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800 bg-zinc-950/70">
           <div className="flex items-center gap-2 font-semibold text-sm text-zinc-100">
-            <Palette className="w-4 h-4 text-violet-400" />
-            <span>Personalizar Pyrite</span>
+            <Palette className="w-4 h-4 text-amber-400" />
+            <span>Personalizar Pyrita</span>
           </div>
           <button
             onClick={onClose}
@@ -98,7 +98,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onClick={() => onUpdateSettings({ ...settings, fontSize: opt.id as any })}
                   className={`py-2 px-2 rounded-xl border text-center font-medium transition-all ${
                     settings.fontSize === opt.id
-                      ? 'bg-violet-600/20 border-violet-500 text-violet-200 shadow-sm'
+                      ? 'bg-amber-500/15 border-amber-500/60 text-amber-200 shadow-sm'
                       : 'border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
                   }`}
                 >
@@ -125,7 +125,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onClick={() => onUpdateSettings({ ...settings, editorWidth: opt.id as any })}
                   className={`py-2 px-2 rounded-xl border text-center font-medium transition-all ${
                     settings.editorWidth === opt.id
-                      ? 'bg-violet-600/20 border-violet-500 text-violet-200 shadow-sm'
+                      ? 'bg-amber-500/15 border-amber-500/60 text-amber-200 shadow-sm'
                       : 'border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
                   }`}
                 >
@@ -140,7 +140,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="px-5 py-3 border-t border-zinc-800 bg-zinc-950/60 flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg font-medium transition-colors"
+            className="px-4 py-1.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-zinc-950 font-semibold rounded-lg shadow-md shadow-amber-950/30 transition-all cursor-pointer"
           >
             Concluído
           </button>

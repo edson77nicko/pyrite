@@ -46,7 +46,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     {
       id: 'm1',
       sender: 'ai',
-      text: `Olá! Sou o agente de IA do Pyrite. Estou analisando sua nota **"${effectiveNote.title}"** e todo o seu Vault. Como posso ajudar seu raciocínio hoje?`
+      text: `Olá! Sou o agente de IA do Pyrita. Estou analisando sua nota **"${effectiveNote.title}"** e todo o seu Vault. Como posso ajudar seu raciocínio hoje?`
     }
   ])
   const [input, setInput] = useState('')
@@ -135,7 +135,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       {/* Header matching reference layout */}
       <div className="h-10 px-3 border-b border-zinc-800/80 bg-[#0e0e12] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700/60 text-zinc-200 text-xs max-w-[210px] truncate shadow-sm">
-          <Bot className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+          <Bot className="w-3.5 h-3.5 text-amber-400 shrink-0" />
           <span className="truncate font-medium">{effectiveNote.title}</span>
           <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0 ml-0.5" />
         </div>
@@ -144,14 +144,14 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           <button
             onClick={runSmartDiscovery}
             disabled={isAnalyzing}
-            className="p-1.5 text-zinc-400 hover:text-violet-300 hover:bg-zinc-800/60 rounded-md transition-colors"
+            className="p-1.5 text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
             title="Analisar conexões semânticas com o Vault"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin text-violet-400' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin text-amber-400' : ''}`} />
           </button>
           <button
             onClick={onClose}
-            className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 rounded-md transition-colors"
+            className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
             title="Fechar Agente"
           >
             <X className="w-3.5 h-3.5" />
@@ -166,7 +166,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           <div className="p-2.5 bg-[#121216] rounded-xl border border-zinc-800/90 space-y-1.5">
             <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-300">
               <span className="flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-violet-400" />
+                <Sparkles className="w-3 h-3 text-amber-400" />
                 Conexões Descobertas
               </span>
             </div>
@@ -177,10 +177,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
                   className="p-2 bg-zinc-900/90 rounded-lg border border-zinc-800/80 space-y-1"
                 >
                   <div className="flex items-center justify-between gap-1">
-                    <span className="font-medium text-violet-300 truncate text-[11px]">[[{c.note.title}]]</span>
+                    <span className="font-medium text-amber-300 truncate text-[11px]">[[{c.note.title}]]</span>
                     <button
                       onClick={() => onConnectNote(c.note.title)}
-                      className="px-2 py-0.5 bg-violet-600 hover:bg-violet-500 text-white rounded text-[10px] font-medium transition-colors shrink-0"
+                      className="px-2 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-zinc-950 font-bold rounded text-[10px] transition-colors shrink-0 shadow-sm cursor-pointer"
                       title="Adicionar link na nota"
                     >
                       + Linkar
@@ -202,7 +202,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
                 <button
                   key={t}
                   onClick={() => onAddTag(t)}
-                  className="px-2 py-0.5 bg-zinc-800 hover:bg-violet-900/40 text-violet-300 border border-zinc-700/60 rounded-full text-[10px] font-mono transition-colors"
+                  className="px-2 py-0.5 bg-zinc-800 hover:bg-amber-500/20 text-amber-300 border border-zinc-700/60 rounded-full text-[10px] font-mono transition-colors cursor-pointer"
                 >
                   +{t}
                 </button>
@@ -223,8 +223,8 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
               <div className="text-[10px] text-zinc-500 font-medium px-1 flex items-center gap-1">
                 {m.sender === 'ai' ? (
                   <>
-                    <Bot className="w-3 h-3 text-violet-400" />
-                    <span>Agente Pyrite</span>
+                    <Bot className="w-3 h-3 text-amber-400" />
+                    <span>Agente Pyrita</span>
                   </>
                 ) : (
                   <>
@@ -249,7 +249,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
       {/* Modern Chat Input Card (Styled matching reference image) */}
       <form onSubmit={handleSendMessage} className="p-2.5 border-t border-zinc-800/80 bg-[#0c0c0f]">
-        <div className="bg-[#15151a] border border-zinc-800 focus-within:border-violet-500/60 rounded-2xl p-2 transition-all shadow-inner flex flex-col gap-2">
+        <div className="bg-[#15151a] border border-zinc-800 focus-within:border-amber-500/60 rounded-2xl p-2 transition-all shadow-inner flex flex-col gap-2">
           <input
             type="text"
             value={input}
@@ -259,13 +259,13 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           />
           <div className="flex items-center justify-between pt-1 border-t border-zinc-800/40">
             <div className="flex items-center gap-1 text-[10px] text-zinc-400 bg-zinc-900/90 border border-zinc-800 px-2 py-0.5 rounded-full max-w-[190px] truncate">
-              <span className="text-violet-400 font-bold">@</span>
+              <span className="text-amber-400 font-bold">@</span>
               <span className="truncate">{effectiveNote.title}</span>
             </div>
             <button
               type="submit"
               disabled={!input.trim()}
-              className="w-6 h-6 rounded-full bg-violet-600 hover:bg-violet-500 disabled:opacity-30 disabled:hover:bg-violet-600 text-white flex items-center justify-center transition-all cursor-pointer shadow-sm shrink-0"
+              className="w-6 h-6 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 disabled:opacity-30 disabled:hover:from-amber-500 disabled:hover:to-yellow-500 text-zinc-950 font-bold flex items-center justify-center transition-all cursor-pointer shadow-md shadow-amber-950/30 shrink-0"
               title="Enviar mensagem"
             >
               <ArrowUp className="w-3.5 h-3.5 stroke-[2.5]" />

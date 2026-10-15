@@ -55,10 +55,10 @@ export const Ribbon: React.FC<RibbonProps> = ({
       <div className="flex flex-col items-center gap-1">
         <button
           onClick={() => onChangeView('editor')}
-          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${
+          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             currentView === 'editor'
-              ? 'bg-violet-600/20 text-violet-300 border border-violet-500/40 shadow-sm'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
+              : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50'
           }`}
           title="Editor de Notas"
         >
@@ -67,10 +67,10 @@ export const Ribbon: React.FC<RibbonProps> = ({
 
         <button
           onClick={() => onChangeView('graph')}
-          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${
+          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             currentView === 'graph'
-              ? 'bg-violet-600/20 text-violet-300 border border-violet-500/40 shadow-sm'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
+              : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50'
           }`}
           title="Grafo de Conhecimento"
         >
@@ -79,10 +79,10 @@ export const Ribbon: React.FC<RibbonProps> = ({
 
         <button
           onClick={() => onChangeView('canvas')}
-          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${
+          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             currentView === 'canvas'
-              ? 'bg-violet-600/20 text-violet-300 border border-violet-500/40 shadow-sm'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
+              : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50'
           }`}
           title="Canvas Infinito"
         >
@@ -92,12 +92,12 @@ export const Ribbon: React.FC<RibbonProps> = ({
         {/* AI Agent Icon right below Canvas */}
         <button
           onClick={onToggleAi}
-          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${
+          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             isAiOpen
-              ? 'bg-violet-600/25 text-violet-300 border border-violet-500/50 shadow-sm'
-              : 'text-zinc-400 hover:text-violet-300 hover:bg-zinc-800/50'
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+              : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50'
           }`}
-          title="Agente de IA (Copilot do Vault)"
+          title="Agente Pyrita"
         >
           <Bot className="w-4 h-4" />
         </button>
@@ -109,7 +109,7 @@ export const Ribbon: React.FC<RibbonProps> = ({
       <div className="flex flex-col items-center gap-1">
         <button
           onClick={onOpenCommandPalette}
-          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 rounded-lg transition-colors"
+          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
           title="Busca Rápida / Paleta de Comandos (Ctrl + P)"
         >
           <Search className="w-4 h-4" />
@@ -117,7 +117,7 @@ export const Ribbon: React.FC<RibbonProps> = ({
 
         <button
           onClick={onOpenDailyNote}
-          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50 rounded-lg transition-colors"
+          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
           title="Abrir Nota Diária de Hoje"
         >
           <Calendar className="w-4 h-4" />
@@ -131,7 +131,7 @@ export const Ribbon: React.FC<RibbonProps> = ({
       <div className="flex flex-col items-center gap-1">
         <button
           onClick={onOpenSettings}
-          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 rounded-lg transition-colors"
+          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
           title="Configurações e Personalização"
         >
           <SlidersHorizontal className="w-4 h-4" />

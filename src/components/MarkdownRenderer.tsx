@@ -43,10 +43,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             e.stopPropagation()
             onNavigate(destination)
           }}
-          className="inline-flex items-center text-violet-400 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/60 border border-violet-800/50 hover:border-violet-600 rounded-md px-1.5 py-0.5 mx-0.5 font-medium transition-all text-xs group shadow-sm cursor-pointer"
+          className="inline-flex items-center text-amber-300 hover:text-amber-100 bg-amber-950/30 hover:bg-amber-900/50 border border-amber-800/40 hover:border-amber-500/70 rounded-md px-1.5 py-0.5 mx-0.5 font-medium transition-all text-xs group shadow-sm cursor-pointer"
           title={`Navegar para nota: ${destination}`}
         >
-          <span className="underline decoration-violet-500/40 group-hover:decoration-violet-300 underline-offset-2">{displayName}</span>
+          <span className="underline decoration-amber-500/40 group-hover:decoration-amber-300 underline-offset-2">{displayName}</span>
         </button>
       )
       cursor = match.index + match[0].length
@@ -111,7 +111,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         return (
           <span
             key={`tag-${i}`}
-            className="inline-block bg-violet-950/50 text-violet-300 border border-violet-800/40 px-2 py-0.5 rounded-full text-xs font-mono font-medium mx-0.5 hover:border-violet-500 hover:text-violet-200 cursor-pointer transition-colors shadow-sm"
+            className="inline-block bg-amber-950/40 text-amber-300 border border-amber-800/40 px-2 py-0.5 rounded-full text-xs font-mono font-medium mx-0.5 hover:border-amber-500 hover:text-amber-200 cursor-pointer transition-colors shadow-sm"
           >
             {chunk}
           </span>
@@ -184,7 +184,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         <div key={`code-${i}`} className="my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/90 text-xs font-mono shadow-lg">
           <div className="flex items-center justify-between px-3.5 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400">
             <span className="uppercase font-semibold tracking-wider text-[11px] text-zinc-300 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-violet-500" />
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
               {lang || 'código'}
             </span>
             <button
@@ -323,7 +323,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         i++
       }
       blocks.push(
-        <blockquote key={`quote-${i}`} className="my-3 pl-4 border-l-2 border-violet-500/80 italic text-zinc-400 text-xs py-0.5">
+        <blockquote key={`quote-${i}`} className="my-3 pl-4 border-l-2 border-amber-500/80 italic text-zinc-400 text-xs py-0.5">
           {quoteLines.map((ql, qIdx) => (
             <p key={qIdx}>{renderInlineFormatted(ql)}</p>
           ))}

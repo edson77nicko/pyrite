@@ -66,7 +66,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       id: 'cmd-open-graph',
       title: 'Abrir Grafo de Conhecimento',
       subtitle: 'Visualizar todas as conexões em 2D',
-      icon: <Share2 className="w-4 h-4 text-violet-400" />,
+      icon: <Share2 className="w-4 h-4 text-amber-400" />,
       action: () => onChangeViewMode('graph')
     },
     {
@@ -115,7 +115,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       id: 'cmd-create-custom',
       title: `Criar nota: "${query.trim()}"`,
       subtitle: 'Criar e abrir instantaneamente',
-      icon: <Plus className="w-4 h-4 text-violet-400" />,
+      icon: <Plus className="w-4 h-4 text-amber-400" />,
       action: () => onCreateNote(query.trim())
     })
   }
@@ -148,8 +148,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         onClick={e => e.stopPropagation()}
       >
         {/* Search Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 bg-zinc-950/60">
-          <Search className="w-5 h-5 text-violet-400" />
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 bg-[#0c0c0e]">
+          <Search className="w-5 h-5 text-amber-400" />
           <input
             ref={inputRef}
             type="text"
@@ -185,7 +185,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   }}
                   onMouseEnter={() => setSelectedIndex(index)}
                   className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                    isSelected ? 'bg-violet-600/20 border border-violet-500/40 text-violet-200' : 'text-zinc-300 hover:bg-zinc-800/60'
+                    isSelected ? 'bg-amber-500/15 border border-amber-500/40 text-amber-200' : 'text-zinc-300 hover:bg-zinc-800/60'
                   }`}
                 >
                   <div className="flex items-center gap-3 truncate">
@@ -196,7 +196,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     </div>
                   </div>
                   {isSelected && (
-                    <span className="text-[10px] text-violet-400 font-mono">↵ Abrir</span>
+                    <span className="text-[10px] text-amber-400 font-mono">↵ Abrir</span>
                   )}
                 </div>
               )

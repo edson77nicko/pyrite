@@ -38,12 +38,12 @@ export function stripDuplicateTitleFromContent(content: string, title?: string):
 export const INITIAL_NOTES: Note[] = [
   {
     id: 'note-welcome',
-    title: 'Bem-vindo ao Pyrite',
+    title: 'Bem-vindo ao Pyrita',
     folder: 'Início',
-    tags: ['boas-vindas', 'pyrite', 'segundo-cérebro'],
+    tags: ['boas-vindas', 'pyrita', 'segundo-cérebro'],
     createdAt: Date.now() - 3600000 * 24,
     updatedAt: Date.now() - 3600000 * 12,
-    content: `O **Pyrite** é o seu segundo cérebro digital de alta performance, inspirado na filosofia **local-first** do [[Arquitetura do Obsidian]], mas com melhorias modernas:
+    content: `O **Pyrita** é o seu segundo cérebro digital de alta performance, inspirado na filosofia **local-first** do [[Arquitetura do Obsidian]], mas com melhorias modernas e estéticas refinadas:
 
 - 🕸️ **[[Grafos de Conhecimento]]**: Visualização interativa e fluida em 2D dos seus pensamentos.
 - 🔗 **Links Bidirecionais**: Conecte ideias digitando \`[[Nome da Nota]]\`.
@@ -62,7 +62,7 @@ export const INITIAL_NOTES: Note[] = [
 4. Crie novas notas e organize em pastas na barra lateral esquerda!
 
 ---
-*Pyrite — Feito com paixão pela engenharia de software e gestão do conhecimento.*
+*Pyrita — O ouro dos tolos que se transformou na sua maior riqueza intelectual.*
 `
   },
   {
@@ -88,7 +88,7 @@ export const INITIAL_NOTES: Note[] = [
    - **PDFs e Apresentações**: Integração de PDF.js e Reveal.js.
 
 > [!NOTE]
-> No Pyrite, elevamos este conceito para a Web e Desktop leve: criamos um motor de grafo com física vetorial contínua e integrador semântico de [[Produtividade com IA]].
+> No Pyrita, elevamos este conceito para a Web e Desktop leve: criamos um motor de grafo com física vetorial contínua e integrador semântico de [[Produtividade com IA]].
 `
   },
   {
@@ -117,12 +117,12 @@ Ao usar [[Links Bidirecionais]], cada nota se torna um nó em uma rede viva inte
     tags: ['canvas', 'visual', 'brainstorming'],
     createdAt: Date.now() - 3600000 * 15,
     updatedAt: Date.now() - 3600000 * 2,
-    content: `Nem todas as ideias cabem em uma página linear de texto. O **Canvas do Pyrite** permite espacializar pensamentos em um plano 2D infinito.
+    content: `Nem todas as ideias cabem em uma página linear de texto. O **Canvas do Pyrita** permite espacializar pensamentos em um plano 2D infinito.
 
 ### Recursos:
 - 📌 Criar cartões coloridos para diferentes categorias de ideias.
 - ⚡ Conectar nós com setas direcionadas de causa e efeito.
-- 🔀 Integrar notas do [[Bem-vindo ao Pyrite]] diretamente no quadro.
+- 🔀 Integrar notas do [[Bem-vindo ao Pyrita]] diretamente no quadro.
 - 🔍 Zoom e pan livres para visão macro ou detalhada.
 `
   },
@@ -133,7 +133,7 @@ Ao usar [[Links Bidirecionais]], cada nota se torna um nó em uma rede viva inte
     tags: ['ia', 'produtividade', 'semântica'],
     createdAt: Date.now() - 3600000 * 10,
     updatedAt: Date.now() - 3600000 * 1,
-    content: `O Obsidian tradicional depende de você criar todos os links manualmente. No Pyrite, introduzimos o conceito de **Conexões Semânticas Sugeridas**:
+    content: `O Obsidian tradicional depende de você criar todos os links manualmente. No Pyrita, introduzimos o conceito de **Conexões Semânticas Sugeridas**:
 
 1. **Auto-Resumo**: O assistente gera uma síntese executiva de notas extensas.
 2. **Sugestão de Tags**: Detecta termos recorrentes e categorias conceituais.

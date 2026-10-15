@@ -83,11 +83,11 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
               onClick={() => onSelectTab(tab.id)}
               className={`group flex items-center gap-1.5 h-7 px-2.5 rounded-t-lg text-xs cursor-pointer border-t border-x transition-all max-w-[170px] ${
                 isActive
-                  ? 'bg-[#121215] border-zinc-700/80 text-violet-300 font-medium shadow-sm'
+                  ? 'bg-[#141418] border-zinc-700/80 border-t-2 border-t-amber-400 text-amber-200 font-medium shadow-sm'
                   : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40'
               }`}
             >
-              <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-violet-400' : 'text-zinc-600'}`} />
+              <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-amber-400' : 'text-zinc-600'}`} />
               <span className="truncate">{tab.title || 'Sem título'}</span>
               {tabs.length > 1 && (
                 <button
@@ -107,7 +107,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
 
         <button
           onClick={onNewTab}
-          className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 rounded-md transition-colors ml-0.5"
+          className="p-1 text-zinc-500 hover:text-amber-300 hover:bg-zinc-800/60 rounded-md transition-colors ml-0.5 cursor-pointer"
           title="Nova nota em aba"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -121,10 +121,10 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           <div className="flex items-center gap-0.5 bg-zinc-900/90 border border-zinc-800 rounded-md p-0.5 mr-1 shadow-sm">
             <button
               onClick={() => onChangeDisplayMode('live')}
-              className={`p-1 rounded transition-all ${
+              className={`p-1 rounded transition-all cursor-pointer ${
                 displayMode === 'live'
-                  ? 'bg-violet-600 text-white shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
+                  ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-zinc-950 font-bold shadow-sm'
+                  : 'text-zinc-400 hover:text-amber-300'
               }`}
               title="Modo Edição ao Vivo (Live Preview no estilo Obsidian)"
             >
@@ -132,10 +132,10 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
             </button>
             <button
               onClick={() => onChangeDisplayMode('reading')}
-              className={`p-1 rounded transition-all ${
+              className={`p-1 rounded transition-all cursor-pointer ${
                 displayMode === 'reading'
-                  ? 'bg-violet-600 text-white shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
+                  ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-zinc-950 font-bold shadow-sm'
+                  : 'text-zinc-400 hover:text-amber-300'
               }`}
               title="Modo Leitura (Visualização pura)"
             >
@@ -156,7 +156,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         {/* Export Vault */}
         <button
           onClick={onExportVault}
-          className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 rounded-md transition-colors"
+          className="p-1.5 text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
           title="Exportar Vault como JSON"
         >
           <Download className="w-3.5 h-3.5" />
@@ -165,10 +165,10 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         {/* Right Sidebar Toggle */}
         <button
           onClick={onToggleRightSidebar}
-          className={`p-1.5 rounded-md transition-colors ${
+          className={`p-1.5 rounded-md transition-colors cursor-pointer ${
             isRightSidebarOpen
-              ? 'text-zinc-200 bg-zinc-800/80'
-              : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40'
+              ? 'text-amber-300 bg-amber-500/10 border border-amber-500/30'
+              : 'text-zinc-500 hover:text-amber-300 hover:bg-zinc-800/40'
           }`}
           title="Alternar Painel Lateral Direito (Backlinks, Tags, Outline)"
         >
@@ -179,20 +179,20 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         {updaterStatus?.status === 'downloaded' && (
           <button
             onClick={() => window.electronAPI?.quitAndInstall()}
-            className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 text-[11px] font-medium transition-all shadow-sm animate-pulse mr-0.5 cursor-pointer"
+            className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 text-[11px] font-semibold transition-all shadow-md shadow-amber-950/40 animate-pulse mr-0.5 cursor-pointer"
             title={`Nova versão ${updaterStatus.version} pronta! Clique para reiniciar e atualizar sem reinstalar.`}
           >
-            <RefreshCw className="w-3 h-3 text-emerald-400 animate-spin" style={{ animationDuration: '4s' }} />
+            <RefreshCw className="w-3 h-3 text-amber-400 animate-spin" style={{ animationDuration: '4s' }} />
             <span className="font-semibold">Atualizar v{updaterStatus.version}</span>
           </button>
         )}
 
         {updaterStatus?.status === 'downloading' && (
           <div
-            className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-violet-950/60 border border-violet-800/50 text-violet-300 text-[11px] mr-0.5"
+            className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-amber-950/60 border border-amber-800/50 text-amber-300 text-[11px] mr-0.5"
             title={`Baixando atualização: ${updaterStatus.percent}%`}
           >
-            <ArrowDownToLine className="w-3 h-3 text-violet-400 animate-bounce" />
+            <ArrowDownToLine className="w-3 h-3 text-amber-400 animate-bounce" />
             <span>Baixando {updaterStatus.percent}%</span>
           </div>
         )}
@@ -200,7 +200,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         {/* Settings Button */}
         <button
           onClick={onOpenSettings}
-          className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 rounded-md transition-colors"
+          className="p-1.5 text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
           title="Personalizar Cores, Fontes e Layout"
         >
           <SlidersHorizontal className="w-3.5 h-3.5" />

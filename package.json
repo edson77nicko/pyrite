@@ -2,8 +2,8 @@
   "name": "pyrite",
   "private": true,
   "version": "1.0.0",
-  "description": "Pyrite - Local-First Knowledge Management & Thinking Environment",
-  "author": "Pyrite Team",
+  "description": "Pyrita - Local-First Knowledge Management & Thinking Environment",
+  "author": "Pyrita Team",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -40,7 +40,7 @@
   },
   "build": {
     "appId": "com.pyrite.app",
-    "productName": "Pyrite",
+    "productName": "Pyrita",
     "publish": {
       "provider": "github",
       "owner": "edson77nicko",

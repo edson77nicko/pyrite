@@ -89,7 +89,7 @@ export const Editor: React.FC<EditorProps> = ({
       <div className="flex items-center justify-between px-6 py-2 bg-zinc-900/40 border-b border-zinc-800/60 text-xs text-zinc-400 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-zinc-300 font-medium">
-            <Folder className="w-3.5 h-3.5 text-violet-400" />
+            <Folder className="w-3.5 h-3.5 text-amber-400" />
             <span>{note.folder}</span>
           </div>
           <span className="text-zinc-700">/</span>
@@ -113,7 +113,7 @@ export const Editor: React.FC<EditorProps> = ({
             <button onClick={handleFormatItalic} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Itálico">
               <Italic className="w-3.5 h-3.5" />
             </button>
-            <button onClick={handleFormatLink} className="p-1.5 hover:text-violet-400 hover:bg-zinc-700 rounded transition-colors" title="Link Bidirecional [[...]]">
+            <button onClick={handleFormatLink} className="p-1.5 hover:text-amber-400 hover:bg-zinc-700 rounded transition-colors" title="Link Bidirecional [[...]]">
               <Link2 className="w-3.5 h-3.5" />
             </button>
             <button onClick={handleFormatTask} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Lista de Tarefas">
@@ -179,7 +179,7 @@ export const Editor: React.FC<EditorProps> = ({
 
         {note.tags.length > 0 && (
           <div className="flex items-center gap-1.5">
-            <Tag className="w-3 h-3 text-violet-400" />
+            <Tag className="w-3 h-3 text-amber-400" />
             {note.tags.map(t => (
               <span key={t} className="text-zinc-400">#{t}</span>
             ))}

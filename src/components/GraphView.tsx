@@ -433,7 +433,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar nó..."
-            className="w-40 pl-8 pr-2 py-1 bg-zinc-800/80 border border-zinc-700/60 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-violet-500"
+            className="w-40 pl-8 pr-2 py-1 bg-zinc-800/80 border border-zinc-700/60 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-500"
           />
         </div>
 
@@ -444,7 +444,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             <select
               value={selectedTag || ''}
               onChange={(e) => setSelectedTag(e.target.value || null)}
-              className="bg-zinc-800 text-xs text-zinc-300 rounded-lg px-2 py-1 border border-zinc-700/60 focus:outline-none focus:border-violet-500"
+              className="bg-zinc-800 text-xs text-zinc-300 rounded-lg px-2 py-1 border border-zinc-700/60 focus:outline-none focus:border-amber-500"
             >
               <option value="">Todas as tags</option>
               {allTags.map(tag => (
@@ -459,9 +459,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
         {/* Global vs Local Toggle (Obsidian feature) */}
         <button
           onClick={() => setIsLocalMode(m => !m)}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
             isLocalMode
-              ? 'bg-violet-600 text-white shadow-sm'
+              ? 'bg-amber-500 text-zinc-950 shadow-md shadow-amber-950/30'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
           }`}
           title="Alternar entre Grafo Global e Grafo Local (focado na nota atual)"
@@ -475,7 +475,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
           onClick={() => setShowSettingsDrawer(d => !d)}
           className={`p-1.5 rounded-lg transition-colors ${
             showSettingsDrawer
-              ? 'bg-zinc-800 text-violet-300'
+              ? 'bg-zinc-800 text-amber-300'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
           }`}
           title="Configurações de Física e Visualização do Grafo"
@@ -504,7 +504,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
               step="100"
               value={settings.repulsion}
               onChange={(e) => setSettings(s => ({ ...s, repulsion: Number(e.target.value) }))}
-              className="w-full accent-violet-500"
+              className="w-full accent-amber-500"
             />
           </div>
 
@@ -520,7 +520,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
               step="10"
               value={settings.linkDistance}
               onChange={(e) => setSettings(s => ({ ...s, linkDistance: Number(e.target.value) }))}
-              className="w-full accent-violet-500"
+              className="w-full accent-amber-500"
             />
           </div>
 
@@ -536,7 +536,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
               step="0.1"
               value={settings.nodeSize}
               onChange={(e) => setSettings(s => ({ ...s, nodeSize: Number(e.target.value) }))}
-              className="w-full accent-violet-500"
+              className="w-full accent-amber-500"
             />
           </div>
 
@@ -546,7 +546,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
               type="checkbox"
               checked={settings.showArrows}
               onChange={(e) => setSettings(s => ({ ...s, showArrows: e.target.checked }))}
-              className="accent-violet-500 rounded"
+              className="accent-amber-500 rounded"
             />
           </div>
 
@@ -556,7 +556,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
               type="checkbox"
               checked={settings.showLabels}
               onChange={(e) => setSettings(s => ({ ...s, showLabels: e.target.checked }))}
-              className="accent-violet-500 rounded"
+              className="accent-amber-500 rounded"
             />
           </div>
         </div>
@@ -590,7 +590,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
       {/* 4. Bottom Legend & Status */}
       <div className="absolute bottom-5 left-5 z-20 bg-zinc-900/90 backdrop-blur-md border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-zinc-400 flex items-center gap-3 shadow-2xl">
         <div className="flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
           <span className="font-semibold text-zinc-200">{nodes.length} nós</span>
         </div>
         <span className="text-zinc-700">•</span>

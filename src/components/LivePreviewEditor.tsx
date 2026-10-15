@@ -61,7 +61,7 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
     id: 'h1',
     title: 'Título 1',
     subtitle: 'Cabeçalho principal grande',
-    icon: <Heading1 className="w-4 h-4 text-violet-400" />,
+    icon: <Heading1 className="w-4 h-4 text-amber-400" />,
     keywords: ['h1', 'titulo', 'header']
   },
   {
@@ -152,7 +152,7 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
     id: 'wikilink',
     title: 'Link Bidirecional',
     subtitle: 'Conectar com outra nota [[...]]',
-    icon: <Link2 className="w-4 h-4 text-violet-400" />,
+    icon: <Link2 className="w-4 h-4 text-amber-400" />,
     keywords: ['link', 'wikilink', 'conectar']
   }
 ]
@@ -184,10 +184,10 @@ function formatInlineHtml(text: string, allNotes: Note[] = []): string {
       const exists = allNotes.some(n => n.title.toLowerCase().trim() === destination.toLowerCase().trim())
 
       const pillClass = exists
-        ? 'text-violet-400 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/60 border border-violet-800/40'
+        ? 'text-amber-300 hover:text-amber-100 bg-amber-950/30 hover:bg-amber-900/50 border border-amber-800/40'
         : 'text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
 
-      return `<span class="wiki-link inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" title="${exists ? `Abrir nota: &quot;${destination}&quot;` : `Criar nota: &quot;${destination}&quot;`}"><span class="underline decoration-violet-500/40 hover:decoration-violet-300 underline-offset-2">${escapeHtml(displayName)}</span></span>`
+      return `<span class="wiki-link inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" title="${exists ? `Abrir nota: &quot;${destination}&quot;` : `Criar nota: &quot;${destination}&quot;`}"><span class="underline decoration-amber-500/40 hover:decoration-amber-300 underline-offset-2">${escapeHtml(displayName)}</span></span>`
     }
 
     // 2. Bold **text**
@@ -279,7 +279,7 @@ function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): strin
         <div class="code-block-wrapper my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/90 text-xs font-mono shadow-lg" contenteditable="false" data-raw-code="${encodeURIComponent(rawCode)}" data-code-lang="${lang}">
           <div class="flex items-center justify-between px-3.5 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400">
             <span class="uppercase font-semibold tracking-wider text-[11px] text-zinc-300 flex items-center gap-1.5">
-              <span class="w-2 h-2 rounded-full bg-violet-500"></span>
+              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
               ${lang || 'código'}
             </span>
             <button type="button" class="copy-code-btn flex items-center gap-1 px-2 py-0.5 rounded hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer">
@@ -366,7 +366,7 @@ function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): strin
         i++
       }
       htmlParts.push(`
-        <blockquote class="my-3 pl-4 border-l-2 border-violet-500/80 italic text-zinc-400 text-xs py-0.5">
+        <blockquote class="my-3 pl-4 border-l-2 border-amber-500/80 italic text-zinc-400 text-xs py-0.5">
           ${quoteLines.map(ql => `<p class="my-0.5">${formatInlineHtml(ql, allNotes)}</p>`).join('')}
         </blockquote>
       `)
@@ -763,10 +763,10 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   const insertWikiLinkHtml = (targetTitle: string) => {
     const exists = allNotes.some(n => n.title.toLowerCase().trim() === targetTitle.toLowerCase().trim())
     const pillClass = exists
-      ? 'text-violet-400 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/60 border border-violet-800/40'
+      ? 'text-amber-300 hover:text-amber-100 bg-amber-950/30 hover:bg-amber-900/50 border border-amber-800/40'
       : 'text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
 
-    const linkHtml = `<span class="wiki-link inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(targetTitle)}" title="${exists ? `Abrir nota: &quot;${targetTitle}&quot;` : `Criar nota: &quot;${targetTitle}&quot;`}"><span class="underline decoration-violet-500/40 hover:decoration-violet-300 underline-offset-2">${escapeHtml(targetTitle)}</span></span>&nbsp;`
+    const linkHtml = `<span class="wiki-link inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(targetTitle)}" title="${exists ? `Abrir nota: &quot;${targetTitle}&quot;` : `Criar nota: &quot;${targetTitle}&quot;`}"><span class="underline decoration-amber-500/40 hover:decoration-amber-300 underline-offset-2">${escapeHtml(targetTitle)}</span></span>&nbsp;`
     document.execCommand('insertHTML', false, linkHtml)
   }
 
@@ -1194,7 +1194,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             zIndex: 9999
           }}
           onMouseDown={e => e.preventDefault()}
-          className="flex items-center gap-0.5 px-1.5 py-1 bg-[#18181b]/95 border border-violet-500/50 rounded-xl shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none"
+          className="flex items-center gap-0.5 px-1.5 py-1 bg-[#141418]/95 border border-amber-500/40 rounded-xl shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
         >
           {/* Wikilink [[...]] Button */}
           <button
@@ -1203,10 +1203,10 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
               e.preventDefault()
               handleToolbarWrap('link')
             }}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium text-violet-300 hover:text-white bg-violet-600/30 hover:bg-violet-600/50 border border-violet-500/40 transition-colors shadow-sm cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-amber-200 hover:text-zinc-950 bg-amber-500/15 hover:bg-amber-400 border border-amber-500/40 transition-all shadow-sm cursor-pointer"
             title="Conectar com Nota / Link Bidirecional [[...]]"
           >
-            <Link2 className="w-3.5 h-3.5 text-violet-400" />
+            <Link2 className="w-3.5 h-3.5 text-amber-400" />
             <span className="font-semibold text-[11px]">[[ Link ]]</span>
           </button>
 
@@ -1289,9 +1289,9 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             zIndex: 9999
           }}
           onMouseDown={e => e.preventDefault()}
-          className="w-72 bg-zinc-900 border border-violet-500/60 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none"
+          className="w-72 bg-[#141418] border border-amber-500/40 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
         >
-          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet-400 border-b border-zinc-800 flex items-center justify-between">
+          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-400 border-b border-zinc-800 flex items-center justify-between">
             <span>Comandos Rápidos</span>
             <span className="text-zinc-500 font-mono text-[10px]">↵ Inserir</span>
           </div>
@@ -1308,7 +1308,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                   onMouseEnter={() => setSlashMenu(prev => (prev ? { ...prev, index: cIdx } : null))}
                   className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-violet-600/30 text-violet-200 border border-violet-500/30'
+                      ? 'bg-amber-500/15 text-amber-200 border border-amber-500/40'
                       : 'text-zinc-300 hover:bg-zinc-800/60'
                   }`}
                 >
@@ -1334,11 +1334,11 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             zIndex: 9999
           }}
           onMouseDown={e => e.preventDefault()}
-          className="w-72 bg-zinc-900 border border-violet-500/70 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none"
+          className="w-72 bg-[#141418] border border-amber-500/40 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
         >
-          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet-400 border-b border-zinc-800 flex items-center justify-between">
+          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-400 border-b border-zinc-800 flex items-center justify-between">
             <span className="flex items-center gap-1">
-              <span className="font-mono text-violet-300">[[</span> Link para Nota
+              <span className="font-mono text-amber-300">[[</span> Link para Nota
             </span>
             <span className="text-zinc-500 font-mono text-[10px]">↵ Inserir</span>
           </div>
@@ -1355,11 +1355,11 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                   onMouseEnter={() => setWikiSuggest(prev => (prev ? { ...prev, index: nIdx } : null))}
                   className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-violet-600/30 text-violet-200 border border-violet-500/40 shadow-sm'
+                      ? 'bg-amber-500/15 text-amber-200 border border-amber-500/40 shadow-sm'
                       : 'text-zinc-300 hover:bg-zinc-800/60'
                   }`}
                 >
-                  <FileText className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                  <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <div className="truncate flex-1">
                     <div className="text-xs font-medium text-zinc-100 truncate">{targetNote.title}</div>
                     <div className="text-[10px] text-zinc-500 truncate">{targetNote.folder}</div>

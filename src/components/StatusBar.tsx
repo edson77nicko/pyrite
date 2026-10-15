@@ -33,7 +33,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
         <button
           onClick={onOpenGraph}
-          className="hover:text-violet-300 transition-colors flex items-center gap-1"
+          className="hover:text-amber-300 transition-colors flex items-center gap-1"
           title="Ver no Grafo de Conhecimento"
         >
           <span>{allNotes.length} notas</span>
@@ -43,7 +43,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
           <>
             <span className="text-zinc-700">|</span>
             <div className="flex items-center gap-1 text-zinc-400">
-              <Link2 className="w-3 h-3 text-violet-400" />
+              <Link2 className="w-3 h-3 text-amber-400" />
               <span>{backlinks.length} backlinks</span>
             </div>
           </>
