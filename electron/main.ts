@@ -189,16 +189,6 @@ ipcMain.handle('vault:createVault', async (_event, { parentPath, vaultName }: { 
       fs.mkdirSync(newVaultPath, { recursive: true })
     }
 
-    // Create initial welcome note
-    const welcomeFile = path.join(newVaultPath, 'Bem-vindo ao Pyrita.md')
-    if (!fs.existsSync(welcomeFile)) {
-      fs.writeFileSync(
-        welcomeFile,
-        `# Bem-vindo ao seu novo cofre: ${safeName}\n\nEste cofre é 100% Local-First. Todos os arquivos criados aqui são salvos como Markdown puro no seu computador.\n\n### Primeiros passos:\n- Use [[Links Bidirecionais]] para interligar ideias.\n- Crie tópicos e organize pastas na barra lateral.\n- Use o Assistente de IA à esquerda para descobrir conexões!\n`,
-        'utf-8'
-      )
-    }
-
     return { success: true, vaultPath: newVaultPath }
   } catch (err: any) {
     return { success: false, error: err.message }

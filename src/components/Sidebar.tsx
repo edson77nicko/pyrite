@@ -255,9 +255,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             </span>
             {isCollapsed ? (
-              <Folder className="w-3.5 h-3.5 text-[#c59b27]/80 shrink-0" />
+              <Folder className="w-3.5 h-3.5 opacity-80 shrink-0" style={{ color: 'var(--accent)' }} />
             ) : (
-              <FolderOpen className="w-3.5 h-3.5 text-[#d4af37] shrink-0" />
+              <FolderOpen className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
             )}
             <span className="truncate">{node.name}</span>
           </div>
@@ -268,7 +268,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 e.stopPropagation()
                 onCreateNote(node.fullPath)
               }}
-              className="p-0.5 hover:text-[#d4af37] rounded"
+              className="p-0.5 hover:text-white rounded"
               title={`Nova nota em ${node.fullPath}`}
             >
               <Plus className="w-3 h-3" />
@@ -278,7 +278,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 e.stopPropagation()
                 handleStartCreateFolder(node.fullPath)
               }}
-              className="p-0.5 hover:text-[#d4af37] rounded"
+              className="p-0.5 hover:text-white rounded"
               title={`Nova subpasta em ${node.fullPath}`}
             >
               <FolderPlus className="w-3 h-3" />
@@ -308,12 +308,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   title={note.title}
                   className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
                     isActive
-                      ? 'bg-[#c59b27]/12 text-zinc-100 font-medium border-[#c59b27]/30'
+                      ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
                       : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                   }`}
+                  style={isActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
                 >
                   <div className="flex items-center gap-1.5 truncate min-w-0">
-                    <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-[#c59b27]' : 'text-zinc-500'}`} />
+                    <FileText className="w-3.5 h-3.5 shrink-0" style={isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
                     <span className="truncate">{note.title}</span>
                   </div>
 
@@ -323,10 +324,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         e.stopPropagation()
                         onToggleFavorite(note.id)
                       }}
-                      className={`p-0.5 rounded hover:text-[#d4af37] ${note.isFavorite ? 'text-[#c59b27]' : 'text-zinc-500'}`}
+                      className="p-0.5 rounded hover:text-white"
                       title={note.isFavorite ? 'Remover dos favoritos' : 'Favoritar nota'}
                     >
-                      <Star className={`w-3 h-3 ${note.isFavorite ? 'fill-[#c59b27] text-[#c59b27]' : ''}`} />
+                      <Star className="w-3 h-3" style={note.isFavorite ? { fill: 'var(--accent)', color: 'var(--accent)' } : { color: '#71717a' }} />
                     </button>
                     <button
                       onClick={(e) => {
@@ -365,15 +366,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className="flex items-center gap-2 truncate flex-1 mr-1 p-1 -ml-1 rounded-lg hover:bg-zinc-800/60 cursor-pointer transition-colors group"
           title="Clique para alternar ou gerenciar cofres (Vault Switcher)"
         >
-          <div className="w-6 h-6 rounded-lg bg-[#c59b27] flex items-center justify-center font-bold text-xs text-zinc-950 shadow-sm shrink-0">
+          <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs text-zinc-950 shadow-sm shrink-0" style={{ backgroundColor: 'var(--accent)' }}>
             Py
           </div>
           <div className="truncate flex-1">
             <div className="flex items-center gap-1">
-              <span className="font-semibold text-zinc-100 text-xs tracking-wide truncate block group-hover:text-[#d4af37] transition-colors">
+              <span className="font-semibold text-zinc-100 text-xs tracking-wide truncate block group-hover:text-white transition-colors">
                 {vaultPath ? vaultPath.split(/[/\\]/).filter(Boolean).pop() : 'Pyrita Vault'}
               </span>
-              <ChevronDown className="w-3 h-3 text-zinc-500 group-hover:text-[#d4af37] shrink-0" />
+              <ChevronDown className="w-3 h-3 text-zinc-500 group-hover:text-white shrink-0" />
             </div>
             <div className="text-[10px] text-zinc-500 truncate" title={vaultPath || 'Armazenamento local'}>
               {vaultPath ? 'Cofre Local (.md)' : 'Local-First'}
@@ -388,16 +389,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 rounded-md transition-colors border border-zinc-800/80 cursor-pointer"
               title="Abrir pasta do cofre no Explorador de Arquivos do Windows"
             >
-              <FolderOpen className="w-3.5 h-3.5 text-[#c59b27]" />
+              <FolderOpen className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
             </button>
           )}
 
           <button
             onClick={onOpenVaultSwitcher || onOpenLocalFolder}
-            className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/80 px-2 py-1 rounded-md transition-colors border border-zinc-800 cursor-pointer"
+            className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-800/80 px-2 py-1 rounded-md transition-colors border border-zinc-800 cursor-pointer"
             title="Alternar ou Gerenciar Cofres (Vault Switcher)"
           >
-            <FolderSync className="w-3 h-3 text-[#c59b27]" />
+            <FolderSync className="w-3 h-3" style={{ color: 'var(--accent)' }} />
             <span>Cofres</span>
           </button>
         </div>
@@ -408,7 +409,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center gap-1">
           <button
             onClick={() => onCreateNote()}
-            className="flex items-center gap-1 px-2 py-1 bg-[#c59b27] hover:bg-[#d8b150] text-zinc-950 rounded-md text-[11px] font-semibold transition-all shadow-sm cursor-pointer"
+            className="flex items-center gap-1 px-2 py-1 text-zinc-950 rounded-md text-[11px] font-semibold transition-all shadow-sm cursor-pointer hover:opacity-90"
+            style={{ backgroundColor: 'var(--accent)' }}
             title="Criar Nova Nota"
           >
             <Plus className="w-3 h-3 stroke-[2.5]" />
@@ -420,13 +422,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 rounded-md text-[11px] font-medium transition-colors border border-zinc-700/60 cursor-pointer"
             title="Abrir ou Criar Nota Diária de Hoje"
           >
-            <Calendar className="w-3 h-3 text-[#c59b27]" />
+            <Calendar className="w-3 h-3" style={{ color: 'var(--accent)' }} />
             <span>Diário</span>
           </button>
 
           <button
             onClick={() => handleStartCreateFolder()}
-            className="p-1 hover:text-[#d4af37] hover:bg-zinc-800 rounded-md transition-colors cursor-pointer"
+            className="p-1 hover:text-white hover:bg-zinc-800 rounded-md transition-colors cursor-pointer"
             title="Nova Pasta Raiz"
           >
             <FolderPlus className="w-3.5 h-3.5" />
@@ -434,7 +436,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             onClick={handleToggleCollapseAll}
-            className="p-1 hover:text-[#d4af37] hover:bg-zinc-800 rounded-md transition-colors cursor-pointer"
+            className="p-1 hover:text-white hover:bg-zinc-800 rounded-md transition-colors cursor-pointer"
             title="Recolher / Expandir todas as pastas"
           >
             <ChevronsDownUp className="w-3.5 h-3.5" />
@@ -492,8 +494,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Favoritos (Star section) */}
         {favoriteNotes.length > 0 && (
           <div className="space-y-[1px]">
-            <div className="px-1.5 py-0.5 text-[9.5px] font-semibold uppercase text-[#d4af37] tracking-wider flex items-center gap-1">
-              <Star className="w-2.5 h-2.5 fill-[#c59b27] text-[#c59b27]" />
+            <div className="px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider flex items-center gap-1" style={{ color: 'var(--accent)' }}>
+              <Star className="w-2.5 h-2.5" style={{ fill: 'var(--accent)', color: 'var(--accent)' }} />
               <span>Favoritos ({favoriteNotes.length})</span>
             </div>
             <div className="space-y-[1px]">
@@ -506,12 +508,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     title={n.title}
                     className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
                       isActive
-                        ? 'bg-[#c59b27]/12 text-zinc-100 font-medium border-[#c59b27]/30'
+                        ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
                         : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                     }`}
+                    style={isActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
                   >
                     <div className="flex items-center gap-1.5 truncate min-w-0">
-                      <Star className="w-3 h-3 text-[#c59b27] fill-[#c59b27] shrink-0" />
+                      <Star className="w-3 h-3 shrink-0" style={{ fill: 'var(--accent)', color: 'var(--accent)' }} />
                       <span className="truncate">{n.title}</span>
                     </div>
                   </div>
@@ -542,12 +545,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     title={note.title}
                     className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
                       isActive
-                        ? 'bg-[#c59b27]/12 text-zinc-100 font-medium border-[#c59b27]/30'
+                        ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
                         : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                     }`}
+                    style={isActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
                   >
                     <div className="flex items-center gap-1.5 truncate min-w-0">
-                      <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-[#c59b27]' : 'text-zinc-500'}`} />
+                      <FileText className="w-3.5 h-3.5 shrink-0" style={isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
                       <span className="truncate">{note.title}</span>
                     </div>
 
@@ -557,10 +561,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           e.stopPropagation()
                           onToggleFavorite(note.id)
                         }}
-                        className={`p-0.5 rounded hover:text-[#d4af37] ${note.isFavorite ? 'text-[#c59b27]' : 'text-zinc-500'}`}
+                        className="p-0.5 rounded hover:text-white"
                         title={note.isFavorite ? 'Remover dos favoritos' : 'Favoritar nota'}
                       >
-                        <Star className={`w-3 h-3 ${note.isFavorite ? 'fill-[#c59b27] text-[#c59b27]' : ''}`} />
+                        <Star className="w-3 h-3" style={note.isFavorite ? { fill: 'var(--accent)', color: 'var(--accent)' } : { color: '#71717a' }} />
                       </button>
                       <button
                         onClick={(e) => {
@@ -586,9 +590,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Resize Handle on Right Border */}
       <div
         onMouseDown={handleMouseDown}
-        className={`absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-[#c59b27]/50 transition-colors z-20 ${
-          isDragging ? 'bg-[#c59b27]' : 'bg-transparent'
+        className={`absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:opacity-80 transition-colors z-20 ${
+          isDragging ? 'bg-[var(--accent)]' : 'bg-transparent'
         }`}
+        style={!isDragging ? { borderRight: '1px solid var(--accent-glow-subtle)' } : undefined}
         title="Arraste para ajustar a largura da barra lateral"
       />
     </div>

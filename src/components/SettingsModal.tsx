@@ -1,6 +1,6 @@
 import React from 'react'
-import type { AppSettings, AccentColor } from '../types'
-import { X, Palette, Type, Maximize, Check } from 'lucide-react'
+import type { AppSettings } from '../types'
+import { Palette, Type, Maximize2 } from 'lucide-react'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -9,12 +9,31 @@ interface SettingsModalProps {
   onUpdateSettings: (newSettings: AppSettings) => void
 }
 
-const ACCENT_OPTIONS: { id: AccentColor; label: string; color: string }[] = [
-  { id: 'amber', label: 'Dourado Pirita (Ouro dos Tolos)', color: '#f59e0b' },
-  { id: 'violet', label: 'Ametista / Violeta', color: '#8b5cf6' },
-  { id: 'emerald', label: 'Esmeralda', color: '#10b981' },
-  { id: 'cyan', label: 'Ciano', color: '#06b6d4' },
-  { id: 'rose', label: 'Rubi / Rosa', color: '#ec4899' },
+const ACCENT_COLORS: string[] = [
+  '#c59b27', // Pirita Gold (Padrão)
+  '#eab308', // Yellow
+  '#f59e0b', // Amber
+  '#f97316', // Orange
+  '#ea580c', // Dark Orange
+  '#ef4444', // Red
+  '#e11d48', // Crimson
+  '#f43f5e', // Rose
+  '#ec4899', // Pink
+  '#d946ef', // Fuchsia
+  '#a855f7', // Purple
+  '#8b5cf6', // Violet
+  '#6366f1', // Indigo
+  '#3b82f6', // Blue
+  '#0ea5e9', // Sky
+  '#06b6d4', // Cyan
+  '#14b8a6', // Teal
+  '#10b981', // Emerald
+  '#22c55e', // Green
+  '#84cc16', // Lime
+  '#65a30d', // Olive
+  '#78716c', // Stone
+  '#94a3b8', // Slate
+  '#e4e4e7', // Silver
 ]
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -25,127 +44,118 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   if (!isOpen) return null
 
+  // Normalize current accent color (support legacy named keys if present)
+  const legacyMap: Record<string, string> = {
+    amber: '#c59b27',
+    violet: '#8b5cf6',
+    emerald: '#10b981',
+    cyan: '#06b6d4',
+    rose: '#ec4899'
+  }
+  const currentAccent = legacyMap[settings.accentColor] || settings.accentColor || '#c59b27'
+
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={onClose}
-    >
+    <>
+      {/* Transparent backdrop - Closes dropdown when clicking outside without darkening screen */}
+      <div className="fixed inset-0 z-40 bg-transparent" onClick={onClose} />
+
+      {/* Popover Dropdown positioned directly under the settings icon */}
       <div
-        className="w-full max-w-md bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-xs text-zinc-300"
+        className="fixed right-2.5 top-9.5 z-50 w-60 bg-[#121215] border border-zinc-800 rounded-xl shadow-2xl p-3 space-y-3 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-100 select-none"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800 bg-zinc-950/70">
-          <div className="flex items-center gap-2 font-semibold text-sm text-zinc-100">
-            <Palette className="w-4 h-4 text-amber-400" />
-            <span>Personalizar Pyrita</span>
+        {/* Section 1: Color Palette (Icon only, small dots grid, no text) */}
+        <div className="space-y-1.5">
+          <div className="flex items-center text-zinc-400">
+            <Palette className="w-3.5 h-3.5" />
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="grid grid-cols-8 gap-1.5 pt-0.5">
+            {ACCENT_COLORS.map(color => {
+              const isSelected = currentAccent.toLowerCase() === color.toLowerCase()
+              return (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => onUpdateSettings({ ...settings, accentColor: color })}
+                  className="flex items-center justify-center p-0.5 group cursor-pointer focus:outline-none"
+                  title={color}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full transition-all duration-150 ${
+                      isSelected
+                        ? 'ring-2 ring-white ring-offset-1 ring-offset-[#121215] scale-110 shadow-sm'
+                        : 'opacity-85 hover:opacity-100 hover:scale-120'
+                    }`}
+                    style={{ backgroundColor: color }}
+                  />
+                </button>
+              )
+            })}
+          </div>
         </div>
 
-        {/* Content */}
-        <div className="p-5 space-y-5">
-          {/* Accent Color */}
-          <div className="space-y-2">
-            <label className="font-semibold text-zinc-200 flex items-center gap-2">
-              <Palette className="w-3.5 h-3.5 text-zinc-400" />
-              <span>Cor de Destaque</span>
-            </label>
-            <div className="flex items-center gap-2.5 pt-1">
-              {ACCENT_OPTIONS.map(opt => {
-                const isSelected = settings.accentColor === opt.id
-                return (
-                  <button
-                    key={opt.id}
-                    onClick={() => onUpdateSettings({ ...settings, accentColor: opt.id })}
-                    className="flex flex-col items-center gap-1.5 group"
-                    title={opt.label}
-                  >
-                    <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-                        isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-zinc-900 scale-110' : 'hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: opt.color }}
-                    >
-                      {isSelected && <Check className="w-4 h-4 text-white" />}
-                    </div>
-                    <span className="text-[10px] text-zinc-400 group-hover:text-zinc-200">{opt.label}</span>
-                  </button>
-                )
-              })}
-            </div>
+        {/* Section 2: Typography (Icon only, 13px / 15px / 17px only) */}
+        <div className="space-y-1.5 border-t border-zinc-800/80 pt-2.5">
+          <div className="flex items-center text-zinc-400">
+            <Type className="w-3.5 h-3.5" />
           </div>
-
-          {/* Font Size */}
-          <div className="space-y-2 border-t border-zinc-800 pt-4">
-            <label className="font-semibold text-zinc-200 flex items-center gap-2">
-              <Type className="w-3.5 h-3.5 text-zinc-400" />
-              <span>Tamanho da Tipografia</span>
-            </label>
-            <div className="grid grid-cols-3 gap-2 pt-1">
-              {[
-                { id: 'small', label: 'Pequeno (13px)' },
-                { id: 'medium', label: 'Padrão (15px)' },
-                { id: 'large', label: 'Grande (17px)' },
-              ].map(opt => (
+          <div className="grid grid-cols-3 gap-1.5">
+            {[
+              { id: 'small', px: '13px' },
+              { id: 'medium', px: '15px' },
+              { id: 'large', px: '17px' },
+            ].map(opt => {
+              const isActive = settings.fontSize === opt.id
+              return (
                 <button
                   key={opt.id}
+                  type="button"
                   onClick={() => onUpdateSettings({ ...settings, fontSize: opt.id as any })}
-                  className={`py-2 px-2 rounded-xl border text-center font-medium transition-all ${
-                    settings.fontSize === opt.id
-                      ? 'bg-amber-500/15 border-amber-500/60 text-amber-200 shadow-sm'
-                      : 'border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                  className={`py-1.5 rounded-lg border text-center font-mono text-[11px] transition-all cursor-pointer ${
+                    isActive
+                      ? 'border-zinc-600 bg-zinc-800/80 text-white font-semibold shadow-sm'
+                      : 'border-zinc-800/80 bg-zinc-900/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
                   }`}
+                  style={isActive ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
                 >
-                  {opt.label}
+                  {opt.px}
                 </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Editor Width */}
-          <div className="space-y-2 border-t border-zinc-800 pt-4">
-            <label className="font-semibold text-zinc-200 flex items-center gap-2">
-              <Maximize className="w-3.5 h-3.5 text-zinc-400" />
-              <span>Largura do Texto no Editor</span>
-            </label>
-            <div className="grid grid-cols-3 gap-2 pt-1">
-              {[
-                { id: 'compact', label: 'Compacto' },
-                { id: 'standard', label: 'Padrão (800px)' },
-                { id: 'wide', label: 'Amplo' },
-              ].map(opt => (
-                <button
-                  key={opt.id}
-                  onClick={() => onUpdateSettings({ ...settings, editorWidth: opt.id as any })}
-                  className={`py-2 px-2 rounded-xl border text-center font-medium transition-all ${
-                    settings.editorWidth === opt.id
-                      ? 'bg-amber-500/15 border-amber-500/60 text-amber-200 shadow-sm'
-                      : 'border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+              )
+            })}
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-zinc-800 bg-zinc-950/60 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-zinc-950 font-semibold rounded-lg shadow-md shadow-amber-950/30 transition-all cursor-pointer"
-          >
-            Concluído
-          </button>
+        {/* Section 3: Editor Width (Icon only, 672px / 768px / 1024px only) */}
+        <div className="space-y-1.5 border-t border-zinc-800/80 pt-2.5">
+          <div className="flex items-center text-zinc-400">
+            <Maximize2 className="w-3.5 h-3.5" />
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {[
+              { id: 'compact', px: '672px' },
+              { id: 'standard', px: '768px' },
+              { id: 'wide', px: '1024px' },
+            ].map(opt => {
+              const isActive = settings.editorWidth === opt.id
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => onUpdateSettings({ ...settings, editorWidth: opt.id as any })}
+                  className={`py-1.5 rounded-lg border text-center font-mono text-[11px] transition-all cursor-pointer ${
+                    isActive
+                      ? 'border-zinc-600 bg-zinc-800/80 text-white font-semibold shadow-sm'
+                      : 'border-zinc-800/80 bg-zinc-900/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                  }`}
+                  style={isActive ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+                >
+                  {opt.px}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }

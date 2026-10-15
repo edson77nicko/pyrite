@@ -207,13 +207,6 @@ export const VaultSwitcherModal: React.FC<VaultSwitcherModalProps> = ({
     }
   }
 
-  // Restore Default Pyrite Vault
-  const handleOpenDefaultVault = async () => {
-    if (window.electronAPI?.getDefaultPath) {
-      const defaultPath = await window.electronAPI.getDefaultPath()
-      handleOpenVault(defaultPath)
-    }
-  }
 
   // Reveal in Windows Explorer
   const handleRevealInExplorer = (path: string, e: React.MouseEvent) => {
@@ -464,26 +457,6 @@ export const VaultSwitcherModal: React.FC<VaultSwitcherModalProps> = ({
                 className="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 rounded-lg text-xs font-semibold transition-all shrink-0 border border-zinc-700/60 shadow-sm cursor-pointer"
               >
                 Abrir
-              </button>
-            </div>
-
-            {/* Card 3: Cofre Padrão */}
-            <div className="bg-[#18181c] border border-white/[0.06] rounded-[15px] px-[12px] py-[10px] shadow-md flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-xs text-zinc-100">
-                  Cofre Padrão do Pyrita
-                </div>
-                <div className="text-[11px] text-zinc-400 leading-snug mt-0.5">
-                  Carregar o cofre padrão de exemplo com notas do sistema.
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleOpenDefaultVault}
-                className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 rounded-lg text-xs font-semibold transition-all shrink-0 border border-zinc-700/60 shadow-sm cursor-pointer"
-              >
-                Restaurar
               </button>
             </div>
           </div>

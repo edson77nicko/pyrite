@@ -5,8 +5,7 @@ import {
   saveNotes,
   loadFolders,
   saveFolders,
-  extractTags,
-  INITIAL_NOTES
+  extractTags
 } from './utils/vault'
 import { Ribbon } from './components/Ribbon'
 import { TabHeader } from './components/TabHeader'
@@ -24,7 +23,7 @@ import { VaultSwitcherModal } from './components/VaultSwitcherModal'
 const MAX_TABS = 5
 
 const DEFAULT_SETTINGS: AppSettings = {
-  accentColor: 'amber', // Pyrita: Ouro dos Tolos / Metallic Gold
+  accentColor: '#c59b27', // Pyrita: Ouro Queimado
   fontSize: 'medium',
   editorWidth: 'standard'
 }
@@ -65,65 +64,25 @@ export const App: React.FC = () => {
             createdAt: f.createdAt,
             updatedAt: f.updatedAt
           }))
-          // Ensure system reference notes (like 'Componentes de Design & Artefatos') are seeded if not yet on disk
-          for (const initNote of INITIAL_NOTES) {
-            const exists = loadedNotes.some(n => n.title.toLowerCase() === initNote.title.toLowerCase())
-            if (!exists) {
-              const res = await api.saveFile({
-                vaultPath: currentPath,
-                folder: initNote.folder,
-                title: initNote.title,
-                content: initNote.content
-              })
-              if (res.success) {
-                loadedNotes.unshift({
-                  id: `note_disk_sys_${Date.now()}`,
-                  title: initNote.title,
-                  folder: initNote.folder,
-                  content: initNote.content,
-                  filePath: res.filePath,
-                  tags: extractTags(initNote.content),
-                  createdAt: Date.now(),
-                  updatedAt: Date.now()
-                })
-              }
-            }
-          }
-
           const loadedFolders = Array.from(new Set(loadedNotes.map(n => n.folder).filter(Boolean)))
           setNotes(loadedNotes)
-          setFolders(loadedFolders.length > 0 ? loadedFolders : ['Início'])
+          setFolders(loadedFolders)
           saveNotes(loadedNotes)
+          saveFolders(loadedFolders)
           if (loadedNotes[0]) {
             setCurrentNoteId(loadedNotes[0].id)
             setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title }])
             setActiveTabId(`tab_${loadedNotes[0].id}`)
           }
         } else {
-          // If the folder is empty on first run, seed default notes directly to disk
-          for (const note of INITIAL_NOTES) {
-            await api.saveFile({
-              vaultPath: currentPath,
-              folder: note.folder,
-              title: note.title,
-              content: note.content
-            })
-          }
-          const seededFiles = await api.readVault(currentPath)
-          if (seededFiles.length > 0) {
-            const loadedNotes: Note[] = seededFiles.map((f, i) => ({
-              id: `note_disk_${i}_${Date.now()}`,
-              title: f.title,
-              folder: f.folder,
-              content: f.content,
-              filePath: f.filePath,
-              tags: extractTags(f.content),
-              createdAt: f.createdAt,
-              updatedAt: f.updatedAt
-            }))
-            setNotes(loadedNotes)
-            saveNotes(loadedNotes)
-          }
+          // Clean empty vault: do not create unwanted notes or folders
+          setNotes([])
+          setFolders([])
+          saveNotes([])
+          saveFolders([])
+          setCurrentNoteId('')
+          setTabs([])
+          setActiveTabId('')
         }
       } catch (err) {
         console.error('Error initializing Electron vault:', err)
@@ -163,15 +122,24 @@ export const App: React.FC = () => {
 
   // Persist Settings and apply dynamic accent color CSS variable
   const applyAccentColor = (accent: AppSettings['accentColor']) => {
-    const colorMap = {
-      amber: '#f59e0b', // Dourado Pirita
+    const legacyMap: Record<string, string> = {
+      amber: '#c59b27',
       violet: '#8b5cf6',
       emerald: '#10b981',
       cyan: '#06b6d4',
       rose: '#ec4899'
     }
-    const hex = colorMap[accent] || '#f59e0b'
+    const hex = legacyMap[accent] || accent || '#c59b27'
     document.documentElement.style.setProperty('--accent', hex)
+
+    let r = 197, g = 155, b = 39
+    if (hex.startsWith('#') && hex.length === 7) {
+      r = parseInt(hex.slice(1, 3), 16)
+      g = parseInt(hex.slice(3, 5), 16)
+      b = parseInt(hex.slice(5, 7), 16)
+    }
+    document.documentElement.style.setProperty('--accent-glow', `rgba(${r}, ${g}, ${b}, 0.22)`)
+    document.documentElement.style.setProperty('--accent-glow-subtle', `rgba(${r}, ${g}, ${b}, 0.12)`)
   }
 
   const handleUpdateSettings = (newSettings: AppSettings) => {
@@ -579,9 +547,9 @@ export const App: React.FC = () => {
           }))
           const loadedFolders = Array.from(new Set(loadedNotes.map(n => n.folder).filter(Boolean)))
           setNotes(loadedNotes)
-          setFolders(loadedFolders.length > 0 ? loadedFolders : ['Início'])
+          setFolders(loadedFolders)
           saveNotes(loadedNotes)
-          saveFolders(loadedFolders.length > 0 ? loadedFolders : ['Início'])
+          saveFolders(loadedFolders)
           if (loadedNotes[0]) {
             setCurrentNoteId(loadedNotes[0].id)
             setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title }])
@@ -589,9 +557,9 @@ export const App: React.FC = () => {
           }
         } else {
           setNotes([])
-          setFolders(['Início'])
+          setFolders([])
           saveNotes([])
-          saveFolders(['Início'])
+          saveFolders([])
           setCurrentNoteId('')
           setTabs([])
           setActiveTabId('')
@@ -680,8 +648,6 @@ export const App: React.FC = () => {
             currentView={currentView}
             displayMode={editorDisplayMode}
             onChangeDisplayMode={setEditorDisplayMode}
-            isRightSidebarOpen={isRightSidebarOpen}
-            onToggleRightSidebar={() => setIsRightSidebarOpen(o => !o)}
             onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onExportVault={handleExportVault}
@@ -698,6 +664,8 @@ export const App: React.FC = () => {
                   onUpdateNote={handleUpdateNote}
                   onNavigate={handleNavigate}
                   settings={settings}
+                  isRightSidebarOpen={isRightSidebarOpen}
+                  onToggleRightSidebar={() => setIsRightSidebarOpen(o => !o)}
                 />
               )}
 

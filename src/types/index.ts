@@ -76,7 +76,7 @@ export type ViewMode = 'editor' | 'graph' | 'canvas'
 // Updated: Only Live Preview and Reading Mode (no split mode!)
 export type EditorDisplayMode = 'live' | 'reading'
 
-export type AccentColor = 'violet' | 'emerald' | 'cyan' | 'amber' | 'rose'
+export type AccentColor = string
 
 export interface AppSettings {
   accentColor: AccentColor

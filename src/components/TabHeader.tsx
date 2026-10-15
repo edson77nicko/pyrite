@@ -9,7 +9,6 @@ import {
   Eye,
   Search,
   Download,
-  PanelRight,
   SlidersHorizontal,
   Minus,
   Square,
@@ -27,8 +26,6 @@ interface TabHeaderProps {
   currentView: ViewMode
   displayMode: EditorDisplayMode
   onChangeDisplayMode: (mode: EditorDisplayMode) => void
-  isRightSidebarOpen: boolean
-  onToggleRightSidebar: () => void
   onOpenCommandPalette: () => void
   onOpenSettings: () => void
   onExportVault: () => void
@@ -43,8 +40,6 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
   currentView,
   displayMode,
   onChangeDisplayMode,
-  isRightSidebarOpen,
-  onToggleRightSidebar,
   onOpenCommandPalette,
   onOpenSettings,
   onExportVault
@@ -83,11 +78,12 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
               onClick={() => onSelectTab(tab.id)}
               className={`group flex items-center gap-1.5 h-7 px-2.5 rounded-t-lg text-xs cursor-pointer border-t border-x transition-all max-w-[170px] ${
                 isActive
-                  ? 'bg-[#141418] border-zinc-700/80 border-t-2 border-t-[#c59b27] text-zinc-200 font-medium shadow-sm'
+                  ? 'bg-[#141418] border-zinc-700/80 border-t-2 text-zinc-200 font-medium shadow-sm'
                   : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40'
               }`}
+              style={isActive ? { borderTopColor: 'var(--accent)' } : undefined}
             >
-              <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-[#c59b27]' : 'text-zinc-600'}`} />
+              <FileText className="w-3.5 h-3.5 shrink-0" style={isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
               <span className="truncate">{tab.title || 'Sem título'}</span>
               {tabs.length > 1 && (
                 <button
@@ -107,7 +103,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
 
         <button
           onClick={onNewTab}
-          className="p-1 text-zinc-500 hover:text-amber-300 hover:bg-zinc-800/60 rounded-md transition-colors ml-0.5 cursor-pointer"
+          className="p-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 rounded-md transition-colors ml-0.5 cursor-pointer"
           title="Nova nota em aba"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -123,9 +119,10 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
               onClick={() => onChangeDisplayMode('live')}
               className={`p-1 rounded transition-all cursor-pointer ${
                 displayMode === 'live'
-                  ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-zinc-950 font-bold shadow-sm'
-                  : 'text-zinc-400 hover:text-amber-300'
+                  ? 'font-bold shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
+              style={displayMode === 'live' ? { backgroundColor: 'var(--accent)', color: '#09090b' } : undefined}
               title="Modo Edição ao Vivo (Live Preview no estilo Obsidian)"
             >
               <Edit3 className="w-3.5 h-3.5" />
@@ -134,9 +131,10 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
               onClick={() => onChangeDisplayMode('reading')}
               className={`p-1 rounded transition-all cursor-pointer ${
                 displayMode === 'reading'
-                  ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-zinc-950 font-bold shadow-sm'
-                  : 'text-zinc-400 hover:text-amber-300'
+                  ? 'font-bold shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
+              style={displayMode === 'reading' ? { backgroundColor: 'var(--accent)', color: '#09090b' } : undefined}
               title="Modo Leitura (Visualização pura)"
             >
               <Eye className="w-3.5 h-3.5" />
@@ -156,23 +154,10 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         {/* Export Vault */}
         <button
           onClick={onExportVault}
-          className="p-1.5 text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
+          className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
           title="Exportar Vault como JSON"
         >
           <Download className="w-3.5 h-3.5" />
-        </button>
-
-        {/* Right Sidebar Toggle */}
-        <button
-          onClick={onToggleRightSidebar}
-          className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-            isRightSidebarOpen
-              ? 'text-[#d4af37] bg-[#c59b27]/10 border border-[#c59b27]/30'
-              : 'text-zinc-500 hover:text-[#d4af37] hover:bg-zinc-800/40'
-          }`}
-          title="Alternar Painel Lateral Direito (Backlinks, Tags, Outline)"
-        >
-          <PanelRight className="w-3.5 h-3.5" />
         </button>
 
         {/* Auto Update Notification Button - Only rendered if an update is ready or downloading */}

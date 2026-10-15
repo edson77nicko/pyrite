@@ -13,7 +13,8 @@ import {
   Clock,
   Tag,
   Folder,
-  Table
+  Table,
+  PanelRight
 } from 'lucide-react'
 
 interface EditorProps {
@@ -23,6 +24,8 @@ interface EditorProps {
   onUpdateNote: (updated: Note) => void
   onNavigate: (title: string) => void
   settings: AppSettings
+  isRightSidebarOpen?: boolean
+  onToggleRightSidebar?: () => void
 }
 
 export const Editor: React.FC<EditorProps> = ({
@@ -31,7 +34,9 @@ export const Editor: React.FC<EditorProps> = ({
   displayMode,
   onUpdateNote,
   onNavigate,
-  settings
+  settings,
+  isRightSidebarOpen = false,
+  onToggleRightSidebar
 }) => {
   const [content, setContent] = useState(note.content)
   const [title, setTitle] = useState(note.title)
@@ -100,35 +105,54 @@ export const Editor: React.FC<EditorProps> = ({
           </div>
         </div>
 
-        {/* Quick formatting toolbar */}
-        {displayMode === 'live' && (
-          <div className="flex items-center gap-1 bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60 shadow-inner">
-            <button onClick={handleFormatH1} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H1">
-              <Heading1 className="w-3.5 h-3.5" />
+        <div className="flex items-center gap-2">
+          {/* Quick formatting toolbar */}
+          {displayMode === 'live' && (
+            <div className="flex items-center gap-1 bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60 shadow-inner">
+              <button onClick={handleFormatH1} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H1">
+                <Heading1 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={handleFormatH2} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H2">
+                <Heading2 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={handleFormatBold} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Negrito">
+                <Bold className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={handleFormatItalic} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Itálico">
+                <Italic className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={handleFormatLink} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Link Bidirecional [[...]]">
+                <Link2 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={handleFormatTask} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Lista de Tarefas">
+                <ListTodo className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={handleFormatTable} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Tabela Markdown">
+                <Table className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={handleFormatCode} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Bloco de Código">
+                <Code className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Right Sidebar Toggle (Sumário, Links, Backlinks) */}
+          {onToggleRightSidebar && (
+            <button
+              type="button"
+              onClick={onToggleRightSidebar}
+              className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                isRightSidebarOpen
+                  ? 'border-zinc-700 bg-zinc-800 text-white shadow-sm'
+                  : 'border-zinc-800/80 bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+              }`}
+              style={isRightSidebarOpen ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+              title="Alternar Painel Lateral Direito (Sumário e Conexões)"
+            >
+              <PanelRight className="w-3.5 h-3.5" />
             </button>
-            <button onClick={handleFormatH2} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H2">
-              <Heading2 className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={handleFormatBold} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Negrito">
-              <Bold className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={handleFormatItalic} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Itálico">
-              <Italic className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={handleFormatLink} className="p-1.5 hover:text-amber-400 hover:bg-zinc-700 rounded transition-colors" title="Link Bidirecional [[...]]">
-              <Link2 className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={handleFormatTask} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Lista de Tarefas">
-              <ListTodo className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={handleFormatTable} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Tabela Markdown">
-              <Table className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={handleFormatCode} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Bloco de Código">
-              <Code className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* 3. Editor Surface (In-place WYSIWYG Live Preview matching Obsidian screenshot) */}

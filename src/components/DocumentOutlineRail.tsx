@@ -215,7 +215,10 @@ export const DocumentOutlineRail: React.FC<DocumentOutlineRailProps> = ({
                 <div
                   className="absolute right-8 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#141417]/95 border border-zinc-700/80 shadow-2xl text-xs text-zinc-100 flex items-center gap-2 pointer-events-none whitespace-nowrap backdrop-blur-md z-50 animate-in fade-in zoom-in-95 duration-100"
                 >
-                  <span className="text-[10px] font-mono font-semibold px-1 py-0.2 rounded bg-zinc-800 text-[#d4af37] border border-[#c59b27]/30">
+                  <span
+                    className="text-[10px] font-mono font-semibold px-1 py-0.2 rounded bg-zinc-800 border"
+                    style={{ color: 'var(--accent)', borderColor: 'var(--accent-glow)' }}
+                  >
                     {item.level === 0 ? 'TÍTULO' : `H${item.level}`}
                   </span>
                   <span className="max-w-[280px] truncate font-medium text-zinc-200">
@@ -228,11 +231,12 @@ export const DocumentOutlineRail: React.FC<DocumentOutlineRailProps> = ({
               <div
                 className={`h-[2px] rounded-full transition-all duration-200 ${tickWidth} ${
                   isActive
-                    ? 'bg-[#c59b27] shadow-[0_0_8px_rgba(197,155,39,0.7)] h-[3px]'
+                    ? 'h-[3px]'
                     : isHovered
                     ? 'bg-zinc-200'
                     : 'bg-zinc-700/80 group-hover:bg-zinc-400'
                 }`}
+                style={isActive ? { backgroundColor: 'var(--accent)', boxShadow: '0 0 8px var(--accent)' } : undefined}
               />
             </div>
           )

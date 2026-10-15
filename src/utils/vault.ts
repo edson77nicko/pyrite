@@ -62,7 +62,7 @@ export const INITIAL_NOTES: Note[] = [
 4. Crie novas notas e organize em pastas na barra lateral esquerda!
 
 ---
-*Pyrita — O ouro dos tolos que se transformou na sua maior riqueza intelectual.*
+*Pyrita — O ambiente local de pensamento que potencializa sua riqueza intelectual.*
 `
   },
   {

@@ -201,7 +201,7 @@ function escapeHtml(str: string): string {
 function formatInlineHtml(text: string, allNotes: Note[] = []): string {
   if (!text) return ''
 
-  const tokenRegex = /(\[\[[^\[\]\r\n]+\]\]|\*\*[^\*\r\n]+\*\*|==[^=\r\n]+==|~~[^~\r\n]+~~|`[^`\r\n]+`|\*[^\*\r\n]+\*)/g
+  const tokenRegex = /(\[\[[^\[\]\r\n]+\]\]|!\[[^\]\r\n]*\]\([^\)\r\n]+\)|\[[^\[\]\r\n]+\]\([^\)\r\n]+\)|\*\*[^\*\r\n]+\*\*|==[^=\r\n]+==|~~[^~\r\n]+~~|`[^`\r\n]+`|\*[^\*\r\n]+\*)/g
   const parts = text.split(tokenRegex)
 
   return parts.map(part => {
@@ -216,33 +216,53 @@ function formatInlineHtml(text: string, allNotes: Note[] = []): string {
       const exists = allNotes.some(n => n.title.toLowerCase().trim() === destination.toLowerCase().trim())
 
       const pillClass = exists
-        ? 'text-amber-300 hover:text-amber-100 bg-amber-950/30 hover:bg-amber-900/50 border border-amber-800/40'
+        ? 'text-[var(--accent)] hover:opacity-90 bg-[var(--accent-glow-subtle)] border border-[var(--accent)]/30'
         : 'text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
 
-      return `<span class="wiki-link inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" title="${exists ? `Abrir nota: &quot;${destination}&quot;` : `Criar nota: &quot;${destination}&quot;`}"><span class="underline decoration-amber-500/40 hover:decoration-amber-300 underline-offset-2">${escapeHtml(displayName)}</span></span>`
+      return `<span class="wiki-link inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" title="${exists ? `Abrir nota: &quot;${destination}&quot;` : `Criar nota: &quot;${destination}&quot;`}"><span class="underline decoration-[var(--accent)]/40 hover:decoration-[var(--accent)] underline-offset-2">${escapeHtml(displayName)}</span></span>`
     }
 
-    // 2. Bold **text**
+    // 2. Markdown Image ![alt](src)
+    if (part.startsWith('![') && part.includes('](') && part.endsWith(')')) {
+      const match = part.match(/^!\[(.*?)\]\((.+)\)$/)
+      if (match) {
+        const alt = match[1] || 'imagem'
+        const src = match[2]
+        return `<img src="${src}" alt="${escapeHtml(alt)}" class="rounded-xl max-w-full my-3 shadow-md border border-zinc-800" />`
+      }
+    }
+
+    // 3. Markdown Standard Link [text](url)
+    if (part.startsWith('[') && !part.startsWith('[[') && part.includes('](') && part.endsWith(')')) {
+      const match = part.match(/^\[(.*?)\]\((.+)\)$/)
+      if (match) {
+        const linkText = match[1]
+        const href = match[2]
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-[var(--accent)] hover:underline underline-offset-2 font-medium">${escapeHtml(linkText)}</a>`
+      }
+    }
+
+    // 4. Bold **text**
     if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
       return `<strong class="font-semibold text-zinc-100">${escapeHtml(part.slice(2, -2))}</strong>`
     }
 
-    // 3. Highlight ==text==
+    // 5. Highlight ==text==
     if (part.startsWith('==') && part.endsWith('==') && part.length >= 4) {
-      return `<mark class="bg-amber-400/25 text-amber-200 px-1 py-0.5 rounded font-normal">${escapeHtml(part.slice(2, -2))}</mark>`
+      return `<mark class="bg-[var(--accent-glow)] text-[var(--accent)] px-1 py-0.5 rounded font-normal">${escapeHtml(part.slice(2, -2))}</mark>`
     }
 
-    // 4. Strikethrough ~~text~~
+    // 6. Strikethrough ~~text~~
     if (part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) {
       return `<del class="line-through text-zinc-500">${escapeHtml(part.slice(2, -2))}</del>`
     }
 
-    // 5. Code `text`
+    // 7. Code `text`
     if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
-      return `<code class="bg-zinc-800 text-amber-300 px-1 py-0.5 rounded font-mono text-xs">${escapeHtml(part.slice(1, -1))}</code>`
+      return `<code class="bg-zinc-800 text-[var(--accent)] px-1 py-0.5 rounded font-mono text-xs">${escapeHtml(part.slice(1, -1))}</code>`
     }
 
-    // 6. Italic *text*
+    // 8. Italic *text*
     if (part.startsWith('*') && part.endsWith('*') && part.length >= 2) {
       return `<em class="italic text-zinc-200">${escapeHtml(part.slice(1, -1))}</em>`
     }
@@ -441,15 +461,29 @@ function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): strin
       continue
     }
 
+    // Image line ![alt](url)
+    const imgLineMatch = line.trim().match(/^!\[(.*?)\]\((.+)\)$/)
+    if (imgLineMatch) {
+      const alt = imgLineMatch[1] || 'imagem'
+      const src = imgLineMatch[2]
+      htmlParts.push(`
+        <div class="image-wrapper my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/40 p-1 shadow-md inline-block max-w-full" contenteditable="false" data-raw-img="${encodeURIComponent(src)}" data-img-alt="${escapeHtml(alt)}">
+          <img src="${src}" alt="${escapeHtml(alt)}" class="rounded-lg max-h-[500px] object-contain w-auto mx-auto" />
+        </div>
+      `)
+      i++
+      continue
+    }
+
     // Interactive Task Checklist
     const taskMatch = line.match(/^(\s*)-\s\[([ xX])\]\s(.*)$/)
     if (taskMatch) {
       const isChecked = taskMatch[2].toLowerCase() === 'x'
       const taskText = taskMatch[3]
       htmlParts.push(`
-        <div class="task-item flex items-start gap-2.5 my-1.5 group select-none" data-type="task">
-          <input type="checkbox" ${isChecked ? 'checked' : ''} contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0" />
-          <span class="task-text flex-1 text-[13px] md:text-sm leading-relaxed ${isChecked ? 'line-through text-zinc-500' : 'text-zinc-200'}">${formatInlineHtml(taskText, allNotes)}</span>
+        <div class="task-item flex items-start gap-2.5 my-1.5 group" data-type="task">
+          <input type="checkbox" ${isChecked ? 'checked' : ''} contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
+          <span class="task-text flex-1 text-[13px] md:text-sm leading-relaxed ${isChecked ? 'line-through text-zinc-500' : 'text-zinc-200'}">${formatInlineHtml(taskText, allNotes) || '<br>'}</span>
         </div>
       `)
       i++
@@ -527,26 +561,40 @@ function domToMarkdown(root: HTMLElement): string {
       }
 
       const tag = el.tagName.toLowerCase()
-      if (tag === 'strong' || tag === 'b') {
-        return `**${Array.from(el.childNodes).map(serializeInline).join('')}**`
+
+      // Images (image-wrapper or img)
+      if (tag === 'img' || el.classList.contains('image-wrapper')) {
+        const img = tag === 'img' ? (el as HTMLImageElement) : el.querySelector('img')
+        const src = img?.getAttribute('src') || decodeURIComponent(el.getAttribute('data-raw-img') || '')
+        const alt = img?.getAttribute('alt') || el.getAttribute('data-img-alt') || 'imagem'
+        return src ? `![${alt}](${src})` : ''
       }
-      if (tag === 'em' || tag === 'i') {
-        return `*${Array.from(el.childNodes).map(serializeInline).join('')}*`
+
+      // Links
+      if (tag === 'a') {
+        const href = el.getAttribute('href') || ''
+        const text = Array.from(el.childNodes).map(serializeInline).join('')
+        return href ? `[${text || href}](${href})` : text
       }
-      if (tag === 'mark') {
-        return `==${Array.from(el.childNodes).map(serializeInline).join('')}==`
-      }
-      if (tag === 'del' || tag === 's') {
-        return `~~${Array.from(el.childNodes).map(serializeInline).join('')}~~`
-      }
-      if (tag === 'code') {
-        return `\`${Array.from(el.childNodes).map(serializeInline).join('')}\``
-      }
+
       if (tag === 'br') {
         return ''
       }
 
-      return Array.from(el.childNodes).map(serializeInline).join('')
+      const style = el.getAttribute('style') || ''
+      const isBold = tag === 'strong' || tag === 'b' || /font-weight:\s*(bold|[6-9]00)/i.test(style)
+      const isItalic = tag === 'em' || tag === 'i' || /font-style:\s*italic/i.test(style)
+      const isMark = tag === 'mark' || /background-color/i.test(style)
+      const isStrike = tag === 'del' || tag === 's' || tag === 'strike' || /line-through/i.test(style)
+      const isCode = tag === 'code'
+
+      let inner = Array.from(el.childNodes).map(serializeInline).join('')
+      if (isCode) return `\`${inner}\``
+      if (isBold) inner = `**${inner}**`
+      if (isItalic) inner = `*${inner}*`
+      if (isMark) inner = `==${inner}==`
+      if (isStrike) inner = `~~${inner}~~`
+      return inner
     }
 
     return ''
@@ -563,7 +611,16 @@ function domToMarkdown(root: HTMLElement): string {
     const el = child as HTMLElement
     const tag = el.tagName.toLowerCase()
 
-    // 0. Nested Artifact Card
+    // 0. Image Card or standalone <img>
+    if (el.classList.contains('image-wrapper') || el.hasAttribute('data-raw-img') || tag === 'img') {
+      const img = tag === 'img' ? (el as HTMLImageElement) : el.querySelector('img')
+      const src = img?.getAttribute('src') || decodeURIComponent(el.getAttribute('data-raw-img') || '')
+      const alt = img?.getAttribute('alt') || el.getAttribute('data-img-alt') || 'imagem'
+      if (src) lines.push(`![${alt}](${src})`)
+      continue
+    }
+
+    // 0.1 Nested Artifact Card
     if (el.hasAttribute('data-raw-artifact')) {
       const rawArtifact = decodeURIComponent(el.getAttribute('data-raw-artifact') || '')
       lines.push(rawArtifact)
@@ -678,6 +735,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   const isTypingRef = useRef(false)
   const syncTimerRef = useRef<any>(null)
   const currentNoteIdRef = useRef<string | null>(null)
+  const lastSyncedMdRef = useRef<string>(note.content)
 
   // Floating Slash Command (/) Menu state
   const [slashMenu, setSlashMenu] = useState<{
@@ -711,26 +769,32 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     syncTimerRef.current = setTimeout(() => {
       if (containerRef.current) {
         const md = domToMarkdown(containerRef.current)
+        lastSyncedMdRef.current = md
         onUpdateContent(md)
         isTypingRef.current = false
       }
     }, 250)
   }, [onUpdateContent])
 
-  // Synchronize initial HTML when note changes or on mount
+  // Synchronize initial HTML when note changes or on external update
   useEffect(() => {
     if (!containerRef.current) return
 
-    // If switching notes or note was loaded from external source:
-    if (
-      currentNoteIdRef.current !== note.id ||
-      (!isTypingRef.current && !containerRef.current.contains(document.activeElement))
-    ) {
+    // If switching notes
+    if (currentNoteIdRef.current !== note.id) {
       currentNoteIdRef.current = note.id
+      lastSyncedMdRef.current = note.content
       containerRef.current.innerHTML = markdownToHtml(note.content, allNotes, note.title)
       setSlashMenu(null)
       setWikiSuggest(null)
       setSelectionToolbar(null)
+    } else if (
+      note.content !== lastSyncedMdRef.current &&
+      !containerRef.current.contains(document.activeElement)
+    ) {
+      // Only sync if content was updated externally and user is not focused on editor
+      lastSyncedMdRef.current = note.content
+      containerRef.current.innerHTML = markdownToHtml(note.content, allNotes, note.title)
     }
   }, [note.id, note.content, note.title, allNotes])
 
@@ -746,8 +810,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       else if (type === 'quote') document.execCommand('formatBlock', false, 'blockquote')
       else if (type === 'task') {
         const taskHtml = `
-          <div class="task-item flex items-start gap-2.5 my-1.5 group select-none" data-type="task">
-            <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0" />
+          <div class="task-item flex items-start gap-2.5 my-1.5 group" data-type="task">
+            <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
             <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">Nova tarefa...</span>
           </div>
         `
@@ -821,6 +885,38 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
     const linkHtml = `<span class="wiki-link inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(targetTitle)}" title="${exists ? `Abrir nota: &quot;${targetTitle}&quot;` : `Criar nota: &quot;${targetTitle}&quot;`}"><span class="underline decoration-amber-500/40 hover:decoration-amber-300 underline-offset-2">${escapeHtml(targetTitle)}</span></span>&nbsp;`
     document.execCommand('insertHTML', false, linkHtml)
+  }
+
+  // Handle image and rich media pasting directly into the document
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.type.indexOf('image') !== -1) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (!file) continue
+
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          const dataUrl = event.target?.result as string
+          if (!dataUrl) return
+
+          const imgHtml = `
+            <div class="image-wrapper my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/40 p-1 shadow-md inline-block max-w-full" contenteditable="false" data-raw-img="${encodeURIComponent(dataUrl)}" data-img-alt="imagem">
+              <img src="${dataUrl}" alt="imagem" class="rounded-lg max-h-[500px] object-contain w-auto mx-auto" />
+            </div>
+            <p class="my-1.5 text-[13px] md:text-sm text-zinc-300 leading-relaxed"><br></p>
+          `
+          document.execCommand('insertHTML', false, imgHtml)
+          handleSync()
+        }
+        reader.readAsDataURL(file)
+        return
+      }
+    }
   }
 
   // Handle typing inside unified contentEditable
@@ -930,6 +1026,171 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       }
     }
 
+    // Handle Enter key inside lists and interactive checklists
+    if (e.key === 'Enter') {
+      const sel = window.getSelection()
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0)
+        const node = range.startContainer
+        const el = (node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement)
+
+        // 1. Task Item Enter Handling
+        const taskItem = el?.closest('.task-item') as HTMLElement | null
+        if (taskItem) {
+          e.preventDefault()
+          const textEl = taskItem.querySelector('.task-text') as HTMLElement | null
+          const rawText = textEl?.textContent?.replace(/\u200B/g, '').trim() || ''
+
+          // If current task item has no text, exit checklist mode and convert to a clean paragraph
+          if (!rawText) {
+            const p = document.createElement('p')
+            p.className = 'my-1.5 text-[13px] md:text-sm text-zinc-300 leading-relaxed'
+            p.innerHTML = '<br>'
+            taskItem.replaceWith(p)
+            const newRange = document.createRange()
+            newRange.setStart(p, 0)
+            newRange.collapse(true)
+            sel.removeAllRanges()
+            sel.addRange(newRange)
+            handleSync()
+            return
+          }
+
+          // Current task has content: create a new task item below
+          const newTask = document.createElement('div')
+          newTask.className = 'task-item flex items-start gap-2.5 my-1.5 group'
+          newTask.setAttribute('data-type', 'task')
+          newTask.innerHTML = `
+            <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
+            <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed"><br></span>
+          `
+
+          // If cursor was in the middle of text, transfer the trailing content
+          if (textEl && !range.collapsed) {
+            range.deleteContents()
+          } else if (textEl && node.nodeType === Node.TEXT_NODE) {
+            try {
+              const subRange = document.createRange()
+              subRange.setStart(node, range.startOffset)
+              subRange.setEnd(textEl, textEl.childNodes.length)
+              const trailing = subRange.extractContents()
+              const newSpan = newTask.querySelector('.task-text') as HTMLElement
+              newSpan.innerHTML = ''
+              newSpan.appendChild(trailing)
+              if (!newSpan.textContent?.trim()) {
+                newSpan.innerHTML = '<br>'
+              }
+            } catch {
+              // fallback
+            }
+          }
+
+          taskItem.after(newTask)
+          const targetSpan = newTask.querySelector('.task-text') as HTMLElement
+          const newRange = document.createRange()
+          newRange.setStart(targetSpan, 0)
+          newRange.collapse(true)
+          sel.removeAllRanges()
+          sel.addRange(newRange)
+          handleSync()
+          return
+        }
+
+        // 2. List Item (<li>) Enter Handling
+        const liElement = el?.closest('li') as HTMLElement | null
+        if (liElement) {
+          const rawText = liElement.textContent?.replace(/\u200B/g, '').trim() || ''
+
+          // If current li is empty, exit list mode and insert regular paragraph after the list
+          if (!rawText) {
+            e.preventDefault()
+            const parentList = liElement.closest('ul, ol')
+            liElement.remove()
+            const p = document.createElement('p')
+            p.className = 'my-1.5 text-[13px] md:text-sm text-zinc-300 leading-relaxed'
+            p.innerHTML = '<br>'
+            if (parentList) {
+              if (parentList.children.length === 0) {
+                parentList.replaceWith(p)
+              } else {
+                parentList.after(p)
+              }
+            } else {
+              containerRef.current?.appendChild(p)
+            }
+            const newRange = document.createRange()
+            newRange.setStart(p, 0)
+            newRange.collapse(true)
+            sel.removeAllRanges()
+            sel.addRange(newRange)
+            handleSync()
+            return
+          }
+
+          // Li has content: create new li below
+          e.preventDefault()
+          const newLi = document.createElement('li')
+          newLi.innerHTML = '<br>'
+
+          if (!range.collapsed) {
+            range.deleteContents()
+          } else if (node.nodeType === Node.TEXT_NODE) {
+            try {
+              const subRange = document.createRange()
+              subRange.setStart(node, range.startOffset)
+              subRange.setEnd(liElement, liElement.childNodes.length)
+              const trailing = subRange.extractContents()
+              newLi.innerHTML = ''
+              newLi.appendChild(trailing)
+              if (!newLi.textContent?.trim()) {
+                newLi.innerHTML = '<br>'
+              }
+            } catch {
+              // fallback
+            }
+          }
+
+          liElement.after(newLi)
+          const newRange = document.createRange()
+          newRange.setStart(newLi, 0)
+          newRange.collapse(true)
+          sel.removeAllRanges()
+          sel.addRange(newRange)
+          handleSync()
+          return
+        }
+      }
+    }
+
+    // Backspace on empty task item converts it back to paragraph
+    if (e.key === 'Backspace') {
+      const sel = window.getSelection()
+      if (sel && sel.rangeCount > 0 && sel.isCollapsed) {
+        const range = sel.getRangeAt(0)
+        const node = range.startContainer
+        const el = (node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement)
+        const taskItem = el?.closest('.task-item') as HTMLElement | null
+        if (taskItem) {
+          const textEl = taskItem.querySelector('.task-text') as HTMLElement | null
+          const rawText = textEl?.textContent?.replace(/\u200B/g, '').trim() || ''
+          if (!rawText || range.startOffset === 0) {
+            e.preventDefault()
+            const p = document.createElement('p')
+            p.className = 'my-1.5 text-[13px] md:text-sm text-zinc-300 leading-relaxed'
+            p.innerHTML = rawText ? escapeHtml(rawText) : '<br>'
+            taskItem.replaceWith(p)
+            const newRange = document.createRange()
+            newRange.setStart(p, 0)
+            newRange.collapse(true)
+            sel.removeAllRanges()
+            sel.addRange(newRange)
+            handleSync()
+            return
+          }
+        }
+      }
+    }
+
     // Live markdown formatting when typing Space at beginning of line
     if (e.key === ' ') {
       const sel = window.getSelection()
@@ -969,6 +1230,19 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           e.preventDefault()
           sel.anchorNode.textContent = ''
           document.execCommand('insertOrderedList')
+          handleSync()
+          return
+        }
+        if ((text === '[]' || text === '- [ ]' || text === '[ ]') && offset === text.length) {
+          e.preventDefault()
+          sel.anchorNode.textContent = ''
+          const taskHtml = `
+            <div class="task-item flex items-start gap-2.5 my-1.5 group" data-type="task">
+              <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
+              <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed"><br></span>
+            </div>
+          `
+          document.execCommand('insertHTML', false, taskHtml)
           handleSync()
           return
         }
@@ -1017,8 +1291,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     else if (cmdId === 'hr') document.execCommand('insertHorizontalRule')
     else if (cmdId === 'task') {
       const taskHtml = `
-        <div class="task-item flex items-start gap-2.5 my-1.5 group select-none" data-type="task">
-          <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0" />
+        <div class="task-item flex items-start gap-2.5 my-1.5 group" data-type="task">
+          <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
           <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">Nova tarefa...</span>
         </div>
       `
@@ -1242,6 +1516,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         suppressContentEditableWarning
         onInput={handleInput}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         onMouseUp={handleSelectionCheck}
         onKeyUp={handleSelectionCheck}
         onClick={handleEditorClick}
