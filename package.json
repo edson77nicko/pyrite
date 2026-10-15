@@ -12,6 +12,7 @@
     "build": "tsc -b && vite build",
     "build:win": "npm run build && electron-builder --win --x64",
     "publish:win": "npm run build && electron-builder --win --x64 -p always",
+    "release": "node scripts/release.cjs && node scripts/upload_assets.cjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },
