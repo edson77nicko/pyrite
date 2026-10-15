@@ -279,6 +279,9 @@ export function loadNotes(): Note[] {
       if (artifactIdx === -1) {
         cleaned.unshift(targetArtifactNote)
         modified = true
+      } else if (!cleaned[artifactIdx].content.includes(':::kpi')) {
+        cleaned[artifactIdx] = targetArtifactNote
+        modified = true
       }
 
       const quizIndex = cleaned.findIndex(n => n.id === 'note-quiz-checklist')

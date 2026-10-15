@@ -64,6 +64,31 @@ export const App: React.FC = () => {
             createdAt: f.createdAt,
             updatedAt: f.updatedAt
           }))
+          // Ensure system reference notes (like 'Componentes de Design & Artefatos') are seeded if not yet on disk
+          for (const initNote of INITIAL_NOTES) {
+            const exists = loadedNotes.some(n => n.title.toLowerCase() === initNote.title.toLowerCase())
+            if (!exists) {
+              const res = await api.saveFile({
+                vaultPath: currentPath,
+                folder: initNote.folder,
+                title: initNote.title,
+                content: initNote.content
+              })
+              if (res.success) {
+                loadedNotes.unshift({
+                  id: `note_disk_sys_${Date.now()}`,
+                  title: initNote.title,
+                  folder: initNote.folder,
+                  content: initNote.content,
+                  filePath: res.filePath,
+                  tags: extractTags(initNote.content),
+                  createdAt: Date.now(),
+                  updatedAt: Date.now()
+                })
+              }
+            }
+          }
+
           const loadedFolders = Array.from(new Set(loadedNotes.map(n => n.folder).filter(Boolean)))
           setNotes(loadedNotes)
           setFolders(loadedFolders.length > 0 ? loadedFolders : ['Início'])
