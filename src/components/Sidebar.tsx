@@ -178,9 +178,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <div className="flex items-center gap-2 truncate">
             {isCollapsed ? (
-              <Folder className="w-4 h-4 text-amber-400/90 shrink-0 transition-transform" />
+              <Folder className="w-4 h-4 text-[#c59b27]/80 shrink-0 transition-transform" />
             ) : (
-              <FolderOpen className="w-4 h-4 text-amber-300 shrink-0 transition-transform" />
+              <FolderOpen className="w-4 h-4 text-[#d4af37] shrink-0 transition-transform" />
             )}
             <span className="truncate">{node.name}</span>
           </div>
@@ -191,7 +191,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 e.stopPropagation()
                 onCreateNote(node.fullPath)
               }}
-              className="p-0.5 hover:text-amber-400"
+              className="p-0.5 hover:text-[#d4af37]"
               title={`Nova nota em ${node.fullPath}`}
             >
               <Plus className="w-3 h-3" />
@@ -201,7 +201,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 e.stopPropagation()
                 handleStartCreateFolder(node.fullPath)
               }}
-              className="p-0.5 hover:text-amber-400"
+              className="p-0.5 hover:text-[#d4af37]"
               title={`Nova subpasta em ${node.fullPath}`}
             >
               <FolderPlus className="w-3 h-3" />
@@ -230,12 +230,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={() => onSelectNote(note.id)}
                   className={`group flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
                     isActive
-                      ? 'bg-amber-500/10 text-amber-200 font-medium border border-amber-500/30'
+                      ? 'bg-[#c59b27]/10 text-zinc-100 font-medium border border-[#c59b27]/30'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                   }`}
                 >
                   <div className="flex items-center gap-2 truncate">
-                    <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-amber-400' : 'text-zinc-500'}`} />
+                    <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-[#c59b27]' : 'text-zinc-500'}`} />
                     <span className="truncate">{note.title}</span>
                   </div>
 
@@ -245,10 +245,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         e.stopPropagation()
                         onToggleFavorite(note.id)
                       }}
-                      className={`p-0.5 rounded hover:text-amber-400 ${note.isFavorite ? 'text-amber-400' : 'text-zinc-500'}`}
+                      className={`p-0.5 rounded hover:text-[#d4af37] ${note.isFavorite ? 'text-[#c59b27]' : 'text-zinc-500'}`}
                       title={note.isFavorite ? 'Remover dos favoritos' : 'Favoritar nota'}
                     >
-                      <Star className={`w-3 h-3 ${note.isFavorite ? 'fill-amber-400' : ''}`} />
+                      <Star className={`w-3 h-3 ${note.isFavorite ? 'fill-[#c59b27] text-[#c59b27]' : ''}`} />
                     </button>
                     <button
                       onClick={(e) => {
@@ -280,7 +280,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* 1. Vault Header */}
       <div className="p-3 border-b border-zinc-800 bg-[#0f0f12] flex items-center justify-between">
         <div className="flex items-center gap-2.5 truncate flex-1 mr-2">
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-amber-500 via-amber-600 to-yellow-600 flex items-center justify-center font-bold text-xs text-zinc-950 shadow-[0_0_12px_rgba(245,158,11,0.25)] shrink-0">
+          <div className="w-6 h-6 rounded-lg bg-[#c59b27] flex items-center justify-center font-bold text-xs text-zinc-950 shadow-sm shrink-0">
             Py
           </div>
           <div className="truncate">
@@ -300,16 +300,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 rounded-md transition-colors border border-zinc-800/80"
               title="Abrir pasta do cofre no Explorador de Arquivos do Windows"
             >
-              <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+              <FolderOpen className="w-3.5 h-3.5 text-[#c59b27]" />
             </button>
           )}
 
           <button
             onClick={onOpenLocalFolder}
-            className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/80 px-2 py-1 rounded-md transition-colors border border-zinc-800 cursor-pointer"
+            className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/80 px-2 py-1 rounded-md transition-colors border border-zinc-800 cursor-pointer"
             title={vaultPath ? "Trocar Pasta do Cofre" : "Importar pasta e subpastas locais do PC"}
           >
-            <HardDrive className="w-3 h-3 text-amber-400" />
+            <HardDrive className="w-3 h-3 text-[#c59b27]" />
             <span>{vaultPath ? "Cofre" : "Importar"}</span>
           </button>
         </div>
@@ -320,7 +320,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => onCreateNote()}
-            className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-zinc-950 rounded-md text-[11px] font-semibold transition-all shadow-md shadow-amber-950/20 cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#c59b27] hover:bg-[#d8b150] text-zinc-950 rounded-md text-[11px] font-semibold transition-all shadow-sm cursor-pointer"
             title="Criar Nova Nota"
           >
             <Plus className="w-3 h-3 stroke-[2.5]" />
@@ -332,13 +332,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 rounded-md text-[11px] font-medium transition-colors border border-zinc-700/60 cursor-pointer"
             title="Abrir ou Criar Nota Diária de Hoje"
           >
-            <Calendar className="w-3 h-3 text-amber-400" />
+            <Calendar className="w-3 h-3 text-[#c59b27]" />
             <span>Diário</span>
           </button>
 
           <button
             onClick={() => handleStartCreateFolder()}
-            className="p-1 hover:text-amber-300 hover:bg-zinc-800 rounded-md transition-colors cursor-pointer"
+            className="p-1 hover:text-[#d4af37] hover:bg-zinc-800 rounded-md transition-colors cursor-pointer"
             title="Nova Pasta Raiz"
           >
             <FolderPlus className="w-3.5 h-3.5" />
@@ -359,7 +359,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filtrar notas..."
-            className="w-full pl-8 pr-2 py-1.5 bg-zinc-900/90 border border-zinc-800 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-500/70 transition-colors"
+            className="w-full pl-8 pr-2 py-1.5 bg-zinc-900/90 border border-zinc-800 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[#c59b27]/60 transition-colors"
           />
         </div>
       </div>
@@ -373,11 +373,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
             placeholder={parentForNewFolder ? `Subpasta em ${parentForNewFolder}...` : "Nome da pasta..."}
-            className="flex-1 px-2 py-1 bg-zinc-950 border border-amber-500/70 rounded-md text-xs text-zinc-200 focus:outline-none"
+            className="flex-1 px-2 py-1 bg-zinc-950 border border-[#c59b27]/60 rounded-md text-xs text-zinc-200 focus:outline-none"
           />
           <button
             type="submit"
-            className="px-2 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-zinc-950 rounded-md text-xs font-semibold cursor-pointer"
+            className="px-2 py-1 bg-[#c59b27] hover:bg-[#d8b150] text-zinc-950 rounded-md text-xs font-semibold cursor-pointer"
           >
             Criar
           </button>
@@ -396,8 +396,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Favoritos (Star section) */}
         {favoriteNotes.length > 0 && (
           <div className="space-y-0.5">
-            <div className="px-2 py-1 text-[10px] font-semibold uppercase text-amber-400/90 tracking-wider flex items-center gap-1">
-              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+            <div className="px-2 py-1 text-[10px] font-semibold uppercase text-[#d4af37] tracking-wider flex items-center gap-1">
+              <Star className="w-3 h-3 fill-[#c59b27] text-[#c59b27]" />
               <span>Favoritos ({favoriteNotes.length})</span>
             </div>
             <div className="space-y-0.5">
@@ -409,12 +409,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => onSelectNote(n.id)}
                     className={`group flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
                       isActive
-                        ? 'bg-amber-500/10 text-amber-200 font-medium border border-amber-500/30'
+                        ? 'bg-[#c59b27]/10 text-zinc-100 font-medium border border-[#c59b27]/30'
                         : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                     }`}
                   >
                     <div className="flex items-center gap-1.5 truncate">
-                      <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
+                      <Star className="w-3 h-3 text-[#c59b27] fill-[#c59b27] shrink-0" />
                       <span className="truncate">{n.title}</span>
                     </div>
                   </div>
@@ -443,12 +443,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={() => onSelectNote(note.id)}
                   className={`group flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
                     isActive
-                      ? 'bg-amber-500/10 text-amber-200 font-medium border border-amber-500/30'
+                      ? 'bg-[#c59b27]/10 text-zinc-100 font-medium border border-[#c59b27]/30'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                   }`}
                 >
                   <div className="flex items-center gap-1.5 truncate">
-                    <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-amber-400' : 'text-zinc-500'}`} />
+                    <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-[#c59b27]' : 'text-zinc-500'}`} />
                     <span className="truncate">{note.title}</span>
                   </div>
 
@@ -458,9 +458,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         e.stopPropagation()
                         onToggleFavorite(note.id)
                       }}
-                      className={`p-0.5 rounded hover:text-amber-400 ${note.isFavorite ? 'text-amber-400' : 'text-zinc-500'}`}
+                      className={`p-0.5 rounded hover:text-[#d4af37] ${note.isFavorite ? 'text-[#c59b27]' : 'text-zinc-500'}`}
                     >
-                      <Star className={`w-3 h-3 ${note.isFavorite ? 'fill-amber-400' : ''}`} />
+                      <Star className={`w-3 h-3 ${note.isFavorite ? 'fill-[#c59b27] text-[#c59b27]' : ''}`} />
                     </button>
                     <button
                       onClick={(e) => {

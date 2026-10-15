@@ -51,14 +51,14 @@ export const Ribbon: React.FC<RibbonProps> = ({
 
       <div className="w-5 h-px bg-zinc-800/80 my-2" />
 
-      {/* 2. Main Views (Icon only, no text): Editor, Graph, Canvas */}
+      {/* 2. Main Views (Icon only): Editor, Graph, Canvas, AI Agent */}
       <div className="flex flex-col items-center gap-1">
         <button
           onClick={() => onChangeView('editor')}
           className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             currentView === 'editor'
-              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
-              : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50'
+              ? 'bg-[#c59b27]/15 text-[#d4af37] border border-[#c59b27]/30'
+              : 'text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/50'
           }`}
           title="Editor de Notas"
         >
@@ -69,8 +69,8 @@ export const Ribbon: React.FC<RibbonProps> = ({
           onClick={() => onChangeView('graph')}
           className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             currentView === 'graph'
-              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
-              : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50'
+              ? 'bg-[#c59b27]/15 text-[#d4af37] border border-[#c59b27]/30'
+              : 'text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/50'
           }`}
           title="Grafo de Conhecimento"
         >
@@ -81,8 +81,8 @@ export const Ribbon: React.FC<RibbonProps> = ({
           onClick={() => onChangeView('canvas')}
           className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             currentView === 'canvas'
-              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
-              : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50'
+              ? 'bg-[#c59b27]/15 text-[#d4af37] border border-[#c59b27]/30'
+              : 'text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/50'
           }`}
           title="Canvas Infinito"
         >
@@ -94,8 +94,8 @@ export const Ribbon: React.FC<RibbonProps> = ({
           onClick={onToggleAi}
           className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             isAiOpen
-              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
-              : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50'
+              ? 'bg-[#c59b27]/20 text-[#d4af37] border border-[#c59b27]/40'
+              : 'text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/50'
           }`}
           title="Agente Pyrita"
         >
@@ -109,7 +109,7 @@ export const Ribbon: React.FC<RibbonProps> = ({
       <div className="flex flex-col items-center gap-1">
         <button
           onClick={onOpenCommandPalette}
-          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
+          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
           title="Busca Rápida / Paleta de Comandos (Ctrl + P)"
         >
           <Search className="w-4 h-4" />
@@ -117,7 +117,7 @@ export const Ribbon: React.FC<RibbonProps> = ({
 
         <button
           onClick={onOpenDailyNote}
-          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
+          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
           title="Abrir Nota Diária de Hoje"
         >
           <Calendar className="w-4 h-4" />
@@ -131,7 +131,7 @@ export const Ribbon: React.FC<RibbonProps> = ({
       <div className="flex flex-col items-center gap-1">
         <button
           onClick={onOpenSettings}
-          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
+          className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
           title="Configurações e Personalização"
         >
           <SlidersHorizontal className="w-4 h-4" />

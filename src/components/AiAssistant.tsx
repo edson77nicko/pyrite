@@ -45,6 +45,17 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     updatedAt: Date.now()
   }
 
+  // Resizable width state with localStorage persistence
+  const [panelWidth, setPanelWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('pyrita_ai_width')
+      return saved ? Number(saved) : 380
+    } catch {
+      return 380
+    }
+  })
+  const [isDragging, setIsDragging] = useState(false)
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'm1',
@@ -57,6 +68,34 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const [suggestedConnections, setSuggestedConnections] = useState<{ note: Note; reason: string }[]>([])
   const [summary, setSummary] = useState<string | null>(null)
   const [suggestedTags, setSuggestedTags] = useState<string[]>([])
+
+  // Drag handler to resize chat width
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+    const startX = e.clientX
+    const startWidth = panelWidth
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX
+      const newWidth = Math.min(800, Math.max(290, startWidth + deltaX))
+      setPanelWidth(newWidth)
+    }
+
+    const handleMouseUp = (upEvent: MouseEvent) => {
+      setIsDragging(false)
+      const deltaX = upEvent.clientX - startX
+      const finalWidth = Math.min(800, Math.max(290, startWidth + deltaX))
+      try {
+        localStorage.setItem('pyrita_ai_width', String(finalWidth))
+      } catch {}
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }
 
   // Smart Discovery of unlinked notes with semantic relevance
   const runSmartDiscovery = () => {
@@ -158,11 +197,14 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   }
 
   return (
-    <div className="w-84 h-full bg-[#0c0c0f] border-r border-zinc-800/80 flex flex-col select-none shrink-0 text-xs z-10">
+    <div
+      style={{ width: `${panelWidth}px` }}
+      className="h-full bg-[#0c0c0f] border-r border-zinc-800/80 flex flex-col select-none shrink-0 text-xs z-10 relative"
+    >
       {/* Header matching reference layout */}
       <div className="h-10 px-3 border-b border-zinc-800/80 bg-[#0e0e12] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700/60 text-zinc-200 text-xs max-w-[210px] truncate shadow-sm">
-          <Bot className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <Bot className="w-3.5 h-3.5 text-[#c59b27] shrink-0" />
           <span className="truncate font-medium">{effectiveNote.title}</span>
           <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0 ml-0.5" />
         </div>
@@ -171,10 +213,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           <button
             onClick={runSmartDiscovery}
             disabled={isAnalyzing}
-            className="p-1.5 text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
+            className="p-1.5 text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
             title="Analisar conexões semânticas com o Vault"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin text-amber-400' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin text-[#c59b27]' : ''}`} />
           </button>
           <button
             onClick={onClose}
@@ -186,14 +228,14 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
         </div>
       </div>
 
-      {/* Main Content / Chat Feed */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin">
+      {/* Main Content / Chat Feed with Custom Scrollbar */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-chat-scrollbar">
         {/* Semantic Suggestions */}
         {suggestedConnections.length > 0 && (
           <div className="p-2.5 bg-[#121216] rounded-xl border border-zinc-800/90 space-y-1.5">
             <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-300">
               <span className="flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-amber-400" />
+                <Sparkles className="w-3 h-3 text-[#c59b27]" />
                 Conexões Descobertas
               </span>
             </div>
@@ -204,10 +246,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
                   className="p-2 bg-zinc-900/90 rounded-lg border border-zinc-800/80 space-y-1"
                 >
                   <div className="flex items-center justify-between gap-1">
-                    <span className="font-medium text-amber-300 truncate text-[11px]">[[{c.note.title}]]</span>
+                    <span className="font-medium text-[#d4af37] truncate text-[11px]">[[{c.note.title}]]</span>
                     <button
                       onClick={() => onConnectNote(c.note.title)}
-                      className="px-2 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-zinc-950 font-bold rounded text-[10px] transition-colors shrink-0 shadow-sm cursor-pointer"
+                      className="px-2 py-0.5 bg-[#c59b27] hover:bg-[#d8b150] text-zinc-950 font-bold rounded text-[10px] transition-colors shrink-0 shadow-sm cursor-pointer"
                       title="Adicionar link na nota"
                     >
                       + Linkar
@@ -229,7 +271,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
                 <button
                   key={t}
                   onClick={() => onAddTag(t)}
-                  className="px-2 py-0.5 bg-zinc-800 hover:bg-amber-500/20 text-amber-300 border border-zinc-700/60 rounded-full text-[10px] font-mono transition-colors cursor-pointer"
+                  className="px-2 py-0.5 bg-zinc-800 hover:bg-[#c59b27]/20 text-[#d4af37] border border-zinc-700/60 rounded-full text-[10px] font-mono transition-colors cursor-pointer"
                 >
                   +{t}
                 </button>
@@ -250,7 +292,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
               <div className="text-[10px] text-zinc-500 font-medium px-1 flex items-center gap-1">
                 {m.sender === 'ai' ? (
                   <>
-                    <Bot className="w-3 h-3 text-amber-400" />
+                    <Bot className="w-3 h-3 text-[#c59b27]" />
                     <span>Agente Pyrita</span>
                   </>
                 ) : (
@@ -264,7 +306,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
                 className={`p-2.5 rounded-2xl max-w-[95%] ${
                   m.sender === 'user'
                     ? 'bg-zinc-800 text-zinc-100 rounded-br-xs'
-                    : 'bg-[#15151a] border border-zinc-800/90 text-zinc-200 rounded-bl-xs shadow-sm'
+                    : 'bg-[#15151a] border border-white/[0.06] text-zinc-200 rounded-bl-xs shadow-sm'
                 }`}
               >
                 {m.sender === 'ai' ? (
@@ -285,10 +327,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
                               onInsertSnippet(m.text)
                             }
                           }}
-                          className="px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+                          className="px-2.5 py-1 bg-[#c59b27]/15 hover:bg-[#c59b27]/25 border border-[#c59b27]/30 text-[#d4af37] hover:text-[#f3e5ab] rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1 cursor-pointer shadow-sm"
                           title="Inserir este artefato diretamente na nota atual"
                         >
-                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          <Sparkles className="w-3 h-3 text-[#c59b27]" />
                           + Inserir na Nota
                         </button>
                       </div>
@@ -303,41 +345,41 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
         </div>
       </div>
 
-      {/* Modern Chat Input Card (Styled matching reference image) */}
+      {/* Modern Chat Input Card */}
       <form onSubmit={handleSendMessage} className="p-2.5 border-t border-zinc-800/80 bg-[#0c0c0f] flex flex-col gap-1.5">
         {/* Quick Generative UI Chips */}
         <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10px]">
           <button
             type="button"
             onClick={() => handleSendPreset('Gere um cartão de KPI concêntrico sobre esta nota')}
-            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-amber-300 hover:border-amber-500/40"
+            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-[#d4af37] hover:border-[#c59b27]/40"
           >
             📊 + KPI
           </button>
           <button
             type="button"
             onClick={() => handleSendPreset('Crie uma linha do tempo com roadmap das etapas')}
-            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-amber-300 hover:border-amber-500/40"
+            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-[#d4af37] hover:border-[#c59b27]/40"
           >
             📅 + Roadmap
           </button>
           <button
             type="button"
             onClick={() => handleSendPreset('Faça um comparativo de prós e contras')}
-            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-amber-300 hover:border-amber-500/40"
+            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-[#d4af37] hover:border-[#c59b27]/40"
           >
             ⚖️ + Comparativo
           </button>
           <button
             type="button"
             onClick={() => handleSendPreset('Gere um cartão em camadas concêntrico')}
-            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-amber-300 hover:border-amber-500/40"
+            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-[#d4af37] hover:border-[#c59b27]/40"
           >
             ✨ + Cartão
           </button>
         </div>
 
-        <div className="bg-[#15151a] border border-zinc-800 focus-within:border-amber-500/60 rounded-2xl p-2 transition-all shadow-inner flex flex-col gap-2">
+        <div className="bg-[#141418] border border-zinc-800 focus-within:border-[#c59b27]/60 rounded-2xl p-2 transition-all shadow-inner flex flex-col gap-2">
           <input
             type="text"
             value={input}
@@ -347,13 +389,13 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           />
           <div className="flex items-center justify-between pt-1 border-t border-zinc-800/40">
             <div className="flex items-center gap-1 text-[10px] text-zinc-400 bg-zinc-900/90 border border-zinc-800 px-2 py-0.5 rounded-full max-w-[190px] truncate">
-              <span className="text-amber-400 font-bold">@</span>
+              <span className="text-[#c59b27] font-bold">@</span>
               <span className="truncate">{effectiveNote.title}</span>
             </div>
             <button
               type="submit"
               disabled={!input.trim()}
-              className="w-6 h-6 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 disabled:opacity-30 disabled:hover:from-amber-500 disabled:hover:to-yellow-500 text-zinc-950 font-bold flex items-center justify-center transition-all cursor-pointer shadow-md shadow-amber-950/30 shrink-0"
+              className="w-6 h-6 rounded-full bg-[#c59b27] hover:bg-[#d8b150] disabled:opacity-30 disabled:hover:bg-[#c59b27] text-zinc-950 font-bold flex items-center justify-center transition-all cursor-pointer shadow-md shadow-black/40 shrink-0"
               title="Enviar mensagem"
             >
               <ArrowUp className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -361,6 +403,21 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           </div>
         </div>
       </form>
+
+      {/* Vertical Resizable Drag Handle */}
+      <div
+        onMouseDown={handleMouseDown}
+        onDoubleClick={() => {
+          setPanelWidth(380)
+          localStorage.setItem('pyrita_ai_width', '380')
+        }}
+        className={`absolute top-0 right-0 w-1.5 h-full cursor-col-resize select-none z-30 transition-colors group ${
+          isDragging ? 'bg-[#c59b27]' : 'hover:bg-[#c59b27]/50'
+        }`}
+        title="Arraste para redimensionar a largura do chat (duplo clique para restaurar)"
+      >
+        <div className="w-[1px] h-full bg-zinc-800/80 group-hover:bg-[#c59b27]/80 mx-auto" />
+      </div>
     </div>
   )
 }

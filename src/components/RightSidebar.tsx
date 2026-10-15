@@ -1,19 +1,21 @@
 import React, { useState } from 'react'
 import type { Note } from '../types'
-import { getBacklinks, getOutgoingLinks } from '../utils/vault'
+import { extractWikiLinks } from '../utils/vault'
 import {
   Link2,
-  ArrowUpRight,
+  Tag,
   List,
-  Tag
+  ArrowUpRight
 } from 'lucide-react'
 
 interface RightSidebarProps {
-  currentNote?: Note
+  currentNote: Note
   allNotes: Note[]
   onSelectNote: (noteId: string) => void
   isOpen: boolean
 }
+
+type SidebarTab = 'links' | 'outline' | 'tags'
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
   currentNote,
@@ -21,17 +23,27 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onSelectNote,
   isOpen
 }) => {
-  const [activeTab, setActiveTab] = useState<'links' | 'outline' | 'tags'>('links')
+  const [activeTab, setActiveTab] = useState<SidebarTab>('links')
 
-  if (!isOpen || !currentNote) return null
+  if (!isOpen) return null
 
-  const backlinks = getBacklinks(currentNote, allNotes)
-  const outgoingLinks = getOutgoingLinks(currentNote, allNotes)
+  // 1. Backlinks: notes that link to currentNote
+  const backlinks = allNotes.filter(n => {
+    if (n.id === currentNote.id) return false
+    const links = extractWikiLinks(n.content)
+    return links.some(link => link.toLowerCase() === currentNote.title.toLowerCase())
+  })
 
-  // Extract headings for Outline
+  // 2. Outgoing links from currentNote
+  const currentLinks = extractWikiLinks(currentNote.content)
+  const outgoingLinks = currentLinks.map(linkText => {
+    const target = allNotes.find(n => n.title.toLowerCase() === linkText.toLowerCase())
+    return { title: linkText, note: target }
+  })
+
+  // 3. Document Outline (Markdown Headings)
   const headings = currentNote.content
     .split('\n')
-    .filter(l => l.startsWith('#'))
     .map(line => {
       const match = line.match(/^(#{1,6})\s+(.*)$/)
       if (match) {
@@ -52,8 +64,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           onClick={() => setActiveTab('links')}
           className={`flex-1 py-1.5 px-2 rounded flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
             activeTab === 'links'
-              ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
-              : 'text-zinc-500 hover:text-amber-300'
+              ? 'bg-[#c59b27]/10 text-[#d4af37] border border-[#c59b27]/30'
+              : 'text-zinc-500 hover:text-[#d4af37]'
           }`}
           title="Backlinks & Links"
         >
@@ -65,8 +77,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           onClick={() => setActiveTab('outline')}
           className={`flex-1 py-1.5 px-2 rounded flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
             activeTab === 'outline'
-              ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
-              : 'text-zinc-500 hover:text-amber-300'
+              ? 'bg-[#c59b27]/10 text-[#d4af37] border border-[#c59b27]/30'
+              : 'text-zinc-500 hover:text-[#d4af37]'
           }`}
           title="Sumário / Estrutura"
         >
@@ -78,8 +90,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           onClick={() => setActiveTab('tags')}
           className={`flex-1 py-1.5 px-2 rounded flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
             activeTab === 'tags'
-              ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
-              : 'text-zinc-500 hover:text-amber-300'
+              ? 'bg-[#c59b27]/10 text-[#d4af37] border border-[#c59b27]/30'
+              : 'text-zinc-500 hover:text-[#d4af37]'
           }`}
           title="Tags da nota"
         >
@@ -96,7 +108,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between text-zinc-400 font-semibold tracking-wider uppercase text-[10px]">
                 <div className="flex items-center gap-1.5">
-                  <Link2 className="w-3 h-3 text-amber-400" />
+                  <Link2 className="w-3 h-3 text-[#c59b27]" />
                   <span>Backlinks ({backlinks.length})</span>
                 </div>
               </div>
@@ -111,7 +123,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     <div
                       key={bn.id}
                       onClick={() => onSelectNote(bn.id)}
-                      className="p-1.5 bg-zinc-800/60 hover:bg-zinc-800 rounded text-zinc-300 hover:text-amber-300 cursor-pointer border border-zinc-800/80 transition-colors flex items-center justify-between"
+                      className="p-1.5 bg-zinc-800/60 hover:bg-zinc-800 rounded text-zinc-300 hover:text-[#d4af37] cursor-pointer border border-zinc-800/80 transition-colors flex items-center justify-between"
                     >
                       <span className="truncate">{bn.title}</span>
                       <span className="text-[10px] text-zinc-500 font-mono">[[...]]</span>
@@ -125,7 +137,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             <div className="space-y-2 pt-2 border-t border-zinc-800">
               <div className="flex items-center justify-between text-zinc-400 font-semibold tracking-wider uppercase text-[10px]">
                 <div className="flex items-center gap-1.5">
-                  <ArrowUpRight className="w-3 h-3 text-cyan-400" />
+                  <ArrowUpRight className="w-3 h-3 text-zinc-400" />
                   <span>Links de Saída ({outgoingLinks.length})</span>
                 </div>
               </div>
@@ -142,12 +154,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                       onClick={() => item.note && onSelectNote(item.note.id)}
                       className={`p-1.5 rounded flex items-center justify-between transition-colors ${
                         item.note
-                          ? 'bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 hover:text-cyan-300 cursor-pointer border border-zinc-800/80'
+                          ? 'bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 cursor-pointer border border-zinc-800/80'
                           : 'bg-zinc-900/40 text-zinc-500 border border-zinc-800/40 cursor-not-allowed'
                       }`}
                     >
                       <span className="truncate">{item.title}</span>
-                      {!item.note && <span className="text-[9px] text-amber-500/80">não criada</span>}
+                      {!item.note && <span className="text-[9px] text-[#c59b27]/80">não criada</span>}
                     </div>
                   ))}
                 </div>
@@ -171,7 +183,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 {headings.map((h, idx) => (
                   <div
                     key={idx}
-                    className="text-zinc-300 hover:text-amber-300 cursor-pointer truncate py-1 px-1 rounded hover:bg-zinc-800/40 transition-colors"
+                    className="text-zinc-300 hover:text-[#d4af37] cursor-pointer truncate py-1 px-1 rounded hover:bg-zinc-800/40 transition-colors"
                     style={{ paddingLeft: `${(h.level - 1) * 12 + 4}px` }}
                   >
                     <span className="text-zinc-600 mr-1.5 font-mono">{'#'.repeat(h.level)}</span>
@@ -198,7 +210,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 {currentNote.tags.map(t => (
                   <span
                     key={t}
-                    className="bg-amber-950/40 text-amber-300 border border-amber-800/40 px-2.5 py-0.5 rounded-full font-mono text-xs shadow-sm"
+                    className="bg-[#1a1711] text-[#d4af37] border border-[#c59b27]/30 px-2.5 py-0.5 rounded-full font-mono text-xs shadow-xs"
                   >
                     #{t}
                   </span>

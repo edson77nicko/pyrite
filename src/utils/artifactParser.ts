@@ -177,26 +177,35 @@ export function renderArtifactHtml(headerLine: string, lines: string[]): string 
     const trendIcon = kpi.trend === 'up' ? '↗' : kpi.trend === 'down' ? '↘' : '•'
     const trendClass =
       kpi.trend === 'up'
-        ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
+        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
         : kpi.trend === 'down'
-        ? 'bg-rose-950/60 text-rose-300 border-rose-800/40'
-        : 'bg-zinc-800 text-zinc-400 border-zinc-700/60'
+        ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+        : 'bg-zinc-800/80 text-zinc-400 border border-zinc-700/50'
 
     return `
-      <div class="nested-card-outer my-4 rounded-[20px] p-[10px] bg-gradient-to-b from-[#221c12] to-[#161410] border border-amber-500/30 shadow-xl shadow-amber-950/20 select-none" contenteditable="false" ${rawAttr}>
-        <div class="nested-card-header flex items-center justify-between gap-2 px-2.5 pt-1 pb-2.5">
+      <div class="nested-card-outer my-4 rounded-[15px] px-[5px] pb-[5px] pt-[6px] bg-[#141417] border border-white/[0.08] shadow-lg shadow-black/50 select-none" contenteditable="false" ${rawAttr}>
+        <div class="nested-card-header flex items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
           <div class="flex items-center gap-2">
-            <span class="text-amber-400 text-sm">📈</span>
-            <span class="font-semibold text-zinc-100 text-xs tracking-wide">${escapeHtml(kpi.title)}</span>
+            <span class="text-[#c59b27] text-sm">📈</span>
+            <span class="font-semibold text-zinc-200 text-xs tracking-wide">${escapeHtml(kpi.title)}</span>
           </div>
-          ${kpi.badge ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-amber-950/40 text-amber-300 border border-amber-800/40 shadow-sm">${escapeHtml(kpi.badge)}</span>` : ''}
+          ${kpi.badge ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#1c1913] text-[#d4af37] border border-[#c59b27]/25 shadow-xs">${escapeHtml(kpi.badge)}</span>` : ''}
         </div>
-        <div class="nested-card-inner rounded-[10px] p-3.5 bg-[#0c0c0e] border border-amber-500/20 shadow-inner flex flex-col justify-between">
+        <div class="nested-card-inner rounded-[10px] p-3 bg-[#0a0a0c] border border-white/[0.04] shadow-inner flex flex-col gap-2">
           <div class="flex items-baseline justify-between gap-2">
             <span class="text-2xl font-bold font-mono tracking-tight text-zinc-100">${escapeHtml(kpi.value)}</span>
-            ${kpi.change ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-medium border ${trendClass}">${trendIcon} ${escapeHtml(kpi.change)}</span>` : ''}
+            ${kpi.change ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-medium ${trendClass}">${trendIcon} ${escapeHtml(kpi.change)}</span>` : ''}
           </div>
-          ${kpi.subtitle ? `<div class="text-[11px] text-zinc-400 mt-1 leading-snug">${escapeHtml(kpi.subtitle)}</div>` : ''}
+          <div class="space-y-1">
+            <div class="flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+              <span>Atingimento da Meta</span>
+              <span class="text-[#d4af37] font-semibold">114%</span>
+            </div>
+            <div class="h-1.5 w-full bg-zinc-800/70 rounded-full overflow-hidden p-[1px]">
+              <div class="h-full bg-gradient-to-r from-[#9e7922] to-[#c59b27] rounded-full" style="width: 78%"></div>
+            </div>
+          </div>
+          ${kpi.subtitle ? `<div class="text-[10px] text-zinc-400 pt-1 border-t border-white/[0.04]">${escapeHtml(kpi.subtitle)}</div>` : ''}
         </div>
       </div>
     `
@@ -207,12 +216,14 @@ export function renderArtifactHtml(headerLine: string, lines: string[]): string 
     const itemsHtml = tl.items
       .map(
         (it, idx) => `
-        <div class="flex items-start gap-3 text-xs mb-3">
-          <div class="w-2.5 h-2.5 rounded-full ${idx === 0 ? 'bg-amber-400 ring-4 ring-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 'bg-zinc-600'} mt-1 shrink-0"></div>
-          <div class="flex-1 bg-zinc-900/60 rounded-[8px] p-2.5 border border-zinc-800/60">
+        <div class="flex items-start gap-3 text-xs mb-2.5">
+          <div class="w-3 h-3 rounded-full ${idx === 0 ? 'bg-[#1c1913] border border-[#c59b27]' : 'bg-[#121215] border border-zinc-700/70'} mt-0.5 shrink-0 flex items-center justify-center">
+            ${idx === 0 ? '<div class="w-1.5 h-1.5 rounded-full bg-[#c59b27]"></div>' : ''}
+          </div>
+          <div class="flex-1 bg-[#111114] rounded-[8px] p-2.5 border border-white/[0.05]">
             <div class="flex items-center justify-between gap-2 mb-1">
-              <span class="font-semibold text-zinc-100">${escapeHtml(it.title)}</span>
-              <span class="font-mono text-[10px] text-amber-300 bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-800/30">${escapeHtml(it.date)}</span>
+              <span class="font-semibold text-zinc-200 text-xs">${escapeHtml(it.title)}</span>
+              <span class="font-mono text-[10px] text-zinc-400 bg-zinc-800/60 px-1.5 py-0.5 rounded border border-zinc-700/40">${escapeHtml(it.date)}</span>
             </div>
             ${it.description ? `<p class="text-[11px] text-zinc-400 leading-relaxed">${escapeHtml(it.description)}</p>` : ''}
           </div>
@@ -222,15 +233,15 @@ export function renderArtifactHtml(headerLine: string, lines: string[]): string 
       .join('')
 
     return `
-      <div class="nested-card-outer my-4 rounded-[20px] p-[10px] bg-[#18181c] border border-zinc-800/80 shadow-xl shadow-black/40 select-none" contenteditable="false" ${rawAttr}>
-        <div class="nested-card-header flex items-center justify-between gap-2 px-2.5 pt-1 pb-2.5">
+      <div class="nested-card-outer my-4 rounded-[15px] px-[5px] pb-[5px] pt-[6px] bg-[#141417] border border-white/[0.08] shadow-lg shadow-black/50 select-none" contenteditable="false" ${rawAttr}>
+        <div class="nested-card-header flex items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
           <div class="flex items-center gap-2">
-            <span class="text-amber-400 text-sm">📅</span>
-            <span class="font-semibold text-zinc-100 text-xs tracking-wide">${escapeHtml(tl.title)}</span>
+            <span class="text-[#c59b27] text-sm">📅</span>
+            <span class="font-semibold text-zinc-200 text-xs tracking-wide">${escapeHtml(tl.title)}</span>
           </div>
-          ${tl.badge ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-amber-950/40 text-amber-300 border border-amber-800/40 shadow-sm">${escapeHtml(tl.badge)}</span>` : ''}
+          ${tl.badge ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#1c1913] text-[#d4af37] border border-[#c59b27]/25 shadow-xs">${escapeHtml(tl.badge)}</span>` : ''}
         </div>
-        <div class="nested-card-inner rounded-[10px] p-3.5 bg-[#0c0c0e] border border-zinc-800/70 shadow-inner">
+        <div class="nested-card-inner rounded-[10px] p-3 bg-[#0a0a0c] border border-white/[0.04] shadow-inner">
           ${itemsHtml}
         </div>
       </div>
@@ -242,10 +253,13 @@ export function renderArtifactHtml(headerLine: string, lines: string[]): string 
     const colsHtml = comp.columns
       .map(
         c => `
-        <div class="rounded-[8px] p-3 border ${c.highlight ? 'bg-amber-950/20 border-amber-500/40' : 'bg-zinc-900/50 border-zinc-800/80'}">
-          <div class="font-semibold text-zinc-100 text-xs pb-1.5 mb-1.5 border-b border-zinc-800/70">${escapeHtml(c.title)}</div>
+        <div class="rounded-[8px] p-3 border ${c.highlight ? 'bg-[#111114] border-t-2 border-t-[#c59b27] border-x-white/[0.06] border-b-white/[0.06]' : 'bg-[#111114] border border-white/[0.05]'}">
+          <div class="flex items-center justify-between gap-1 pb-1.5 mb-1.5 border-b border-white/[0.05]">
+            <span class="font-semibold text-zinc-100 text-xs">${escapeHtml(c.title)}</span>
+            ${c.highlight ? '<span class="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded bg-[#1c1913] text-[#d4af37] border border-[#c59b27]/30">★ Recomendado</span>' : ''}
+          </div>
           <ul class="space-y-1 text-xs text-zinc-300">
-            ${c.items.map(it => `<li class="flex items-start gap-1.5"><span class="text-amber-400">•</span><span>${escapeHtml(it)}</span></li>`).join('')}
+            ${c.items.map(it => `<li class="flex items-start gap-1.5"><span class="text-[#c59b27] text-xs">✓</span><span class="leading-snug text-[11px] text-zinc-300">${escapeHtml(it)}</span></li>`).join('')}
           </ul>
         </div>
       `
@@ -253,16 +267,16 @@ export function renderArtifactHtml(headerLine: string, lines: string[]): string 
       .join('')
 
     return `
-      <div class="nested-card-outer my-4 rounded-[20px] p-[10px] bg-[#18181c] border border-zinc-800/80 shadow-xl shadow-black/40 select-none" contenteditable="false" ${rawAttr}>
-        <div class="nested-card-header flex items-center justify-between gap-2 px-2.5 pt-1 pb-2.5">
+      <div class="nested-card-outer my-4 rounded-[15px] px-[5px] pb-[5px] pt-[6px] bg-[#141417] border border-white/[0.08] shadow-lg shadow-black/50 select-none" contenteditable="false" ${rawAttr}>
+        <div class="nested-card-header flex items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
           <div class="flex items-center gap-2">
-            <span class="text-amber-400 text-sm">⚖️</span>
-            <span class="font-semibold text-zinc-100 text-xs tracking-wide">${escapeHtml(comp.title)}</span>
+            <span class="text-[#c59b27] text-sm">⚖️</span>
+            <span class="font-semibold text-zinc-200 text-xs tracking-wide">${escapeHtml(comp.title)}</span>
           </div>
-          ${comp.badge ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-amber-950/40 text-amber-300 border border-amber-800/40 shadow-sm">${escapeHtml(comp.badge)}</span>` : ''}
+          ${comp.badge ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#1c1913] text-[#d4af37] border border-[#c59b27]/25 shadow-xs">${escapeHtml(comp.badge)}</span>` : ''}
         </div>
-        <div class="nested-card-inner rounded-[10px] p-3.5 bg-[#0c0c0e] border border-zinc-800/70 shadow-inner">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="nested-card-inner rounded-[10px] p-3 bg-[#0a0a0c] border border-white/[0.04] shadow-inner">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
             ${colsHtml}
           </div>
         </div>
@@ -275,15 +289,15 @@ export function renderArtifactHtml(headerLine: string, lines: string[]): string 
   const bodyHtml = lines.map(l => `<p class="my-1 text-xs text-zinc-300 leading-relaxed">${escapeHtml(l)}</p>`).join('')
 
   return `
-    <div class="nested-card-outer my-4 rounded-[20px] p-[10px] bg-[#18181c] border border-zinc-800/80 shadow-xl shadow-black/40 select-none" contenteditable="false" ${rawAttr}>
-      <div class="nested-card-header flex items-center justify-between gap-2 px-2.5 pt-1 pb-2.5">
+    <div class="nested-card-outer my-4 rounded-[15px] px-[5px] pb-[5px] pt-[6px] bg-[#141417] border border-white/[0.08] shadow-lg shadow-black/50 select-none" contenteditable="false" ${rawAttr}>
+      <div class="nested-card-header flex items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
         <div class="flex items-center gap-2">
-          <span class="text-amber-400 text-sm">✨</span>
-          <span class="font-semibold text-zinc-100 text-xs tracking-wide">${escapeHtml(title)}</span>
+          <span class="text-[#c59b27] text-sm">✨</span>
+          <span class="font-semibold text-zinc-200 text-xs tracking-wide">${escapeHtml(title)}</span>
         </div>
-        ${badge ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-amber-950/40 text-amber-300 border border-amber-800/40 shadow-sm">${escapeHtml(badge)}</span>` : ''}
+        ${badge ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#1c1913] text-[#d4af37] border border-[#c59b27]/25 shadow-xs">${escapeHtml(badge)}</span>` : ''}
       </div>
-      <div class="nested-card-inner rounded-[10px] p-3.5 bg-[#0c0c0e] border border-zinc-800/70 shadow-inner">
+      <div class="nested-card-inner rounded-[10px] p-3 bg-[#0a0a0c] border border-white/[0.04] shadow-inner">
         ${bodyHtml}
       </div>
     </div>

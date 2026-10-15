@@ -83,11 +83,11 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
               onClick={() => onSelectTab(tab.id)}
               className={`group flex items-center gap-1.5 h-7 px-2.5 rounded-t-lg text-xs cursor-pointer border-t border-x transition-all max-w-[170px] ${
                 isActive
-                  ? 'bg-[#141418] border-zinc-700/80 border-t-2 border-t-amber-400 text-amber-200 font-medium shadow-sm'
+                  ? 'bg-[#141418] border-zinc-700/80 border-t-2 border-t-[#c59b27] text-zinc-200 font-medium shadow-sm'
                   : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40'
               }`}
             >
-              <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-amber-400' : 'text-zinc-600'}`} />
+              <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-[#c59b27]' : 'text-zinc-600'}`} />
               <span className="truncate">{tab.title || 'Sem título'}</span>
               {tabs.length > 1 && (
                 <button
@@ -156,7 +156,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         {/* Export Vault */}
         <button
           onClick={onExportVault}
-          className="p-1.5 text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
+          className="p-1.5 text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
           title="Exportar Vault como JSON"
         >
           <Download className="w-3.5 h-3.5" />
@@ -167,8 +167,8 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           onClick={onToggleRightSidebar}
           className={`p-1.5 rounded-md transition-colors cursor-pointer ${
             isRightSidebarOpen
-              ? 'text-amber-300 bg-amber-500/10 border border-amber-500/30'
-              : 'text-zinc-500 hover:text-amber-300 hover:bg-zinc-800/40'
+              ? 'text-[#d4af37] bg-[#c59b27]/10 border border-[#c59b27]/30'
+              : 'text-zinc-500 hover:text-[#d4af37] hover:bg-zinc-800/40'
           }`}
           title="Alternar Painel Lateral Direito (Backlinks, Tags, Outline)"
         >
@@ -179,20 +179,20 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         {updaterStatus?.status === 'downloaded' && (
           <button
             onClick={() => window.electronAPI?.quitAndInstall()}
-            className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 text-[11px] font-semibold transition-all shadow-md shadow-amber-950/40 animate-pulse mr-0.5 cursor-pointer"
+            className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-[#c59b27]/20 hover:bg-[#c59b27]/30 text-[#d4af37] border border-[#c59b27]/40 text-[11px] font-semibold transition-all shadow-md shadow-black/40 animate-pulse mr-0.5 cursor-pointer"
             title={`Nova versão ${updaterStatus.version} pronta! Clique para reiniciar e atualizar sem reinstalar.`}
           >
-            <RefreshCw className="w-3 h-3 text-amber-400 animate-spin" style={{ animationDuration: '4s' }} />
+            <RefreshCw className="w-3 h-3 text-[#c59b27] animate-spin" style={{ animationDuration: '4s' }} />
             <span className="font-semibold">Atualizar v{updaterStatus.version}</span>
           </button>
         )}
 
         {updaterStatus?.status === 'downloading' && (
           <div
-            className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-amber-950/60 border border-amber-800/50 text-amber-300 text-[11px] mr-0.5"
+            className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-[#1a1711] border border-[#c59b27]/30 text-[#d4af37] text-[11px] mr-0.5"
             title={`Baixando atualização: ${updaterStatus.percent}%`}
           >
-            <ArrowDownToLine className="w-3 h-3 text-amber-400 animate-bounce" />
+            <ArrowDownToLine className="w-3 h-3 text-[#c59b27] animate-bounce" />
             <span>Baixando {updaterStatus.percent}%</span>
           </div>
         )}
@@ -200,7 +200,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         {/* Settings Button */}
         <button
           onClick={onOpenSettings}
-          className="p-1.5 text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
+          className="p-1.5 text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
           title="Personalizar Cores, Fontes e Layout"
         >
           <SlidersHorizontal className="w-3.5 h-3.5" />

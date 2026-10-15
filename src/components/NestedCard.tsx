@@ -18,13 +18,16 @@ export interface NestedCardProps {
 }
 
 /**
- * Concentric Radii Geometry Mapping:
+ * Concentric Radii Geometry Mapping with Ultra-Snug Margins:
  * R_outer = R_inner + padding
  *
- * - 'sm': padding = 8px  | R_inner = 8px  | R_outer = 16px (16 = 8 + 8)
- * - 'md': padding = 10px | R_inner = 10px | R_outer = 20px (20 = 10 + 10)
- * - 'lg': padding = 12px | R_inner = 12px | R_outer = 24px (24 = 12 + 12)
- * - 'xl': padding = 16px | R_inner = 16px | R_outer = 32px (32 = 16 + 16)
+ * Spacing at sides & bottom is intentionally minimal (4px - 6px)
+ * for a precision machined inlay feel without colored containers.
+ *
+ * - 'sm': P = 4px | R_inner = 8px  | R_outer = 12px (12 = 8 + 4)
+ * - 'md': P = 5px | R_inner = 10px | R_outer = 15px (15 = 10 + 5)
+ * - 'lg': P = 6px | R_inner = 12px | R_outer = 18px (18 = 12 + 6)
+ * - 'xl': P = 8px | R_inner = 14px | R_outer = 22px (22 = 14 + 8)
  */
 const SIZE_CONFIGS: Record<
   NestedCardSize,
@@ -35,24 +38,24 @@ const SIZE_CONFIGS: Record<
   }
 > = {
   sm: {
-    outerClass: 'rounded-[16px] p-[8px]',
+    outerClass: 'rounded-[12px] px-[4px] pb-[4px] pt-[5px]',
     innerClass: 'rounded-[8px] p-2.5',
-    headerPadding: 'px-2 pt-0.5 pb-2'
+    headerPadding: 'px-2 pb-1.5 pt-0.5'
   },
   md: {
-    outerClass: 'rounded-[20px] p-[10px]',
-    innerClass: 'rounded-[10px] p-3.5',
-    headerPadding: 'px-2.5 pt-1 pb-2.5'
+    outerClass: 'rounded-[15px] px-[5px] pb-[5px] pt-[6px]',
+    innerClass: 'rounded-[10px] p-3',
+    headerPadding: 'px-2.5 pb-2 pt-0.5'
   },
   lg: {
-    outerClass: 'rounded-[24px] p-[12px]',
+    outerClass: 'rounded-[18px] px-[6px] pb-[6px] pt-[7px]',
     innerClass: 'rounded-[12px] p-4',
-    headerPadding: 'px-3 pt-1.5 pb-3'
+    headerPadding: 'px-3 pb-2.5 pt-1'
   },
   xl: {
-    outerClass: 'rounded-[32px] p-[16px]',
-    innerClass: 'rounded-[16px] p-5',
-    headerPadding: 'px-3.5 pt-2 pb-3.5'
+    outerClass: 'rounded-[22px] px-[8px] pb-[8px] pt-[9px]',
+    innerClass: 'rounded-[14px] p-5',
+    headerPadding: 'px-3.5 pb-3 pt-1'
   }
 }
 
@@ -64,20 +67,20 @@ const VARIANT_CONFIGS: Record<
   }
 > = {
   default: {
-    outer: 'bg-[#18181c] border border-zinc-800/80 shadow-xl shadow-black/40',
-    inner: 'bg-[#0c0c0e] border border-zinc-800/70 shadow-inner'
+    outer: 'bg-[#141417] border border-white/[0.08] shadow-lg shadow-black/50',
+    inner: 'bg-[#0a0a0c] border border-white/[0.04] shadow-inner'
   },
   gold: {
-    outer: 'bg-gradient-to-b from-[#221c12] to-[#161410] border border-amber-500/30 shadow-xl shadow-amber-950/20',
-    inner: 'bg-[#0c0c0e] border border-amber-500/20 shadow-inner'
+    outer: 'bg-[#141417] border border-white/[0.09] shadow-lg shadow-black/50',
+    inner: 'bg-[#0a0a0c] border border-white/[0.04] shadow-inner'
   },
   glass: {
-    outer: 'bg-zinc-900/60 backdrop-blur-md border border-zinc-700/50 shadow-2xl',
-    inner: 'bg-zinc-950/80 border border-zinc-800/60 shadow-inner'
+    outer: 'bg-zinc-900/60 backdrop-blur-md border border-white/[0.08] shadow-2xl shadow-black/60',
+    inner: 'bg-[#0a0a0c]/90 border border-white/[0.04] shadow-inner'
   },
   highlight: {
-    outer: 'bg-gradient-to-br from-[#1a1824] via-[#14141c] to-[#101014] border border-amber-500/40 shadow-2xl shadow-amber-950/30',
-    inner: 'bg-[#0a0a0d] border border-zinc-800/80 shadow-inner'
+    outer: 'bg-[#151519] border border-white/[0.12] shadow-xl shadow-black/60',
+    inner: 'bg-[#0a0a0d] border border-white/[0.05] shadow-inner'
   }
 }
 
@@ -108,15 +111,15 @@ export const NestedCard: React.FC<NestedCardProps> = ({
           className={`nested-card-header flex items-center justify-between gap-2 select-none ${sizeConfig.headerPadding} ${headerClassName}`}
         >
           <div className="flex items-center gap-2 min-w-0">
-            {icon && <span className="shrink-0 text-amber-400">{icon}</span>}
+            {icon && <span className="shrink-0 text-[#c59b27]">{icon}</span>}
             <div className="truncate">
               {title && (
-                <div className="font-semibold text-zinc-100 text-xs tracking-wide truncate">
+                <div className="font-semibold text-zinc-200 text-xs tracking-wide truncate">
                   {title}
                 </div>
               )}
               {subtitle && (
-                <div className="text-[10px] text-zinc-400 truncate">
+                <div className="text-[10px] text-zinc-500 truncate">
                   {subtitle}
                 </div>
               )}
@@ -125,7 +128,7 @@ export const NestedCard: React.FC<NestedCardProps> = ({
 
           <div className="flex items-center gap-1.5 shrink-0">
             {badge && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-amber-950/40 text-amber-300 border border-amber-800/40 shadow-sm">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#1c1913] text-[#d4af37] border border-[#c59b27]/25 shadow-xs">
                 {badge}
               </span>
             )}

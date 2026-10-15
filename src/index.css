@@ -6,8 +6,8 @@
     --bg-sidebar: #0f0f12;
     --bg-header: #0c0c0e;
     --border-color: #27272a;
-    --accent: #f59e0b; /* Pyrita: Ouro dos Tolos / Metallic Gold */
-    --accent-glow: rgba(245, 158, 11, 0.25);
+    --accent: #c59b27; /* Pyrita: Ouro Queimado / Burnished Antique Gold */
+    --accent-glow: rgba(197, 155, 39, 0.15);
     --text-primary: #f4f4f5;
     --text-muted: #a1a1aa;
   }
@@ -31,8 +31,8 @@ html, body, #root {
 
 /* Custom scrollbars like Obsidian */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -40,11 +40,35 @@ html, body, #root {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
-  border-radius: 3px;
+  background: #27272a;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Custom AI Chat scrollbar */
+.custom-chat-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #27272a transparent;
+}
+
+.custom-chat-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-chat-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-chat-scrollbar::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 9999px;
+  transition: background-color 0.15s ease;
+}
+
+.custom-chat-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #52525b;
 }
 
@@ -86,9 +110,9 @@ input[type="checkbox"]:hover,
 
 input[type="checkbox"]:checked,
 .task-checkbox:checked {
-  background-color: rgba(245, 158, 11, 0.25) !important;
-  border-color: #f59e0b !important;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fef08a' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-color: rgba(197, 155, 39, 0.20) !important;
+  border-color: #c59b27 !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e6cc80' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E") !important;
   background-size: 11px 11px !important;
   background-position: center !important;
   background-repeat: no-repeat !important;
@@ -96,7 +120,7 @@ input[type="checkbox"]:checked,
 
 input[type="checkbox"]:focus-visible,
 .task-checkbox:focus-visible {
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35) !important;
+  box-shadow: 0 0 0 2px rgba(197, 155, 39, 0.30) !important;
 }
 
 /* Electron App Window Drag Support */
