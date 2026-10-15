@@ -19,6 +19,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { AiAssistant } from './components/AiAssistant'
 import { StatusBar } from './components/StatusBar'
 import { SettingsModal } from './components/SettingsModal'
+import { VaultSwitcherModal } from './components/VaultSwitcherModal'
 
 const MAX_TABS = 5
 
@@ -155,6 +156,7 @@ export const App: React.FC = () => {
   const [isAiOpen, setIsAiOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
+  const [isVaultSwitcherOpen, setIsVaultSwitcherOpen] = useState(false)
 
   // Current active note object
   const currentNote = notes.find(n => n.id === currentNoteId) || notes[0]
@@ -186,8 +188,14 @@ export const App: React.FC = () => {
   // Global Keyboard Shortcuts (Ctrl+P, Ctrl+O, Ctrl+G, Ctrl+N)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+P or Ctrl+O -> Command Palette
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || e.key === 'o' || e.key === 'O')) {
+      // Ctrl+Shift+O -> Alternar/Gerenciar Cofres (Obsidian Vault Switcher)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'o' || e.key === 'O') && e.shiftKey) {
+        e.preventDefault()
+        setIsVaultSwitcherOpen(prev => !prev)
+        return
+      }
+      // Ctrl+P or Ctrl+O (without shift) -> Command Palette
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || (!e.shiftKey && (e.key === 'o' || e.key === 'O')))) {
         e.preventDefault()
         setIsCommandPaletteOpen(prev => !prev)
       }
@@ -550,6 +558,50 @@ export const App: React.FC = () => {
     }
   }
 
+  // Switch to an existing or newly created vault by absolute path
+  const handleSwitchVault = async (targetPath: string) => {
+    try {
+      localStorage.setItem('pyrite_electron_vault_path', targetPath)
+      setVaultPath(targetPath)
+
+      if (window.electronAPI?.isElectron) {
+        const files = await window.electronAPI.readVault(targetPath)
+        if (files.length > 0) {
+          const loadedNotes: Note[] = files.map((f, i) => ({
+            id: `note_disk_${i}_${Date.now()}`,
+            title: f.title,
+            folder: f.folder,
+            content: f.content,
+            filePath: f.filePath,
+            tags: extractTags(f.content),
+            createdAt: f.createdAt,
+            updatedAt: f.updatedAt
+          }))
+          const loadedFolders = Array.from(new Set(loadedNotes.map(n => n.folder).filter(Boolean)))
+          setNotes(loadedNotes)
+          setFolders(loadedFolders.length > 0 ? loadedFolders : ['Início'])
+          saveNotes(loadedNotes)
+          saveFolders(loadedFolders.length > 0 ? loadedFolders : ['Início'])
+          if (loadedNotes[0]) {
+            setCurrentNoteId(loadedNotes[0].id)
+            setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title }])
+            setActiveTabId(`tab_${loadedNotes[0].id}`)
+          }
+        } else {
+          setNotes([])
+          setFolders(['Início'])
+          saveNotes([])
+          saveFolders(['Início'])
+          setCurrentNoteId('')
+          setTabs([])
+          setActiveTabId('')
+        }
+      }
+    } catch (err) {
+      console.error('Error switching vault in Electron:', err)
+    }
+  }
+
   // Open active vault folder in Windows Explorer
   const handleOpenInExplorer = () => {
     if (window.electronAPI?.isElectron && vaultPath) {
@@ -583,6 +635,7 @@ export const App: React.FC = () => {
           isAiOpen={isAiOpen}
           onToggleAi={() => setIsAiOpen(o => !o)}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenVaultSwitcher={() => setIsVaultSwitcherOpen(true)}
         />
 
         {/* Left Sidebar (Hierarchical Subfolders & Notes Tree) */}
@@ -599,6 +652,7 @@ export const App: React.FC = () => {
           onOpenDailyNote={handleOpenDailyNote}
           onOpenLocalFolder={handleOpenLocalFolder}
           onOpenInExplorer={handleOpenInExplorer}
+          onOpenVaultSwitcher={() => setIsVaultSwitcherOpen(true)}
           isOpen={isLeftSidebarOpen}
         />
 
@@ -700,6 +754,15 @@ export const App: React.FC = () => {
         onChangeViewMode={setCurrentView}
         onOpenAi={() => setIsAiOpen(true)}
         onOpenLocalFolder={handleOpenLocalFolder}
+        onOpenVaultSwitcher={() => setIsVaultSwitcherOpen(true)}
+      />
+
+      {/* 6. Vault Switcher Modal (Obsidian-Style) */}
+      <VaultSwitcherModal
+        isOpen={isVaultSwitcherOpen}
+        currentVaultPath={vaultPath || undefined}
+        onClose={() => setIsVaultSwitcherOpen(false)}
+        onSelectVault={handleSwitchVault}
       />
     </div>
   )

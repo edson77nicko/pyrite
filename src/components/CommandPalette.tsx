@@ -7,7 +7,8 @@ import {
   Layout,
   Plus,
   Sparkles,
-  HardDrive
+  HardDrive,
+  FolderSync
 } from 'lucide-react'
 
 interface CommandPaletteProps {
@@ -19,6 +20,7 @@ interface CommandPaletteProps {
   onChangeViewMode: (mode: ViewMode) => void
   onOpenAi: () => void
   onOpenLocalFolder: () => void
+  onOpenVaultSwitcher?: () => void
 }
 
 interface PaletteItem {
@@ -37,7 +39,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onCreateNote,
   onChangeViewMode,
   onOpenAi,
-  onOpenLocalFolder
+  onOpenLocalFolder,
+  onOpenVaultSwitcher
 }) => {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -89,7 +92,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       subtitle: 'Usa uma pasta real do seu computador como Vault',
       icon: <HardDrive className="w-4 h-4 text-blue-400" />,
       action: () => onOpenLocalFolder()
-    }
+    },
+    ...(onOpenVaultSwitcher ? [{
+      id: 'cmd-vault-switcher',
+      title: 'Alternar / Gerenciar Cofres (Vault Switcher)',
+      subtitle: 'Abrir lista de cofres conectados, criar ou alternar de cofre (Ctrl+Shift+O)',
+      icon: <FolderSync className="w-4 h-4 text-[#c59b27]" />,
+      action: () => {
+        onClose()
+        onOpenVaultSwitcher()
+      }
+    }] : [])
   ]
 
   // Note items matching query

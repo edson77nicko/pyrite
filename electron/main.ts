@@ -128,6 +128,83 @@ ipcMain.handle('vault:openInExplorer', (_event, folderPath: string) => {
   }
 })
 
+// IPC: Discover known vaults (Pyrite default + Obsidian configs if present)
+ipcMain.handle('vault:getKnownVaults', async () => {
+  const vaults: { id: string; name: string; path: string; lastOpened: number }[] = []
+
+  // 1. Default Pyrite Vault
+  try {
+    const docs = app.getPath('documents')
+    const defaultVault = path.join(docs, 'Pyrite Vault')
+    if (fs.existsSync(defaultVault)) {
+      vaults.push({
+        id: 'default-pyrite-vault',
+        name: 'Pyrita Vault',
+        path: defaultVault,
+        lastOpened: Date.now()
+      })
+    }
+  } catch (err) {
+    console.warn('[Vault] Failed to read default docs path:', err)
+  }
+
+  // 2. Read Obsidian's obsidian.json if present
+  try {
+    const appData = process.env.APPDATA || path.join(app.getPath('home'), 'AppData', 'Roaming')
+    const obsidianConfigPath = path.join(appData, 'obsidian', 'obsidian.json')
+    if (fs.existsSync(obsidianConfigPath)) {
+      const config = JSON.parse(fs.readFileSync(obsidianConfigPath, 'utf-8'))
+      if (config.vaults && typeof config.vaults === 'object') {
+        for (const [id, v] of Object.entries<any>(config.vaults)) {
+          if (v && v.path && fs.existsSync(v.path)) {
+            const vaultName = path.basename(v.path)
+            if (!vaults.some(item => item.path.toLowerCase() === v.path.toLowerCase())) {
+              vaults.push({
+                id: `obsidian-${id}`,
+                name: vaultName,
+                path: v.path,
+                lastOpened: v.ts || Date.now()
+              })
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Vault] Failed to read obsidian.json:', err)
+  }
+
+  return vaults
+})
+
+// IPC: Create a new vault folder on disk with starter note
+ipcMain.handle('vault:createVault', async (_event, { parentPath, vaultName }: { parentPath: string; vaultName: string }) => {
+  try {
+    const safeName = vaultName.replace(/[/\\?%*:|"<>]/g, '_').trim()
+    if (!safeName) {
+      return { success: false, error: 'Nome do cofre inválido' }
+    }
+    const newVaultPath = path.join(parentPath, safeName)
+    if (!fs.existsSync(newVaultPath)) {
+      fs.mkdirSync(newVaultPath, { recursive: true })
+    }
+
+    // Create initial welcome note
+    const welcomeFile = path.join(newVaultPath, 'Bem-vindo ao Pyrita.md')
+    if (!fs.existsSync(welcomeFile)) {
+      fs.writeFileSync(
+        welcomeFile,
+        `# Bem-vindo ao seu novo cofre: ${safeName}\n\nEste cofre é 100% Local-First. Todos os arquivos criados aqui são salvos como Markdown puro no seu computador.\n\n### Primeiros passos:\n- Use [[Links Bidirecionais]] para interligar ideias.\n- Crie tópicos e organize pastas na barra lateral.\n- Use o Assistente de IA à esquerda para descobrir conexões!\n`,
+        'utf-8'
+      )
+    }
+
+    return { success: true, vaultPath: newVaultPath }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
 // Recursively read all .md files in the vault folder
 interface VaultFileResult {
   title: string

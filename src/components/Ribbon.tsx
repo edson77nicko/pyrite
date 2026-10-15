@@ -8,7 +8,8 @@ import {
   Bot,
   Search,
   Calendar,
-  SlidersHorizontal
+  SlidersHorizontal,
+  FolderSync
 } from 'lucide-react'
 
 interface RibbonProps {
@@ -21,6 +22,7 @@ interface RibbonProps {
   isAiOpen: boolean
   onToggleAi: () => void
   onOpenSettings: () => void
+  onOpenVaultSwitcher?: () => void
 }
 
 export const Ribbon: React.FC<RibbonProps> = ({
@@ -32,7 +34,8 @@ export const Ribbon: React.FC<RibbonProps> = ({
   onOpenCommandPalette,
   isAiOpen,
   onToggleAi,
-  onOpenSettings
+  onOpenSettings,
+  onOpenVaultSwitcher
 }) => {
   return (
     <aside className="w-11 h-full bg-[#09090b] border-r border-zinc-800/80 flex flex-col items-center py-2 select-none shrink-0 text-zinc-400 z-10">
@@ -127,8 +130,18 @@ export const Ribbon: React.FC<RibbonProps> = ({
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* 4. Bottom Utilities: Settings only */}
+      {/* 4. Bottom Utilities: Vault Switcher & Settings */}
       <div className="flex flex-col items-center gap-1">
+        {onOpenVaultSwitcher && (
+          <button
+            onClick={onOpenVaultSwitcher}
+            className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
+            title="Alternar / Gerenciar Cofres (Ctrl + Shift + O)"
+          >
+            <FolderSync className="w-4 h-4" />
+          </button>
+        )}
+
         <button
           onClick={onOpenSettings}
           className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"

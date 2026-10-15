@@ -27,6 +27,8 @@ export interface ElectronAPI {
   createFolder: (params: { vaultPath: string; folderPath: string }) => Promise<{ success: boolean; error?: string }>
   revealInExplorer: (filePath: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>
+  getKnownVaults: () => Promise<{ id: string; name: string; path: string; lastOpened: number }[]>
+  createVault: (params: { parentPath: string; vaultName: string }) => Promise<{ success: boolean; vaultPath?: string; error?: string }>
 
   // Auto Updater
   checkForUpdates: () => Promise<void>

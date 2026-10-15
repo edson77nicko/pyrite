@@ -8,9 +8,10 @@ import {
   Search,
   FolderPlus,
   Trash2,
-  HardDrive,
   Calendar,
-  Star
+  Star,
+  ChevronDown,
+  FolderSync
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -26,6 +27,7 @@ interface SidebarProps {
   onOpenDailyNote: () => void
   onOpenLocalFolder: () => void
   onOpenInExplorer?: () => void
+  onOpenVaultSwitcher?: () => void
   isOpen: boolean
 }
 
@@ -49,6 +51,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenDailyNote,
   onOpenLocalFolder,
   onOpenInExplorer,
+  onOpenVaultSwitcher,
   isOpen
 }) => {
   const [search, setSearch] = useState('')
@@ -278,15 +281,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <div className="w-64 h-full bg-[#121215] border-r border-zinc-800 flex flex-col select-none shrink-0 text-xs">
       {/* 1. Vault Header */}
-      <div className="p-3 border-b border-zinc-800 bg-[#0f0f12] flex items-center justify-between">
-        <div className="flex items-center gap-2.5 truncate flex-1 mr-2">
+      <div className="p-2.5 border-b border-zinc-800 bg-[#0f0f12] flex items-center justify-between">
+        <div
+          onClick={onOpenVaultSwitcher}
+          className="flex items-center gap-2 truncate flex-1 mr-1 p-1 -ml-1 rounded-lg hover:bg-zinc-800/60 cursor-pointer transition-colors group"
+          title="Clique para alternar ou gerenciar cofres (Vault Switcher)"
+        >
           <div className="w-6 h-6 rounded-lg bg-[#c59b27] flex items-center justify-center font-bold text-xs text-zinc-950 shadow-sm shrink-0">
             Py
           </div>
-          <div className="truncate">
-            <span className="font-semibold text-zinc-100 text-xs tracking-wide truncate block">
-              {vaultPath ? vaultPath.split(/[/\\]/).filter(Boolean).pop() : 'Pyrita Vault'}
-            </span>
+          <div className="truncate flex-1">
+            <div className="flex items-center gap-1">
+              <span className="font-semibold text-zinc-100 text-xs tracking-wide truncate block group-hover:text-[#d4af37] transition-colors">
+                {vaultPath ? vaultPath.split(/[/\\]/).filter(Boolean).pop() : 'Pyrita Vault'}
+              </span>
+              <ChevronDown className="w-3 h-3 text-zinc-500 group-hover:text-[#d4af37] shrink-0" />
+            </div>
             <div className="text-[10px] text-zinc-500 truncate" title={vaultPath || 'Armazenamento local'}>
               {vaultPath ? 'Cofre Local (.md)' : 'Local-First'}
             </div>
@@ -297,7 +307,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {onOpenInExplorer && vaultPath && (
             <button
               onClick={onOpenInExplorer}
-              className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 rounded-md transition-colors border border-zinc-800/80"
+              className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 rounded-md transition-colors border border-zinc-800/80 cursor-pointer"
               title="Abrir pasta do cofre no Explorador de Arquivos do Windows"
             >
               <FolderOpen className="w-3.5 h-3.5 text-[#c59b27]" />
@@ -305,12 +315,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           <button
-            onClick={onOpenLocalFolder}
+            onClick={onOpenVaultSwitcher || onOpenLocalFolder}
             className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/80 px-2 py-1 rounded-md transition-colors border border-zinc-800 cursor-pointer"
-            title={vaultPath ? "Trocar Pasta do Cofre" : "Importar pasta e subpastas locais do PC"}
+            title="Alternar ou Gerenciar Cofres (Vault Switcher)"
           >
-            <HardDrive className="w-3 h-3 text-[#c59b27]" />
-            <span>{vaultPath ? "Cofre" : "Importar"}</span>
+            <FolderSync className="w-3 h-3 text-[#c59b27]" />
+            <span>Cofres</span>
           </button>
         </div>
       </div>

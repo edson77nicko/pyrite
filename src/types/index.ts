@@ -83,3 +83,11 @@ export interface AppSettings {
   fontSize: 'small' | 'medium' | 'large'
   editorWidth: 'compact' | 'standard' | 'wide'
 }
+
+export interface SavedVault {
+  id: string
+  name: string
+  path: string
+  lastOpened: number
+}
+
