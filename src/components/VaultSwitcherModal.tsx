@@ -356,7 +356,7 @@ export const VaultSwitcherModal: React.FC<VaultSwitcherModalProps> = ({
               Pyrita
             </h2>
             <p className="text-xs text-zinc-500 font-mono mt-0.5">
-              Versão 1.0.2 • Ambiente Local-First de Pensamento
+              Versão 1.0.3 • Ambiente Local-First de Pensamento
             </p>
           </div>
 
