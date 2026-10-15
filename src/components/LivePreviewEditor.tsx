@@ -24,9 +24,13 @@ import {
   Highlighter,
   Strikethrough,
   Info,
-  AlertTriangle
+  AlertTriangle,
+  Activity,
+  Calendar,
+  Layers
 } from 'lucide-react'
 import type { LiveBlock } from '../utils/markdownBlocks'
+import { renderArtifactHtml } from '../utils/artifactParser'
 
 export interface LivePreviewEditorHandle {
   setBlockType: (type: LiveBlock['type']) => void
@@ -154,6 +158,34 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
     subtitle: 'Conectar com outra nota [[...]]',
     icon: <Link2 className="w-4 h-4 text-amber-400" />,
     keywords: ['link', 'wikilink', 'conectar']
+  },
+  {
+    id: 'kpi',
+    title: 'Cartão KPI (Métrica Concêntrica)',
+    subtitle: 'Métrica com valor, variação e bordas concêntricas',
+    icon: <Activity className="w-4 h-4 text-amber-400" />,
+    keywords: ['kpi', 'metrica', 'numero', 'estatistica', 'card']
+  },
+  {
+    id: 'timeline',
+    title: 'Linha do Tempo / Roadmap',
+    subtitle: 'Marcos cronológicos embutidos',
+    icon: <Calendar className="w-4 h-4 text-amber-400" />,
+    keywords: ['timeline', 'roadmap', 'cronograma', 'etapas']
+  },
+  {
+    id: 'comparison',
+    title: 'Comparativo Lado a Lado',
+    subtitle: 'Colunas concêntricas para decisão e trade-offs',
+    icon: <Layers className="w-4 h-4 text-amber-400" />,
+    keywords: ['comparison', 'comparativo', 'versus', 'versus', 'pros']
+  },
+  {
+    id: 'card',
+    title: 'Cartão Embutido (Nested Card)',
+    subtitle: 'Moldura com cabeçalho e subsuperfície concêntrica',
+    icon: <Sparkles className="w-4 h-4 text-amber-400" />,
+    keywords: ['card', 'nested', 'moldura', 'bloco', 'camadas']
   }
 ]
 
@@ -289,6 +321,20 @@ function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): strin
           <pre class="p-4 overflow-x-auto text-zinc-300 leading-relaxed font-mono"><code>${escapeHtml(rawCode)}</code></pre>
         </div>
       `)
+      continue
+    }
+
+    // Declarative Artifact Components :::kpi, :::timeline, :::comparison, :::card
+    if (line.trim().startsWith(':::')) {
+      const directiveHeader = line.trim()
+      const blockLines: string[] = []
+      i++
+      while (i < lines.length && !lines[i].trim().startsWith(':::')) {
+        blockLines.push(lines[i])
+        i++
+      }
+      i++ // skip closing :::
+      htmlParts.push(renderArtifactHtml(directiveHeader, blockLines))
       continue
     }
 
@@ -516,6 +562,13 @@ function domToMarkdown(root: HTMLElement): string {
     if (child.nodeType !== Node.ELEMENT_NODE) continue
     const el = child as HTMLElement
     const tag = el.tagName.toLowerCase()
+
+    // 0. Nested Artifact Card
+    if (el.hasAttribute('data-raw-artifact')) {
+      const rawArtifact = decodeURIComponent(el.getAttribute('data-raw-artifact') || '')
+      lines.push(rawArtifact)
+      continue
+    }
 
     // 1. Code Block
     if (el.hasAttribute('data-raw-code')) {
@@ -1009,6 +1062,18 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       document.execCommand('insertHTML', false, calloutHtml)
     } else if (cmdId === 'wikilink') {
       document.execCommand('insertText', false, '[[')
+    } else if (cmdId === 'kpi') {
+      const kpiSnippet = `\n:::kpi\ntitle: Métrica Chave\nvalue: 84.5%\nchange: +12.3%\ntrend: up\nsubtitle: Desempenho acima da média\nbadge: Q3 Meta\n:::\n`
+      document.execCommand('insertText', false, kpiSnippet)
+    } else if (cmdId === 'timeline') {
+      const timelineSnippet = `\n:::timeline [Roadmap Estratégico] badge: 2026\n- 2026-Q1 | Fase de Descoberta | Alinhamento e prototipação\n- 2026-Q2 | Desenvolvimento Core | Arquitetura e componentes concêntricos\n- 2026-Q3 | Lançamento Oficial | Rollout para os usuários\n:::\n`
+      document.execCommand('insertText', false, timelineSnippet)
+    } else if (cmdId === 'comparison') {
+      const compSnippet = `\n:::comparison [Comparativo de Soluções] badge: Análise\n### Opção A (Destaque)\n- Alto desempenho\n- Foco em privacidade\n### Opção B\n- Modelo convencional\n- Dependência externa\n:::\n`
+      document.execCommand('insertText', false, compSnippet)
+    } else if (cmdId === 'card') {
+      const cardSnippet = `\n:::card [Título da Seção] badge: Destaque\nInsira aqui o conteúdo embutido na subsuperfície concêntrica.\n:::\n`
+      document.execCommand('insertText', false, cardSnippet)
     }
 
     handleSync()

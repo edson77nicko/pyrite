@@ -1,5 +1,13 @@
 import React from 'react'
 import { Info, Lightbulb, AlertTriangle, AlertCircle, Copy, Check } from 'lucide-react'
+import { NestedCard } from './NestedCard'
+import { KpiCard, TimelineCard, ComparisonCard } from './ArtifactComponents'
+import {
+  parseKpiBlock,
+  parseTimelineBlock,
+  parseComparisonBlock,
+  parseHeaderMeta
+} from '../utils/artifactParser'
 
 interface MarkdownRendererProps {
   content: string
@@ -226,6 +234,84 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       blocks.push(
         <div key={`math-block-${i}`} className="my-4 p-4 rounded-xl border border-amber-800/30 bg-amber-950/20 text-center font-serif text-lg text-amber-200 shadow-md">
           {mathString}
+        </div>
+      )
+      continue
+    }
+
+    // Declarative Artifact Components :::kpi, :::timeline, :::comparison, :::card, :::nested
+    if (line.trim().startsWith(':::')) {
+      const directiveHeader = line.trim()
+      const directiveType = directiveHeader.slice(3).trim().split(/[\s\[]/)[0].toLowerCase()
+      const blockLines: string[] = []
+      i++
+      while (i < lines.length && !lines[i].trim().startsWith(':::')) {
+        blockLines.push(lines[i])
+        i++
+      }
+      i++ // skip closing :::
+
+      if (directiveType === 'kpi' || directiveType === 'metric') {
+        const kpi = parseKpiBlock(blockLines)
+        blocks.push(
+          <div key={`kpi-${i}`} className="my-4">
+            <KpiCard
+              title={kpi.title}
+              value={kpi.value}
+              change={kpi.change}
+              trend={kpi.trend}
+              subtitle={kpi.subtitle}
+              badge={kpi.badge}
+            />
+          </div>
+        )
+        continue
+      }
+
+      if (directiveType === 'timeline') {
+        const tl = parseTimelineBlock(directiveHeader, blockLines)
+        blocks.push(
+          <div key={`timeline-${i}`} className="my-4">
+            <TimelineCard
+              title={tl.title}
+              badge={tl.badge}
+              items={tl.items}
+            />
+          </div>
+        )
+        continue
+      }
+
+      if (directiveType === 'comparison' || directiveType === 'versus') {
+        const comp = parseComparisonBlock(directiveHeader, blockLines)
+        blocks.push(
+          <div key={`comparison-${i}`} className="my-4">
+            <ComparisonCard
+              title={comp.title}
+              badge={comp.badge}
+              columns={comp.columns}
+            />
+          </div>
+        )
+        continue
+      }
+
+      // Generic nested card :::card or :::nested
+      const { title, badge } = parseHeaderMeta(directiveHeader)
+      blocks.push(
+        <div key={`nested-card-${i}`} className="my-4">
+          <NestedCard
+            title={title}
+            badge={badge}
+            size="md"
+            variant="default"
+          >
+            <div className="space-y-1.5 text-xs text-zinc-300">
+              {blockLines.map((bl, bIdx) => (
+                <p key={bIdx}>{renderInlineFormatted(bl)}</p>
+              ))}
+            </div>
+          </NestedCard>
         </div>
       )
       continue

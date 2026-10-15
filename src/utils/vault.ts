@@ -184,10 +184,80 @@ Ao usar [[Links Bidirecionais]], cada nota se torna um nó em uma rede viva inte
 - [ ] Pergunta 2: Identificação do problema principal
 - [ ] Pergunta 3: Tentativas anteriores e frustrações
 `
+  },
+  {
+    id: 'note-design-artifacts',
+    title: 'Componentes de Design & Artefatos',
+    folder: 'Design System',
+    tags: ['artefatos', 'design-system', 'concentric-radius', 'componentes'],
+    createdAt: Date.now() - 3600000,
+    updatedAt: Date.now(),
+    content: `O **Pyrita** adota o padrão de camadas **Inset / Nested Card** com **Bordas Concêntricas (Concentric Corner Radius)** para criar cartões visuais sofisticados que economizam tokens da IA:
+
+$$\\text{border-radius externo} = \\text{border-radius interno} + \\text{padding}$$
+
+O container externo atua como uma moldura funcional que carrega o cabeçalho, enquanto a área de ação e conteúdo é embutida em uma subsuperfície com contraste sutil e espaçamento uniforme.
+
+---
+
+## 1. Cartões de Métricas / KPI Concêntricos
+
+:::kpi
+title: Taxa de Conversão
+value: 68.4%
+change: +14.2%
+trend: up
+subtitle: Meta do trimestre superada em 4.2%
+badge: Q3 Meta
+:::
+
+:::kpi
+title: Custo de Aquisição (CAC)
+value: R$ 14,80
+change: -22.5%
+trend: down
+subtitle: Otimização com agentes autônomos
+badge: Eficiência
+:::
+
+---
+
+## 2. Linha do Tempo / Roadmap
+
+:::timeline [Evolução Arquitetural Pyrita] badge: 2026
+- 2026-Q1 | Arquitetura Local-First | Estruturação de dados locais e sync ponta a ponta
+- 2026-Q2 | Agente & Artefatos Concêntricos | Componentes visuais com economia de tokens
+- 2026-Q3 | Grafo Semântico em WebGL | Visualização espacial de grandes bases de conhecimento
+- 2026-Q4 | Ecossistema Multi-Dispositivo | Aplicativos leves para desktop e mobile
+:::
+
+---
+
+## 3. Comparativo Lado a Lado (Decision Matrix)
+
+:::comparison [Arquitetura de Dados] badge: Decisão
+### SQLite Local-First (Destaque)
+- Zero latência de rede em operações locais
+- Total soberania e privacidade no disco
+- Funciona 100% offline sem travamento
+### Nuvem Centralizada Convencional
+- Acesso remoto de qualquer navegador
+- Depende de conexão estável de internet
+- Custo recorrente de servidores e tráfego
+:::
+
+---
+
+## 4. Cartão Embutido em Camadas
+
+:::card [Diretriz de Design Concêntrico] badge: Craft UI
+Quando o container externo e a subsuperfície interna seguem rigorosamente a regra geométrica concêntrica, o espaçamento visual entre as bordas é uniforme em toda a curvatura do canto. Isso elimina distorções visuais e confere o acabamento refinado característico do ecossistema Pyrita.
+:::
+`
   }
 ]
 
-export const INITIAL_FOLDERS = ['Início', 'Engenharia', 'Metodologia', 'Criatividade', 'Inovação', 'Quizzes']
+export const INITIAL_FOLDERS = ['Início', 'Engenharia', 'Metodologia', 'Criatividade', 'Inovação', 'Quizzes', 'Design System']
 
 export function loadNotes(): Note[] {
   try {
@@ -203,6 +273,13 @@ export function loadNotes(): Note[] {
         }
         return n
       })
+
+      const targetArtifactNote = INITIAL_NOTES.find(n => n.id === 'note-design-artifacts')!
+      const artifactIdx = cleaned.findIndex(n => n.id === 'note-design-artifacts')
+      if (artifactIdx === -1) {
+        cleaned.unshift(targetArtifactNote)
+        modified = true
+      }
 
       const quizIndex = cleaned.findIndex(n => n.id === 'note-quiz-checklist')
       const targetQuiz = INITIAL_NOTES.find(n => n.id === 'note-quiz-checklist')!

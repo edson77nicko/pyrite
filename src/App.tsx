@@ -408,6 +408,12 @@ export const App: React.FC = () => {
     handleUpdateNote({ ...currentNote, content: appendedContent })
   }
 
+  const handleInsertSnippet = (snippet: string) => {
+    if (!currentNote) return
+    const appendedContent = currentNote.content ? `${currentNote.content.trimEnd()}\n\n${snippet}\n` : snippet
+    handleUpdateNote({ ...currentNote, content: appendedContent })
+  }
+
   // Recursive Directory Scanner (reads folder and all subfolders deeply!)
   const scanDirectoryRecursive = async (
     dirHandle: any,
@@ -578,6 +584,7 @@ export const App: React.FC = () => {
             allNotes={notes}
             onConnectNote={handleConnectNote}
             onAddTag={handleAddTag}
+            onInsertSnippet={handleInsertSnippet}
             onClose={() => setIsAiOpen(false)}
           />
         )}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import type { Note } from '../types'
 import { extractWikiLinks } from '../utils/vault'
+import { MarkdownRenderer } from './MarkdownRenderer'
 import {
   Sparkles,
   Bot,
@@ -16,6 +17,7 @@ interface AiAssistantProps {
   allNotes: Note[]
   onConnectNote: (targetTitle: string) => void
   onAddTag: (tag: string) => void
+  onInsertSnippet?: (snippet: string) => void
   onClose: () => void
 }
 
@@ -30,6 +32,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   allNotes,
   onConnectNote,
   onAddTag,
+  onInsertSnippet,
   onClose
 }) => {
   const effectiveNote = currentNote || allNotes[0] || {
@@ -46,7 +49,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     {
       id: 'm1',
       sender: 'ai',
-      text: `Olá! Sou o agente de IA do Pyrita. Estou analisando sua nota **"${effectiveNote.title}"** e todo o seu Vault. Como posso ajudar seu raciocínio hoje?`
+      text: `Olá! Sou o agente de IA do Pyrita. Estou analisando sua nota **"${effectiveNote.title}"** e todo o seu Vault. Você pode me pedir resumos, conexões ou gerar **Componentes Concêntricos** (KPI, Roadmap, Comparativos) para seu documento!`
     }
   ])
   const [input, setInput] = useState('')
@@ -103,31 +106,55 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     }, 400)
   }
 
+  const generateReply = (rawPrompt: string) => {
+    const prompt = rawPrompt.toLowerCase()
+    if (prompt.includes('kpi') || prompt.includes('metrica') || prompt.includes('métrica')) {
+      return `Gerei o cartão de KPI com bordas concêntricas ($R_{ext} = R_{int} + P$) para esta nota:\n\n:::kpi\ntitle: Métrica de Conversão\nvalue: 78.5%\nchange: +16.2%\ntrend: up\nsubtitle: Desempenho relativo à nota "${effectiveNote.title}"\nbadge: Q3 Meta\n:::`
+    }
+    if (prompt.includes('timeline') || prompt.includes('roadmap') || prompt.includes('linha do tempo') || prompt.includes('cronograma')) {
+      return `Estruturei o roadmap cronológico embutido em camadas:\n\n:::timeline [Roadmap Estratégico: ${effectiveNote.title}] badge: 2026\n- Etapa 1 | Diagnóstico e Alinhamento | Mapeamento dos conceitos e conexões\n- Etapa 2 | Execução e Prototipagem | Aplicação de bordas concêntricas e design\n- Etapa 3 | Validação e Entrega | Integração com o Vault\n:::`
+    }
+    if (prompt.includes('compar') || prompt.includes('versus') || prompt.includes('prós') || prompt.includes('trade')) {
+      return `Aqui está a matriz comparativa concêntrica de decisões:\n\n:::comparison [Matriz de Decisão: ${effectiveNote.title}] badge: Análise\n### Abordagem A (Destaque)\n- Menor consumo de tokens da IA\n- Renderização concêntrica instantânea\n- Foco em produtividade local\n### Abordagem B\n- Estrutura convencional sem camadas\n- Maior sobrecarga e ruído visual\n- Manutenção descentralizada\n:::`
+    }
+    if (prompt.includes('card') || prompt.includes('artefato') || prompt.includes('camada') || prompt.includes('cartão')) {
+      return `Aqui está o cartão de camadas concêntrico com a fórmula aplicada:\n\n:::card [Padrão Inset / Nested Card] badge: Craft UI\nContainer externo com borda concêntrica: border-radius externo = border-radius interno + padding. Proporciona contraste sutil e harmonia óptica uniforme.\n:::`
+    }
+    if (prompt.includes('resumo') || prompt.includes('resumir')) {
+      return `Aqui está o resumo executivo da nota **"${effectiveNote.title}"**:\n\n${summary || 'Nota trata de organização e conceitos conectados no Vault.'}`
+    }
+    if (prompt.includes('conectar') || prompt.includes('conex')) {
+      return `Encontrei ${suggestedConnections.length} conexões potenciais no Vault. Destaque para **[[${suggestedConnections[0]?.note.title || 'Grafos de Conhecimento'}]]**.`
+    }
+    if (prompt.includes('obsidian') || prompt.includes('diferen')) {
+      return `O Obsidian utiliza uma arquitetura baseada em Electron + CodeMirror + PixiJS. O **Pyrita** traz essa mesma essência local-first, porém com aceleração de IA semântica integrada e canvas sem dependências pesadas!`
+    }
+    return `Analisando sua pergunta no contexto do Vault: Na nota **"${effectiveNote.title}"**, você aborda tópicos interconectados com **${allNotes.length} outras notas**. Recomendo cruzar esses dados usando o **Grafo de Conhecimento**!`
+  }
+
   // Interactive Vault Chat
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim()) return
 
-    const userMsg: ChatMessage = { id: `msg_${Date.now()}`, sender: 'user', text: input.trim() }
+    const raw = input.trim()
+    const userMsg: ChatMessage = { id: `msg_${Date.now()}`, sender: 'user', text: raw }
     setMessages(prev => [...prev, userMsg])
-    const prompt = input.trim().toLowerCase()
     setInput('')
 
-    // Generate responsive vault response
     setTimeout(() => {
-      let reply = ''
-      if (prompt.includes('resumo') || prompt.includes('resumir')) {
-        reply = `Aqui está o resumo da nota **"${effectiveNote.title}"**:\n\n${summary || 'Nota trata de organização e conceitos conectados no Vault.'}`
-      } else if (prompt.includes('conectar') || prompt.includes('conex')) {
-        reply = `Encontrei ${suggestedConnections.length} conexões potenciais no Vault. Destaque para **[[${suggestedConnections[0]?.note.title || 'Grafos de Conhecimento'}]]**.`
-      } else if (prompt.includes('obsidian') || prompt.includes('diferen')) {
-        reply = `O Obsidian utiliza uma arquitetura baseada em Electron + CodeMirror + PixiJS. O **Pyrite** traz essa mesma essência local-first, porém com aceleração de IA semântica integrada e canvas sem dependências pesadas!`
-      } else {
-        reply = `Analisando sua pergunta no contexto do Vault: Na nota **"${effectiveNote.title}"**, você aborda tópicos interconectados com **${allNotes.length} outras notas**. Recomendo cruzar esses dados usando o **Grafo de Conhecimento**!`
-      }
-
+      const reply = generateReply(raw)
       setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'ai', text: reply }])
-    }, 500)
+    }, 400)
+  }
+
+  const handleSendPreset = (presetText: string) => {
+    const userMsg: ChatMessage = { id: `msg_${Date.now()}`, sender: 'user', text: presetText }
+    setMessages(prev => [...prev, userMsg])
+    setTimeout(() => {
+      const reply = generateReply(presetText)
+      setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'ai', text: reply }])
+    }, 400)
   }
 
   return (
@@ -234,13 +261,42 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
                 )}
               </div>
               <div
-                className={`p-2.5 rounded-2xl max-w-[92%] ${
+                className={`p-2.5 rounded-2xl max-w-[95%] ${
                   m.sender === 'user'
                     ? 'bg-zinc-800 text-zinc-100 rounded-br-xs'
                     : 'bg-[#15151a] border border-zinc-800/90 text-zinc-200 rounded-bl-xs shadow-sm'
                 }`}
               >
-                {m.text}
+                {m.sender === 'ai' ? (
+                  <div className="space-y-2">
+                    <MarkdownRenderer
+                      content={m.text}
+                      onNavigate={onConnectNote}
+                    />
+                    {m.text.includes(':::') && onInsertSnippet && (
+                      <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matches = m.text.match(/:::[\s\S]*?:::/g)
+                            if (matches) {
+                              onInsertSnippet(matches.join('\n\n'))
+                            } else {
+                              onInsertSnippet(m.text)
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+                          title="Inserir este artefato diretamente na nota atual"
+                        >
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          + Inserir na Nota
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  m.text
+                )}
               </div>
             </div>
           ))}
@@ -248,7 +304,39 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       </div>
 
       {/* Modern Chat Input Card (Styled matching reference image) */}
-      <form onSubmit={handleSendMessage} className="p-2.5 border-t border-zinc-800/80 bg-[#0c0c0f]">
+      <form onSubmit={handleSendMessage} className="p-2.5 border-t border-zinc-800/80 bg-[#0c0c0f] flex flex-col gap-1.5">
+        {/* Quick Generative UI Chips */}
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10px]">
+          <button
+            type="button"
+            onClick={() => handleSendPreset('Gere um cartão de KPI concêntrico sobre esta nota')}
+            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-amber-300 hover:border-amber-500/40"
+          >
+            📊 + KPI
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSendPreset('Crie uma linha do tempo com roadmap das etapas')}
+            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-amber-300 hover:border-amber-500/40"
+          >
+            📅 + Roadmap
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSendPreset('Faça um comparativo de prós e contras')}
+            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-amber-300 hover:border-amber-500/40"
+          >
+            ⚖️ + Comparativo
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSendPreset('Gere um cartão em camadas concêntrico')}
+            className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-amber-300 hover:border-amber-500/40"
+          >
+            ✨ + Cartão
+          </button>
+        </div>
+
         <div className="bg-[#15151a] border border-zinc-800 focus-within:border-amber-500/60 rounded-2xl p-2 transition-all shadow-inner flex flex-col gap-2">
           <input
             type="text"
