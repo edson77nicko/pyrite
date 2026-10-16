@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import type { Note } from '../types'
 import { extractWikiLinks } from '../utils/vault'
 import { MarkdownRenderer } from './MarkdownRenderer'
+import { AiModelSettingsModal } from './AiModelSettingsModal'
 import {
   Sparkles,
   Bot,
@@ -9,7 +10,10 @@ import {
   RefreshCw,
   X,
   ArrowUp,
-  ChevronDown
+  ChevronDown,
+  Cpu,
+  Loader2,
+  KeyRound
 } from 'lucide-react'
 
 interface AiAssistantProps {
@@ -25,6 +29,7 @@ interface ChatMessage {
   id: string
   sender: 'ai' | 'user'
   text: string
+  isActionable?: boolean
 }
 
 export const AiAssistant: React.FC<AiAssistantProps> = ({
@@ -55,6 +60,34 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     }
   })
   const [isDragging, setIsDragging] = useState(false)
+
+  // AI Configuration Modal & Active Provider State
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [activeProvider, setActiveProvider] = useState<string>('openrouter')
+  const [activeModel, setActiveModel] = useState<string>('google/gemini-2.5-flash')
+  const [hasActiveKey, setHasActiveKey] = useState<boolean>(false)
+  const [isGenerating, setIsGenerating] = useState<boolean>(false)
+
+  // Refresh AI configuration from Electron safeStorage
+  const refreshAiConfig = async () => {
+    if (!window.electronAPI?.aiGetAllConfigs) return
+    try {
+      const data = await window.electronAPI.aiGetAllConfigs()
+      const p = (data.activeProvider || 'openrouter').toLowerCase()
+      setActiveProvider(p)
+      const pConfig = data.providers?.[p]
+      if (pConfig) {
+        setActiveModel(pConfig.model || 'google/gemini-2.5-flash')
+        setHasActiveKey(!!pConfig.hasKey)
+      }
+    } catch (err) {
+      console.error('Failed to load AI config:', err)
+    }
+  }
+
+  useEffect(() => {
+    refreshAiConfig()
+  }, [])
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -171,29 +204,136 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     return `Analisando sua pergunta no contexto do Vault: Na nota **"${effectiveNote.title}"**, você aborda tópicos interconectados com **${allNotes.length} outras notas**. Recomendo cruzar esses dados usando o **Grafo de Conhecimento**!`
   }
 
-  // Interactive Vault Chat
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim()) return
+  // Interactive Vault Chat with Real LLM and Fallback
+  const executePrompt = async (raw: string) => {
+    if (!raw.trim() || isGenerating) return
 
-    const raw = input.trim()
     const userMsg: ChatMessage = { id: `msg_${Date.now()}`, sender: 'user', text: raw }
     setMessages(prev => [...prev, userMsg])
-    setInput('')
 
+    // If an API key is configured and Electron AI is available, execute real LLM call
+    if (window.electronAPI?.aiChat && hasActiveKey) {
+      setIsGenerating(true)
+      const loadingId = `loading_${Date.now()}`
+      setMessages(prev => [...prev, { id: loadingId, sender: 'ai', text: 'Pensando...' }])
+
+      try {
+        const systemPrompt = `Você é o Agente de IA do Pyrita, assistente de anotações e gestão de conhecimento (estilo Obsidian) com foco em produtividade e componentes concêntricos visuais.
+A nota ativa no momento é "${effectiveNote.title}".
+Conteúdo atual da nota:
+---
+${effectiveNote.content || '(nota vazia)'}
+---
+Outras notas disponíveis no cofre: ${allNotes.map(n => n.title).slice(0, 25).join(', ')}.
+
+Diretrizes:
+- Responda em português brasileiro com clareza, concisão e alta utilidade.
+- Use formatação Markdown (títulos, listas, negrito, etc.).
+- Sempre que oportuno para resumir métricas, processos ou comparativos, utilize os blocos de componentes concêntricos do Pyrita:
+  1) :::kpi
+     title: Nome da Métrica
+     value: 85%
+     change: +12%
+     trend: up
+     subtitle: Descrição
+     badge: Meta
+     :::
+  2) :::timeline [Título da Linha do Tempo] badge: 2026
+     - Etapa 1 | Subtítulo | Descrição detalhada
+     - Etapa 2 | Subtítulo | Descrição detalhada
+     :::
+  3) :::comparison [Título Comparativo] badge: Análise
+     ### Abordagem A (Destaque)
+     - Ponto positivo
+     ### Abordagem B
+     - Ponto a considerar
+     :::
+  4) :::card [Título do Cartão] badge: Destaque
+     Texto do cartão com detalhes em camadas.
+     :::`
+
+        const history = messages
+          .filter(m => m.id !== loadingId && !m.text.startsWith('⚠️'))
+          .slice(-6)
+          .map(m => ({
+            role: m.sender === 'user' ? 'user' : 'assistant',
+            content: m.text
+          }))
+
+        const payloadMessages = [
+          { role: 'system', content: systemPrompt },
+          ...history,
+          { role: 'user', content: raw }
+        ]
+
+        const res = await window.electronAPI.aiChat({
+          provider: activeProvider,
+          model: activeModel,
+          messages: payloadMessages,
+          temperature: 0.7
+        })
+
+        setMessages(prev => prev.filter(m => m.id !== loadingId))
+
+        if (res.success && res.text) {
+          setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'ai', text: res.text! }])
+        } else {
+          setMessages(prev => [
+            ...prev,
+            {
+              id: `ai_${Date.now()}`,
+              sender: 'ai',
+              text: `⚠️ **Erro na resposta do provedor (${activeProvider.toUpperCase()}):**\n${res.error || 'Falha ao processar solicitação.'}\n\n*Clique no botão acima ou configure uma chave válida.*`,
+              isActionable: true
+            }
+          ])
+        }
+      } catch (err: any) {
+        setMessages(prev => prev.filter(m => m.id !== loadingId))
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `ai_${Date.now()}`,
+            sender: 'ai',
+            text: `⚠️ **Erro de conexão:** ${err.message || 'Não foi possível contatar o provedor.'}`
+          }
+        ])
+      } finally {
+        setIsGenerating(false)
+      }
+      return
+    }
+
+    // Fallback: If no API key configured, check for generative preset keywords or prompt user to configure key
     setTimeout(() => {
-      const reply = generateReply(raw)
-      setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'ai', text: reply }])
-    }, 400)
+      const isPreset = ['kpi', 'metrica', 'métrica', 'timeline', 'roadmap', 'cronograma', 'compar', 'versus', 'card', 'resumo'].some(k => raw.toLowerCase().includes(k))
+      if (isPreset) {
+        const reply = generateReply(raw)
+        setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'ai', text: reply }])
+      } else {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `ai_${Date.now()}`,
+            sender: 'ai',
+            text: `Chave de API do **${activeProvider.toUpperCase()}** não está configurada.\n\nConfigure sua chave para conversar com a IA e ter respostas inteligentes em tempo real sobre todo o seu cofre!`,
+            isActionable: true
+          }
+        ])
+      }
+    }, 300)
+  }
+
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!input.trim() || isGenerating) return
+    const text = input.trim()
+    setInput('')
+    executePrompt(text)
   }
 
   const handleSendPreset = (presetText: string) => {
-    const userMsg: ChatMessage = { id: `msg_${Date.now()}`, sender: 'user', text: presetText }
-    setMessages(prev => [...prev, userMsg])
-    setTimeout(() => {
-      const reply = generateReply(presetText)
-      setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'ai', text: reply }])
-    }, 400)
+    executePrompt(presetText)
   }
 
   return (
@@ -202,21 +342,39 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       className="h-full bg-[#0c0c0f] border-r border-zinc-800/80 flex flex-col select-none shrink-0 text-xs z-10 relative"
     >
       {/* Header matching reference layout */}
-      <div className="h-10 px-3 border-b border-zinc-800/80 bg-[#0e0e12] flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700/60 text-zinc-200 text-xs max-w-[210px] truncate shadow-sm">
-          <Bot className="w-3.5 h-3.5 text-[#c59b27] shrink-0" />
+      <div className="h-10 px-3 border-b border-zinc-800/80 bg-[#0e0e12] flex items-center justify-between shrink-0 gap-1.5">
+        <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-700/60 text-zinc-200 text-xs max-w-[140px] truncate shadow-sm">
+          <Bot className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
           <span className="truncate font-medium">{effectiveNote.title}</span>
           <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0 ml-0.5" />
         </div>
 
-        <div className="flex items-center gap-1">
+        {/* LLM Model & Provider Indicator Pill */}
+        <button
+          type="button"
+          onClick={() => setIsSettingsOpen(true)}
+          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-zinc-100 text-xs transition-colors cursor-pointer shrink-0"
+          title="Configurações de Provedor & Modelo LLM"
+        >
+          <Cpu className="w-3.5 h-3.5 text-[var(--accent)]" />
+          <span className="font-bold text-[10px] tracking-wide uppercase text-zinc-300">
+            {activeProvider}
+          </span>
+          {hasActiveKey ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" title="Chave configurada e ativa" />
+          ) : (
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title="Chave não configurada" />
+          )}
+        </button>
+
+        <div className="flex items-center gap-0.5">
           <button
             onClick={runSmartDiscovery}
             disabled={isAnalyzing}
-            className="p-1.5 text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
+            className="p-1.5 text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
             title="Analisar conexões semânticas com o Vault"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin text-[#c59b27]' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin text-[var(--accent)]' : ''}`} />
           </button>
           <button
             onClick={onClose}
@@ -292,7 +450,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
               <div className="text-[10px] text-zinc-500 font-medium px-1 flex items-center gap-1">
                 {m.sender === 'ai' ? (
                   <>
-                    <Bot className="w-3 h-3 text-[#c59b27]" />
+                    <Bot className="w-3 h-3 text-[var(--accent)]" />
                     <span>Agente Pyrita</span>
                   </>
                 ) : (
@@ -311,10 +469,31 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
               >
                 {m.sender === 'ai' ? (
                   <div className="space-y-2">
-                    <MarkdownRenderer
-                      content={m.text}
-                      onNavigate={onConnectNote}
-                    />
+                    {m.text === 'Pensando...' ? (
+                      <div className="flex items-center gap-2 py-1 text-zinc-400 font-mono text-[11px]">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)] shrink-0" />
+                        <span>Processando com {activeProvider.toUpperCase()} ({activeModel})...</span>
+                      </div>
+                    ) : (
+                      <MarkdownRenderer
+                        content={m.text}
+                        onNavigate={onConnectNote}
+                      />
+                    )}
+
+                    {m.isActionable && (
+                      <div className="pt-2 border-t border-zinc-800/60 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsSettingsOpen(true)}
+                          className="px-3 py-1.5 rounded-xl bg-[var(--accent)] hover:opacity-90 text-zinc-950 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          <span>Configurar Chave & Modelo</span>
+                        </button>
+                      </div>
+                    )}
+
                     {m.text.includes(':::') && onInsertSnippet && (
                       <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-end">
                         <button
@@ -327,10 +506,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
                               onInsertSnippet(m.text)
                             }
                           }}
-                          className="px-2.5 py-1 bg-[#c59b27]/15 hover:bg-[#c59b27]/25 border border-[#c59b27]/30 text-[#d4af37] hover:text-[#f3e5ab] rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+                          className="px-2.5 py-1 bg-[var(--accent)]/15 hover:bg-[var(--accent)]/25 border border-[var(--accent)]/30 text-[var(--accent)] rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1 cursor-pointer shadow-sm"
                           title="Inserir este artefato diretamente na nota atual"
                         >
-                          <Sparkles className="w-3 h-3 text-[#c59b27]" />
+                          <Sparkles className="w-3 h-3 text-[var(--accent)]" />
                           + Inserir na Nota
                         </button>
                       </div>
@@ -389,13 +568,13 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           />
           <div className="flex items-center justify-between pt-1 border-t border-zinc-800/40">
             <div className="flex items-center gap-1 text-[10px] text-zinc-400 bg-zinc-900/90 border border-zinc-800 px-2 py-0.5 rounded-full max-w-[190px] truncate">
-              <span className="text-[#c59b27] font-bold">@</span>
+              <span className="text-[var(--accent)] font-bold">@</span>
               <span className="truncate">{effectiveNote.title}</span>
             </div>
             <button
               type="submit"
-              disabled={!input.trim()}
-              className="w-6 h-6 rounded-full bg-[#c59b27] hover:bg-[#d8b150] disabled:opacity-30 disabled:hover:bg-[#c59b27] text-zinc-950 font-bold flex items-center justify-center transition-all cursor-pointer shadow-md shadow-black/40 shrink-0"
+              disabled={!input.trim() || isGenerating}
+              className="w-6 h-6 rounded-full bg-[var(--accent)] hover:opacity-90 disabled:opacity-30 text-zinc-950 font-bold flex items-center justify-center transition-all cursor-pointer shadow-md shadow-black/40 shrink-0"
               title="Enviar mensagem"
             >
               <ArrowUp className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -403,6 +582,13 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           </div>
         </div>
       </form>
+
+      {/* AI Provider & Model Configuration Modal */}
+      <AiModelSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onConfigSaved={refreshAiConfig}
+      />
 
       {/* Vertical Resizable Drag Handle */}
       <div
@@ -412,11 +598,11 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           localStorage.setItem('pyrita_ai_width', '380')
         }}
         className={`absolute top-0 right-0 w-1.5 h-full cursor-col-resize select-none z-30 transition-colors group ${
-          isDragging ? 'bg-[#c59b27]' : 'hover:bg-[#c59b27]/50'
+          isDragging ? 'bg-[var(--accent)]' : 'hover:bg-[var(--accent)]/50'
         }`}
         title="Arraste para redimensionar a largura do chat (duplo clique para restaurar)"
       >
-        <div className="w-[1px] h-full bg-zinc-800/80 group-hover:bg-[#c59b27]/80 mx-auto" />
+        <div className="w-[1px] h-full bg-zinc-800/80 group-hover:bg-[var(--accent)]/80 mx-auto" />
       </div>
     </div>
   )

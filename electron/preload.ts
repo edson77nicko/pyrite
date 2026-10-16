@@ -51,6 +51,19 @@ const electronAPI = {
       ipcRenderer.removeListener('updater:status', handler)
     }
   },
+
+  // Secure AI Configuration and LLM Execution
+  aiSaveConfig: (params: { provider: string; apiKey?: string; model: string; multimodal: boolean; setActive?: boolean }) =>
+    ipcRenderer.invoke('ai:saveConfig', params) as Promise<{ success: boolean; error?: string }>,
+  aiGetAllConfigs: () =>
+    ipcRenderer.invoke('ai:getAllConfigs') as Promise<{
+      activeProvider: string
+      providers: Record<string, { model: string; multimodal: boolean; hasKey: boolean; isEncrypted: boolean }>
+    }>,
+  aiDeleteKey: (provider: string) =>
+    ipcRenderer.invoke('ai:deleteKey', provider) as Promise<{ success: boolean }>,
+  aiChat: (params: { provider: string; model?: string; messages: { role: string; content: string }[]; temperature?: number }) =>
+    ipcRenderer.invoke('ai:chat', params) as Promise<{ success: boolean; text?: string; error?: string }>,
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

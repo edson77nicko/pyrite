@@ -34,6 +34,26 @@ export interface ElectronAPI {
   checkForUpdates: () => Promise<void>
   quitAndInstall: () => Promise<void>
   onUpdaterStatus: (callback: (data: UpdaterStatusData) => void) => () => void
+
+  // Secure AI Configuration and LLM Execution
+  aiSaveConfig: (params: {
+    provider: string
+    apiKey?: string
+    model: string
+    multimodal: boolean
+    setActive?: boolean
+  }) => Promise<{ success: boolean; error?: string }>
+  aiGetAllConfigs: () => Promise<{
+    activeProvider: string
+    providers: Record<string, { model: string; multimodal: boolean; hasKey: boolean; isEncrypted: boolean }>
+  }>
+  aiDeleteKey: (provider: string) => Promise<{ success: boolean }>
+  aiChat: (params: {
+    provider: string
+    model?: string
+    messages: { role: string; content: string }[]
+    temperature?: number
+  }) => Promise<{ success: boolean; text?: string; error?: string }>
 }
 
 export type UpdaterStatusData =

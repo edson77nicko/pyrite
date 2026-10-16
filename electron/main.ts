@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -350,6 +350,240 @@ ipcMain.handle('updater:check', async () => {
 
 ipcMain.handle('updater:quitAndInstall', () => {
   autoUpdater.quitAndInstall()
+})
+
+// ==========================================
+// IPC: Secure AI Storage & LLM Chat Handlers
+// ==========================================
+
+interface StoredAiConfig {
+  encryptedKey?: string
+  isEncrypted?: boolean
+  model: string
+  multimodal: boolean
+  updatedAt: number
+}
+
+interface StoredAiCredentials {
+  activeProvider: string
+  providers: Record<string, StoredAiConfig>
+}
+
+function getAiCredentialsPath(): string {
+  return path.join(app.getPath('userData'), 'pyrite_ai_secure.json')
+}
+
+function readAiCredentials(): StoredAiCredentials {
+  const defaultData: StoredAiCredentials = {
+    activeProvider: 'openrouter',
+    providers: {
+      openrouter: { model: 'google/gemini-2.5-flash', multimodal: true, updatedAt: Date.now() },
+      gemini: { model: 'gemini-2.5-flash', multimodal: true, updatedAt: Date.now() },
+      openai: { model: 'gpt-4o-mini', multimodal: true, updatedAt: Date.now() },
+      deepseek: { model: 'deepseek-chat', multimodal: false, updatedAt: Date.now() }
+    }
+  }
+
+  try {
+    const credPath = getAiCredentialsPath()
+    if (fs.existsSync(credPath)) {
+      const raw = fs.readFileSync(credPath, 'utf-8')
+      const parsed = JSON.parse(raw)
+      return {
+        activeProvider: parsed.activeProvider || defaultData.activeProvider,
+        providers: {
+          ...defaultData.providers,
+          ...(parsed.providers || {})
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[AI Storage] Error reading credentials file:', err)
+  }
+
+  return defaultData
+}
+
+function saveAiCredentials(data: StoredAiCredentials) {
+  try {
+    const credPath = getAiCredentialsPath()
+    fs.writeFileSync(credPath, JSON.stringify(data, null, 2), 'utf-8')
+  } catch (err) {
+    console.error('[AI Storage] Error writing credentials file:', err)
+  }
+}
+
+ipcMain.handle('ai:saveConfig', async (_event, params: {
+  provider: string
+  apiKey?: string
+  model: string
+  multimodal: boolean
+  setActive?: boolean
+}) => {
+  const creds = readAiCredentials()
+  const p = (params.provider || 'openrouter').toLowerCase()
+  if (!creds.providers) creds.providers = {}
+  if (!creds.providers[p]) {
+    creds.providers[p] = {
+      model: params.model,
+      multimodal: params.multimodal,
+      updatedAt: Date.now()
+    }
+  }
+
+  const entry = creds.providers[p]
+  entry.model = params.model.trim()
+  entry.multimodal = !!params.multimodal
+  entry.updatedAt = Date.now()
+
+  if (params.setActive) {
+    creds.activeProvider = p
+  }
+
+  if (params.apiKey && params.apiKey.trim().length > 0) {
+    const key = params.apiKey.trim()
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        const encrypted = safeStorage.encryptString(key)
+        entry.encryptedKey = encrypted.toString('base64')
+        entry.isEncrypted = true
+      } else {
+        entry.encryptedKey = Buffer.from(key, 'utf-8').toString('base64')
+        entry.isEncrypted = false
+      }
+    } catch (err: any) {
+      console.error('[AI Storage] Encryption error:', err)
+      return { success: false, error: 'Falha ao criptografar chave: ' + err.message }
+    }
+  }
+
+  saveAiCredentials(creds)
+  return { success: true }
+})
+
+ipcMain.handle('ai:getAllConfigs', async () => {
+  const creds = readAiCredentials()
+  const summary: Record<string, { model: string; multimodal: boolean; hasKey: boolean; isEncrypted: boolean }> = {}
+
+  for (const [key, val] of Object.entries(creds.providers || {})) {
+    summary[key] = {
+      model: val.model,
+      multimodal: !!val.multimodal,
+      hasKey: !!val.encryptedKey && val.encryptedKey.length > 0,
+      isEncrypted: !!val.isEncrypted
+    }
+  }
+
+  return {
+    activeProvider: creds.activeProvider || 'openrouter',
+    providers: summary
+  }
+})
+
+ipcMain.handle('ai:deleteKey', async (_event, provider: string) => {
+  const creds = readAiCredentials()
+  const p = (provider || '').toLowerCase()
+  if (creds.providers?.[p]) {
+    delete creds.providers[p].encryptedKey
+    delete creds.providers[p].isEncrypted
+    saveAiCredentials(creds)
+  }
+  return { success: true }
+})
+
+ipcMain.handle('ai:chat', async (_event, params: {
+  provider: string
+  model?: string
+  messages: { role: string; content: string }[]
+  temperature?: number
+}) => {
+  const creds = readAiCredentials()
+  const p = (params.provider || creds.activeProvider || 'openrouter').toLowerCase()
+  const entry = creds.providers?.[p]
+
+  if (!entry?.encryptedKey) {
+    return {
+      success: false,
+      error: `Chave de API não configurada para o provedor ${p.toUpperCase()}. Abra as configurações de IA para adicionar sua chave.`
+    }
+  }
+
+  let apiKey = ''
+  try {
+    if (entry.isEncrypted && safeStorage.isEncryptionAvailable()) {
+      const buf = Buffer.from(entry.encryptedKey, 'base64')
+      apiKey = safeStorage.decryptString(buf)
+    } else {
+      apiKey = Buffer.from(entry.encryptedKey, 'base64').toString('utf-8')
+    }
+  } catch (err: any) {
+    return { success: false, error: 'Falha ao descriptografar a chave do Windows DPAPI: ' + err.message }
+  }
+
+  const model = params.model || entry.model || 'google/gemini-2.5-flash'
+
+  const endpoints: Record<string, { url: string; headers: Record<string, string> }> = {
+    openrouter: {
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://pyrite.app',
+        'X-Title': 'Pyrita'
+      }
+    },
+    openai: {
+      url: 'https://api.openai.com/v1/chat/completions',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      }
+    },
+    deepseek: {
+      url: 'https://api.deepseek.com/chat/completions',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      }
+    },
+    gemini: {
+      url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      }
+    }
+  }
+
+  const config = endpoints[p] || endpoints.openrouter
+
+  try {
+    const res = await fetch(config.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...config.headers
+      },
+      body: JSON.stringify({
+        model,
+        messages: params.messages,
+        temperature: params.temperature ?? 0.7
+      })
+    })
+
+    if (!res.ok) {
+      const errText = await res.text()
+      let errMsg = `Erro ${res.status}: ${res.statusText}`
+      try {
+        const json = JSON.parse(errText)
+        if (json.error?.message) errMsg = json.error.message
+      } catch {}
+      return { success: false, error: errMsg }
+    }
+
+    const data: any = await res.json()
+    const content = data?.choices?.[0]?.message?.content || ''
+    return { success: true, text: content }
+  } catch (err: any) {
+    console.error('[AI Chat] Request failed:', err)
+    return { success: false, error: 'Falha ao conectar com o provedor: ' + err.message }
+  }
 })
 
 app.whenReady().then(createWindow)
