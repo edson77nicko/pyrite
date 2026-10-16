@@ -63,13 +63,13 @@ async function publish() {
         name: `Pyrita ${tag}`,
         body: `### Novidades no Pyrita ${tag}:
 
-#### ✨ Eliminação da Interferência Visual e Redesenho Premium do Grafo:
-- **Zero Poluição / Sem Ruído de Rádio**: Eliminados os blocos pontilhados e textos repetitivos de depuração que poluíam cofres grandes com centenas de notas.
-- **Filtro de Diretórios no Scanner de Cofre**: O leitor de notas agora ignora automaticamente diretórios não-relacionados como \`node_modules\`, \`dist\`, \`build\` e ocultos, prevenindo centenas de falsas notas.
-- **Constelação Sináptica (Matte Gems)**: Cada nó é desenhado como uma gema geométrica fosca com aro fino na cor da pasta e núcleo sólido. Nós centrais com muitas conexões ganham anéis orbitais sutis (estilo astronômico).
-- **Rótulos Contextuais Sob Demanda**: Os textos das notas agora **não** poluem mais a tela permanentemente. Eles aparecem com elegância flutuante apenas para a nota ativa, para o nó sob o cursor (hover) e seus vizinhos diretos, e ao buscar por termos.
-- **Nebulosas Ambientes de Pasta**: As pastas formam arquipélagos espaciais naturais, com um brilho ambiente fosco e suave ao fundo, sem nenhuma borda dura ou traço pontilhado.
-- **Clique Instantâneo e Preciso**: Detecção radial de clique e hover aprimorada, garantindo transição imediata para qualquer nota ao clicar.`
+#### 🌌 Motor Singularidade (Gargantua) — WebGL + Órbitas Keplerianas 3D:
+- **Buraco Negro Relativístico em Tempo Real (WebGL GLSL)**: Renderização acelerada por GPU do Horizonte de Eventos, Esfera de Fótons, Anel de Einstein, Lente Gravitacional (dobrando a luz do disco de acreção por cima e por baixo da sombra central) e *Doppler Beaming* sincronizado com a cor do seu tema.
+- **Mecânica Orbital Kepleriana 3D**: Suas notas agora orbitam o buraco negro em espaço 3D formando braços espirais galácticos por pasta. Notas com mais conexões (*Hubs*) orbitam mais perto do Horizonte de Eventos e emitem filamentos de energia para o anel de fótons.
+- **Rastros Cometares, Poeira de Acreção e Jatos Polares**: Cada nota projeta uma cauda luminosa curva ao longo de sua órbita 3D, acompanhada por mais de 400 micro-partículas estelares e jatos relativísticos nos polos.
+- **Arcos Sinápticos Geodésicos**: As conexões entre notas curvam-se em 3D puxadas pela gravidade central, com fótons quânticos viajando pelas pontes de luz.
+- **Dilatação Temporal Inteligente no Hover**: Ao passar o mouse sobre qualquer nota, o tempo orbital desacelera suavemente até quase parar, garantindo clique e leitura perfeitos.
+- **Inclinação 3D Interativa & Modo Contemplação (Zen)**: Segure o Botão Direito (ou \`Alt + Arrastar\`) para inclinar o disco de acreção em 3D ao vivo, ou ative o botão **Contemplar** para transformar o grafo em um planetário vivo que navega sozinho pelas conexões do seu cérebro digital.`
       })
     });
     const updated = await patchRes.json();
