@@ -9,7 +9,7 @@ import {
   RotateCcw,
   Focus,
   Sliders,
-  Map as MapIcon,
+  Sparkles,
   Cpu,
   Radar,
   ExternalLink,
@@ -23,12 +23,13 @@ interface GraphViewProps {
   onSelectNote: (noteId: string) => void
 }
 
-type GraphLayoutMode = 'atlas' | 'circuit' | 'radar'
+type GraphLayoutMode = 'constellation' | 'circuit' | 'radar'
 
 interface SimNode {
   id: string
   title: string
   folder: string
+  folderShort: string
   tags: string[]
   connections: number
   excerpt: string
@@ -36,8 +37,7 @@ interface SimNode {
   y: number
   vx: number
   vy: number
-  width: number
-  height: number
+  radius: number
   color: string
 }
 
@@ -49,50 +49,20 @@ interface Particle {
   color: string
 }
 
+// Sophisticated, elegant matte palette (zero plastic neon)
 const FOLDER_PALETTE: string[] = [
-  '#c59b27', // Pyrita Gold
-  '#38bdf8', // Sky Blue
-  '#a855f7', // Electric Violet
-  '#10b981', // Emerald
-  '#f43f5e', // Rose
-  '#fb923c', // Tangerine
-  '#6366f1', // Indigo
-  '#2dd4bf', // Teal
-  '#ec4899', // Fuchsia
-  '#84cc16', // Lime
-  '#e2e8f0'  // Slate
+  '#d4a338', // Pyrita Matte Gold
+  '#38bdf8', // Architectural Cyan
+  '#a78bfa', // Muted Violet
+  '#34d399', // Mineral Emerald
+  '#fb7185', // Soft Rose
+  '#fb923c', // Amber Bronze
+  '#818cf8', // Slate Indigo
+  '#2dd4bf', // Sage Teal
+  '#f472b6', // Coral
+  '#a3e635', // Olive Lime
+  '#cbd5e1'  // Pale Slate
 ]
-
-// 2D Convex Hull (Andrew's Monotone Chain) for Territory Islands
-function getConvexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
-  if (points.length <= 2) return points
-
-  const sorted = [...points].sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x))
-
-  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
-    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
-
-  const lower: { x: number; y: number }[] = []
-  for (const p of sorted) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
-      lower.pop()
-    }
-    lower.push(p)
-  }
-
-  const upper: { x: number; y: number }[] = []
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const p = sorted[i]
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
-      upper.pop()
-    }
-    upper.push(p)
-  }
-
-  lower.pop()
-  upper.pop()
-  return lower.concat(upper)
-}
 
 export const GraphView: React.FC<GraphViewProps> = ({
   notes,
@@ -102,37 +72,37 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  // Simulation State
+  // Simulation & Graph State
   const [nodes, setNodes] = useState<SimNode[]>([])
   const [edges, setEdges] = useState<LinkEdge[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoveredFolder, setHoveredFolder] = useState<string | null>(null)
   const [isLocalMode, setIsLocalMode] = useState(false)
-  const [layoutMode, setLayoutMode] = useState<GraphLayoutMode>('atlas')
+  const [layoutMode, setLayoutMode] = useState<GraphLayoutMode>('constellation')
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false)
 
-  // Settings
+  // Calibrated Settings for Smooth Large-Vault Performance (600+ notes)
   const [settings, setSettings] = useState<GraphSettings & {
-    enableTerritories: boolean
+    enableNebulae: boolean
     enablePulses: boolean
     clusterStrength: number
     radarSpeed: number
   }>({
-    repulsion: 2600,
-    linkDistance: 140,
-    centerGravity: 0.012,
+    repulsion: 1800,
+    linkDistance: 110,
+    centerGravity: 0.008,
     nodeSize: 1.0,
-    showLabels: true,
+    showLabels: false, // Clean by default! Contextual hover labels
     showArrows: true,
     isLocalGraph: false,
-    enableTerritories: true,
+    enableNebulae: true,
     enablePulses: true,
-    clusterStrength: 0.06,
+    clusterStrength: 0.05,
     radarSpeed: 1.0
   })
 
-  // Camera & Interaction Refs
+  // Camera & Interaction
   const transformRef = useRef({ x: 0, y: 0, scale: 0.85 })
   const isDraggingCanvasRef = useRef(false)
   const pointerDownRef = useRef<{ x: number; y: number; time: number } | null>(null)
@@ -140,13 +110,15 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const animationFrameRef = useRef<number | null>(null)
   const simAlphaRef = useRef<number>(1.0)
   const radarAngleRef = useRef<number>(0)
-
-  // Signal Packets along edges
   const particlesRef = useRef<Particle[]>([])
 
-  // Folder Colors
+  // Folder Colors (Clean short leaf name)
   const folderColorMap = useMemo(() => {
-    const folders = Array.from(new Set(notes.map(n => n.folder || 'Início'))).sort()
+    const folders = Array.from(new Set(notes.map(n => {
+      const parts = (n.folder || 'Início').replace(/\\/g, '/').split('/')
+      return parts[parts.length - 1] || 'Início'
+    }))).sort()
+
     const map = new Map<string, string>()
     folders.forEach((f, idx) => {
       map.set(f, FOLDER_PALETTE[idx % FOLDER_PALETTE.length])
@@ -174,7 +146,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     return { filteredNotes: localNotes, filteredEdges: localEdges }
   }, [notes, isLocalMode, currentNoteId])
 
-  // Initialize node positions & metrics
+  // Pre-cluster and initialize node positions cleanly (prevents messy overlapping piles)
   useEffect(() => {
     setEdges(filteredEdges)
 
@@ -186,38 +158,58 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
     setNodes(prev => {
       const existing = new Map(prev.map(n => [n.id, n]))
-      const total = Math.max(1, filteredNotes.length)
 
-      // Measure text approximation for initial widths
+      // Identify distinct folders for harmonic spatial island placement
+      const folderList = Array.from(new Set(filteredNotes.map(n => {
+        const parts = (n.folder || 'Início').replace(/\\/g, '/').split('/')
+        return parts[parts.length - 1] || 'Início'
+      })))
+
+      const folderAngles = new Map<string, number>()
+      folderList.forEach((f, idx) => {
+        folderAngles.set(f, (idx / Math.max(1, folderList.length)) * Math.PI * 2)
+      })
+
+      const folderSpreadRadius = Math.max(260, Math.min(650, folderList.length * 55))
+
       return filteredNotes.map((note, index) => {
         const found = existing.get(note.id)
         const connections = degreeMap.get(note.id) || 0
-        const angle = (index / total) * Math.PI * 2
-        const dist = 180 + Math.random() * 140
 
-        const color = folderColorMap.get(note.folder) || '#c59b27'
+        const parts = (note.folder || 'Início').replace(/\\/g, '/').split('/')
+        const folderShort = parts[parts.length - 1] || 'Início'
+        const color = folderColorMap.get(folderShort) || '#d4a338'
 
-        // Architectural capsule dimensions
-        const charLen = Math.min(26, note.title.length)
-        const width = Math.max(88, charLen * 7.5 + 40)
-        const height = 24
+        // Architectural matte gem radius (scales smoothly with degree: 4.5px to 13px)
+        const radius = Math.max(4.5, Math.min(13, 4.5 + Math.sqrt(connections) * 2.2))
 
         const rawText = note.content.replace(/[#*`>~\[\]\(\)-]/g, ' ').replace(/\s+/g, ' ').trim()
         const excerpt = rawText.slice(0, 140) + (rawText.length > 140 ? '...' : '')
+
+        // Harmonic island initial positioning around folder center
+        const fAngle = folderAngles.get(folderShort) || 0
+        const fCenterX = Math.cos(fAngle) * folderSpreadRadius
+        const fCenterY = Math.sin(fAngle) * folderSpreadRadius
+
+        const noteSubAngle = (index * 2.39996) // Golden angle spiral
+        const noteSubDist = 20 + Math.sqrt(index % 35) * 26
+
+        const initialX = fCenterX + Math.cos(noteSubAngle) * noteSubDist
+        const initialY = fCenterY + Math.sin(noteSubAngle) * noteSubDist
 
         return {
           id: note.id,
           title: note.title,
           folder: note.folder,
+          folderShort,
           tags: note.tags,
           connections,
           excerpt,
-          x: found?.x ?? Math.cos(angle) * dist,
-          y: found?.y ?? Math.sin(angle) * dist,
+          x: found?.x ?? initialX,
+          y: found?.y ?? initialY,
           vx: found?.vx ?? 0,
           vy: found?.vy ?? 0,
-          width,
-          height,
+          radius,
           color
         }
       })
@@ -226,7 +218,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     simAlphaRef.current = 1.0
   }, [filteredNotes, filteredEdges, folderColorMap])
 
-  // Signal Packets Initialization
+  // Signal Packets along active links
   useEffect(() => {
     if (!settings.enablePulses) {
       particlesRef.current = []
@@ -234,19 +226,21 @@ export const GraphView: React.FC<GraphViewProps> = ({
     }
 
     const newParticles: Particle[] = []
-    filteredEdges.forEach(edge => {
+    const limit = Math.min(60, filteredEdges.length)
+    for (let i = 0; i < limit; i++) {
+      const edge = filteredEdges[i]
       newParticles.push({
         sourceId: edge.source,
         targetId: edge.target,
         progress: Math.random(),
-        speed: 0.002 + Math.random() * 0.004,
+        speed: 0.003 + Math.random() * 0.005,
         color: '#ffffff'
       })
-    })
+    }
     particlesRef.current = newParticles
   }, [filteredEdges, settings.enablePulses])
 
-  // Synchronize Canvas Size with DPI & Container
+  // Canvas DPI & Resize
   const updateCanvasSize = useCallback(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
@@ -273,7 +267,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     }
   }, [updateCanvasSize])
 
-  // Main Render & Simulation Loop
+  // MAIN GRAPH RENDER & PHYSICS LOOP
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -290,16 +284,16 @@ export const GraphView: React.FC<GraphViewProps> = ({
       const height = canvas.clientHeight
       const dpr = window.devicePixelRatio || 1
 
-      // Advance radar sweep
+      // Advance radar beam
       radarAngleRef.current = (radarAngleRef.current + 0.015 * settings.radarSpeed) % (Math.PI * 2)
 
-      // 1. Physics Step
-      if (simAlphaRef.current > 0.002 || draggedNodeRef.current) {
+      // 1. PHYSICS STEP
+      if (simAlphaRef.current > 0.001 || draggedNodeRef.current) {
         const alpha = simAlphaRef.current
         const nodeMap = new Map(nodes.map(n => [n.id, n]))
 
         if (layoutMode === 'radar' && currentNoteId) {
-          // RADAR MODE: Concentric Orbits
+          // RADAR MODE: Concentric Celestial Orbits around focused note
           const centerNode = nodeMap.get(currentNoteId)
           if (centerNode) {
             centerNode.x += (0 - centerNode.x) * 0.1
@@ -325,8 +319,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
             const outer = nodes.filter(n => n.id !== currentNoteId && !directNeighbors.has(n.id))
             outer.forEach((n, idx) => {
               const angle = (idx / Math.max(1, outer.length)) * Math.PI * 2
-              const targetX = Math.cos(angle) * 360
-              const targetY = Math.sin(angle) * 360
+              const targetX = Math.cos(angle) * 380
+              const targetY = Math.sin(angle) * 380
               if (draggedNodeRef.current?.id !== n.id) {
                 n.x += (targetX - n.x) * 0.05
                 n.y += (targetY - n.y) * 0.05
@@ -334,39 +328,40 @@ export const GraphView: React.FC<GraphViewProps> = ({
             })
           }
         } else {
-          // FORCE SIMULATION (Atlas & Circuit Modes)
+          // FORCES: Galaxy & Circuit Modes (Multi-Body Clustered Force)
           const repulsion = settings.repulsion * alpha
           const springLength = settings.linkDistance
-          const springStrength = 0.045 * alpha
+          const springStrength = 0.04 * alpha
           const centerPull = settings.centerGravity * alpha
-          const damping = 0.86
+          const damping = 0.85
 
-          // Folder Centroids for cohesive island grouping
+          // Folder Centroids for organic spatial islands
           const folderCentroids = new Map<string, { x: number; y: number; count: number }>()
           for (const n of nodes) {
-            const cur = folderCentroids.get(n.folder) || { x: 0, y: 0, count: 0 }
+            const cur = folderCentroids.get(n.folderShort) || { x: 0, y: 0, count: 0 }
             cur.x += n.x
             cur.y += n.y
             cur.count++
-            folderCentroids.set(n.folder, cur)
+            folderCentroids.set(n.folderShort, cur)
           }
           folderCentroids.forEach(val => {
             val.x /= val.count
             val.y /= val.count
           })
 
-          // Repulsion between nodes
-          for (let i = 0; i < nodes.length; i++) {
-            for (let j = i + 1; j < nodes.length; j++) {
-              const n1 = nodes[i]
+          // Node-node soft repulsion
+          const len = nodes.length
+          for (let i = 0; i < len; i++) {
+            const n1 = nodes[i]
+            for (let j = i + 1; j < len; j++) {
               const n2 = nodes[j]
               const dx = n2.x - n1.x
               const dy = n2.y - n1.y
               const distSq = dx * dx + dy * dy || 1
-              const dist = Math.sqrt(distSq)
 
-              if (dist < 500) {
-                const force = repulsion / distSq
+              if (distSq < 160000) { // 400px radius
+                const dist = Math.sqrt(distSq)
+                const force = repulsion / (distSq + 600)
                 const fx = (dx / dist) * force
                 const fy = (dy / dist) * force
                 if (draggedNodeRef.current?.id !== n1.id) {
@@ -381,7 +376,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             }
           }
 
-          // Spring tension along links
+          // Link spring tension
           for (const edge of edges) {
             const s = nodeMap.get(edge.source)
             const t = nodeMap.get(edge.target)
@@ -404,11 +399,10 @@ export const GraphView: React.FC<GraphViewProps> = ({
             }
           }
 
-          // Apply gravitation and velocities
+          // Folder Cohesion & Velocity updates
           for (const n of nodes) {
             if (draggedNodeRef.current?.id !== n.id) {
-              // Island cohesion (attraction to folder centroid)
-              const fc = folderCentroids.get(n.folder)
+              const fc = folderCentroids.get(n.folderShort)
               if (fc && fc.count > 1) {
                 n.vx += (fc.x - n.x) * settings.clusterStrength * alpha
                 n.vy += (fc.y - n.y) * settings.clusterStrength * alpha
@@ -427,56 +421,37 @@ export const GraphView: React.FC<GraphViewProps> = ({
         }
 
         if (!draggedNodeRef.current) {
-          simAlphaRef.current *= 0.985
+          simAlphaRef.current *= 0.988
         }
       }
 
-      // 2. Clear Screen & Draw Luxury Matte Background
+      // 2. CLEAR CANVAS & DRAW LUXURY VOID BACKGROUND
       ctx.save()
       ctx.scale(dpr, dpr)
       ctx.clearRect(0, 0, width, height)
 
-      // Matte Slate Blueprint Background (NO GLOSS)
-      ctx.fillStyle = '#0a0b10'
+      // Pure deep matte obsidian background (zero plastic gloss)
+      ctx.fillStyle = '#090a0f'
       ctx.fillRect(0, 0, width, height)
 
-      // Background Architectural Coordinate Matrix
+      // Minimal CAD dot grid (subtle orientation without clutter)
       const transform = transformRef.current
       ctx.save()
-      const gridSize = 40 * transform.scale
-      if (gridSize > 18) {
-        const offsetX = (width / 2 + transform.x) % gridSize
-        const offsetY = (height / 2 + transform.y) % gridSize
+      const dotSpacing = 36 * transform.scale
+      if (dotSpacing > 14) {
+        const offX = (width / 2 + transform.x) % dotSpacing
+        const offY = (height / 2 + transform.y) % dotSpacing
 
-        ctx.strokeStyle = layoutMode === 'circuit' ? 'rgba(56, 189, 248, 0.05)' : 'rgba(255, 255, 255, 0.03)'
-        ctx.lineWidth = 1
-
-        // Grid lines in circuit mode or subtle crosshairs in atlas
-        if (layoutMode === 'circuit') {
-          ctx.beginPath()
-          for (let x = offsetX; x < width; x += gridSize) {
-            ctx.moveTo(x, 0)
-            ctx.lineTo(x, height)
-          }
-          for (let y = offsetY; y < height; y += gridSize) {
-            ctx.moveTo(0, y)
-            ctx.lineTo(width, y)
-          }
-          ctx.stroke()
-        } else {
-          // Minimal precision crosshairs
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.08)'
-          for (let x = offsetX; x < width; x += gridSize) {
-            for (let y = offsetY; y < height; y += gridSize) {
-              ctx.fillRect(x - 2, y, 5, 1)
-              ctx.fillRect(x, y - 2, 1, 5)
-            }
+        ctx.fillStyle = layoutMode === 'circuit' ? 'rgba(56, 189, 248, 0.05)' : 'rgba(255, 255, 255, 0.04)'
+        for (let x = offX; x < width; x += dotSpacing) {
+          for (let y = offY; y < height; y += dotSpacing) {
+            ctx.fillRect(x, y, 1, 1)
           }
         }
       }
       ctx.restore()
 
-      // Camera Matrix
+      // CAMERA WORLD MATRIX
       ctx.save()
       ctx.translate(width / 2 + transform.x, height / 2 + transform.y)
       ctx.scale(transform.scale, transform.scale)
@@ -499,46 +474,37 @@ export const GraphView: React.FC<GraphViewProps> = ({
         }
       }
 
-      // 3. RADAR MODE: Range Rings & Sweep Beam
+      // 3. RADAR MODE: Concentric Range Circles
       if (layoutMode === 'radar') {
-        const rings = [100, 190, 280, 360, 480]
+        const rings = [100, 190, 280, 380, 500]
         ctx.save()
 
-        // Concentric Range Rings
         rings.forEach((r, idx) => {
           ctx.beginPath()
           ctx.arc(0, 0, r, 0, Math.PI * 2)
-          ctx.strokeStyle = idx === 1 ? 'rgba(197, 155, 39, 0.25)' : 'rgba(255, 255, 255, 0.05)'
+          ctx.strokeStyle = idx === 1 ? 'rgba(212, 163, 56, 0.22)' : 'rgba(255, 255, 255, 0.05)'
           ctx.lineWidth = 1
-          ctx.setLineDash([3, 6])
           ctx.stroke()
-
-          // Ring range label
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'
-          ctx.font = '9px "JetBrains Mono", monospace'
-          ctx.textAlign = 'right'
-          ctx.fillText(`RNG 0${idx + 1} // ${r}PX`, -10, -r + 4)
         })
-        ctx.setLineDash([])
 
         // Radial cross lines
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)'
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)'
         for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
           ctx.beginPath()
           ctx.moveTo(0, 0)
-          ctx.lineTo(Math.cos(a) * 500, Math.sin(a) * 500)
+          ctx.lineTo(Math.cos(a) * 520, Math.sin(a) * 520)
           ctx.stroke()
         }
 
-        // Animated Radar Sweep Sector
+        // Radar Sweep Sector
         const sweepAngle = radarAngleRef.current
-        const sweepGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, 480)
-        sweepGrad.addColorStop(0, 'rgba(197, 155, 39, 0.15)')
-        sweepGrad.addColorStop(1, 'rgba(197, 155, 39, 0)')
+        const sweepGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, 500)
+        sweepGrad.addColorStop(0, 'rgba(212, 163, 56, 0.12)')
+        sweepGrad.addColorStop(1, 'rgba(212, 163, 56, 0)')
 
         ctx.beginPath()
         ctx.moveTo(0, 0)
-        ctx.arc(0, 0, 480, sweepAngle - 0.35, sweepAngle)
+        ctx.arc(0, 0, 500, sweepAngle - 0.35, sweepAngle)
         ctx.closePath()
         ctx.fillStyle = sweepGrad
         ctx.fill()
@@ -546,126 +512,47 @@ export const GraphView: React.FC<GraphViewProps> = ({
         ctx.restore()
       }
 
-      // 4. ATLAS MODE: Territory Islands (Convex Hull Continents)
-      if (layoutMode === 'atlas' && settings.enableTerritories) {
-        // Group nodes by folder
+      // 4. SOFT ORGANIC NEBULAE (Ambient Island Clouds Behind Folders)
+      // Completely borderless and soft: NO DASHED LINES, NO DEBUG TEXT
+      if (settings.enableNebulae && layoutMode === 'constellation') {
         const folderGroups = new Map<string, SimNode[]>()
         for (const n of nodes) {
-          const list = folderGroups.get(n.folder) || []
+          const list = folderGroups.get(n.folderShort) || []
           list.push(n)
-          folderGroups.set(n.folder, list)
+          folderGroups.set(n.folderShort, list)
         }
 
-        folderGroups.forEach((groupNodes, folderName) => {
-          if (groupNodes.length === 0) return
-          const color = folderColorMap.get(folderName) || '#c59b27'
-          const isFolderFocused = hoveredFolder ? hoveredFolder === folderName : true
-          const alphaMultiplier = isFolderFocused ? 1.0 : 0.25
+        folderGroups.forEach((groupNodes, folderShort) => {
+          if (groupNodes.length < 2) return
+
+          const color = folderColorMap.get(folderShort) || '#d4a338'
+          const isFocused = hoveredFolder ? hoveredFolder === folderShort : true
+          const opacity = isFocused ? 0.045 : 0.015
+
+          const cx = groupNodes.reduce((acc, n) => acc + n.x, 0) / groupNodes.length
+          const cy = groupNodes.reduce((acc, n) => acc + n.y, 0) / groupNodes.length
+
+          let maxDist = 60
+          for (const n of groupNodes) {
+            const d = Math.hypot(n.x - cx, n.y - cy)
+            if (d > maxDist) maxDist = d
+          }
+          const nebulaRadius = Math.max(90, Math.min(320, maxDist + 40))
 
           ctx.save()
-          ctx.globalAlpha = alphaMultiplier
+          const grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, nebulaRadius)
+          grad.addColorStop(0, color + Math.round(opacity * 255).toString(16).padStart(2, '0'))
+          grad.addColorStop(1, color + '00')
 
-          if (groupNodes.length === 1) {
-            // Single node territory: rounded pill perimeter
-            const n = groupNodes[0]
-            const padX = n.width / 2 + 30
-            const padY = n.height / 2 + 25
-
-            ctx.beginPath()
-            ctx.roundRect(n.x - padX, n.y - padY, padX * 2, padY * 2, 16)
-            ctx.fillStyle = color + '08' // 3% opacity fill
-            ctx.fill()
-            ctx.strokeStyle = color + '30' // 19% opacity border
-            ctx.lineWidth = 1
-            ctx.setLineDash([4, 4])
-            ctx.stroke()
-
-            // Territory label
-            ctx.fillStyle = color
-            ctx.font = '600 9px "JetBrains Mono", monospace'
-            ctx.textAlign = 'left'
-            ctx.fillText(`+ TERRITÓRIO // ${folderName.toUpperCase()}`, n.x - padX + 10, n.y - padY - 8)
-          } else {
-            // Multi-node territory: smooth expanded convex hull
-            const points = groupNodes.map(n => ({ x: n.x, y: n.y }))
-            const hull = getConvexHull(points)
-
-            // Centroid
-            const cx = hull.reduce((acc, p) => acc + p.x, 0) / hull.length
-            const cy = hull.reduce((acc, p) => acc + p.y, 0) / hull.length
-
-            // Expand vertices outward from centroid
-            const pad = 42
-            const expanded = hull.map(p => {
-              const dx = p.x - cx
-              const dy = p.y - cy
-              const len = Math.hypot(dx, dy) || 1
-              return {
-                x: p.x + (dx / len) * pad,
-                y: p.y + (dy / len) * pad
-              }
-            })
-
-            // Draw smooth closed polygon
-            ctx.beginPath()
-            ctx.moveTo(expanded[0].x, expanded[0].y)
-            for (let i = 0; i < expanded.length; i++) {
-              const cur = expanded[i]
-              const next = expanded[(i + 1) % expanded.length]
-              const midX = (cur.x + next.x) / 2
-              const midY = (cur.y + next.y) / 2
-              ctx.quadraticCurveTo(cur.x, cur.y, midX, midY)
-            }
-            ctx.closePath()
-
-            // Subtle topographic tinted terrain fill
-            ctx.fillStyle = color + '08'
-            ctx.fill()
-
-            // Outer dashed contour
-            ctx.strokeStyle = color + '35'
-            ctx.lineWidth = 1
-            ctx.setLineDash([4, 4])
-            ctx.stroke()
-
-            // Inner subtle contour line
-            ctx.beginPath()
-            const innerPad = 14
-            const innerExpanded = hull.map(p => {
-              const dx = p.x - cx
-              const dy = p.y - cy
-              const len = Math.hypot(dx, dy) || 1
-              return {
-                x: p.x + (dx / len) * (pad - innerPad),
-                y: p.y + (dy / len) * (pad - innerPad)
-              }
-            })
-            ctx.moveTo(innerExpanded[0].x, innerExpanded[0].y)
-            for (let i = 0; i < innerExpanded.length; i++) {
-              const cur = innerExpanded[i]
-              const next = innerExpanded[(i + 1) % innerExpanded.length]
-              ctx.quadraticCurveTo(cur.x, cur.y, (cur.x + next.x) / 2, (cur.y + next.y) / 2)
-            }
-            ctx.closePath()
-            ctx.strokeStyle = color + '15'
-            ctx.stroke()
-            ctx.setLineDash([])
-
-            // Territory Header Tag
-            const minX = Math.min(...expanded.map(p => p.x))
-            const minY = Math.min(...expanded.map(p => p.y))
-
-            ctx.fillStyle = color
-            ctx.font = '700 9px "JetBrains Mono", monospace'
-            ctx.textAlign = 'left'
-            ctx.fillText(`✛ SETOR // ${folderName.toUpperCase()} [${groupNodes.length}]`, minX + 12, minY - 8)
-          }
-
+          ctx.beginPath()
+          ctx.arc(cx, cy, nebulaRadius, 0, Math.PI * 2)
+          ctx.fillStyle = grad
+          ctx.fill()
           ctx.restore()
         })
       }
 
-      // 5. Render Connection Links (Vector Filaments & Circuit Traces)
+      // 5. RENDER CONNECTION LINKS
       for (const edge of edges) {
         const s = nodeMap.get(edge.source)
         const t = nodeMap.get(edge.target)
@@ -677,19 +564,17 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
         const isDimmed = hoveredNodeId
           ? !isHighlighted
-          : (hoveredFolder && (s.folder !== hoveredFolder && t.folder !== hoveredFolder))
-
-        const isInterFolder = s.folder !== t.folder
+          : (hoveredFolder && (s.folderShort !== hoveredFolder && t.folderShort !== hoveredFolder))
 
         ctx.save()
         if (isDimmed) {
-          ctx.globalAlpha = 0.12
+          ctx.globalAlpha = 0.06
         }
 
         ctx.beginPath()
 
         if (layoutMode === 'circuit') {
-          // CIRCUIT BLUEPRINT: Orthogonal stepped trace
+          // CIRCUIT BLUEPRINT: Clean Orthogonal Stepped Trace
           const midX = (s.x + t.x) / 2
           ctx.moveTo(s.x, s.y)
           ctx.lineTo(midX, s.y)
@@ -698,49 +583,41 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           ctx.strokeStyle = isHighlighted
             ? '#38bdf8'
-            : isInterFolder
-            ? 'rgba(255, 255, 255, 0.2)'
-            : 'rgba(56, 189, 248, 0.14)'
-          ctx.lineWidth = isHighlighted ? 1.8 : 1.0
+            : 'rgba(56, 189, 248, 0.12)'
+          ctx.lineWidth = isHighlighted ? 1.8 : 0.9
           ctx.stroke()
 
-          // Circuit junction dot at corner
           if (isHighlighted) {
             ctx.beginPath()
-            ctx.arc(midX, s.y, 2.5, 0, Math.PI * 2)
-            ctx.arc(midX, t.y, 2.5, 0, Math.PI * 2)
+            ctx.arc(midX, s.y, 2, 0, Math.PI * 2)
+            ctx.arc(midX, t.y, 2, 0, Math.PI * 2)
             ctx.fillStyle = '#38bdf8'
             ctx.fill()
           }
         } else {
-          // VECTOR FILAMENT: Direct laser link
+          // CONSTELLATION: Refined Fiber-Optic Filaments
           ctx.moveTo(s.x, s.y)
           ctx.lineTo(t.x, t.y)
 
           if (isHighlighted) {
-            const linkGrad = ctx.createLinearGradient(s.x, s.y, t.x, t.y)
-            linkGrad.addColorStop(0, s.color)
-            linkGrad.addColorStop(1, t.color)
-            ctx.strokeStyle = linkGrad
+            const grad = ctx.createLinearGradient(s.x, s.y, t.x, t.y)
+            grad.addColorStop(0, s.color)
+            grad.addColorStop(1, t.color)
+            ctx.strokeStyle = grad
             ctx.lineWidth = 1.8
-          } else if (isInterFolder) {
-            // Inter-island bridge: crisp dotted link
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)'
-            ctx.lineWidth = 1.0
-            ctx.setLineDash([3, 4])
           } else {
-            // Intra-island link: subtle solid hairline
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'
+            // Subtle, crisp filament
+            const sameFolder = s.folderShort === t.folderShort
+            ctx.strokeStyle = sameFolder ? s.color + '26' : 'rgba(255, 255, 255, 0.08)'
             ctx.lineWidth = 0.8
           }
           ctx.stroke()
-          ctx.setLineDash([])
         }
 
         ctx.restore()
       }
 
-      // 6. Signal Packets (Data Flow along Links)
+      // 6. SIGNAL PACKETS (Subtle Data Pulses along Active Links)
       if (settings.enablePulses && particlesRef.current.length > 0) {
         for (const p of particlesRef.current) {
           const s = nodeMap.get(p.sourceId)
@@ -773,145 +650,159 @@ export const GraphView: React.FC<GraphViewProps> = ({
           const isNearActive = activeNeighborIds.has(p.sourceId) || activeNeighborIds.has(p.targetId)
 
           ctx.beginPath()
-          ctx.arc(px, py, isNearActive ? 2.2 : 1.2, 0, Math.PI * 2)
-          ctx.fillStyle = isNearActive ? s.color : 'rgba(255, 255, 255, 0.55)'
+          ctx.arc(px, py, isNearActive ? 2.0 : 1.0, 0, Math.PI * 2)
+          ctx.fillStyle = isNearActive ? s.color : 'rgba(255, 255, 255, 0.45)'
           ctx.fill()
         }
       }
 
-      // 7. Render Nodes (ARCHITECTURAL MATTE CAPSULES - NO PLASTIC SHINE!)
-      const isZoomedFar = transform.scale < 0.65
+      // 7. RENDER NODES (PRECISION MATTE GEMS - NO PLASTIC SHINE!)
+      const isZoomedClose = transform.scale > 1.35
 
       for (const node of nodes) {
         const isCurrent = node.id === currentNoteId
         const isHovered = node.id === hoveredNodeId
-        const isConnected = activeNeighborIds.has(node.id)
-        const isFolderMatch = hoveredFolder ? node.folder === hoveredFolder : true
+        const isNeighbor = activeNeighborIds.has(node.id)
+        const isFolderMatch = hoveredFolder ? node.folderShort === hoveredFolder : true
         const isSearchMatch = searchQuery
           ? node.title.toLowerCase().includes(searchQuery.toLowerCase())
           : false
 
         let alpha = 1.0
         if (searchQuery) {
-          alpha = isSearchMatch ? 1.0 : 0.12
+          alpha = isSearchMatch ? 1.0 : 0.08
         } else if (hoveredFolder) {
-          alpha = isFolderMatch ? 1.0 : 0.15
+          alpha = isFolderMatch ? 1.0 : 0.12
         } else if (hoveredNodeId) {
-          alpha = (isHovered || isConnected) ? 1.0 : 0.18
+          alpha = (isHovered || isNeighbor) ? 1.0 : 0.1
         }
 
         ctx.save()
         ctx.globalAlpha = alpha
 
-        // Determine if node displays as full architectural capsule or collapsed micro-chip
-        const showFullCapsule = !isZoomedFar || isCurrent || isHovered || isConnected || isSearchMatch
+        const r = node.radius + (isHovered ? 2.5 : 0)
 
-        if (showFullCapsule) {
-          // --- FULL ARCHITECTURAL CAPSULE ---
-          const w = node.width
-          const h = node.height
-          const x = node.x - w / 2
-          const y = node.y - h / 2
-          const cornerR = 7
-
-          // Active CAD Viewfinder Frame `[ · ]`
-          if (isCurrent) {
-            const pad = 5
-            ctx.strokeStyle = node.color
-            ctx.lineWidth = 1.2
-            ctx.beginPath()
-            // Top-left bracket
-            ctx.moveTo(x - pad, y - pad + 6)
-            ctx.lineTo(x - pad, y - pad)
-            ctx.lineTo(x - pad + 6, y - pad)
-            // Top-right bracket
-            ctx.moveTo(x + w + pad - 6, y - pad)
-            ctx.lineTo(x + w + pad, y - pad)
-            ctx.lineTo(x + w + pad, y - pad + 6)
-            // Bottom-left bracket
-            ctx.moveTo(x - pad, y + h + pad - 6)
-            ctx.lineTo(x - pad, y + h + pad)
-            ctx.lineTo(x - pad + 6, y + h + pad)
-            // Bottom-right bracket
-            ctx.moveTo(x + w + pad - 6, y + h + pad)
-            ctx.lineTo(x + w + pad, y + h + pad)
-            ctx.lineTo(x + w + pad, y + h + pad - 6)
-            ctx.stroke()
-          }
-
-          // Search Beacon Ping
-          if (isSearchMatch) {
-            ctx.strokeStyle = '#f59e0b'
-            ctx.lineWidth = 1.2
-            ctx.setLineDash([3, 3])
-            ctx.strokeRect(x - 4, y - 4, w + 8, h + 8)
-            ctx.setLineDash([])
-          }
-
-          // Matte Capsule Background (Deep slate, flat, zero gloss)
+        // Hub Orbital Ring (for notes with >= 4 links)
+        if (node.connections >= 4 && !isHovered) {
           ctx.beginPath()
-          ctx.roundRect(x, y, w, h, cornerR)
-          ctx.fillStyle = isCurrent
-            ? '#161822'
-            : isHovered
-            ? '#1a1c2a'
-            : '#111219'
-          ctx.fill()
-
-          // Hairline Matte Border
-          ctx.strokeStyle = isCurrent
-            ? node.color
-            : isHovered
-            ? '#ffffff'
-            : 'rgba(255, 255, 255, 0.12)'
-          ctx.lineWidth = isCurrent || isHovered ? 1.5 : 1.0
+          ctx.arc(node.x, node.y, r + 4, 0, Math.PI * 2)
+          ctx.strokeStyle = node.color + '33'
+          ctx.lineWidth = 0.9
           ctx.stroke()
+        }
 
-          // Left Indicator Dot (Flat solid folder color)
-          ctx.beginPath()
-          ctx.arc(x + 12, node.y, 4, 0, Math.PI * 2)
-          ctx.fillStyle = node.color
-          ctx.fill()
-
-          // Title Typography (Clean, high-legibility Inter/system)
-          ctx.font = '600 11px "Inter", system-ui, sans-serif'
-          ctx.textAlign = 'left'
-          ctx.textBaseline = 'middle'
-          ctx.fillStyle = isCurrent || isHovered ? '#ffffff' : '#e2e8f0'
-
-          // Truncated title if needed
-          ctx.fillText(node.title, x + 22, node.y, w - 46)
-
-          // Right Connection Counter Badge (e.g. "· 3")
-          if (node.connections > 0) {
-            ctx.font = '500 9px "JetBrains Mono", monospace'
-            ctx.textAlign = 'right'
-            ctx.fillStyle = isCurrent || isHovered ? node.color : 'rgba(255, 255, 255, 0.4)'
-            ctx.fillText(`${node.connections}`, x + w - 8, node.y)
-          }
-        } else {
-          // --- COLLAPSED MICRO-CHIP (High zoom-out level of detail) ---
-          const size = 11
-          ctx.beginPath()
-          ctx.roundRect(node.x - size / 2, node.y - size / 2, size, size, 3)
-          ctx.fillStyle = '#111219'
-          ctx.fill()
+        // Active Note CAD Focus Reticle `[ · ]`
+        if (isCurrent) {
+          const pad = r + 6
           ctx.strokeStyle = node.color
           ctx.lineWidth = 1.2
-          ctx.stroke()
-
-          // Inner solid core
           ctx.beginPath()
-          ctx.arc(node.x, node.y, 2.5, 0, Math.PI * 2)
-          ctx.fillStyle = node.color
-          ctx.fill()
+          // Top-Left
+          ctx.moveTo(node.x - pad, node.y - pad + 5)
+          ctx.lineTo(node.x - pad, node.y - pad)
+          ctx.lineTo(node.x - pad + 5, node.y - pad)
+          // Top-Right
+          ctx.moveTo(node.x + pad - 5, node.y - pad)
+          ctx.lineTo(node.x + pad, node.y - pad)
+          ctx.lineTo(node.x + pad, node.y - pad + 5)
+          // Bottom-Left
+          ctx.moveTo(node.x - pad, node.y + pad - 5)
+          ctx.lineTo(node.x - pad, node.y + pad)
+          ctx.lineTo(node.x - pad + 5, node.y + pad)
+          // Bottom-Right
+          ctx.moveTo(node.x + pad - 5, node.y + pad)
+          ctx.lineTo(node.x + pad, node.y + pad)
+          ctx.lineTo(node.x + pad, node.y + pad - 5)
+          ctx.stroke()
         }
+
+        // Search Match Beacon
+        if (isSearchMatch) {
+          ctx.beginPath()
+          ctx.arc(node.x, node.y, r + 6, 0, Math.PI * 2)
+          ctx.strokeStyle = '#f59e0b'
+          ctx.lineWidth = 1.2
+          ctx.stroke()
+        }
+
+        // Matte Jewel Body: Solid deep core + crisp colored hairline ring (NO GLOSS)
+        ctx.beginPath()
+        ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
+        ctx.fillStyle = isCurrent ? '#161824' : isHovered ? '#1b1d2a' : '#101118'
+        ctx.fill()
+
+        ctx.strokeStyle = isHovered ? '#ffffff' : node.color
+        ctx.lineWidth = isCurrent || isHovered ? 1.6 : 1.2
+        ctx.stroke()
+
+        // Inner Matte Color Core
+        ctx.beginPath()
+        ctx.arc(node.x, node.y, Math.max(2, r * 0.42), 0, Math.PI * 2)
+        ctx.fillStyle = node.color
+        ctx.fill()
 
         ctx.restore()
       }
 
+      // 8. CONTEXTUAL LABELS PASS (NO SCREEN-WIDE TEXT CLUTTER!)
+      // Text appears ONLY for:
+      // 1) The active open note
+      // 2) The currently hovered note & directly connected neighbors
+      // 3) Search query matches
+      // 4) High-zoom close-ups
+      ctx.save()
+      for (const node of nodes) {
+        const isCurrent = node.id === currentNoteId
+        const isHovered = node.id === hoveredNodeId
+        const isNeighbor = hoveredNodeId ? activeNeighborIds.has(node.id) : false
+        const isSearchMatch = searchQuery
+          ? node.title.toLowerCase().includes(searchQuery.toLowerCase())
+          : false
+
+        // Determine if label should render
+        const showLabel = isHovered || isNeighbor || isCurrent || isSearchMatch || (isZoomedClose && node.connections >= 2)
+
+        if (!showLabel) continue
+
+        const labelText = node.title
+        ctx.font = isHovered || isCurrent
+          ? '600 11px "Inter", system-ui, sans-serif'
+          : '500 10px "Inter", system-ui, sans-serif'
+
+        const textMetrics = ctx.measureText(labelText)
+        const pillWidth = textMetrics.width + 16
+        const pillHeight = 18
+        const pillX = node.x - pillWidth / 2
+        const pillY = node.y - node.radius - 22
+
+        // Soft Dark Floating Pill Backdrop
+        ctx.beginPath()
+        ctx.roundRect(pillX, pillY, pillWidth, pillHeight, 5)
+        ctx.fillStyle = isHovered
+          ? 'rgba(20, 22, 34, 0.96)'
+          : isCurrent
+          ? 'rgba(22, 24, 38, 0.94)'
+          : 'rgba(14, 15, 23, 0.88)'
+        ctx.fill()
+
+        ctx.strokeStyle = isHovered
+          ? 'rgba(255, 255, 255, 0.25)'
+          : isCurrent
+          ? node.color
+          : 'rgba(255, 255, 255, 0.08)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+
+        // Text
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillStyle = isHovered || isCurrent ? '#ffffff' : '#cbd5e1'
+        ctx.fillText(labelText, node.x, pillY + pillHeight / 2)
+      }
       ctx.restore()
-      ctx.restore()
+
+      ctx.restore() // End World Matrix
+      ctx.restore() // End Screen Matrix
 
       animationFrameRef.current = requestAnimationFrame(render)
     }
@@ -931,7 +822,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     layoutMode
   ])
 
-  // Precise World Mouse Coordinate Converter
+  // Precise Canvas Coordinate Converter
   const getCanvasMouse = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return { x: 0, y: 0 }
@@ -953,39 +844,29 @@ export const GraphView: React.FC<GraphViewProps> = ({
     }
   }, [])
 
-  // Precise Node Hit Testing for Rectangular Architectural Capsules
+  // Precise Radial Hit Testing (Generous, instant, zero rectangle overlap)
   const getNodeAtCoords = useCallback((worldX: number, worldY: number): SimNode | null => {
-    const isZoomedFar = transformRef.current.scale < 0.65
+    let closestNode: SimNode | null = null
+    let closestDistSq = Infinity
 
     for (let i = nodes.length - 1; i >= 0; i--) {
       const node = nodes[i]
-      const showFullCapsule = !isZoomedFar || node.id === currentNoteId || node.id === hoveredNodeId
+      const dx = worldX - node.x
+      const dy = worldY - node.y
+      const distSq = dx * dx + dy * dy
 
-      if (showFullCapsule) {
-        // Hit test rectangle with generous 8px margin
-        const halfW = node.width / 2 + 8
-        const halfH = node.height / 2 + 8
-        if (
-          worldX >= node.x - halfW &&
-          worldX <= node.x + halfW &&
-          worldY >= node.y - halfH &&
-          worldY <= node.y + halfH
-        ) {
-          return node
-        }
-      } else {
-        // Hit test micro-chip circle (generous 16px radius)
-        const dx = worldX - node.x
-        const dy = worldY - node.y
-        if (dx * dx + dy * dy <= 16 * 16) {
-          return node
+      const hitRadius = Math.max(16, node.radius + 6)
+      if (distSq <= hitRadius * hitRadius) {
+        if (distSq < closestDistSq) {
+          closestDistSq = distSq
+          closestNode = node
         }
       }
     }
-    return null
-  }, [nodes, currentNoteId, hoveredNodeId])
+    return closestNode
+  }, [nodes])
 
-  // Mouse / Pointer Event Handlers
+  // Mouse & Pointer Handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const mouse = getCanvasMouse(e)
     pointerDownRef.current = { x: e.clientX, y: e.clientY, time: Date.now() }
@@ -993,7 +874,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     const hit = getNodeAtCoords(mouse.x, mouse.y)
     if (hit) {
       draggedNodeRef.current = hit
-      simAlphaRef.current = 0.5
+      simAlphaRef.current = 0.4
     } else {
       isDraggingCanvasRef.current = true
     }
@@ -1009,7 +890,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
       draggedNodeRef.current.y = mouse.y
       draggedNodeRef.current.vx = 0
       draggedNodeRef.current.vy = 0
-      simAlphaRef.current = 0.5
+      simAlphaRef.current = 0.4
       return
     }
 
@@ -1022,24 +903,24 @@ export const GraphView: React.FC<GraphViewProps> = ({
       return
     }
 
-    // Hover detection & cursor styling
+    // Hover detection
     const hit = getNodeAtCoords(mouse.x, mouse.y)
     if (hit) {
       setHoveredNodeId(hit.id)
       canvas.style.cursor = 'pointer'
     } else {
       setHoveredNodeId(null)
-      canvas.style.cursor = isDraggingCanvasRef.current ? 'grabbing' : 'grab'
+      canvas.style.cursor = isDraggingCanvasRef.current ? 'grabbing' : 'default'
     }
   }
 
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Click detection (clean click if distance < 6px and time < 450ms)
+    // Instant click detection
     if (pointerDownRef.current) {
       const dist = Math.hypot(e.clientX - pointerDownRef.current.x, e.clientY - pointerDownRef.current.y)
       const elapsed = Date.now() - pointerDownRef.current.time
 
-      if (dist < 6 && elapsed < 450) {
+      if (dist < 6 && elapsed < 500) {
         const mouse = getCanvasMouse(e)
         const hit = getNodeAtCoords(mouse.x, mouse.y)
         if (hit) {
@@ -1065,7 +946,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87
     const currentScale = transformRef.current.scale
-    const newScale = Math.min(3.5, Math.max(0.2, currentScale * zoomFactor))
+    const newScale = Math.min(3.5, Math.max(0.18, currentScale * zoomFactor))
 
     transformRef.current.x -= (mouseScreenX - transformRef.current.x) * (newScale / currentScale - 1)
     transformRef.current.y -= (mouseScreenY - transformRef.current.y) * (newScale / currentScale - 1)
@@ -1089,9 +970,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
     }
   }
 
-  // Focus on a specific territory island
-  const handleFocusFolderIsland = (folder: string) => {
-    const group = nodes.filter(n => n.folder === folder)
+  // Smooth Focus on Folder Archipelago
+  const handleFocusFolderIsland = (folderShort: string) => {
+    const group = nodes.filter(n => n.folderShort === folderShort)
     if (group.length === 0) return
     const cx = group.reduce((acc, n) => acc + n.x, 0) / group.length
     const cy = group.reduce((acc, n) => acc + n.y, 0) / group.length
@@ -1120,14 +1001,18 @@ export const GraphView: React.FC<GraphViewProps> = ({
     return nodes.filter(n => ids.includes(n.id))
   }, [hoveredNodeId, edges, nodes])
 
-  const allFolders = useMemo(() => Array.from(new Set(notes.map(n => n.folder || 'Início'))), [notes])
+  // Top folders list for archipelago bottom buttons
+  const allFolderShorts = useMemo(() => {
+    const set = new Set(nodes.map(n => n.folderShort))
+    return Array.from(set).sort()
+  }, [nodes])
 
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full bg-[#0a0b10] overflow-hidden flex flex-col select-none"
+      className="relative w-full h-full bg-[#090a0f] overflow-hidden flex flex-col select-none"
     >
-      {/* 1. Top HUD Control Bar */}
+      {/* 1. TOP HUD CONTROL BAR */}
       <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-[#0e0f17]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-1.5 shadow-2xl">
         {/* Search */}
         <div className="relative flex items-center">
@@ -1149,22 +1034,22 @@ export const GraphView: React.FC<GraphViewProps> = ({
           )}
         </div>
 
-        {/* 3 Innovative Format Modes */}
+        {/* 3 Innovative Visualization Modes */}
         <div className="flex items-center bg-[#141622] border border-zinc-800 rounded-xl p-0.5 text-xs">
           <button
             onClick={() => {
-              setLayoutMode('atlas')
+              setLayoutMode('constellation')
               simAlphaRef.current = 1.0
             }}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
-              layoutMode === 'atlas'
+              layoutMode === 'constellation'
                 ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
-            title="Atlas Topográfico: Continentes & Ilhas Territoriais"
+            title="Constelação Sináptica: Agrupamento orgânico de ideias por afinidade"
           >
-            <MapIcon className="w-3.5 h-3.5" />
-            <span>Atlas</span>
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Constelação</span>
           </button>
 
           <button
@@ -1177,7 +1062,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                 ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
-            title="Circuito Neural: Blueprint com trilhas de dados ortogonais"
+            title="Circuito Neural: Blueprint com trilhas ortogonais e nós de junção"
           >
             <Cpu className="w-3.5 h-3.5" />
             <span>Circuito</span>
@@ -1193,7 +1078,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                 ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
-            title="Radar Ecosfera: Anéis concêntricos de proximidade"
+            title="Radar Ecosfera: Órbitas concêntricas ao redor da nota ativa"
           >
             <Radar className="w-3.5 h-3.5" />
             <span>Radar</span>
@@ -1202,7 +1087,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
         <div className="h-4 w-px bg-zinc-800" />
 
-        {/* Local vs Global Focus Toggle */}
+        {/* Global vs Local Toggle */}
         <button
           onClick={() => setIsLocalMode(m => !m)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
@@ -1224,13 +1109,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
               ? 'bg-[var(--accent)] text-zinc-950 font-bold'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
           }`}
-          title="Ajustes de Topologia e Física"
+          title="Ajustes de Física e Topologia"
         >
           <Sliders className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* 2. Top-Right Architectural Inspector HUD Card */}
+      {/* 2. FLOATING HUD CARD (Appears cleanly on hover) */}
       {hoveredNode && (
         <div className="absolute top-4 right-4 z-20 w-84 bg-[#0e0f17]/95 backdrop-blur-2xl border border-white/[0.1] rounded-2xl p-4 shadow-2xl space-y-3 text-xs animate-in fade-in zoom-in-95 duration-100 select-none">
           <div className="flex items-start justify-between gap-2 border-b border-zinc-800/80 pb-2.5">
@@ -1240,7 +1125,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                   className="w-2 h-2 rounded-full inline-block"
                   style={{ backgroundColor: hoveredNode.color }}
                 />
-                <span>VAULT // {hoveredNode.folder}</span>
+                <span>PASTA: {hoveredNode.folderShort}</span>
               </div>
               <h3 className="text-sm font-bold text-zinc-100 leading-snug">
                 {hoveredNode.title}
@@ -1261,7 +1146,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             </p>
           )}
 
-          {/* Connected Notes Micro Pills */}
+          {/* Connected Notes Pills */}
           {hoveredConnections.length > 0 && (
             <div className="space-y-1 pt-1">
               <span className="text-[10px] text-zinc-500 font-mono">
@@ -1286,21 +1171,24 @@ export const GraphView: React.FC<GraphViewProps> = ({
           )}
 
           <div className="flex items-center justify-between pt-1 border-t border-zinc-800/80 text-[10px] text-zinc-400 font-mono">
-            <span>COORD: {Math.round(hoveredNode.x)}, {Math.round(hoveredNode.y)}</span>
-            <span className="text-[var(--accent)] font-semibold flex items-center gap-1">
+            <span>LINKS: {hoveredNode.connections}</span>
+            <button
+              onClick={() => onSelectNote(hoveredNode.id)}
+              className="text-[var(--accent)] font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+            >
               CLIQUE PARA ABRIR <ArrowRight className="w-2.5 h-2.5" />
-            </span>
+            </button>
           </div>
         </div>
       )}
 
-      {/* 3. Settings Drawer */}
+      {/* 3. SETTINGS DRAWER */}
       {showSettingsDrawer && (
         <div className="absolute top-18 left-4 z-30 w-72 bg-[#0e0f17]/95 backdrop-blur-2xl border border-white/[0.1] rounded-2xl p-4 shadow-2xl space-y-3.5 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
             <span className="font-bold text-zinc-100 flex items-center gap-1.5 font-mono text-[11px]">
               <Sliders className="w-3.5 h-3.5 text-[var(--accent)]" />
-              PARÂMETROS TOPOLÓGICOS
+              PARÂMETROS DE FÍSICA
             </span>
             <button
               onClick={() => setShowSettingsDrawer(false)}
@@ -1317,8 +1205,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
             </div>
             <input
               type="range"
-              min="1000"
-              max="4500"
+              min="800"
+              max="4000"
               step="100"
               value={settings.repulsion}
               onChange={(e) => {
@@ -1331,13 +1219,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           <div className="space-y-1">
             <div className="flex justify-between text-[11px] text-zinc-400 font-mono">
-              <span>COMPRIMENTO DOS VETORES</span>
+              <span>COMPRIMENTO DOS LINKS</span>
               <span>{settings.linkDistance}px</span>
             </div>
             <input
               type="range"
-              min="80"
-              max="260"
+              min="60"
+              max="240"
               step="10"
               value={settings.linkDistance}
               onChange={(e) => {
@@ -1350,13 +1238,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           <div className="space-y-1">
             <div className="flex justify-between text-[11px] text-zinc-400 font-mono">
-              <span>COESÃO TERRITORIAL (ILHAS)</span>
+              <span>COESÃO POR PASTA</span>
               <span>{(settings.clusterStrength * 100).toFixed(0)}%</span>
             </div>
             <input
               type="range"
               min="0.01"
-              max="0.15"
+              max="0.12"
               step="0.01"
               value={settings.clusterStrength}
               onChange={(e) => {
@@ -1369,11 +1257,11 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           <div className="pt-2 border-t border-zinc-800 space-y-2">
             <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-[11px]">Placas Territoriais (Atlas)</span>
+              <span className="text-[11px]">Nebulosas Ambientes de Pasta</span>
               <input
                 type="checkbox"
-                checked={settings.enableTerritories}
-                onChange={(e) => setSettings(s => ({ ...s, enableTerritories: e.target.checked }))}
+                checked={settings.enableNebulae}
+                onChange={(e) => setSettings(s => ({ ...s, enableNebulae: e.target.checked }))}
                 className="accent-[var(--accent)] rounded cursor-pointer"
               />
             </label>
@@ -1391,7 +1279,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
         </div>
       )}
 
-      {/* 4. Bottom Archipelago Continent Navigator */}
+      {/* 4. BOTTOM ARCHIPELAGO NAVIGATOR */}
       <div className="absolute bottom-5 left-5 z-20 bg-[#0e0f17]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl px-3.5 py-2 text-xs text-zinc-400 flex items-center gap-3 shadow-2xl">
         <div className="flex items-center gap-1.5 font-bold text-zinc-200 font-mono text-[11px]">
           <Layers className="w-3.5 h-3.5 text-[var(--accent)]" />
@@ -1401,37 +1289,37 @@ export const GraphView: React.FC<GraphViewProps> = ({
         <span className="font-mono text-[11px]">{edges.length} PONTES</span>
         <span className="text-zinc-700">•</span>
 
-        {/* Territory Island Jump Buttons */}
+        {/* Clean Folder Jump Buttons */}
         <div className="flex items-center gap-1.5">
-          {allFolders.slice(0, 6).map(folder => {
-            const color = folderColorMap.get(folder) || '#c59b27'
-            const isHovered = hoveredFolder === folder
+          {allFolderShorts.slice(0, 6).map(fShort => {
+            const color = folderColorMap.get(fShort) || '#d4a338'
+            const isHovered = hoveredFolder === fShort
             return (
               <button
-                key={folder}
+                key={fShort}
                 type="button"
-                onClick={() => handleFocusFolderIsland(folder)}
-                onMouseEnter={() => setHoveredFolder(folder)}
+                onClick={() => handleFocusFolderIsland(fShort)}
+                onMouseEnter={() => setHoveredFolder(fShort)}
                 onMouseLeave={() => setHoveredFolder(null)}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer ${
                   isHovered
                     ? 'bg-white/10 text-zinc-100 scale-105 border border-white/20'
                     : 'bg-[#141622] text-zinc-400 hover:text-zinc-200 border border-zinc-800'
                 }`}
-                title={`Focar no território: ${folder}`}
+                title={`Focar no arquipélago: ${fShort}`}
               >
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
                   style={{ backgroundColor: color }}
                 />
-                <span className="truncate max-w-[85px]">{folder}</span>
+                <span className="truncate max-w-[85px]">{fShort}</span>
               </button>
             )
           })}
         </div>
       </div>
 
-      {/* 5. Floating Precision Zoom HUD */}
+      {/* 5. FLOATING ZOOM CONTROLS */}
       <div className="absolute bottom-5 right-5 z-20 flex flex-col gap-1.5 bg-[#0e0f17]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-1.5 shadow-2xl">
         <button
           onClick={() => {
@@ -1444,7 +1332,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
         </button>
         <button
           onClick={() => {
-            transformRef.current.scale = Math.max(0.2, transformRef.current.scale * 0.77)
+            transformRef.current.scale = Math.max(0.18, transformRef.current.scale * 0.77)
           }}
           className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/70 rounded-xl transition-all cursor-pointer"
           title="Afastar Zoom (-)"
@@ -1467,14 +1355,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
         </button>
       </div>
 
-      {/* 6. Hardware-Accelerated Matte Canvas */}
+      {/* 6. CANVAS */}
       <canvas
         ref={canvasRef}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onWheel={handleWheel}
-        className="w-full h-full cursor-grab active:cursor-grabbing outline-none"
+        className="w-full h-full cursor-default outline-none"
       />
     </div>
   )

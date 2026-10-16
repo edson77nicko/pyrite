@@ -212,8 +212,16 @@ function scanVaultDirectory(dir: string, baseDir: string): VaultFileResult[] {
   const entries = fs.readdirSync(dir, { withFileTypes: true })
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name)
-    // Ignore hidden files / git
-    if (entry.name.startsWith('.')) continue
+    // Ignore hidden files, git, node_modules, and build artifacts
+    if (
+      entry.name.startsWith('.') ||
+      entry.name === 'node_modules' ||
+      entry.name === 'dist' ||
+      entry.name === 'build' ||
+      entry.name === 'out' ||
+      entry.name === '.next' ||
+      entry.name === 'vendor'
+    ) continue
 
     if (entry.isDirectory()) {
       results.push(...scanVaultDirectory(fullPath, baseDir))

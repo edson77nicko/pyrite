@@ -63,14 +63,13 @@ async function publish() {
         name: `Pyrita ${tag}`,
         body: `### Novidades no Pyrita ${tag}:
 
-#### 🗺️ Reinvenção Completa do Grafo de Conhecimento (Adeus padrão Obsidian & Plástico Brilhante):
-- **Acabamento Dark Matte Architectural**: As esferas com reflexos e brilho plástico foram totalmente eliminadas em favor de superfícies foscas em ardósia com micro-bordas sutis (\`1px solid rgba(255,255,255,0.12)\`) e chips planos.
-- **Modo 1: Atlas Topográfico (Ilhas & Continentes)**: As notas agrupam-se por pasta formando territórios e arquipélagos com contornos poligonais suaves (*Convex Hull* dinâmico), relevo em camadas e identificador de setor (\`// SETOR\`).
-- **Modo 2: Circuito Neural (Blueprint Cyber-Cartography)**: Diagrama arquitetural de precisão com malha técnica milimétrica, nós como micro-processadores e trilhas de dados ortogonais (em ângulos retos) com pontos de junção.
-- **Modo 3: Radar Ecosfera (Gravitação Concêntrica)**: Anéis concêntricos de profundidade (\`RNG 01\`, \`RNG 02\`) com a nota ativa no epicentro e feixe de varredura rotativo que mapeia a distância de cada conexão.
-- **Cápsulas Arquiteturais com Level-of-Detail (LOD)**: Notas exibidas como cápsulas elegantes com título legível, ponto indicador da pasta e contador numérico discreto. Ao afastar o zoom, recolhem-se para micro-chips geométricos limpos (\`◇\`).
-- **Inspector HUD Arquitetural no Topo Direito**: Painel lateral com rota de navegação (\`VAULT // PASTA\`), coordenadas cartográficas (\`X/Y\`), resumo do conteúdo e pílulas clicáveis das notas conectadas para navegação instantânea.
-- **Clique Confiável & Sem Poluição**: O clique responde imediatamente em qualquer resolução/DPR e os textos não poluem mais a tela o tempo todo.`
+#### ✨ Eliminação da Interferência Visual e Redesenho Premium do Grafo:
+- **Zero Poluição / Sem Ruído de Rádio**: Eliminados os blocos pontilhados e textos repetitivos de depuração que poluíam cofres grandes com centenas de notas.
+- **Filtro de Diretórios no Scanner de Cofre**: O leitor de notas agora ignora automaticamente diretórios não-relacionados como \`node_modules\`, \`dist\`, \`build\` e ocultos, prevenindo centenas de falsas notas.
+- **Constelação Sináptica (Matte Gems)**: Cada nó é desenhado como uma gema geométrica fosca com aro fino na cor da pasta e núcleo sólido. Nós centrais com muitas conexões ganham anéis orbitais sutis (estilo astronômico).
+- **Rótulos Contextuais Sob Demanda**: Os textos das notas agora **não** poluem mais a tela permanentemente. Eles aparecem com elegância flutuante apenas para a nota ativa, para o nó sob o cursor (hover) e seus vizinhos diretos, e ao buscar por termos.
+- **Nebulosas Ambientes de Pasta**: As pastas formam arquipélagos espaciais naturais, com um brilho ambiente fosco e suave ao fundo, sem nenhuma borda dura ou traço pontilhado.
+- **Clique Instantâneo e Preciso**: Detecção radial de clique e hover aprimorada, garantindo transição imediata para qualquer nota ao clicar.`
       })
     });
     const updated = await patchRes.json();
