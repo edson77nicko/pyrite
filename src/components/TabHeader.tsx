@@ -14,7 +14,9 @@ import {
   Square,
   Copy,
   RefreshCw,
-  ArrowDownToLine
+  ArrowDownToLine,
+  Share2,
+  LayoutGrid
 } from 'lucide-react'
 
 interface TabHeaderProps {
@@ -72,6 +74,9 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
       <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-1 app-no-drag">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId
+          const isGraphTab = tab.noteId === '__graph__'
+          const isCanvasTab = tab.noteId === '__canvas__'
+          const TabIcon = isGraphTab ? Share2 : isCanvasTab ? LayoutGrid : FileText
           return (
             <div
               key={tab.id}
@@ -83,7 +88,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
               }`}
               style={isActive ? { borderTopColor: 'var(--accent)' } : undefined}
             >
-              <FileText className="w-3.5 h-3.5 shrink-0" style={isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
+              <TabIcon className="w-3.5 h-3.5 shrink-0" style={isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
               <span className="truncate">{tab.title || 'Sem título'}</span>
               {tabs.length > 1 && (
                 <button

@@ -20,7 +20,7 @@ import { StatusBar } from './components/StatusBar'
 import { SettingsModal } from './components/SettingsModal'
 import { VaultSwitcherModal } from './components/VaultSwitcherModal'
 
-const MAX_TABS = 5
+const MAX_TABS = 8
 
 const DEFAULT_SETTINGS: AppSettings = {
   accentColor: '#c59b27', // Pyrita: Ouro Queimado
@@ -167,10 +167,10 @@ export const App: React.FC = () => {
         e.preventDefault()
         setIsCommandPaletteOpen(prev => !prev)
       }
-      // Ctrl+G -> Toggle Graph View
+      // Ctrl+G -> Open/Toggle Graph Tab
       if ((e.ctrlKey || e.metaKey) && (e.key === 'g' || e.key === 'G')) {
         e.preventDefault()
-        setCurrentView(prev => prev === 'graph' ? 'editor' : 'graph')
+        handleChangeView(currentView === 'graph' ? 'editor' : 'graph')
       }
       // Ctrl+N -> New Note
       if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N') && !e.shiftKey) {
@@ -181,9 +181,58 @@ export const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [notes])
+  }, [notes, currentView])
 
-  // Select note and ensure tab exists (Max 5 tabs, replaces oldest)
+  // Open view mode and create/activate a persistent tab for Graph or Canvas
+  const handleChangeView = (view: ViewMode) => {
+    setCurrentView(view)
+
+    if (view === 'graph') {
+      setTabs(prev => {
+        const existing = prev.find(t => t.noteId === '__graph__')
+        if (existing) {
+          setActiveTabId(existing.id)
+          return prev
+        }
+        const graphTab: TabItem = {
+          id: 'tab_graph',
+          noteId: '__graph__',
+          title: 'Grafo'
+        }
+        setActiveTabId(graphTab.id)
+        return [...prev, graphTab]
+      })
+      return
+    }
+
+    if (view === 'canvas') {
+      setTabs(prev => {
+        const existing = prev.find(t => t.noteId === '__canvas__')
+        if (existing) {
+          setActiveTabId(existing.id)
+          return prev
+        }
+        const canvasTab: TabItem = {
+          id: 'tab_canvas',
+          noteId: '__canvas__',
+          title: 'Canvas'
+        }
+        setActiveTabId(canvasTab.id)
+        return [...prev, canvasTab]
+      })
+      return
+    }
+
+    // Switching back to editor: activate current note's tab
+    const noteTab = tabs.find(t => t.noteId === currentNoteId)
+    if (noteTab) {
+      setActiveTabId(noteTab.id)
+    } else if (currentNoteId) {
+      handleSelectNote(currentNoteId)
+    }
+  }
+
+  // Select note and ensure tab exists (preserves Graph/Canvas tabs!)
   const handleSelectNote = (noteId: string) => {
     setCurrentNoteId(noteId)
     setCurrentView('editor')
@@ -204,10 +253,14 @@ export const App: React.FC = () => {
       }
       setActiveTabId(newTab.id)
 
-      // Strict limit: at most 5 tabs. When opening a 6th, replace the oldest tab (FIFO).
+      // If exceeding MAX_TABS, evict the oldest regular note tab (never evict Graph or Canvas tabs!)
       if (prev.length >= MAX_TABS) {
-        const trimmed = prev.slice(prev.length - (MAX_TABS - 1))
-        return [...trimmed, newTab]
+        const firstNoteIdx = prev.findIndex(t => t.noteId !== '__graph__' && t.noteId !== '__canvas__')
+        if (firstNoteIdx !== -1) {
+          const next = [...prev]
+          next.splice(firstNoteIdx, 1)
+          return [...next, newTab]
+        }
       }
       return [...prev, newTab]
     })
@@ -217,7 +270,13 @@ export const App: React.FC = () => {
   const handleSelectTab = (tabId: string) => {
     setActiveTabId(tabId)
     const tab = tabs.find(t => t.id === tabId)
-    if (tab) {
+    if (!tab) return
+
+    if (tab.noteId === '__graph__') {
+      setCurrentView('graph')
+    } else if (tab.noteId === '__canvas__') {
+      setCurrentView('canvas')
+    } else {
       setCurrentNoteId(tab.noteId)
       setCurrentView('editor')
     }
@@ -229,7 +288,14 @@ export const App: React.FC = () => {
     if (activeTabId === tabId && remaining.length > 0) {
       const nextTab = remaining[remaining.length - 1]
       setActiveTabId(nextTab.id)
-      setCurrentNoteId(nextTab.noteId)
+      if (nextTab.noteId === '__graph__') {
+        setCurrentView('graph')
+      } else if (nextTab.noteId === '__canvas__') {
+        setCurrentView('canvas')
+      } else {
+        setCurrentNoteId(nextTab.noteId)
+        setCurrentView('editor')
+      }
     }
   }
 
@@ -595,7 +661,7 @@ export const App: React.FC = () => {
         {/* Leftmost Ribbon Bar (Icon-only navigation like Obsidian) */}
         <Ribbon
           currentView={currentView}
-          onChangeView={setCurrentView}
+          onChangeView={handleChangeView}
           isLeftSidebarOpen={isLeftSidebarOpen}
           onToggleLeftSidebar={() => setIsLeftSidebarOpen(o => !o)}
           onOpenDailyNote={handleOpenDailyNote}
@@ -669,12 +735,14 @@ export const App: React.FC = () => {
                 />
               )}
 
-              {currentView === 'graph' && (
-                <GraphView
-                  notes={notes}
-                  currentNoteId={currentNoteId}
-                  onSelectNote={handleSelectNote}
-                />
+              {(currentView === 'graph' || tabs.some(t => t.noteId === '__graph__')) && (
+                <div className={currentView === 'graph' ? 'w-full h-full' : 'hidden'}>
+                  <GraphView
+                    notes={notes}
+                    currentNoteId={currentNoteId}
+                    onSelectNote={handleSelectNote}
+                  />
+                </div>
               )}
 
               {currentView === 'canvas' && (
@@ -700,7 +768,7 @@ export const App: React.FC = () => {
       <StatusBar
         currentNote={currentNote}
         allNotes={notes}
-        onOpenGraph={() => setCurrentView('graph')}
+        onOpenGraph={() => handleChangeView('graph')}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
       />
 
@@ -719,7 +787,7 @@ export const App: React.FC = () => {
         notes={notes}
         onSelectNote={handleSelectNote}
         onCreateNote={handleCreateNote}
-        onChangeViewMode={setCurrentView}
+        onChangeViewMode={handleChangeView}
         onOpenAi={() => setIsAiOpen(true)}
         onOpenLocalFolder={handleOpenLocalFolder}
         onOpenVaultSwitcher={() => setIsVaultSwitcherOpen(true)}

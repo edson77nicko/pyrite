@@ -30,6 +30,24 @@ interface GraphViewProps {
 
 type GraphLayoutMode = 'constellation' | 'circuit' | 'radar'
 
+interface StellarTint {
+  name: string
+  hex: string
+  rgb: [number, number, number] // 0..255 for canvas rgba()
+}
+
+// Authentic Hubble / Planckian Blackbody Starlight Palette (NO cartoon neon green/pink!)
+const STELLAR_PALETTE: StellarTint[] = [
+  { name: 'Ouro Solar', hex: '#ffd699', rgb: [255, 214, 153] },      // G/K Warm Gold
+  { name: 'Sirius Azul', hex: '#b8d8ff', rgb: [184, 216, 255] },     // O/B Blue-White Star
+  { name: 'Marfim Estelar', hex: '#fff2d9', rgb: [255, 242, 217] },  // F-Type Ivory Star
+  { name: 'Âmbar Antares', hex: '#ffb070', rgb: [255, 176, 112] },   // K-Giant Warm Amber
+  { name: 'Vega Cristal', hex: '#dcebff', rgb: [220, 235, 255] },    // A-Type Ice White
+  { name: 'Cobre Cósmico', hex: '#ff9e75', rgb: [255, 158, 117] },   // M-Type Red-Gold
+  { name: 'Nebulosa Pálida', hex: '#ffd1dc', rgb: [255, 209, 220] }, // Carina Warm Rose-White
+  { name: 'Platina Celeste', hex: '#e8eef5', rgb: [232, 238, 245] }  // White Dwarf Silver
+]
+
 interface SimNode {
   id: string
   title: string
@@ -38,25 +56,27 @@ interface SimNode {
   tags: string[]
   connections: number
   excerpt: string
-  // 2D coordinates (used in Circuit / Radar modes & projected screen cache)
+  // 2D coordinates (for Circuit / Radar modes)
   x: number
   y: number
   vx: number
   vy: number
-  // 3D Keplerian Orbital coordinates around the Singularity (in normalized Schwarzschild units)
-  orbitRadius: number     // 0.42 .. 2.35
-  orbitAngle: number      // radians
-  orbitSpeed: number      // angular velocity (rad/s)
-  orbitElevation: number  // vertical 3D offset above/below equatorial disk
-  orbitPhase: number      // vertical oscillation phase
+  // 3D Keplerian Orbital coordinates around the Singularity
+  orbitRadius: number
+  orbitAngle: number
+  orbitSpeed: number
+  orbitElevation: number
+  orbitPhase: number
+  twinkleSeed: number
   // Cached 3D projection for current frame
   screenX: number
   screenY: number
-  depthZ: number          // distance along camera forward axis
-  behindHorizon: boolean  // true if behind the black hole
+  depthZ: number
+  behindHorizon: boolean
   projectedScale: number
   radius: number
   color: string
+  rgb: [number, number, number]
 }
 
 interface QuantumPacket {
@@ -74,10 +94,7 @@ interface AccretionSpark {
   yOffset: number
   size: number
   alpha: number
-  colorIndex: number
-  isJet?: boolean
-  jetProgress?: number
-  jetDir?: number
+  rgb: [number, number, number]
 }
 
 interface SpacetimeRipple {
@@ -86,23 +103,8 @@ interface SpacetimeRipple {
   radius: number
   maxRadius: number
   alpha: number
-  color: string
+  rgb: [number, number, number]
 }
-
-// Celestial palette for orbital streams
-const FOLDER_PALETTE: string[] = [
-  '#f5b041', // Relativistic Gold
-  '#38bdf8', // Cherenkov Cyan
-  '#c084fc', // Hawking Violet
-  '#34d399', // Pulsar Emerald
-  '#fb7185', // Redshift Rose
-  '#fb923c', // Accretion Amber
-  '#818cf8', // Quasar Indigo
-  '#2dd4bf', // Nebula Teal
-  '#f472b6', // Supernova Pink
-  '#a3e635', // Ion Lime
-  '#e2e8f0'  // Starlight White
-]
 
 function hexToNormalizedRgb(hex: string): [number, number, number] {
   const clean = hex.replace('#', '').trim()
@@ -114,7 +116,93 @@ function hexToNormalizedRgb(hex: string): [number, number, number] {
       return [r, g, b]
     }
   }
-  return [0.85, 0.65, 0.22]
+  return [0.92, 0.65, 0.25]
+}
+
+// Draw a realistic Hubble Space Telescope Optical Star (pure additive light, PSF halo + 4-point diffraction spikes)
+function drawHubbleStar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  coreRadius: number,
+  rgb: [number, number, number],
+  alpha: number,
+  options: {
+    hasSpikes: boolean
+    spikeLength: number
+    isFocused: boolean
+    isCurrent: boolean
+  }
+) {
+  const [r, g, b] = rgb
+
+  // 1. Soft Optical Point-Spread Function (PSF) Atmospheric Corona
+  const haloRadius = coreRadius * (options.isFocused ? 7.5 : 5.2)
+  const corona = ctx.createRadialGradient(x, y, 0, x, y, haloRadius)
+  corona.addColorStop(0, `rgba(255, 255, 255, ${Math.min(1, alpha * 0.95)})`)
+  corona.addColorStop(0.18, `rgba(${r}, ${g}, ${b}, ${Math.min(1, alpha * 0.65)})`)
+  corona.addColorStop(0.48, `rgba(${r}, ${g}, ${b}, ${Math.min(1, alpha * 0.16)})`)
+  corona.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`)
+
+  ctx.fillStyle = corona
+  ctx.beginPath()
+  ctx.arc(x, y, haloRadius, 0, Math.PI * 2)
+  ctx.fill()
+
+  // 2. Hubble Secondary-Mirror 4-Point Diffraction Spikes (+)
+  if (options.hasSpikes) {
+    const sLen = options.spikeLength
+    const spikeAlpha = Math.min(1, alpha * (options.isFocused ? 0.92 : 0.58))
+
+    // Horizontal spike
+    const gradH = ctx.createLinearGradient(x - sLen, y, x + sLen, y)
+    gradH.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`)
+    gradH.addColorStop(0.42, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.45})`)
+    gradH.addColorStop(0.5, `rgba(255, 255, 255, ${spikeAlpha})`)
+    gradH.addColorStop(0.58, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.45})`)
+    gradH.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`)
+
+    ctx.strokeStyle = gradH
+    ctx.lineWidth = options.isFocused ? 1.25 : 0.75
+    ctx.beginPath()
+    ctx.moveTo(x - sLen, y)
+    ctx.lineTo(x + sLen, y)
+    ctx.stroke()
+
+    // Vertical spike
+    const gradV = ctx.createLinearGradient(x, y - sLen, x, y + sLen)
+    gradV.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`)
+    gradV.addColorStop(0.42, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.45})`)
+    gradV.addColorStop(0.5, `rgba(255, 255, 255, ${spikeAlpha})`)
+    gradV.addColorStop(0.58, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.45})`)
+    gradV.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`)
+
+    ctx.strokeStyle = gradV
+    ctx.lineWidth = options.isFocused ? 1.25 : 0.75
+    ctx.beginPath()
+    ctx.moveTo(x, y - sLen)
+    ctx.lineTo(x, y + sLen)
+    ctx.stroke()
+
+    // Subtle 45-degree JWST/Hubble secondary micro-glint for active or hovered star
+    if (options.isFocused || options.isCurrent) {
+      const diagLen = sLen * 0.42
+      ctx.strokeStyle = `rgba(255, 248, 230, ${spikeAlpha * 0.38})`
+      ctx.lineWidth = 0.65
+      ctx.beginPath()
+      ctx.moveTo(x - diagLen, y - diagLen)
+      ctx.lineTo(x + diagLen, y + diagLen)
+      ctx.moveTo(x - diagLen, y + diagLen)
+      ctx.lineTo(x + diagLen, y - diagLen)
+      ctx.stroke()
+    }
+  }
+
+  // 3. Incandescent White-Hot Pinpoint Star Core (NO black border!)
+  ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1, alpha)})`
+  ctx.beginPath()
+  ctx.arc(x, y, Math.max(1.1, coreRadius * 0.68), 0, Math.PI * 2)
+  ctx.fill()
 }
 
 export const GraphView: React.FC<GraphViewProps> = ({
@@ -127,7 +215,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const bhRendererRef = useRef<BlackHoleRenderer | null>(null)
 
-  // Graph & Simulation State
+  // State
   const [nodes, setNodes] = useState<SimNode[]>([])
   const [edges, setEdges] = useState<LinkEdge[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -140,14 +228,12 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const [isContemplationMode, setIsContemplationMode] = useState(false)
   const [contemplatedNodeId, setContemplatedNodeId] = useState<string | null>(null)
 
-  // Settings
   const [settings, setSettings] = useState<GraphSettings & {
     orbitalSpeed: number
     diskTilt: number
     accretionIntensity: number
     enableTrails: boolean
     enablePulses: boolean
-    enableSingularityTethers: boolean
     clusterStrength: number
   }>({
     repulsion: 1800,
@@ -158,15 +244,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
     showArrows: true,
     isLocalGraph: false,
     orbitalSpeed: 1.0,
-    diskTilt: 0.34, // ~70 deg inclination (iconic Gargantua view)
-    accretionIntensity: 1.15,
+    diskTilt: 0.34,
+    accretionIntensity: 1.05,
     enableTrails: true,
     enablePulses: true,
-    enableSingularityTethers: true,
     clusterStrength: 0.05
   })
 
-  // Camera & Interaction Refs
+  // Camera & Physics Refs
   const transformRef = useRef({ x: 0, y: 0, scale: 0.92 })
   const tiltRef = useRef(0.34)
   const rotationRef = useRef(0)
@@ -186,12 +271,10 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const sparksRef = useRef<AccretionSpark[]>([])
   const ripplesRef = useRef<SpacetimeRipple[]>([])
 
-  // Keep tiltRef synchronized with settings
   useEffect(() => {
     tiltRef.current = settings.diskTilt
   }, [settings.diskTilt])
 
-  // Exit contemplation mode on Escape
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isContemplationMode) {
@@ -210,7 +293,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
     }
 
     const pickSpotlight = () => {
-      // Prefer connected notes for rich synaptic visuals
       const connected = nodes.filter(n => n.connections > 0)
       const pool = connected.length > 0 ? connected : nodes
       const chosen = pool[Math.floor(Math.random() * pool.length)]
@@ -222,16 +304,16 @@ export const GraphView: React.FC<GraphViewProps> = ({
     return () => clearInterval(timer)
   }, [isContemplationMode, nodes])
 
-  // Folder Color Map
-  const folderColorMap = useMemo(() => {
+  // Map folders to subtle Planckian star temperatures
+  const folderTintMap = useMemo(() => {
     const folders = Array.from(new Set(notes.map(n => {
       const parts = (n.folder || 'Início').replace(/\\/g, '/').split('/')
       return parts[parts.length - 1] || 'Início'
     }))).sort()
 
-    const map = new Map<string, string>()
+    const map = new Map<string, StellarTint>()
     folders.forEach((f, idx) => {
-      map.set(f, FOLDER_PALETTE[idx % FOLDER_PALETTE.length])
+      map.set(f, STELLAR_PALETTE[idx % STELLAR_PALETTE.length])
     })
     return map
   }, [notes])
@@ -256,48 +338,29 @@ export const GraphView: React.FC<GraphViewProps> = ({
     return { filteredNotes: localNotes, filteredEdges: localEdges }
   }, [notes, isLocalMode, currentNoteId])
 
-  // Initialize Ambient Accretion Sparks & Relativistic Polar Jets
+  // Initialize Fine Accretion Micro-Starlight Dust Particles
   useEffect(() => {
     const sparks: AccretionSpark[] = []
-    // 380 Accretion disk micro-sparks
-    for (let i = 0; i < 380; i++) {
+    for (let i = 0; i < 420; i++) {
       const u = Math.random()
-      // Concentrate more sparks near the inner photon ring
-      const radius = 0.37 + Math.pow(u, 1.55) * 2.15
+      const radius = 0.36 + Math.pow(u, 1.45) * 2.05
       const angle = Math.random() * Math.PI * 2
-      // Keplerian angular velocity: w ~ r^(-1.2)
-      const speed = (0.32 + Math.random() * 0.14) / Math.pow(radius, 1.15)
+      const speed = (0.30 + Math.random() * 0.12) / Math.pow(radius, 1.15)
+      const tint = STELLAR_PALETTE[i % STELLAR_PALETTE.length]
       sparks.push({
         radius,
         angle,
         speed,
-        yOffset: (Math.random() - 0.5) * 0.045 * radius,
-        size: 0.7 + Math.random() * 1.6,
-        alpha: 0.25 + Math.random() * 0.65,
-        colorIndex: i % FOLDER_PALETTE.length
+        yOffset: (Math.random() - 0.5) * 0.032 * radius,
+        size: 0.5 + Math.random() * 1.1,
+        alpha: 0.18 + Math.random() * 0.52,
+        rgb: tint.rgb
       })
     }
-
-    // 45 Relativistic Polar Jet particles (shooting up/down along the spin axis)
-    for (let i = 0; i < 45; i++) {
-      sparks.push({
-        radius: 0.02 + Math.random() * 0.08,
-        angle: Math.random() * Math.PI * 2,
-        speed: 2.2,
-        yOffset: 0,
-        size: 1.0 + Math.random() * 1.4,
-        alpha: 0.3 + Math.random() * 0.5,
-        colorIndex: i % 3,
-        isJet: true,
-        jetProgress: Math.random(),
-        jetDir: i % 2 === 0 ? 1 : -1
-      })
-    }
-
     sparksRef.current = sparks
   }, [])
 
-  // Initialize Nodes in 3D Keplerian Spiral Arms around the Black Hole
+  // Initialize Notes as Orbiting Stars in Keplerian Spiral Streams
   useEffect(() => {
     setEdges(filteredEdges)
 
@@ -310,7 +373,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
     setNodes(prev => {
       const existing = new Map(prev.map(n => [n.id, n]))
 
-      // Group notes by folder so each folder forms a coherent Galactic Spiral Arm!
       const folderGroups = new Map<string, Note[]>()
       for (const n of filteredNotes) {
         const parts = (n.folder || 'Início').replace(/\\/g, '/').split('/')
@@ -328,47 +390,40 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
       folderList.forEach((folderShort, fIdx) => {
         const group = folderGroups.get(folderShort) || []
-        // Sort within folder so highest-connection hubs orbit closer to the Event Horizon!
         group.sort((a, b) => (degreeMap.get(b.id) || 0) - (degreeMap.get(a.id) || 0))
 
         const armBaseAngle = (fIdx / numFolders) * Math.PI * 2
-        const color = folderColorMap.get(folderShort) || '#f5b041'
+        const tint = folderTintMap.get(folderShort) || STELLAR_PALETTE[0]
 
         group.forEach((note, idxInFolder) => {
           const found = existing.get(note.id)
           const connections = degreeMap.get(note.id) || 0
 
-          // Normalized progress along this folder's spiral arm [0..1]
           const t = group.length > 1 ? idxInFolder / (group.length - 1) : 0.35
-
-          // High-degree hubs orbit closer to the inner Photon Sphere (r = 0.44 .. 0.85)
-          // Other notes sweep outward along the logarithmic spiral arm (r = 0.55 .. 2.25)
-          const hubPull = Math.min(0.32, connections * 0.045)
-          const jitterR = ((idxInFolder * 37) % 100) / 100 * 0.09
+          const hubPull = Math.min(0.28, connections * 0.04)
+          const jitterR = (((idxInFolder * 37) % 100) / 100) * 0.11
           const orbitRadius = Math.max(
-            0.43,
-            Math.min(2.32, 0.52 + Math.pow(t, 0.82) * 1.68 - hubPull + jitterR)
+            0.40,
+            Math.min(2.30, 0.46 + Math.pow(t, 0.82) * 1.72 - hubPull + jitterR)
           )
 
-          // Logarithmic spiral twist: angle winds as radius increases + golden angle spread
-          const spiralWind = Math.log(orbitRadius * 2.5) * 1.65
-          const goldenSpread = (idxInFolder * 2.39996) * 0.18
-          const orbitAngle = found?.orbitAngle ?? (armBaseAngle + spiralWind + goldenSpread)
+          const spiralWind = Math.log(orbitRadius * 2.5) * 1.75
+          const goldenSpread = idxInFolder * 2.39996 * 0.22
+          const orbitAngle = found?.orbitAngle ?? armBaseAngle + spiralWind + goldenSpread
+          const orbitSpeed = 0.17 / Math.pow(orbitRadius, 1.05)
 
-          // Keplerian orbital speed: inner rings orbit faster than outer rings
-          const orbitSpeed = 0.18 / Math.pow(orbitRadius, 1.05)
-
-          // Subtle 3D vertical wave thickness
-          const orbitElevation = ((idxInFolder % 7) - 3) * 0.014 * orbitRadius
+          const orbitElevation = ((idxInFolder % 7) - 3) * 0.011 * orbitRadius
           const orbitPhase = (idxInFolder * 1.7) % (Math.PI * 2)
 
-          // Node visual gem size
-          const radius = Math.max(4.2, Math.min(12.5, 4.2 + Math.sqrt(connections) * 2.1))
+          // Pinpoint star core radius (delicate, realistic astronomical proportions: 1.8px to 4.8px)
+          const radius = Math.max(1.8, Math.min(5.2, 1.8 + Math.sqrt(connections) * 0.85))
 
-          const rawText = note.content.replace(/[#*`>~\[\]\(\)-]/g, ' ').replace(/\s+/g, ' ').trim()
+          const rawText = note.content
+            .replace(/[#*`>~\[\]\(\)-]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
           const excerpt = rawText.slice(0, 140) + (rawText.length > 140 ? '...' : '')
 
-          // 2D fallback coordinates for Circuit & Radar modes
           const fCenterX = Math.cos(armBaseAngle) * folderSpreadRadius2D
           const fCenterY = Math.sin(armBaseAngle) * folderSpreadRadius2D
           const subAngle = idxInFolder * 2.39996
@@ -382,8 +437,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
             tags: note.tags,
             connections,
             excerpt,
-            x: found?.x ?? (fCenterX + Math.cos(subAngle) * subDist),
-            y: found?.y ?? (fCenterY + Math.sin(subAngle) * subDist),
+            x: found?.x ?? fCenterX + Math.cos(subAngle) * subDist,
+            y: found?.y ?? fCenterY + Math.sin(subAngle) * subDist,
             vx: found?.vx ?? 0,
             vy: found?.vy ?? 0,
             orbitRadius: found?.orbitRadius ?? orbitRadius,
@@ -391,13 +446,15 @@ export const GraphView: React.FC<GraphViewProps> = ({
             orbitSpeed,
             orbitElevation,
             orbitPhase,
+            twinkleSeed: (idxInFolder * 19.37 + fIdx * 7.1) % 100,
             screenX: 0,
             screenY: 0,
             depthZ: 1,
             behindHorizon: false,
             projectedScale: 1,
             radius,
-            color
+            color: tint.hex,
+            rgb: tint.rgb
           })
         })
       })
@@ -406,9 +463,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
     })
 
     simAlphaRef.current = 1.0
-  }, [filteredNotes, filteredEdges, folderColorMap])
+  }, [filteredNotes, filteredEdges, folderTintMap])
 
-  // Initialize Quantum Photons along Synaptic Arcs
+  // Initialize Photons along Synaptic Filaments
   useEffect(() => {
     if (!settings.enablePulses) {
       packetsRef.current = []
@@ -416,7 +473,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     }
 
     const packets: QuantumPacket[] = []
-    const maxPackets = Math.min(90, filteredEdges.length * 2)
+    const maxPackets = Math.min(80, filteredEdges.length * 2)
     for (let i = 0; i < maxPackets; i++) {
       const edge = filteredEdges[i % filteredEdges.length]
       if (!edge) continue
@@ -424,14 +481,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
         sourceId: edge.source,
         targetId: edge.target,
         progress: Math.random(),
-        speed: 0.0035 + Math.random() * 0.0055,
-        arcHeight: (i % 2 === 0 ? 1 : -1) * (0.06 + (i % 5) * 0.025)
+        speed: 0.003 + Math.random() * 0.0045,
+        arcHeight: (i % 2 === 0 ? 1 : -1) * (0.04 + (i % 5) * 0.018)
       })
     }
     packetsRef.current = packets
   }, [filteredEdges, settings.enablePulses])
 
-  // Initialize WebGL Black Hole Shader Renderer
+  // Initialize WebGL Black Hole Renderer
   useEffect(() => {
     const glCanvas = webglCanvasRef.current
     if (!glCanvas) return
@@ -453,6 +510,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     if (!overlay || !container) return
 
     const rect = container.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
     const dpr = window.devicePixelRatio || 1
 
     overlay.width = rect.width * dpr
@@ -478,7 +536,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     }
   }, [updateCanvasSize])
 
-  // MAIN 60FPS ANIMATION, RELATIVISTIC ORBIT & RENDERING LOOP
+  // MAIN 60FPS RENDERING & KEPLERIAN ORBIT LOOP
   useEffect(() => {
     const overlay = overlayCanvasRef.current
     if (!overlay) return
@@ -487,7 +545,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
     let lastTime = performance.now()
 
-    // Exact 3D Camera Projection matching BlackHoleShader.ts!
+    // Exact 3D Camera Projection matching BlackHoleShader.ts
     const project3D = (
       x3d: number,
       y3d: number,
@@ -502,21 +560,17 @@ export const GraphView: React.FC<GraphViewProps> = ({
       const sinT = Math.sin(clampedTilt)
       const cosT = Math.cos(clampedTilt)
 
-      // Camera origin ro = (0, sinT * camDist, -cosT * camDist)
-      // Forward vector = (0, -sinT, cosT)
-      // Right vector   = (1, 0, 0)
-      // Up vector      = (0, cosT, sinT)
       const relX = x3d
       const relY = y3d - sinT * camDist
       const relZ = z3d + cosT * camDist
 
-      const forwardZ = relY * (-sinT) + relZ * cosT
+      const forwardZ = relY * -sinT + relZ * cosT
       const safeDepth = Math.max(0.4, forwardZ)
 
       let projX = (relX / safeDepth) * 1.65
       let projY = ((relY * cosT + relZ * sinT) / safeDepth) * 1.65
 
-      // Apply relativistic Einstein ring deflection when behind the singularity (z3d > 0)
+      // Relativistic Einstein Ring gravitational lensing when passing behind the black hole (z3d > 0)
       const r3d = Math.hypot(x3d, y3d, z3d)
       const behindHorizon = z3d > 0.02
       if (behindHorizon) {
@@ -527,7 +581,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
         projY += (projY / screenRad) * einsteinDeflection * bendFactor
       }
 
-      // Inverse camera roll (+0.14 rad) to match shader's mat2(cr, -sr, sr, cr) * p
       const roll = 0.14
       const cr = Math.cos(roll)
       const sr = Math.sin(roll)
@@ -549,24 +602,27 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
       const width = overlay.clientWidth
       const height = overlay.clientHeight
+      if (width === 0 || height === 0) {
+        animationFrameRef.current = requestAnimationFrame(render)
+        return
+      }
       const dpr = window.devicePixelRatio || 1
 
-      // Gravitational Time Dilation: slow down smoothly when hovering a node or paused
+      // Gravitational Time Dilation: smoothly freeze orbital motion when hovering a star
       const targetTimeScale = isPaused
         ? 0.0
         : hoveredNodeId
-        ? 0.04 // Relativistic freeze when inspecting a note!
+        ? 0.03
         : settings.orbitalSpeed
 
       timeScaleRef.current += (targetTimeScale - timeScaleRef.current) * 0.1
       const effectiveDt = rawDt * timeScaleRef.current
       simTimeRef.current += effectiveDt
 
-      // Contemplation Mode gentle autonomous camera drift
       if (isContemplationMode && !isDraggingCanvasRef.current && !isTiltingCameraRef.current) {
-        const t = currentTime * 0.00025
-        tiltRef.current = 0.32 + Math.sin(t) * 0.11
-        transformRef.current.scale = 0.96 + Math.cos(t * 0.7) * 0.12
+        const t = currentTime * 0.00022
+        tiltRef.current = 0.31 + Math.sin(t) * 0.1
+        transformRef.current.scale = 0.95 + Math.cos(t * 0.7) * 0.1
       }
 
       const transform = transformRef.current
@@ -575,15 +631,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
       const baseUnit = Math.min(width, height) * 0.42 * transform.scale
       const currentTilt = tiltRef.current
 
-      // Read accent color from CSS variable for shader harmony
-      const computedAccent = getComputedStyle(document.documentElement)
-        .getPropertyValue('--accent')
-        .trim() || '#f5b041'
+      const computedAccent =
+        getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d4a338'
       const accentRgb = hexToNormalizedRgb(computedAccent)
 
-      // 1. RENDER WEBGL GARGANTUA BLACK HOLE SHADER (in Constellation Mode)
+      // 1. RENDER WEBGL GARGANTUA SHADER
       if (layoutMode === 'constellation' && bhRendererRef.current) {
-        rotationRef.current = (rotationRef.current + effectiveDt * 0.18) % (Math.PI * 2)
+        rotationRef.current = (rotationRef.current + effectiveDt * 0.16) % (Math.PI * 2)
         bhRendererRef.current.render({
           width,
           height,
@@ -606,7 +660,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
       ctx.scale(dpr, dpr)
       ctx.clearRect(0, 0, width, height)
 
-      // Active / Highlighted Neighbor Sets
       const focalNodeId = hoveredNodeId || contemplatedNodeId || currentNoteId
       const activeNeighborIds = new Set<string>()
       if (focalNodeId) {
@@ -618,18 +671,18 @@ export const GraphView: React.FC<GraphViewProps> = ({
       }
 
       // =========================================================================
-      // MODE A: SINGULARITY / CONSTELLATION (3D Relativistic Black Hole Galaxy)
+      // MODE A: SINGULARITY / HUBBLE ASTROPHOTOGRAPHY (Pure Additive Starlight)
       // =========================================================================
       if (layoutMode === 'constellation') {
-        // Fallback background if WebGL is unavailable
         if (!bhRendererRef.current) {
-          ctx.fillStyle = '#06070b'
+          ctx.fillStyle = '#030408'
           ctx.fillRect(0, 0, width, height)
         }
 
         const nodeMap = new Map<string, SimNode>()
+        const shadowScreenRadius = baseUnit * 0.145
 
-        // Update 3D Keplerian Orbital Positions & Project to Screen
+        // Update 3D Keplerian Orbital Positions
         for (const n of nodes) {
           if (draggedNodeRef.current?.id !== n.id) {
             n.orbitAngle = (n.orbitAngle + n.orbitSpeed * effectiveDt) % (Math.PI * 2)
@@ -639,7 +692,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
           const z3d = Math.sin(n.orbitAngle) * n.orbitRadius
           const y3d =
             n.orbitElevation +
-            Math.sin(simTimeRef.current * 1.4 + n.orbitPhase) * 0.012 * n.orbitRadius
+            Math.sin(simTimeRef.current * 1.2 + n.orbitPhase) * 0.009 * n.orbitRadius
 
           const proj = project3D(x3d, y3d, z3d, centerX, centerY, baseUnit, currentTilt)
           n.screenX = proj.screenX
@@ -651,17 +704,20 @@ export const GraphView: React.FC<GraphViewProps> = ({
           nodeMap.set(n.id, n)
         }
 
-        // Render Spacetime Ripples (Gravitational Waves from clicks/drags)
+        // Enable Pure Additive Blending so stars & filaments emit light like a Hubble exposure!
+        ctx.save()
+        ctx.globalCompositeOperation = 'lighter'
+
+        // Render Subtle Spacetime Ripples
         for (let i = ripplesRef.current.length - 1; i >= 0; i--) {
           const rip = ripplesRef.current[i]
-          rip.radius += rawDt * 0.55
-          rip.alpha *= 0.95
-          if (rip.alpha < 0.02 || rip.radius > rip.maxRadius) {
+          rip.radius += rawDt * 0.45
+          rip.alpha *= 0.94
+          if (rip.alpha < 0.015 || rip.radius > rip.maxRadius) {
             ripplesRef.current.splice(i, 1)
             continue
           }
 
-          ctx.save()
           ctx.beginPath()
           const segs = 36
           for (let s = 0; s <= segs; s++) {
@@ -672,109 +728,57 @@ export const GraphView: React.FC<GraphViewProps> = ({
             if (s === 0) ctx.moveTo(p.screenX, p.screenY)
             else ctx.lineTo(p.screenX, p.screenY)
           }
-          ctx.strokeStyle = rip.color
-          ctx.globalAlpha = rip.alpha
-          ctx.lineWidth = 1.4
+          const [rr, rg, rb] = rip.rgb
+          ctx.strokeStyle = `rgba(${rr}, ${rg}, ${rb}, ${rip.alpha * 0.45})`
+          ctx.lineWidth = 1.0
           ctx.stroke()
-          ctx.restore()
         }
 
-        // Render Ambient Accretion Sparks & Relativistic Polar Jets
-        ctx.save()
+        // Render Fine Accretion Micro-Starlight Dust Particles
         for (const sp of sparksRef.current) {
-          if (sp.isJet) {
-            sp.jetProgress = ((sp.jetProgress || 0) + effectiveDt * 0.45) % 1.0
-            const jp = sp.jetProgress
-            const jetY = (sp.jetDir || 1) * (0.26 + jp * 1.85)
-            const jetSpread = sp.radius * (1.0 + jp * 2.8)
-            sp.angle += effectiveDt * 3.0
-            const jx = Math.cos(sp.angle) * jetSpread
-            const jz = Math.sin(sp.angle) * jetSpread
-            const proj = project3D(jx, jetY, jz, centerX, centerY, baseUnit, currentTilt)
+          sp.angle = (sp.angle + sp.speed * effectiveDt) % (Math.PI * 2)
+          const sx = Math.cos(sp.angle) * sp.radius
+          const sz = Math.sin(sp.angle) * sp.radius
+          const proj = project3D(sx, sp.yOffset, sz, centerX, centerY, baseUnit, currentTilt)
 
-            const jetAlpha = Math.sin(jp * Math.PI) * sp.alpha * 0.55
-            ctx.fillStyle = FOLDER_PALETTE[sp.colorIndex]
-            ctx.globalAlpha = jetAlpha
-            ctx.beginPath()
-            ctx.arc(proj.screenX, proj.screenY, sp.size * proj.projectedScale * 0.8, 0, Math.PI * 2)
-            ctx.fill()
-          } else {
-            sp.angle = (sp.angle + sp.speed * effectiveDt) % (Math.PI * 2)
-            const sx = Math.cos(sp.angle) * sp.radius
-            const sz = Math.sin(sp.angle) * sp.radius
-            const proj = project3D(sx, sp.yOffset, sz, centerX, centerY, baseUnit, currentTilt)
+          // Occlude particles passing directly behind the pitch-black Event Horizon shadow
+          const distFromCenter = Math.hypot(proj.screenX - centerX, proj.screenY - centerY)
+          if (proj.behindHorizon && distFromCenter < shadowScreenRadius) continue
 
-            // Occlude sparks directly behind the Event Horizon shadow
-            const distFromBhCenter = Math.hypot(proj.screenX - centerX, proj.screenY - centerY)
-            if (proj.behindHorizon && distFromBhCenter < baseUnit * 0.14) continue
+          const [sr, sg, sb] = sp.rgb
+          const a = sp.alpha * (proj.behindHorizon ? 0.35 : 0.65)
+          const size = Math.max(0.5, sp.size * proj.projectedScale * 0.55)
 
-            // Doppler brightness boost on left/approaching side
-            const dopplerBoost = sx < 0 ? 1.25 : 0.75
-            ctx.fillStyle = FOLDER_PALETTE[sp.colorIndex]
-            ctx.globalAlpha = Math.min(0.9, sp.alpha * dopplerBoost * (proj.behindHorizon ? 0.5 : 0.85))
-            const r = Math.max(0.6, sp.size * proj.projectedScale * 0.65)
-            ctx.fillRect(proj.screenX - r / 2, proj.screenY - r / 2, r, r)
-          }
-        }
-        ctx.restore()
-
-        // Render Singularity Core Tethers (Infalling energy filaments from Top Hubs into Photon Ring)
-        if (settings.enableSingularityTethers) {
-          ctx.save()
-          const photonRingScreenR = baseUnit * 0.165
-          for (const n of nodes) {
-            if (n.connections < 3 && n.id !== currentNoteId) continue
-            const isFocal = n.id === focalNodeId
-
-            const angleToCenter = Math.atan2(n.screenY - centerY, n.screenX - centerX)
-            const anchorX = centerX + Math.cos(angleToCenter + 0.6) * photonRingScreenR
-            const anchorY = centerY + Math.sin(angleToCenter + 0.6) * photonRingScreenR
-
-            const ctrlX = centerX + Math.cos(angleToCenter + 0.3) * (photonRingScreenR * 1.8)
-            const ctrlY = centerY + Math.sin(angleToCenter + 0.3) * (photonRingScreenR * 1.8)
-
-            const grad = ctx.createLinearGradient(n.screenX, n.screenY, anchorX, anchorY)
-            grad.addColorStop(0, n.color + (isFocal ? '88' : '28'))
-            grad.addColorStop(1, '#ffffff00')
-
-            ctx.beginPath()
-            ctx.moveTo(n.screenX, n.screenY)
-            ctx.quadraticCurveTo(ctrlX, ctrlY, anchorX, anchorY)
-            ctx.strokeStyle = grad
-            ctx.lineWidth = isFocal ? 1.4 : 0.7
-            ctx.stroke()
-          }
-          ctx.restore()
+          ctx.fillStyle = `rgba(${sr}, ${sg}, ${sb}, ${a})`
+          ctx.beginPath()
+          ctx.arc(proj.screenX, proj.screenY, size, 0, Math.PI * 2)
+          ctx.fill()
         }
 
-        // Render 3D Geodesic Synaptic Filaments (Edges)
+        // Render Gossamer Geodesic Synaptic Filaments (Connections between stars)
         for (const edge of edges) {
           const s = nodeMap.get(edge.source)
           const t = nodeMap.get(edge.target)
           if (!s || !t) continue
 
           const isHighlighted = focalNodeId
-            ? (edge.source === focalNodeId || edge.target === focalNodeId)
+            ? edge.source === focalNodeId || edge.target === focalNodeId
             : false
 
           const isDimmed = hoveredNodeId
             ? !isHighlighted
-            : (hoveredFolder && (s.folderShort !== hoveredFolder && t.folderShort !== hoveredFolder))
+            : hoveredFolder && s.folderShort !== hoveredFolder && t.folderShort !== hoveredFolder
 
-          ctx.save()
-          if (isDimmed) {
-            ctx.globalAlpha = 0.05
-          }
+          if (isDimmed && !isHighlighted) continue
 
-          // Calculate 3D midpoint curved slightly toward the gravitational center & lifted in Y
           const sx3 = Math.cos(s.orbitAngle) * s.orbitRadius
           const sz3 = Math.sin(s.orbitAngle) * s.orbitRadius
           const tx3 = Math.cos(t.orbitAngle) * t.orbitRadius
           const tz3 = Math.sin(t.orbitAngle) * t.orbitRadius
 
-          const midX3 = (sx3 + tx3) * 0.42 // Pulled inward by gravity!
-          const midZ3 = (sz3 + tz3) * 0.42
-          const midY3 = (s.orbitElevation + t.orbitElevation) * 0.5 + (isHighlighted ? 0.12 : 0.05)
+          const midX3 = (sx3 + tx3) * 0.44
+          const midZ3 = (sz3 + tz3) * 0.44
+          const midY3 = (s.orbitElevation + t.orbitElevation) * 0.5 + (isHighlighted ? 0.08 : 0.03)
 
           const midProj = project3D(midX3, midY3, midZ3, centerX, centerY, baseUnit, currentTilt)
 
@@ -783,32 +787,34 @@ export const GraphView: React.FC<GraphViewProps> = ({
           ctx.quadraticCurveTo(midProj.screenX, midProj.screenY, t.screenX, t.screenY)
 
           if (isHighlighted) {
+            const [sr, sg, sb] = s.rgb
+            const [tr, tg, tb] = t.rgb
             const grad = ctx.createLinearGradient(s.screenX, s.screenY, t.screenX, t.screenY)
-            grad.addColorStop(0, s.color)
-            grad.addColorStop(0.5, '#ffffff')
-            grad.addColorStop(1, t.color)
+            grad.addColorStop(0, `rgba(${sr}, ${sg}, ${sb}, 0.75)`)
+            grad.addColorStop(0.5, 'rgba(255, 250, 240, 0.85)')
+            grad.addColorStop(1, `rgba(${tr}, ${tg}, ${tb}, 0.75)`)
             ctx.strokeStyle = grad
-            ctx.lineWidth = 1.9
+            ctx.lineWidth = 1.15
           } else {
-            const sameFolder = s.folderShort === t.folderShort
-            ctx.strokeStyle = sameFolder ? s.color + '30' : 'rgba(255, 255, 255, 0.09)'
-            ctx.lineWidth = 0.85
+            const [sr, sg, sb] = s.rgb
+            ctx.strokeStyle = `rgba(${sr}, ${sg}, ${sb}, 0.055)`
+            ctx.lineWidth = 0.55
           }
           ctx.stroke()
-          ctx.restore()
         }
 
-        // Render Quantum Photons Streaming Along Geodesic Filaments
+        // Render Travelling Starlight Photons along Active Connections
         if (settings.enablePulses && packetsRef.current.length > 0) {
           for (const pkt of packetsRef.current) {
             const s = nodeMap.get(pkt.sourceId)
             const t = nodeMap.get(pkt.targetId)
             if (!s || !t) continue
 
-            const isNearFocal = activeNeighborIds.has(pkt.sourceId) || activeNeighborIds.has(pkt.targetId)
+            const isNearFocal =
+              activeNeighborIds.has(pkt.sourceId) || activeNeighborIds.has(pkt.targetId)
             if (hoveredNodeId && !isNearFocal) continue
 
-            pkt.progress = (pkt.progress + pkt.speed * (isNearFocal ? 1.35 : 0.8)) % 1.0
+            pkt.progress = (pkt.progress + pkt.speed * (isNearFocal ? 1.25 : 0.7)) % 1.0
             const u = pkt.progress
             const invU = 1 - u
 
@@ -817,31 +823,33 @@ export const GraphView: React.FC<GraphViewProps> = ({
             const tx3 = Math.cos(t.orbitAngle) * t.orbitRadius
             const tz3 = Math.sin(t.orbitAngle) * t.orbitRadius
 
-            const midX3 = (sx3 + tx3) * 0.42
-            const midZ3 = (sz3 + tz3) * 0.42
+            const midX3 = (sx3 + tx3) * 0.44
+            const midZ3 = (sz3 + tz3) * 0.44
             const midY3 = (s.orbitElevation + t.orbitElevation) * 0.5 + pkt.arcHeight
 
             const midProj = project3D(midX3, midY3, midZ3, centerX, centerY, baseUnit, currentTilt)
 
-            // Quadratic Bezier evaluation in screen space
             const px = invU * invU * s.screenX + 2 * invU * u * midProj.screenX + u * u * t.screenX
             const py = invU * invU * s.screenY + 2 * invU * u * midProj.screenY + u * u * t.screenY
 
-            ctx.save()
+            ctx.fillStyle = isNearFocal
+              ? 'rgba(255, 255, 255, 0.9)'
+              : 'rgba(255, 235, 200, 0.35)'
             ctx.beginPath()
-            ctx.arc(px, py, isNearFocal ? 2.4 : 1.3, 0, Math.PI * 2)
-            ctx.fillStyle = isNearFocal ? '#ffffff' : s.color
-            ctx.globalAlpha = isNearFocal ? 0.95 : 0.55
+            ctx.arc(px, py, isNearFocal ? 1.6 : 0.9, 0, Math.PI * 2)
             ctx.fill()
-            ctx.restore()
           }
         }
 
-        // Depth-sort nodes back-to-front (largest depthZ first) so foreground nodes pass in front!
+        // Depth-sort stars back-to-front
         const sortedNodes = [...nodes].sort((a, b) => b.depthZ - a.depthZ)
 
-        // Render Nodes & Relativistic Orbital Comet Trails
+        // Render Notes as Authentic Hubble Stars & Accretion Particles
         for (const node of sortedNodes) {
+          // If a star is directly behind the pitch-black Event Horizon shadow, occlude it naturally
+          const distFromBhCenter = Math.hypot(node.screenX - centerX, node.screenY - centerY)
+          if (node.behindHorizon && distFromBhCenter < shadowScreenRadius * 0.92) continue
+
           const isCurrent = node.id === currentNoteId
           const isHovered = node.id === hoveredNodeId
           const isContemplated = node.id === contemplatedNodeId
@@ -851,113 +859,71 @@ export const GraphView: React.FC<GraphViewProps> = ({
             ? node.title.toLowerCase().includes(searchQuery.toLowerCase())
             : false
 
-          let alpha = 1.0
+          const twinkle =
+            0.86 + 0.14 * Math.sin(currentTime * 0.0035 + node.twinkleSeed)
+
+          let starAlpha = twinkle
           if (searchQuery) {
-            alpha = isSearchMatch ? 1.0 : 0.08
+            starAlpha = isSearchMatch ? 1.0 : 0.1
           } else if (hoveredFolder) {
-            alpha = isFolderMatch ? 1.0 : 0.1
+            starAlpha = isFolderMatch ? 1.0 : 0.12
           } else if (hoveredNodeId) {
-            alpha = (isHovered || isNeighbor) ? 1.0 : 0.14
+            starAlpha = isHovered || isNeighbor ? 1.0 : 0.18
           } else if (node.behindHorizon) {
-            alpha = 0.72
+            starAlpha = 0.65 * twinkle
           }
 
-          ctx.save()
-          ctx.globalAlpha = alpha
+          const [nr, ng, nb] = node.rgb
 
-          // 1. Orbital Comet Trail (Curved 3D wake behind the orbiting note)
-          if (settings.enableTrails && !isPaused) {
-            const trailSteps = isHovered || isCurrent || isContemplated ? 10 : 5
-            const trailArc = (isHovered || isCurrent ? 0.24 : 0.13) * Math.min(1.4, settings.orbitalSpeed)
+          // 1. Delicate Relativistic Orbital Streak (Subtle light wake along the ellipse)
+          if (settings.enableTrails && !isPaused && starAlpha > 0.2) {
+            const steps = isHovered || isCurrent ? 8 : 4
+            const arcSpan = (isHovered || isCurrent ? 0.18 : 0.08) * Math.min(1.4, settings.orbitalSpeed)
 
             ctx.beginPath()
-            for (let step = 0; step <= trailSteps; step++) {
-              const frac = step / trailSteps
-              const pastAngle = node.orbitAngle - frac * trailArc
+            for (let s = 0; s <= steps; s++) {
+              const frac = s / steps
+              const pastAngle = node.orbitAngle - frac * arcSpan
               const tx = Math.cos(pastAngle) * node.orbitRadius
               const tz = Math.sin(pastAngle) * node.orbitRadius
               const ty =
                 node.orbitElevation +
-                Math.sin(simTimeRef.current * 1.4 + node.orbitPhase) * 0.012 * node.orbitRadius
+                Math.sin(simTimeRef.current * 1.2 + node.orbitPhase) * 0.009 * node.orbitRadius
               const tp = project3D(tx, ty, tz, centerX, centerY, baseUnit, currentTilt)
-              if (step === 0) ctx.moveTo(tp.screenX, tp.screenY)
+              if (s === 0) ctx.moveTo(tp.screenX, tp.screenY)
               else ctx.lineTo(tp.screenX, tp.screenY)
             }
-            ctx.strokeStyle = node.color + (isHovered || isCurrent ? '75' : '32')
-            ctx.lineWidth = Math.max(0.8, node.radius * node.projectedScale * 0.28)
+            ctx.strokeStyle = `rgba(${nr}, ${ng}, ${nb}, ${
+              starAlpha * (isHovered || isCurrent ? 0.38 : 0.14)
+            })`
+            ctx.lineWidth = isHovered || isCurrent ? 1.1 : 0.6
             ctx.lineCap = 'round'
             ctx.stroke()
           }
 
-          const r =
+          // 2. Render Hubble Optical Star (NO black circles, NO cartoon borders!)
+          const coreR =
             node.radius *
             node.projectedScale *
             settings.nodeSize *
-            (isHovered || isContemplated ? 1.35 : 1.0)
+            (isHovered || isContemplated ? 1.45 : isCurrent ? 1.25 : 1.0)
 
-          // 2. Outer Gravitational Halo for Hub Notes or Focal Notes
-          if (node.connections >= 3 || isCurrent || isHovered || isContemplated) {
-            ctx.beginPath()
-            ctx.arc(node.screenX, node.screenY, r + 4.5, 0, Math.PI * 2)
-            ctx.strokeStyle = isHovered || isContemplated ? '#ffffff66' : node.color + '44'
-            ctx.lineWidth = isCurrent || isHovered ? 1.3 : 0.85
-            ctx.stroke()
-          }
+          const isFocalStar = isHovered || isCurrent || isContemplated || isSearchMatch
+          const hasSpikes = isFocalStar || node.connections >= 2 || (hoveredNodeId !== null && isNeighbor)
+          const spikeLen = coreR * (isHovered || isContemplated ? 6.5 : isCurrent ? 5.2 : 3.6)
 
-          // 3. Active Note Astronomical Reticle `[ · ]`
-          if (isCurrent || isContemplated) {
-            const pad = r + 7
-            ctx.strokeStyle = isContemplated ? '#ffffff' : node.color
-            ctx.lineWidth = 1.3
-            ctx.beginPath()
-            ctx.moveTo(node.screenX - pad, node.screenY - pad + 5)
-            ctx.lineTo(node.screenX - pad, node.screenY - pad)
-            ctx.lineTo(node.screenX - pad + 5, node.screenY - pad)
-
-            ctx.moveTo(node.screenX + pad - 5, node.screenY - pad)
-            ctx.lineTo(node.screenX + pad, node.screenY - pad)
-            ctx.lineTo(node.screenX + pad, node.screenY - pad + 5)
-
-            ctx.moveTo(node.screenX - pad, node.screenY + pad - 5)
-            ctx.lineTo(node.screenX - pad, node.screenY + pad)
-            ctx.lineTo(node.screenX - pad + 5, node.screenY + pad)
-
-            ctx.moveTo(node.screenX + pad - 5, node.screenY + pad)
-            ctx.lineTo(node.screenX + pad, node.screenY + pad)
-            ctx.lineTo(node.screenX + pad, node.screenY + pad - 5)
-            ctx.stroke()
-          }
-
-          // 4. Search Match Pulse Ring
-          if (isSearchMatch) {
-            ctx.beginPath()
-            ctx.arc(node.screenX, node.screenY, r + 7, 0, Math.PI * 2)
-            ctx.strokeStyle = '#f59e0b'
-            ctx.lineWidth = 1.5
-            ctx.stroke()
-          }
-
-          // 5. Celestial Star-Core Body (Dark Obsidian Halo + Incandescent Core)
-          ctx.beginPath()
-          ctx.arc(node.screenX, node.screenY, r, 0, Math.PI * 2)
-          ctx.fillStyle = isHovered ? '#1e2235' : '#0d0f18'
-          ctx.fill()
-
-          ctx.strokeStyle = isHovered || isContemplated ? '#ffffff' : node.color
-          ctx.lineWidth = isCurrent || isHovered ? 1.7 : 1.2
-          ctx.stroke()
-
-          // Inner Star Core
-          ctx.beginPath()
-          ctx.arc(node.screenX, node.screenY, Math.max(1.8, r * 0.48), 0, Math.PI * 2)
-          ctx.fillStyle = isHovered || isContemplated ? '#ffffff' : node.color
-          ctx.fill()
-
-          ctx.restore()
+          drawHubbleStar(ctx, node.screenX, node.screenY, coreR, node.rgb, starAlpha, {
+            hasSpikes,
+            spikeLength: spikeLen,
+            isFocused: isFocalStar,
+            isCurrent
+          })
         }
 
-        // Contextual Floating Glass Labels (Zero Clutter)
-        const isZoomedClose = transform.scale > 1.45
+        ctx.restore() // End Additive 'lighter' Blending
+
+        // 3. Contextual Floating Glass Labels (Only for hovered, active, or searched stars)
+        const isZoomedClose = transform.scale > 1.5
         ctx.save()
         for (const node of sortedNodes) {
           const isCurrent = node.id === currentNoteId
@@ -990,28 +956,28 @@ export const GraphView: React.FC<GraphViewProps> = ({
           const pillH = 20
           const r = node.radius * node.projectedScale
           const pillX = node.screenX - pillW / 2
-          const pillY = node.screenY - r - 25
+          const pillY = node.screenY - r - 22
 
           ctx.beginPath()
           ctx.roundRect(pillX, pillY, pillW, pillH, 6)
           ctx.fillStyle =
             isHovered || isContemplated
-              ? 'rgba(16, 18, 30, 0.95)'
-              : 'rgba(10, 11, 18, 0.88)'
+              ? 'rgba(8, 10, 18, 0.92)'
+              : 'rgba(6, 7, 12, 0.82)'
           ctx.fill()
 
           ctx.strokeStyle =
             isHovered || isContemplated
               ? node.color
               : isCurrent
-              ? node.color + 'aa'
-              : 'rgba(255, 255, 255, 0.12)'
-          ctx.lineWidth = isHovered || isContemplated ? 1.2 : 0.9
+              ? 'rgba(255, 220, 160, 0.45)'
+              : 'rgba(255, 255, 255, 0.1)'
+          ctx.lineWidth = 0.9
           ctx.stroke()
 
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
-          ctx.fillStyle = isHovered || isCurrent || isContemplated ? '#ffffff' : '#cbd5e1'
+          ctx.fillStyle = isHovered || isCurrent || isContemplated ? '#ffffff' : '#d4dce8'
           ctx.fillText(labelText, node.screenX, pillY + pillH / 2)
         }
         ctx.restore()
@@ -1153,15 +1119,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
           }
         }
 
-        // Matte Blueprint Background
-        ctx.fillStyle = '#090a0f'
+        ctx.fillStyle = '#05060a'
         ctx.fillRect(0, 0, width, height)
 
         const dotSpacing = 36 * transform.scale
         if (dotSpacing > 14) {
           const offX = centerX % dotSpacing
           const offY = centerY % dotSpacing
-          ctx.fillStyle = 'rgba(56, 189, 248, 0.05)'
+          ctx.fillStyle = 'rgba(180, 210, 255, 0.04)'
           for (let x = offX; x < width; x += dotSpacing) {
             for (let y = offY; y < height; y += dotSpacing) {
               ctx.fillRect(x, y, 1, 1)
@@ -1179,15 +1144,15 @@ export const GraphView: React.FC<GraphViewProps> = ({
             ctx.beginPath()
             ctx.arc(0, 0, r, 0, Math.PI * 2)
             ctx.strokeStyle =
-              idx === 1 ? 'rgba(245, 176, 65, 0.22)' : 'rgba(255, 255, 255, 0.05)'
+              idx === 1 ? 'rgba(255, 214, 153, 0.22)' : 'rgba(255, 255, 255, 0.05)'
             ctx.lineWidth = 1
             ctx.stroke()
           })
 
           const sweepAngle = radarAngleRef.current
           const sweepGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, 500)
-          sweepGrad.addColorStop(0, 'rgba(245, 176, 65, 0.14)')
-          sweepGrad.addColorStop(1, 'rgba(245, 176, 65, 0)')
+          sweepGrad.addColorStop(0, 'rgba(255, 214, 153, 0.12)')
+          sweepGrad.addColorStop(1, 'rgba(255, 214, 153, 0)')
           ctx.beginPath()
           ctx.moveTo(0, 0)
           ctx.arc(0, 0, 500, sweepAngle - 0.35, sweepAngle)
@@ -1213,19 +1178,21 @@ export const GraphView: React.FC<GraphViewProps> = ({
             ctx.lineTo(midX, s.y)
             ctx.lineTo(midX, t.y)
             ctx.lineTo(t.x, t.y)
-            ctx.strokeStyle = isHighlighted ? '#38bdf8' : 'rgba(56, 189, 248, 0.14)'
-            ctx.lineWidth = isHighlighted ? 1.8 : 0.9
+            ctx.strokeStyle = isHighlighted ? '#b8d8ff' : 'rgba(184, 216, 255, 0.14)'
+            ctx.lineWidth = isHighlighted ? 1.5 : 0.8
             ctx.stroke()
           } else {
             ctx.moveTo(s.x, s.y)
             ctx.lineTo(t.x, t.y)
-            ctx.strokeStyle = isHighlighted ? s.color : 'rgba(255, 255, 255, 0.1)'
-            ctx.lineWidth = isHighlighted ? 1.6 : 0.8
+            ctx.strokeStyle = isHighlighted ? s.color : 'rgba(255, 255, 255, 0.09)'
+            ctx.lineWidth = isHighlighted ? 1.4 : 0.7
             ctx.stroke()
           }
           ctx.restore()
         }
 
+        ctx.save()
+        ctx.globalCompositeOperation = 'lighter'
         for (const node of nodes) {
           node.screenX = centerX + node.x * transform.scale
           node.screenY = centerY + node.y * transform.scale
@@ -1234,37 +1201,41 @@ export const GraphView: React.FC<GraphViewProps> = ({
           const isCurrent = node.id === currentNoteId
           const isHovered = node.id === hoveredNodeId
           const isNeighbor = activeNeighborIds.has(node.id)
+          const alpha = hoveredNodeId && !isHovered && !isNeighbor ? 0.15 : 0.95
 
-          ctx.save()
-          if (hoveredNodeId && !isHovered && !isNeighbor) ctx.globalAlpha = 0.12
-          const r = node.radius + (isHovered ? 2.5 : 0)
+          drawHubbleStar(
+            ctx,
+            node.x,
+            node.y,
+            node.radius * (isHovered ? 1.4 : 1.0),
+            node.rgb,
+            alpha,
+            {
+              hasSpikes: isHovered || isCurrent || node.connections >= 2,
+              spikeLength: node.radius * 4.2,
+              isFocused: isHovered || isCurrent,
+              isCurrent
+            }
+          )
+        }
+        ctx.restore()
 
-          ctx.beginPath()
-          ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
-          ctx.fillStyle = '#101118'
-          ctx.fill()
-          ctx.strokeStyle = isHovered ? '#ffffff' : node.color
-          ctx.lineWidth = isCurrent || isHovered ? 1.6 : 1.2
-          ctx.stroke()
-
-          ctx.beginPath()
-          ctx.arc(node.x, node.y, Math.max(2, r * 0.42), 0, Math.PI * 2)
-          ctx.fillStyle = node.color
-          ctx.fill()
-
+        for (const node of nodes) {
+          const isCurrent = node.id === currentNoteId
+          const isHovered = node.id === hoveredNodeId
+          const isNeighbor = activeNeighborIds.has(node.id)
           if (isHovered || isCurrent || (hoveredNodeId && isNeighbor)) {
             ctx.font = '600 11px "Inter", system-ui, sans-serif'
             ctx.textAlign = 'center'
             ctx.fillStyle = '#ffffff'
-            ctx.fillText(node.title, node.x, node.y - r - 10)
+            ctx.fillText(node.title, node.x, node.y - node.radius - 10)
           }
-          ctx.restore()
         }
 
         ctx.restore()
       }
 
-      ctx.restore() // End DPI scale
+      ctx.restore()
       animationFrameRef.current = requestAnimationFrame(render)
     }
 
@@ -1286,7 +1257,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     isContemplationMode
   ])
 
-  // Screen-space Node Hit Testing (works seamlessly across 3D & 2D projections!)
+  // Screen-space Hit Testing
   const getNodeAtScreenCoords = useCallback(
     (screenX: number, screenY: number): SimNode | null => {
       let closestNode: SimNode | null = null
@@ -1298,7 +1269,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
         const dy = screenY - node.screenY
         const distSq = dx * dx + dy * dy
 
-        const hitRadius = Math.max(18, node.radius * node.projectedScale + 8)
+        const hitRadius = Math.max(16, node.radius * node.projectedScale * 2.5 + 8)
         if (distSq <= hitRadius * hitRadius) {
           if (distSq < closestDistSq) {
             closestDistSq = distSq
@@ -1311,21 +1282,19 @@ export const GraphView: React.FC<GraphViewProps> = ({
     [nodes]
   )
 
-  // Spawn a Gravitational Wave Ripple in 3D accretion plane
-  const spawnRipple = useCallback((nodeOrAngle?: SimNode) => {
-    const r = nodeOrAngle ? nodeOrAngle.orbitRadius : 0.45
-    const a = nodeOrAngle ? nodeOrAngle.orbitAngle : Math.random() * Math.PI * 2
+  const spawnRipple = useCallback((node?: SimNode) => {
+    const r = node ? node.orbitRadius : 0.45
+    const a = node ? node.orbitAngle : Math.random() * Math.PI * 2
     ripplesRef.current.push({
       x3d: Math.cos(a) * r,
       z3d: Math.sin(a) * r,
-      radius: 0.04,
-      maxRadius: 0.65,
-      alpha: 0.65,
-      color: nodeOrAngle?.color || '#f5b041'
+      radius: 0.03,
+      maxRadius: 0.55,
+      alpha: 0.55,
+      rgb: node ? node.rgb : [255, 214, 153]
     })
   }, [])
 
-  // Mouse / Pointer Handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = overlayCanvasRef.current
     if (!canvas) return
@@ -1335,7 +1304,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
     pointerDownRef.current = { x: e.clientX, y: e.clientY, time: Date.now(), button: e.button }
 
-    // Right-click or Alt+Click tilts the 3D Accretion Disk in real time!
     if (e.button === 2 || e.altKey) {
       isTiltingCameraRef.current = true
       return
@@ -1380,7 +1348,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
         const baseUnit = Math.min(rect.width, rect.height) * 0.42 * transform.scale
         const dx = (sx - centerX) / Math.max(1, baseUnit)
         const dy = (centerY - sy) / Math.max(1, baseUnit) / Math.max(0.25, Math.sin(tiltRef.current))
-        const newR = Math.max(0.4, Math.min(2.4, Math.hypot(dx, dy) * 2.1))
+        const newR = Math.max(0.4, Math.min(2.35, Math.hypot(dx, dy) * 2.1))
         const newAngle = Math.atan2(dy, dx)
         draggedNodeRef.current.orbitRadius = newR
         draggedNodeRef.current.orbitAngle = newAngle
@@ -1484,7 +1452,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
     spawnRipple(target)
   }
 
-  // Active Hovered / Contemplated Node Data
   const activeInspectNode = useMemo(() => {
     const id = hoveredNodeId || (isContemplationMode ? contemplatedNodeId : null)
     if (!id) return null
@@ -1510,11 +1477,11 @@ export const GraphView: React.FC<GraphViewProps> = ({
     <div
       ref={containerRef}
       onContextMenu={e => e.preventDefault()}
-      className="relative w-full h-full bg-[#06070b] overflow-hidden flex flex-col select-none"
+      className="relative w-full h-full bg-[#030408] overflow-hidden flex flex-col select-none"
     >
-      {/* 1. TOP HUD CONTROL BAR (Hidden in Contemplation Mode) */}
+      {/* 1. TOP HUD CONTROL BAR */}
       {!isContemplationMode && (
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-[#0c0d16]/85 backdrop-blur-2xl border border-white/[0.09] rounded-2xl p-1.5 shadow-2xl">
+        <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-[#080911]/80 backdrop-blur-2xl border border-white/[0.08] rounded-2xl p-1.5 shadow-2xl">
           {/* Search */}
           <div className="relative flex items-center">
             <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5" />
@@ -1522,8 +1489,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Filtrar horizonte..."
-              className="w-40 pl-8 pr-7 py-1.5 bg-[#121422]/90 border border-white/[0.07] rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[var(--accent)] font-mono transition-all"
+              placeholder="Buscar estrela..."
+              className="w-40 pl-8 pr-7 py-1.5 bg-[#0f111c]/90 border border-white/[0.06] rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[var(--accent)] font-mono transition-all"
             />
             {searchQuery && (
               <button
@@ -1535,8 +1502,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
             )}
           </div>
 
-          {/* 3 Visualization Engines */}
-          <div className="flex items-center bg-[#121422]/90 border border-white/[0.07] rounded-xl p-0.5 text-xs">
+          {/* 3 Visualization Modes */}
+          <div className="flex items-center bg-[#0f111c]/90 border border-white/[0.06] rounded-xl p-0.5 text-xs">
             <button
               onClick={() => {
                 setLayoutMode('constellation')
@@ -1547,7 +1514,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                   ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
-              title="Singularidade (Gargantua): Buraco negro relativístico em WebGL com órbitas keplerianas 3D"
+              title="Singularidade (Hubble & Gargantua): Estrelas reais orbitando um buraco negro relativístico"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Singularidade</span>
@@ -1563,7 +1530,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                   ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
-              title="Circuito Neural: Trilhas ortogonais estilo blueprint"
+              title="Circuito Neural"
             >
               <Cpu className="w-3.5 h-3.5" />
               <span>Circuito</span>
@@ -1579,7 +1546,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                   ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
-              title="Radar Ecosfera: Órbitas concêntricas ao redor da nota ativa"
+              title="Radar Ecosfera"
             >
               <Radar className="w-3.5 h-3.5" />
               <span>Radar</span>
@@ -1588,7 +1555,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           <div className="h-4 w-px bg-white/10" />
 
-          {/* Orbital Time Flow Pause/Resume */}
           {layoutMode === 'constellation' && (
             <button
               onClick={() => setIsPaused(p => !p)}
@@ -1597,25 +1563,23 @@ export const GraphView: React.FC<GraphViewProps> = ({
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
               }`}
-              title={isPaused ? 'Retomar rotação orbital' : 'Congelar o tempo (Dilatação Temporal)'}
+              title={isPaused ? 'Retomar órbita' : 'Pausar órbita'}
             >
               {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
             </button>
           )}
 
-          {/* Contemplation / Screensaver Zen Mode */}
           {layoutMode === 'constellation' && (
             <button
               onClick={() => setIsContemplationMode(true)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-amber-200/90 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition-all cursor-pointer"
-              title="Modo Contemplação: Oculta os menus e navega suavemente pelas conexões do seu universo"
+              title="Modo Contemplação: Oculta a interface para contemplação astronômica"
             >
               <Eye className="w-3.5 h-3.5 text-amber-400" />
               <span>Contemplar</span>
             </button>
           )}
 
-          {/* Local vs Global Toggle */}
           <button
             onClick={() => setIsLocalMode(m => !m)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
@@ -1629,7 +1593,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
             <span>{isLocalMode ? 'Foco Local' : 'Global'}</span>
           </button>
 
-          {/* Settings Drawer Button */}
           <button
             onClick={() => setShowSettingsDrawer(d => !d)}
             className={`p-1.5 rounded-xl transition-all cursor-pointer ${
@@ -1637,7 +1600,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                 ? 'bg-[var(--accent)] text-zinc-950 font-bold'
                 : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
             }`}
-            title="Parâmetros Relativísticos e Órbitas"
+            title="Parâmetros Astronômicos"
           >
             <Sliders className="w-3.5 h-3.5" />
           </button>
@@ -1646,10 +1609,10 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
       {/* CONTEMPLATION MODE FLOATING EXIT PILL */}
       {isContemplationMode && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-[#0b0c14]/75 backdrop-blur-2xl border border-white/15 rounded-full px-4 py-2 text-xs text-zinc-300 shadow-2xl animate-in fade-in duration-300">
-          <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-[#080911]/75 backdrop-blur-2xl border border-white/15 rounded-full px-4 py-2 text-xs text-zinc-300 shadow-2xl animate-in fade-in duration-300">
+          <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
           <span className="font-mono text-[11px] tracking-wide">
-            MODO CONTEMPLAÇÃO ATIVO — DILAÇÃO TEMPORAL AUTOMÁTICA
+            MODO CONTEMPLAÇÃO HUBBLE
           </span>
           <button
             onClick={() => setIsContemplationMode(false)}
@@ -1660,17 +1623,17 @@ export const GraphView: React.FC<GraphViewProps> = ({
         </div>
       )}
 
-      {/* 2. TOP-RIGHT CELESTIAL INSPECTOR HUD CARD */}
+      {/* 2. TOP-RIGHT INSPECTOR HUD CARD */}
       {activeInspectNode && (
-        <div className="absolute top-4 right-4 z-20 w-84 bg-[#0b0d16]/90 backdrop-blur-2xl border border-white/[0.12] rounded-2xl p-4 shadow-2xl space-y-3 text-xs animate-in fade-in zoom-in-95 duration-150 select-none">
-          <div className="flex items-start justify-between gap-2 border-b border-white/[0.08] pb-2.5">
+        <div className="absolute top-4 right-4 z-20 w-84 bg-[#080911]/90 backdrop-blur-2xl border border-white/[0.1] rounded-2xl p-4 shadow-2xl space-y-3 text-xs animate-in fade-in zoom-in-95 duration-150 select-none">
+          <div className="flex items-start justify-between gap-2 border-b border-white/[0.07] pb-2.5">
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400">
                 <span
-                  className="w-2 h-2 rounded-full inline-block"
-                  style={{ backgroundColor: activeInspectNode.color }}
+                  className="w-2 h-2 rounded-full inline-block shadow-[0_0_8px_currentColor]"
+                  style={{ backgroundColor: activeInspectNode.color, color: activeInspectNode.color }}
                 />
-                <span>BRAÇO ESPIRAL // {activeInspectNode.folderShort}</span>
+                <span>CONSTELAÇÃO // {activeInspectNode.folderShort}</span>
               </div>
               <h3 className="text-sm font-bold text-zinc-100 leading-snug">
                 {activeInspectNode.title}
@@ -1694,14 +1657,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
           {activeInspectConnections.length > 0 && (
             <div className="space-y-1 pt-1">
               <span className="text-[10px] text-zinc-500 font-mono">
-                SINAPSES GRAVITACIONAIS ({activeInspectConnections.length}):
+                ESTRELAS CONECTADAS ({activeInspectConnections.length}):
               </span>
               <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pt-0.5">
                 {activeInspectConnections.map(c => (
                   <button
                     key={c.id}
                     onClick={() => onSelectNote(c.id)}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-[10px] text-zinc-200 transition-colors cursor-pointer"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.07] text-[10px] text-zinc-200 transition-colors cursor-pointer"
                   >
                     <span
                       className="w-1.5 h-1.5 rounded-full"
@@ -1714,25 +1677,25 @@ export const GraphView: React.FC<GraphViewProps> = ({
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-1 border-t border-white/[0.08] text-[10px] text-zinc-400 font-mono">
-            <span>ÓRBITA: {activeInspectNode.orbitRadius.toFixed(2)} Rs</span>
+          <div className="flex items-center justify-between pt-1 border-t border-white/[0.07] text-[10px] text-zinc-400 font-mono">
+            <span>RAIO ORBITAL: {activeInspectNode.orbitRadius.toFixed(2)} Rs</span>
             <button
               onClick={() => onSelectNote(activeInspectNode.id)}
               className="text-[var(--accent)] font-semibold flex items-center gap-1 hover:underline cursor-pointer"
             >
-              MERGULHAR NA NOTA <ArrowRight className="w-2.5 h-2.5" />
+              ABRIR NOTA <ArrowRight className="w-2.5 h-2.5" />
             </button>
           </div>
         </div>
       )}
 
-      {/* 3. RELATIVISTIC SETTINGS DRAWER */}
+      {/* 3. SETTINGS DRAWER */}
       {showSettingsDrawer && !isContemplationMode && (
-        <div className="absolute top-18 left-4 z-30 w-76 bg-[#0b0d16]/95 backdrop-blur-2xl border border-white/[0.12] rounded-2xl p-4 shadow-2xl space-y-3.5 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute top-18 left-4 z-30 w-76 bg-[#080911]/95 backdrop-blur-2xl border border-white/[0.1] rounded-2xl p-4 shadow-2xl space-y-3.5 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150">
           <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
             <span className="font-bold text-zinc-100 flex items-center gap-1.5 font-mono text-[11px]">
               <Compass className="w-3.5 h-3.5 text-[var(--accent)]" />
-              ASTROFÍSICA DA SINGULARIDADE
+              ÓPTICA HUBBLE & SINGULARIDADE
             </span>
             <button
               onClick={() => setShowSettingsDrawer(false)}
@@ -1780,13 +1743,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           <div className="space-y-1">
             <div className="flex justify-between text-[11px] text-zinc-400 font-mono">
-              <span>LUMINOSIDADE DO PLASMA</span>
+              <span>EXPOSIÇÃO DO DISCO DE ACREÇÃO</span>
               <span>{Math.round(settings.accretionIntensity * 100)}%</span>
             </div>
             <input
               type="range"
               min="0.4"
-              max="1.8"
+              max="1.6"
               step="0.05"
               value={settings.accretionIntensity}
               onChange={e =>
@@ -1798,7 +1761,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           <div className="space-y-1">
             <div className="flex justify-between text-[11px] text-zinc-400 font-mono">
-              <span>ESCALA DAS ESTRELAS (NÓS)</span>
+              <span>MAGNITUDE ESTELAR (BRILHO)</span>
               <span>{settings.nodeSize.toFixed(1)}x</span>
             </div>
             <input
@@ -1816,7 +1779,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           <div className="pt-2 border-t border-white/[0.08] space-y-2">
             <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-[11px]">Rastros Cometares de Órbita</span>
+              <span className="text-[11px]">Rastros Orbitais de Luz</span>
               <input
                 type="checkbox"
                 checked={settings.enableTrails}
@@ -1828,7 +1791,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             </label>
 
             <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-[11px]">Fótons Quânticos nas Ligações</span>
+              <span className="text-[11px]">Fótons nas Conexões</span>
               <input
                 type="checkbox"
                 checked={settings.enablePulses}
@@ -1838,41 +1801,29 @@ export const GraphView: React.FC<GraphViewProps> = ({
                 className="accent-[var(--accent)] rounded cursor-pointer"
               />
             </label>
-
-            <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-[11px]">Filamentos do Horizonte de Eventos</span>
-              <input
-                type="checkbox"
-                checked={settings.enableSingularityTethers}
-                onChange={e =>
-                  setSettings(s => ({ ...s, enableSingularityTethers: e.target.checked }))
-                }
-                className="accent-[var(--accent)] rounded cursor-pointer"
-              />
-            </label>
           </div>
 
           <div className="pt-1 text-[10px] text-zinc-500 font-mono leading-relaxed">
-            💡 Dica: Segure <span className="text-zinc-300">Botão Direito</span> ou{' '}
-            <span className="text-zinc-300">Alt + Arrastar</span> para inclinar a galáxia em 3D!
+            💡 Segure <span className="text-zinc-300">Botão Direito</span> ou{' '}
+            <span className="text-zinc-300">Alt + Arrastar</span> para inclinar o ângulo 3D.
           </div>
         </div>
       )}
 
-      {/* 4. BOTTOM GALACTIC SPIRAL ARMS FILTER BAR */}
+      {/* 4. BOTTOM STELLAR CLUSTERS BAR */}
       {!isContemplationMode && (
-        <div className="absolute bottom-5 left-5 z-20 bg-[#0b0d16]/85 backdrop-blur-2xl border border-white/[0.09] rounded-2xl px-3.5 py-2 text-xs text-zinc-400 flex items-center gap-3 shadow-2xl">
+        <div className="absolute bottom-5 left-5 z-20 bg-[#080911]/80 backdrop-blur-2xl border border-white/[0.08] rounded-2xl px-3.5 py-2 text-xs text-zinc-400 flex items-center gap-3 shadow-2xl">
           <div className="flex items-center gap-1.5 font-bold text-zinc-200 font-mono text-[11px]">
             <Layers className="w-3.5 h-3.5 text-[var(--accent)]" />
-            <span>{nodes.length} ASTROS</span>
+            <span>{nodes.length} ESTRELAS</span>
           </div>
           <span className="text-zinc-700">•</span>
-          <span className="font-mono text-[11px]">{edges.length} SINAPSES</span>
+          <span className="font-mono text-[11px]">{edges.length} LIGAÇÕES</span>
           <span className="text-zinc-700">•</span>
 
           <div className="flex items-center gap-1.5">
             {allFolderShorts.slice(0, 6).map(fShort => {
-              const color = folderColorMap.get(fShort) || '#f5b041'
+              const tint = folderTintMap.get(fShort) || STELLAR_PALETTE[0]
               const isHovered = hoveredFolder === fShort
               return (
                 <button
@@ -1886,13 +1837,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer ${
                     isHovered
                       ? 'bg-white/15 text-zinc-100 scale-105 border border-white/25'
-                      : 'bg-[#121422]/90 text-zinc-400 hover:text-zinc-200 border border-white/[0.06]'
+                      : 'bg-[#0f111c]/90 text-zinc-400 hover:text-zinc-200 border border-white/[0.06]'
                   }`}
-                  title={`Iluminar braço espiral: ${fShort}`}
+                  title={`Destacar constelação: ${fShort}`}
                 >
                   <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: color }}
+                    className="w-2 h-2 rounded-full shrink-0 shadow-[0_0_6px_currentColor]"
+                    style={{ backgroundColor: tint.hex, color: tint.hex }}
                   />
                   <span className="truncate max-w-[85px]">{fShort}</span>
                 </button>
@@ -1904,13 +1855,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
       {/* 5. FLOATING CAMERA & ZOOM CONTROLS */}
       {!isContemplationMode && (
-        <div className="absolute bottom-5 right-5 z-20 flex flex-col gap-1.5 bg-[#0b0d16]/85 backdrop-blur-2xl border border-white/[0.09] rounded-2xl p-1.5 shadow-2xl">
+        <div className="absolute bottom-5 right-5 z-20 flex flex-col gap-1.5 bg-[#080911]/80 backdrop-blur-2xl border border-white/[0.08] rounded-2xl p-1.5 shadow-2xl">
           <button
             onClick={() => {
               transformRef.current.scale = Math.min(3.5, transformRef.current.scale * 1.28)
             }}
             className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-white/10 rounded-xl transition-all cursor-pointer"
-            title="Aproximar do Horizonte de Eventos (+)"
+            title="Aproximar (+)"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
@@ -1919,28 +1870,28 @@ export const GraphView: React.FC<GraphViewProps> = ({
               transformRef.current.scale = Math.max(0.25, transformRef.current.scale * 0.78)
             }}
             className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-white/10 rounded-xl transition-all cursor-pointer"
-            title="Afastar para o Halo Galáctico (-)"
+            title="Afastar (-)"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
           <button
             onClick={handleFocusActiveNote}
             className="p-2 text-zinc-400 hover:text-[var(--accent)] hover:bg-white/10 rounded-xl transition-all cursor-pointer"
-            title="Localizar Nota Ativa na Órbita"
+            title="Focar na Estrela da Nota Ativa"
           >
             <Focus className="w-4 h-4" />
           </button>
           <button
             onClick={handleResetCamera}
             className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-white/10 rounded-xl transition-all cursor-pointer"
-            title="Restaurar Horizonte de Gargantua"
+            title="Centralizar Câmera"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* 6. LAYER 1: HARDWARE-ACCELERATED WEBGL GARGANTUA SHADER CANVAS */}
+      {/* 6. LAYER 1: WEBGL HUBBLE DEEP-FIELD & GARGANTUA SHADER CANVAS */}
       <canvas
         ref={webglCanvasRef}
         className={`absolute inset-0 w-full h-full pointer-events-none transition-opacity duration-500 ${
@@ -1948,7 +1899,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
         }`}
       />
 
-      {/* 7. LAYER 2: 3D KEPLERIAN ORBITAL & INTERACTIVE SYNAPTIC VECTOR CANVAS */}
+      {/* 7. LAYER 2: ADDITIVE OPTICAL STARLIGHT & ORBITAL PARTICLES CANVAS */}
       <canvas
         ref={overlayCanvasRef}
         onMouseDown={handleMouseDown}

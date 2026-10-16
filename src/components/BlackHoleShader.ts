@@ -1,6 +1,9 @@
-// Real-Time Relativistic Black Hole (Gargantua) WebGL Shader Engine
-// Uses geodesic light-bending raymarching to render the Event Horizon,
-// Photon Sphere, Lensed Accretion Disk, Doppler Beaming, and Lensed Starfield.
+// Photorealistic Hubble / Gargantua Relativistic Black Hole WebGL Shader
+// Features:
+// - Pure Pitch-Black Event Horizon Shadow (zero milky inner fill)
+// - Razor-thin Relativistic Photon Ring
+// - High-frequency Filamentary Keplerian Accretion Ringlets with Dark Dust Lanes
+// - Multi-layered Hubble Deep-Field Pinpoint Starfield & Subtle Interstellar Nebulae
 
 const VERTEX_SHADER = `
 attribute vec2 a_position;
@@ -26,11 +29,15 @@ uniform vec3 u_accentColor; // Normalized RGB accent color
 uniform vec2 u_mouse;       // Screen-space mouse coords in pixels
 uniform float u_intensity;  // Overall disk luminosity multiplier
 
-// Fast hash & 2D/3D procedural value noise for plasma turbulence
 float hash21(vec2 p) {
   p = fract(p * vec2(234.34, 435.345));
   p += dot(p, p + 34.23);
   return fract(p.x * p.y);
+}
+
+vec2 hash22(vec2 p) {
+  float n = hash21(p);
+  return vec2(n, hash21(p + n));
 }
 
 float noise2D(vec2 p) {
@@ -48,47 +55,83 @@ float fbm(vec2 p) {
   float v = 0.0;
   float amp = 0.5;
   mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     v += amp * noise2D(p);
-    p = rot * p * 2.03 + vec2(13.1, 7.7);
+    p = rot * p * 2.07 + vec2(19.3, 11.7);
     amp *= 0.5;
   }
   return v;
 }
 
-// Procedural deep-space starfield with gravitational lensing
-vec3 renderStars(vec2 uv) {
-  vec2 grid = floor(uv * 28.0);
-  vec2 sub = fract(uv * 28.0) - 0.5;
-  float h = hash21(grid);
-  if (h > 0.93) {
-    vec2 offset = vec2(fract(h * 13.7) - 0.5, fract(h * 91.3) - 0.5) * 0.6;
-    float d = length(sub - offset);
-    float twinkle = 0.75 + 0.25 * sin(u_time * (2.0 + h * 6.0) + h * 100.0);
-    float star = smoothstep(0.09, 0.0, d) * twinkle * ((h - 0.93) / 0.07);
-    vec3 starCol = mix(vec3(0.75, 0.85, 1.0), vec3(1.0, 0.88, 0.65), fract(h * 47.0));
-    return starCol * star * 0.65;
+// Realistic Planckian Blackbody Star Color from random seed [0..1]
+vec3 blackbodyStarColor(float t) {
+  if (t < 0.25) return mix(vec3(1.0, 0.68, 0.42), vec3(1.0, 0.86, 0.68), t / 0.25); // K/M warm amber-gold
+  if (t < 0.70) return mix(vec3(1.0, 0.86, 0.68), vec3(0.98, 0.98, 1.0), (t - 0.25) / 0.45); // G/F solar ivory-white
+  return mix(vec3(0.98, 0.98, 1.0), vec3(0.72, 0.86, 1.0), (t - 0.70) / 0.30); // O/B Sirius blue-white
+}
+
+// Multi-layered Hubble Deep-Field Starfield (pinpoint optical PSF stars)
+vec3 renderHubbleStarLayer(vec2 uv, float scale, float densityThresh, float brightness) {
+  vec2 gv = uv * scale;
+  vec2 id = floor(gv);
+  vec2 f = fract(gv) - 0.5;
+
+  float h = hash21(id);
+  if (h < densityThresh) return vec3(0.0);
+
+  vec2 randOff = (hash22(id) - 0.5) * 0.72;
+  vec2 dVec = f - randOff;
+  float d = length(dVec);
+
+  float relMag = (h - densityThresh) / (1.0 - densityThresh);
+  float twinkle = 0.88 + 0.12 * sin(u_time * (1.2 + h * 3.5) + h * 90.0);
+
+  // Sharp optical pinpoint core + soft exponential PSF halo
+  float core = exp(-d * d * 260.0);
+  float halo = exp(-d * 18.0) * 0.35 * relMag;
+
+  // Subtle Hubble 4-point diffraction cross for the brightest 15% of field stars
+  float spikes = 0.0;
+  if (relMag > 0.85) {
+    float sx = exp(-abs(dVec.y) * 95.0) * exp(-abs(dVec.x) * 14.0);
+    float sy = exp(-abs(dVec.x) * 95.0) * exp(-abs(dVec.y) * 14.0);
+    spikes = (sx + sy) * 0.45 * (relMag - 0.85) * 6.0;
   }
-  return vec3(0.0);
+
+  vec3 col = blackbodyStarColor(fract(h * 53.7));
+  return col * (core + halo + spikes) * relMag * brightness * twinkle;
+}
+
+vec3 renderHubbleDeepSpace(vec2 lensedUV) {
+  // Deepest cosmic void
+  vec3 space = vec3(0.006, 0.008, 0.014);
+
+  // Hubble Interstellar Nebulae (Carina / Cygnus inspired subtle gas + dark dust lanes)
+  float n1 = fbm(lensedUV * 1.35 + vec2(2.4, -1.1));
+  float n2 = fbm(lensedUV * 2.8 + vec2(-n1 * 0.9, n1 * 0.7));
+  float darkDust = smoothstep(0.38, 0.68, fbm(lensedUV * 3.4 + vec2(8.1, 3.7)));
+
+  vec3 warmNebula = vec3(0.16, 0.07, 0.035) * pow(n1, 2.2);
+  vec3 coolNebula = vec3(0.03, 0.075, 0.15) * pow(n2, 2.0);
+  vec3 accentMist = u_accentColor * 0.035 * pow(n1 * n2, 1.6);
+
+  space += (warmNebula + coolNebula + accentMist) * (1.0 - darkDust * 0.75);
+
+  // 3 octaves of pinpoint Hubble stars (faint background dust -> medium stars -> bright field stars)
+  space += renderHubbleStarLayer(lensedUV, 95.0, 0.82, 0.42);
+  space += renderHubbleStarLayer(lensedUV + vec2(17.3, 9.1), 46.0, 0.90, 0.85);
+  space += renderHubbleStarLayer(lensedUV + vec2(41.7, 23.4), 21.0, 0.955, 1.35);
+
+  return space;
 }
 
 void main() {
-  // Pixel coordinates with y pointing up
   vec2 fragCoord = vec2(v_uv.x * u_resolution.x, (1.0 - v_uv.y) * u_resolution.y);
 
-  // Normalized coordinate relative to Black Hole center, scaled by zoom
   float baseUnit = min(u_resolution.x, u_resolution.y) * 0.42 * u_scale;
   vec2 p = (fragCoord - u_bhCenter) / max(1.0, baseUnit);
 
-  // Subtle spacetime ripple near mouse cursor
-  vec2 mouseRel = (fragCoord - u_mouse) / max(1.0, baseUnit);
-  float mouseDist = length(mouseRel);
-  if (mouseDist < 0.8) {
-    float ripple = sin(mouseDist * 28.0 - u_time * 5.0) * exp(-mouseDist * 5.0) * 0.006;
-    p += normalize(mouseRel + 0.0001) * ripple;
-  }
-
-  // Camera setup looking at the origin (0, 0, 0)
+  // Camera setup looking at the singularity (0, 0, 0)
   float camDist = 3.8;
   float tilt = clamp(u_tilt, 0.12, 1.35);
   vec3 ro = vec3(0.0, sin(tilt) * camDist, -cos(tilt) * camDist);
@@ -97,28 +140,28 @@ void main() {
   vec3 right = vec3(1.0, 0.0, 0.0);
   vec3 up = cross(right, forward);
 
-  // Slight roll for cinematic framing
+  // Subtle cinematic angle roll (-8 degrees)
   float roll = -0.14;
   float cr = cos(roll), sr = sin(roll);
   vec2 pr = mat2(cr, -sr, sr, cr) * p;
 
   vec3 rd = normalize(forward * 1.65 + right * pr.x + up * pr.y);
 
-  // Schwarzschild & Accretion parameters
-  float rs = 0.24;               // Event horizon radius
-  float diskInner = 0.36;        // ISCO (Innermost Stable Circular Orbit)
-  float diskOuter = 2.45;        // Outer accretion nebula edge
+  // Schwarzschild & Thin Relativistic Accretion Disk parameters
+  float rs = 0.235;              // Event horizon shadow radius
+  float diskInner = 0.35;        // Innermost Stable Circular Orbit (ISCO)
+  float diskOuter = 2.40;        // Outer filamentous edge
 
   vec3 pos = ro;
   vec3 dir = rd;
 
-  vec3 accumColor = vec3(0.0);
+  vec3 accumDisk = vec3(0.0);
   float transmittance = 1.0;
   bool hitHorizon = false;
   float minRadius = 100.0;
 
-  // Geodesic Raymarching (34 steps with adaptive step size)
-  for (int i = 0; i < 34; i++) {
+  // Geodesic Raymarching (38 steps for crisp thin-plane intersections)
+  for (int i = 0; i < 38; i++) {
     float r = length(pos);
     minRadius = min(minRadius, r);
 
@@ -127,70 +170,73 @@ void main() {
       break;
     }
 
-    // Relativistic gravitational deflection: F ~ -1.5 * rs * h^2 / r^5
+    // Relativistic light bending around the Schwarzschild metric
     float r2 = r * r;
-    vec3 gravity = -pos * (0.105 / (r2 * r + 0.002));
+    vec3 gravity = -pos * (0.102 / (r2 * r + 0.0015));
 
-    // Adaptive step size: finer near the photon sphere & equatorial plane
     float planeDist = abs(pos.y);
-    float dt = clamp(r * 0.075, 0.022, 0.22);
-    dt = min(dt, max(0.02, planeDist * 0.55));
+    float dt = clamp(r * 0.07, 0.018, 0.20);
+    dt = min(dt, max(0.014, planeDist * 0.48));
 
     vec3 nextPos = pos + dir * dt + 0.5 * gravity * dt * dt;
     dir = normalize(dir + gravity * dt);
 
-    // Check equatorial accretion slab (|y| < diskThickness) or plane crossing
-    float diskThickness = 0.055 + 0.04 * smoothstep(diskInner, diskOuter, r);
-    if (abs(nextPos.y) < diskThickness || (pos.y * nextPos.y < 0.0)) {
-      // Interpolate exact crossing point
-      vec3 hitPos = mix(pos, nextPos, 0.5);
+    // Check intersection with the thin equatorial accretion disk plane (y = 0)
+    float diskHalfH = 0.028 + 0.022 * smoothstep(diskInner, diskOuter, r);
+    if (abs(nextPos.y) < diskHalfH || (pos.y * nextPos.y < 0.0)) {
+      // Exact linear interpolation of the plane crossing for razor-sharp ring detail
+      float crossT = clamp(abs(pos.y) / (abs(pos.y - nextPos.y) + 0.0001), 0.0, 1.0);
+      vec3 hitPos = mix(pos, nextPos, crossT);
       float rad = length(hitPos.xz);
 
       if (rad > diskInner && rad < diskOuter) {
-        // Normalized radial coordinate [0..1]
         float normR = (rad - diskInner) / (diskOuter - diskInner);
 
-        // Differential Keplerian rotation: inner rings spin faster
+        // Keplerian differential angular speed (inner rings orbit much faster)
         float angle = atan(hitPos.z, hitPos.x) + u_rotation;
-        float speed = 1.15 / (pow(rad, 0.85) + 0.15);
-        float spiralAngle = angle + log(rad * 3.5) * 4.2 - u_time * speed;
+        float speed = 1.05 / (pow(rad, 0.9) + 0.14);
 
-        // Multi-scale logarithmic spiral plasma turbulence
-        vec2 noiseUV = vec2(spiralAngle * 1.4, rad * 4.5 - u_time * 0.35);
-        float turb1 = fbm(noiseUV);
-        float turb2 = fbm(vec2(angle * 3.0 - u_time * speed * 0.7, rad * 9.0));
-        float rings = 0.65 + 0.35 * sin(rad * 28.0 - turb1 * 5.0 + u_time * 1.2);
-        float density = turb1 * 0.65 + turb2 * 0.35;
-        density *= rings;
+        // High-frequency sheared spiral filaments (like real astrophoto plasma streaks)
+        float shearAngle = angle + log(rad * 3.2) * 9.5 - u_time * speed;
+        float streakNoise = fbm(vec2(shearAngle * 1.8, rad * 14.0));
+        float fineStreaks = noise2D(vec2(shearAngle * 5.5, rad * 38.0));
 
-        // Radial & vertical falloff
-        float innerFade = smoothstep(diskInner, diskInner + 0.11, rad);
-        float outerFade = pow(1.0 - smoothstep(0.15, 1.0, normR), 1.85);
-        float vertFade = exp(-abs(hitPos.y) / (diskThickness * 0.48));
+        // Concentric Keplerian ringlets & dark dust gaps (prevents flat white blobs!)
+        float ringlets1 = 0.5 + 0.5 * sin(rad * 78.0 + streakNoise * 4.5);
+        float ringlets2 = 0.5 + 0.5 * sin(rad * 195.0 - fineStreaks * 3.2);
+        float dustGaps = smoothstep(0.22, 0.78, streakNoise * 0.65 + ringlets1 * 0.35);
 
-        float sampleAlpha = density * innerFade * outerFade * vertFade * 0.52;
+        float filamentStructure = dustGaps * (0.45 + 0.55 * ringlets1 * ringlets2) * (0.6 + 0.4 * fineStreaks);
 
-        if (sampleAlpha > 0.002) {
-          // Relativistic Doppler Beaming (approaching side brighter & warmer/bluer)
+        // Smooth inner ISCO rim and outer exponential falloff
+        float innerEdge = smoothstep(diskInner, diskInner + 0.055, rad);
+        float outerEdge = pow(1.0 - smoothstep(0.08, 1.0, normR), 2.35);
+        float vertProfile = exp(-abs(hitPos.y) / (diskHalfH * 0.45));
+
+        float density = filamentStructure * innerEdge * outerEdge * vertProfile * 0.36;
+
+        if (density > 0.001) {
+          // Subtle, realistic relativistic Doppler beaming (never blows out to flat grey-white)
           vec3 tangent = normalize(vec3(-hitPos.z, 0.0, hitPos.x));
-          float doppler = dot(tangent, -rd); // > 0 when approaching viewer
-          float beaming = pow(clamp(1.0 + doppler * 0.48, 0.35, 1.75), 2.4);
+          float doppler = dot(tangent, -rd);
+          float beaming = clamp(1.0 + doppler * 0.28, 0.62, 1.32);
 
-          // Temperature color gradient: incandescent core -> gold/accent -> deep cosmic violet/crimson
-          vec3 hotCore = vec3(1.0, 0.95, 0.82);
-          vec3 midTone = mix(vec3(0.95, 0.65, 0.22), u_accentColor, 0.45);
-          vec3 outerCool = mix(vec3(0.45, 0.14, 0.38), u_accentColor * 0.4, 0.5);
+          // Authentic Blackbody Temperature Gradient:
+          // Warm ivory inner rim -> Golden Amber -> Burnt Copper / Deep Rust outer dust
+          vec3 innerHot = vec3(1.0, 0.91, 0.72);
+          vec3 midGold = mix(vec3(0.92, 0.56, 0.20), u_accentColor, 0.28);
+          vec3 outerCopper = vec3(0.38, 0.13, 0.05);
 
-          vec3 plasmaCol = mix(hotCore, midTone, smoothstep(0.0, 0.38, normR));
-          plasmaCol = mix(plasmaCol, outerCool, smoothstep(0.35, 0.95, normR));
+          vec3 col = mix(innerHot, midGold, smoothstep(0.0, 0.26, normR));
+          col = mix(col, outerCopper, smoothstep(0.24, 0.88, normR));
 
-          // Shift hue slightly with Doppler shift
-          plasmaCol = mix(plasmaCol * vec3(0.9, 0.6, 0.5), plasmaCol * vec3(1.08, 1.04, 1.15), clamp(doppler * 0.5 + 0.5, 0.0, 1.0));
+          // Carve dark dust absorption veins inside the disk for photographic contrast
+          col *= mix(0.25, 1.15, filamentStructure);
 
-          vec3 emission = plasmaCol * beaming * (1.6 + (1.0 - normR) * 2.2) * u_intensity;
+          vec3 emission = col * beaming * (1.25 + (1.0 - normR) * 1.1) * u_intensity;
 
-          accumColor += transmittance * emission * sampleAlpha;
-          transmittance *= (1.0 - clamp(sampleAlpha * 0.85, 0.0, 0.92));
+          accumDisk += transmittance * emission * density;
+          transmittance *= (1.0 - clamp(density * 0.82, 0.0, 0.88));
           if (transmittance < 0.03) break;
         }
       }
@@ -200,35 +246,28 @@ void main() {
     if (r > 4.6 && dot(pos, dir) > 0.0) break;
   }
 
-  // Razor-sharp Photon Ring (Einstein ring grazing the horizon)
-  float photonRing = exp(-abs(minRadius - (rs * 1.18)) * 36.0);
-  float innerGlow = exp(-max(0.0, minRadius - rs) * 7.5);
-  vec3 ringColor = mix(vec3(1.0, 0.86, 0.58), u_accentColor, 0.35);
-  accumColor += transmittance * ringColor * (photonRing * 1.45 + innerGlow * 0.28) * u_intensity;
+  vec3 finalColor = vec3(0.0);
 
-  // Deep space background & lensed stars (only for rays that escaped the Event Horizon)
-  vec3 bg = vec3(0.024, 0.026, 0.042); // #06070b deep cosmos
-  if (!hitHorizon) {
-    vec2 lensedUV = dir.xy / (abs(dir.z) + 0.6) + vec2(u_rotation * 0.1, 0.0);
-    bg += renderStars(lensedUV) * transmittance;
-
-    // Subtle cosmic nebula glow
-    float neb = fbm(lensedUV * 1.8 + vec2(0.0, u_time * 0.02));
-    bg += u_accentColor * neb * 0.035 * transmittance;
+  if (hitHorizon) {
+    // CRITICAL FIX: Inside the Event Horizon shadow, background is 100% PITCH BLACK (vec3(0.0))!
+    // Only foreground accretion disk plasma that crossed in front of the black hole is visible.
+    finalColor = accumDisk;
   } else {
-    // Pure pitch-black singularity shadow inside the Event Horizon (behind foreground disk)
-    bg = vec3(0.01, 0.01, 0.016) * (1.0 - transmittance);
+    // Ray escaped into deep space: sample lensed Hubble background + razor-thin Photon Ring
+    vec2 lensedUV = dir.xy / (abs(dir.z) + 0.55) + vec2(u_rotation * 0.06, 0.0);
+    vec3 deepSpace = renderHubbleDeepSpace(lensedUV);
+
+    // Razor-thin golden Photon Ring ONLY right at the grazing edge of the shadow
+    float distFromShadow = max(0.0, minRadius - rs);
+    float photonRing = exp(-distFromShadow * 68.0) * 1.15 + exp(-distFromShadow * 18.0) * 0.16;
+    vec3 photonCol = vec3(1.0, 0.84, 0.52) * photonRing * u_intensity;
+
+    finalColor = accumDisk + transmittance * (deepSpace + photonCol);
   }
 
-  vec3 finalColor = bg + accumColor;
-
-  // Cinematic ACES-inspired tone mapping for rich dynamic range without harsh clipping
-  finalColor = (finalColor * (2.51 * finalColor + 0.03)) / (finalColor * (2.43 * finalColor + 0.59) + 0.14);
-
-  // Subtle vignette
-  vec2 vigUV = v_uv * (1.0 - v_uv.yx);
-  float vig = pow(clamp(vigUV.x * vigUV.y * 15.0, 0.0, 1.0), 0.22);
-  finalColor *= mix(0.65, 1.0, vig);
+  // Smooth photographic filmic tone mapping (preserves rich golden highlights without washing out)
+  finalColor = 1.0 - exp(-finalColor * 1.15);
+  finalColor = pow(clamp(finalColor, 0.0, 1.0), vec3(0.96));
 
   gl_FragColor = vec4(finalColor, 1.0);
 }
@@ -322,8 +361,7 @@ export function createBlackHoleRenderer(canvas: HTMLCanvasElement): BlackHoleRen
       mouseY,
       intensity
     }) {
-      // Render shader at slightly scaled internal resolution (0.75x DPR) for silky 60FPS on all GPUs
-      const renderScale = Math.min(1.25, dpr * 0.85)
+      const renderScale = Math.min(1.35, dpr * 0.9)
       const targetW = Math.max(1, Math.floor(width * renderScale))
       const targetH = Math.max(1, Math.floor(height * renderScale))
 
