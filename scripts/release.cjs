@@ -63,24 +63,14 @@ async function publish() {
         name: `Pyrita ${tag}`,
         body: `### Novidades no Pyrita ${tag}:
 
-#### 🌌 Grafo de Conhecimento Cósmico e Interativo:
-- **Resolução definitiva do clique**: Calibração exata de viewport, Retina/DPR e hit-test amplo. Clicar em qualquer nó agora abre a nota instantaneamente.
-- **Rótulos Limpos e Sem Poluição**: O texto não fica mais permanentemente sobreposto. Rótulos refinados aparecem apenas para o nó ativo, nó em foco e conexões diretas.
-- **Card HUD Flutuante**: Ao passar o cursor sobre um nó, um card moderno exibe o título, pasta, tags, conexões e pré-visualização do conteúdo.
-- **Modos Constelação e Órbita**: Navegue pelo acervo de forma orgânica (com atração de galáxias por pasta) ou em anéis concêntricos gravitacionais.
-- **Auras Celestiais & Fluxo de Partículas**: Conexões com gradientes luminosos e partículas em movimento contínuo.
-
-#### 🤖 Configuração Segura de Provedores e Modelos LLM:
-- **Painel Provedor & Modelo**: Suporte nativo para OpenAI, Gemini, DeepSeek e OpenRouter.
-- **Campo de Modelo Livre**: Digite qualquer modelo atualizado com botão rápido para limpar.
-- **Criptografia de Hardware Segura**: Chaves protegidas localmente no Windows DPAPI (\`safeStorage\`) sem exposição no DOM ou localStorage.
-- **Chat Conectado**: Respostas em tempo real com contexto automático da nota ativa e geração de componentes concêntricos (KPI, Timeline, Comparativo, Cards).
-- **Modelo Multimodal**: Alternador com selo de processamento nativo ativo.
-
-#### 📝 Editor, Vault & Interface:
-- Correção de quebra de linha em listas e checklists com Enter.
-- Correção no salvamento e persistência de imagens coladas.
-- Popover dropdown minimalista para ajustes visuais.`
+#### 🗺️ Reinvenção Completa do Grafo de Conhecimento (Adeus padrão Obsidian & Plástico Brilhante):
+- **Acabamento Dark Matte Architectural**: As esferas com reflexos e brilho plástico foram totalmente eliminadas em favor de superfícies foscas em ardósia com micro-bordas sutis (\`1px solid rgba(255,255,255,0.12)\`) e chips planos.
+- **Modo 1: Atlas Topográfico (Ilhas & Continentes)**: As notas agrupam-se por pasta formando territórios e arquipélagos com contornos poligonais suaves (*Convex Hull* dinâmico), relevo em camadas e identificador de setor (\`// SETOR\`).
+- **Modo 2: Circuito Neural (Blueprint Cyber-Cartography)**: Diagrama arquitetural de precisão com malha técnica milimétrica, nós como micro-processadores e trilhas de dados ortogonais (em ângulos retos) com pontos de junção.
+- **Modo 3: Radar Ecosfera (Gravitação Concêntrica)**: Anéis concêntricos de profundidade (\`RNG 01\`, \`RNG 02\`) com a nota ativa no epicentro e feixe de varredura rotativo que mapeia a distância de cada conexão.
+- **Cápsulas Arquiteturais com Level-of-Detail (LOD)**: Notas exibidas como cápsulas elegantes com título legível, ponto indicador da pasta e contador numérico discreto. Ao afastar o zoom, recolhem-se para micro-chips geométricos limpos (\`◇\`).
+- **Inspector HUD Arquitetural no Topo Direito**: Painel lateral com rota de navegação (\`VAULT // PASTA\`), coordenadas cartográficas (\`X/Y\`), resumo do conteúdo e pílulas clicáveis das notas conectadas para navegação instantânea.
+- **Clique Confiável & Sem Poluição**: O clique responde imediatamente em qualquer resolução/DPR e os textos não poluem mais a tela o tempo todo.`
       })
     });
     const updated = await patchRes.json();
