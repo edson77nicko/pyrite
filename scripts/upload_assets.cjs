@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const pkg = require('../package.json');
 
 function getGitHubToken() {
   try {
@@ -53,8 +54,11 @@ async function run() {
     process.exit(1);
   }
 
-  // Find release v1.0.3
-  const relRes = await fetch('https://api.github.com/repos/edson77nicko/pyrite/releases/tags/v1.0.3', {
+  const version = pkg.version;
+  const tag = `v${version}`;
+
+  // Find release
+  const relRes = await fetch(`https://api.github.com/repos/edson77nicko/pyrite/releases/tags/${tag}`, {
     headers: {
       Authorization: `token ${token}`,
       'User-Agent': 'Pyrita-Uploader'
@@ -62,7 +66,11 @@ async function run() {
   });
 
   const rel = await relRes.json();
-  console.log(`Release v1.0.3 ID: ${rel.id}`);
+  if (!rel || !rel.id) {
+    console.error(`Release ${tag} not found!`, rel);
+    process.exit(1);
+  }
+  console.log(`Release ${tag} ID: ${rel.id}`);
 
   // Existing assets
   const existingNames = (rel.assets || []).map(a => a.name);
@@ -70,6 +78,8 @@ async function run() {
 
   // Files to upload
   const releaseDir = path.join(__dirname, '..', 'release');
+  const exeCandidate = path.join(releaseDir, `Pyrita Setup ${version}.exe`);
+
   const filesToUpload = [
     {
       file: path.join(releaseDir, 'latest.yml'),
@@ -77,8 +87,8 @@ async function run() {
       type: 'text/yaml'
     },
     {
-      file: path.join(releaseDir, 'Pyrita Setup 1.0.3.exe'),
-      name: 'Pyrita-Setup-1.0.3.exe',
+      file: exeCandidate,
+      name: `Pyrita-Setup-${version}.exe`,
       type: 'application/vnd.microsoft.portable-executable'
     }
   ];
@@ -111,7 +121,9 @@ async function run() {
   });
   const finalData = await finalCheck.json();
   console.log('\nFinal release assets:');
-  finalData.assets.forEach(a => console.log(` - ${a.name} (${a.size} bytes, state: ${a.state})`));
+  if (finalData.assets) {
+    finalData.assets.forEach(a => console.log(` - ${a.name} (${a.size} bytes, state: ${a.state})`));
+  }
 }
 
 run().catch(console.error);

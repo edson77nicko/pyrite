@@ -1,4 +1,5 @@
 const { execSync } = require('child_process');
+const pkg = require('../package.json');
 
 function getGitHubToken() {
   try {
@@ -21,11 +22,15 @@ async function publish() {
     process.exit(1);
   }
 
-  console.log('GitHub token found! Running electron-builder publish...');
+  const version = pkg.version;
+  const tag = `v${version}`;
+
+  console.log(`GitHub token found! Preparing release for ${tag}...`);
   process.env.GH_TOKEN = token;
   process.env.GITHUB_TOKEN = token;
 
   // 1. Build & Publish with electron-builder
+  console.log('Running build and electron-builder...');
   execSync('npm run build', { stdio: 'inherit', env: process.env });
   execSync('npx electron-builder --win --x64 -p always', { stdio: 'inherit', env: process.env });
 
@@ -41,10 +46,11 @@ async function publish() {
   });
 
   const releases = await listRes.json();
-  const rel103 = releases.find(r => r.tag_name === 'v1.0.3');
-  if (rel103) {
-    console.log(`Found release v1.0.3 (ID: ${rel103.id}, current draft: ${rel103.draft}). Publishing...`);
-    const patchRes = await fetch(`https://api.github.com/repos/edson77nicko/pyrite/releases/${rel103.id}`, {
+  const rel = Array.isArray(releases) ? releases.find(r => r.tag_name === tag) : null;
+
+  if (rel) {
+    console.log(`Found release ${tag} (ID: ${rel.id}, current draft: ${rel.draft}). Publishing...`);
+    const patchRes = await fetch(`https://api.github.com/repos/edson77nicko/pyrite/releases/${rel.id}`, {
       method: 'PATCH',
       headers: {
         Authorization: `token ${token}`,
@@ -54,14 +60,33 @@ async function publish() {
       },
       body: JSON.stringify({
         draft: false,
-        name: 'Pyrita v1.0.3',
-        body: '### Novidades na versão 1.0.3:\n- **Gerenciador de Cofres (Vault Switcher)** fiel ao Obsidian com descoberta automática de cofres locais\n- **Barra lateral com largura ajustável por mouse** e indentação compacta de subpastas (sem perda de visão)\n- **Compressão vertical de notas e pastas** (~35% mais conteúdo visível)\n- **Botão Recolher Todas as Pastas** na barra de ferramentas\n- **Sumário Flutuante Direto na Página (Floating Outline Rail)** com indicador na cor do projeto (Ouro Queimado), pílulas de pré-visualização ao passar o mouse e rolagem suave ao clicar'
+        name: `Pyrita ${tag}`,
+        body: `### Novidades no Pyrita ${tag}:
+
+#### 🌌 Grafo de Conhecimento Cósmico e Interativo:
+- **Resolução definitiva do clique**: Calibração exata de viewport, Retina/DPR e hit-test amplo. Clicar em qualquer nó agora abre a nota instantaneamente.
+- **Rótulos Limpos e Sem Poluição**: O texto não fica mais permanentemente sobreposto. Rótulos refinados aparecem apenas para o nó ativo, nó em foco e conexões diretas.
+- **Card HUD Flutuante**: Ao passar o cursor sobre um nó, um card moderno exibe o título, pasta, tags, conexões e pré-visualização do conteúdo.
+- **Modos Constelação e Órbita**: Navegue pelo acervo de forma orgânica (com atração de galáxias por pasta) ou em anéis concêntricos gravitacionais.
+- **Auras Celestiais & Fluxo de Partículas**: Conexões com gradientes luminosos e partículas em movimento contínuo.
+
+#### 🤖 Configuração Segura de Provedores e Modelos LLM:
+- **Painel Provedor & Modelo**: Suporte nativo para OpenAI, Gemini, DeepSeek e OpenRouter.
+- **Campo de Modelo Livre**: Digite qualquer modelo atualizado com botão rápido para limpar.
+- **Criptografia de Hardware Segura**: Chaves protegidas localmente no Windows DPAPI (\`safeStorage\`) sem exposição no DOM ou localStorage.
+- **Chat Conectado**: Respostas em tempo real com contexto automático da nota ativa e geração de componentes concêntricos (KPI, Timeline, Comparativo, Cards).
+- **Modelo Multimodal**: Alternador com selo de processamento nativo ativo.
+
+#### 📝 Editor, Vault & Interface:
+- Correção de quebra de linha em listas e checklists com Enter.
+- Correção no salvamento e persistência de imagens coladas.
+- Popover dropdown minimalista para ajustes visuais.`
       })
     });
     const updated = await patchRes.json();
     console.log(`Release status: ${patchRes.status}, draft: ${updated.draft}, tag: ${updated.tag_name}`);
   } else {
-    console.warn('Release v1.0.3 not found in list, checking latest endpoint...');
+    console.warn(`Release ${tag} not found in list, checking latest endpoint...`);
   }
 
   // 3. Verify public release
