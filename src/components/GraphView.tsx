@@ -79,14 +79,6 @@ interface SimNode {
   rgb: [number, number, number]
 }
 
-interface QuantumPacket {
-  sourceId: string
-  targetId: string
-  progress: number
-  speed: number
-  arcHeight: number
-}
-
 interface AccretionSpark {
   radius: number
   angle: number
@@ -220,6 +212,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const [edges, setEdges] = useState<LinkEdge[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [pinnedPopoverNodeId, setPinnedPopoverNodeId] = useState<string | null>(null)
   const [hoveredFolder, setHoveredFolder] = useState<string | null>(null)
   const [isLocalMode, setIsLocalMode] = useState(false)
   const [layoutMode, setLayoutMode] = useState<GraphLayoutMode>('constellation')
@@ -233,7 +227,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
     diskTilt: number
     accretionIntensity: number
     enableTrails: boolean
-    enablePulses: boolean
     clusterStrength: number
   }>({
     repulsion: 1800,
@@ -247,7 +240,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
     diskTilt: 0.34,
     accretionIntensity: 1.05,
     enableTrails: true,
-    enablePulses: true,
     clusterStrength: 0.05
   })
 
@@ -267,7 +259,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const simAlphaRef = useRef<number>(1.0)
   const radarAngleRef = useRef<number>(0)
 
-  const packetsRef = useRef<QuantumPacket[]>([])
   const sparksRef = useRef<AccretionSpark[]>([])
   const ripplesRef = useRef<SpacetimeRipple[]>([])
 
@@ -465,29 +456,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
     simAlphaRef.current = 1.0
   }, [filteredNotes, filteredEdges, folderTintMap])
 
-  // Initialize Photons along Synaptic Filaments
-  useEffect(() => {
-    if (!settings.enablePulses) {
-      packetsRef.current = []
-      return
-    }
-
-    const packets: QuantumPacket[] = []
-    const maxPackets = Math.min(80, filteredEdges.length * 2)
-    for (let i = 0; i < maxPackets; i++) {
-      const edge = filteredEdges[i % filteredEdges.length]
-      if (!edge) continue
-      packets.push({
-        sourceId: edge.source,
-        targetId: edge.target,
-        progress: Math.random(),
-        speed: 0.003 + Math.random() * 0.0045,
-        arcHeight: (i % 2 === 0 ? 1 : -1) * (0.04 + (i % 5) * 0.018)
-      })
-    }
-    packetsRef.current = packets
-  }, [filteredEdges, settings.enablePulses])
-
   // Initialize WebGL Black Hole Renderer
   useEffect(() => {
     const glCanvas = webglCanvasRef.current
@@ -660,7 +628,12 @@ export const GraphView: React.FC<GraphViewProps> = ({
       ctx.scale(dpr, dpr)
       ctx.clearRect(0, 0, width, height)
 
-      const focalNodeId = hoveredNodeId || contemplatedNodeId || currentNoteId
+      const focalNodeId =
+        pinnedPopoverNodeId ||
+        hoveredNodeId ||
+        selectedNodeId ||
+        (isContemplationMode ? contemplatedNodeId : null)
+
       const activeNeighborIds = new Set<string>()
       if (focalNodeId) {
         activeNeighborIds.add(focalNodeId)
@@ -675,7 +648,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
       // =========================================================================
       if (layoutMode === 'constellation') {
         if (!bhRendererRef.current) {
-          ctx.fillStyle = '#030408'
+          ctx.fillStyle = '#010103'
           ctx.fillRect(0, 0, width, height)
         }
 
@@ -803,44 +776,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
           ctx.stroke()
         }
 
-        // Render Travelling Starlight Photons along Active Connections
-        if (settings.enablePulses && packetsRef.current.length > 0) {
-          for (const pkt of packetsRef.current) {
-            const s = nodeMap.get(pkt.sourceId)
-            const t = nodeMap.get(pkt.targetId)
-            if (!s || !t) continue
-
-            const isNearFocal =
-              activeNeighborIds.has(pkt.sourceId) || activeNeighborIds.has(pkt.targetId)
-            if (hoveredNodeId && !isNearFocal) continue
-
-            pkt.progress = (pkt.progress + pkt.speed * (isNearFocal ? 1.25 : 0.7)) % 1.0
-            const u = pkt.progress
-            const invU = 1 - u
-
-            const sx3 = Math.cos(s.orbitAngle) * s.orbitRadius
-            const sz3 = Math.sin(s.orbitAngle) * s.orbitRadius
-            const tx3 = Math.cos(t.orbitAngle) * t.orbitRadius
-            const tz3 = Math.sin(t.orbitAngle) * t.orbitRadius
-
-            const midX3 = (sx3 + tx3) * 0.44
-            const midZ3 = (sz3 + tz3) * 0.44
-            const midY3 = (s.orbitElevation + t.orbitElevation) * 0.5 + pkt.arcHeight
-
-            const midProj = project3D(midX3, midY3, midZ3, centerX, centerY, baseUnit, currentTilt)
-
-            const px = invU * invU * s.screenX + 2 * invU * u * midProj.screenX + u * u * t.screenX
-            const py = invU * invU * s.screenY + 2 * invU * u * midProj.screenY + u * u * t.screenY
-
-            ctx.fillStyle = isNearFocal
-              ? 'rgba(255, 255, 255, 0.9)'
-              : 'rgba(255, 235, 200, 0.35)'
-            ctx.beginPath()
-            ctx.arc(px, py, isNearFocal ? 1.6 : 0.9, 0, Math.PI * 2)
-            ctx.fill()
-          }
-        }
-
         // Depth-sort stars back-to-front
         const sortedNodes = [...nodes].sort((a, b) => b.depthZ - a.depthZ)
 
@@ -850,10 +785,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
           const distFromBhCenter = Math.hypot(node.screenX - centerX, node.screenY - centerY)
           if (node.behindHorizon && distFromBhCenter < shadowScreenRadius * 0.92) continue
 
-          const isCurrent = node.id === currentNoteId
-          const isHovered = node.id === hoveredNodeId
-          const isContemplated = node.id === contemplatedNodeId
-          const isNeighbor = activeNeighborIds.has(node.id)
+          const isFocal = node.id === focalNodeId
+          const isNeighbor = focalNodeId ? activeNeighborIds.has(node.id) : false
           const isFolderMatch = hoveredFolder ? node.folderShort === hoveredFolder : true
           const isSearchMatch = searchQuery
             ? node.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -867,8 +800,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
             starAlpha = isSearchMatch ? 1.0 : 0.1
           } else if (hoveredFolder) {
             starAlpha = isFolderMatch ? 1.0 : 0.12
-          } else if (hoveredNodeId) {
-            starAlpha = isHovered || isNeighbor ? 1.0 : 0.18
+          } else if (focalNodeId) {
+            starAlpha = isFocal || isNeighbor ? 1.0 : 0.18
           } else if (node.behindHorizon) {
             starAlpha = 0.65 * twinkle
           }
@@ -877,8 +810,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           // 1. Delicate Relativistic Orbital Streak (Subtle light wake along the ellipse)
           if (settings.enableTrails && !isPaused && starAlpha > 0.2) {
-            const steps = isHovered || isCurrent ? 8 : 4
-            const arcSpan = (isHovered || isCurrent ? 0.18 : 0.08) * Math.min(1.4, settings.orbitalSpeed)
+            const steps = isFocal ? 8 : 4
+            const arcSpan = (isFocal ? 0.18 : 0.08) * Math.min(1.4, settings.orbitalSpeed)
 
             ctx.beginPath()
             for (let s = 0; s <= steps; s++) {
@@ -894,9 +827,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
               else ctx.lineTo(tp.screenX, tp.screenY)
             }
             ctx.strokeStyle = `rgba(${nr}, ${ng}, ${nb}, ${
-              starAlpha * (isHovered || isCurrent ? 0.38 : 0.14)
+              starAlpha * (isFocal ? 0.38 : 0.14)
             })`
-            ctx.lineWidth = isHovered || isCurrent ? 1.1 : 0.6
+            ctx.lineWidth = isFocal ? 1.1 : 0.6
             ctx.lineCap = 'round'
             ctx.stroke()
           }
@@ -906,50 +839,39 @@ export const GraphView: React.FC<GraphViewProps> = ({
             node.radius *
             node.projectedScale *
             settings.nodeSize *
-            (isHovered || isContemplated ? 1.45 : isCurrent ? 1.25 : 1.0)
+            (isFocal ? 1.45 : 1.0)
 
-          const isFocalStar = isHovered || isCurrent || isContemplated || isSearchMatch
-          const hasSpikes = isFocalStar || node.connections >= 2 || (hoveredNodeId !== null && isNeighbor)
-          const spikeLen = coreR * (isHovered || isContemplated ? 6.5 : isCurrent ? 5.2 : 3.6)
+          const isFocalStar = isFocal || isNeighbor
+          const hasSpikes = isFocalStar || (focalNodeId === null && node.connections >= 2) || isSearchMatch
+          const spikeLen = coreR * (isFocal ? 6.5 : isNeighbor ? 4.8 : 3.6)
 
           drawHubbleStar(ctx, node.screenX, node.screenY, coreR, node.rgb, starAlpha, {
             hasSpikes,
             spikeLength: spikeLen,
-            isFocused: isFocalStar,
-            isCurrent
+            isFocused: isFocal,
+            isCurrent: false
           })
         }
 
         ctx.restore() // End Additive 'lighter' Blending
 
-        // 3. Contextual Floating Glass Labels (Only for hovered, active, or searched stars)
-        const isZoomedClose = transform.scale > 1.5
+        // 3. Contextual Floating Glass Labels (ONLY for focal note and its connected group, or search match)
         ctx.save()
         for (const node of sortedNodes) {
-          const isCurrent = node.id === currentNoteId
-          const isHovered = node.id === hoveredNodeId
-          const isContemplated = node.id === contemplatedNodeId
+          const isFocal = node.id === focalNodeId
           const isNeighbor = focalNodeId ? activeNeighborIds.has(node.id) : false
           const isSearchMatch = searchQuery
             ? node.title.toLowerCase().includes(searchQuery.toLowerCase())
             : false
 
-          const showLabel =
-            isHovered ||
-            isContemplated ||
-            isCurrent ||
-            (hoveredNodeId && isNeighbor) ||
-            (contemplatedNodeId && isNeighbor) ||
-            isSearchMatch ||
-            (isZoomedClose && node.connections >= 3)
+          const showLabel = isSearchMatch || (focalNodeId !== null && (isFocal || isNeighbor))
 
           if (!showLabel) continue
 
           const labelText = node.title
-          ctx.font =
-            isHovered || isCurrent || isContemplated
-              ? '600 11px "Inter", system-ui, sans-serif'
-              : '500 10px "Inter", system-ui, sans-serif'
+          ctx.font = isFocal
+            ? '600 11px "Inter", system-ui, sans-serif'
+            : '500 10px "Inter", system-ui, sans-serif'
 
           const textMetrics = ctx.measureText(labelText)
           const pillW = textMetrics.width + 18
@@ -960,24 +882,20 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           ctx.beginPath()
           ctx.roundRect(pillX, pillY, pillW, pillH, 6)
-          ctx.fillStyle =
-            isHovered || isContemplated
-              ? 'rgba(8, 10, 18, 0.92)'
-              : 'rgba(6, 7, 12, 0.82)'
+          ctx.fillStyle = isFocal
+            ? 'rgba(6, 7, 12, 0.94)'
+            : 'rgba(4, 5, 8, 0.84)'
           ctx.fill()
 
-          ctx.strokeStyle =
-            isHovered || isContemplated
-              ? node.color
-              : isCurrent
-              ? 'rgba(255, 220, 160, 0.45)'
-              : 'rgba(255, 255, 255, 0.1)'
-          ctx.lineWidth = 0.9
+          ctx.strokeStyle = isFocal
+            ? node.color
+            : 'rgba(255, 255, 255, 0.12)'
+          ctx.lineWidth = isFocal ? 1.0 : 0.75
           ctx.stroke()
 
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
-          ctx.fillStyle = isHovered || isCurrent || isContemplated ? '#ffffff' : '#d4dce8'
+          ctx.fillStyle = isFocal ? '#ffffff' : '#d4dce8'
           ctx.fillText(labelText, node.screenX, pillY + pillH / 2)
         }
         ctx.restore()
@@ -1248,6 +1166,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
     edges,
     currentNoteId,
     hoveredNodeId,
+    selectedNodeId,
+    pinnedPopoverNodeId,
     contemplatedNodeId,
     hoveredFolder,
     searchQuery,
@@ -1389,15 +1309,32 @@ export const GraphView: React.FC<GraphViewProps> = ({
         e.clientY - pointerDownRef.current.y
       )
       const elapsed = Date.now() - pointerDownRef.current.time
+      const isClick = dist < 7 && elapsed < 500
+      const button = pointerDownRef.current.button
 
-      if (dist < 7 && elapsed < 500 && pointerDownRef.current.button === 0) {
+      if (isClick) {
         const rect = canvas.getBoundingClientRect()
         const sx = e.clientX - rect.left
         const sy = e.clientY - rect.top
         const hit = getNodeAtScreenCoords(sx, sy)
+
         if (hit) {
           spawnRipple(hit)
-          onSelectNote(hit.id)
+          if (button === 0) {
+            // Left click on a star: select it to view its connected group and open popover
+            setSelectedNodeId(hit.id)
+            setPinnedPopoverNodeId(hit.id)
+            setHoveredNodeId(hit.id)
+          } else if (button === 2) {
+            // Right click on a star: keep popover pinned/fixed
+            setSelectedNodeId(hit.id)
+            setPinnedPopoverNodeId(hit.id)
+          }
+        } else {
+          // Click on empty canvas / background: deselect all notes and close popover!
+          setSelectedNodeId(null)
+          setPinnedPopoverNodeId(null)
+          setHoveredNodeId(null)
         }
       }
     }
@@ -1406,6 +1343,19 @@ export const GraphView: React.FC<GraphViewProps> = ({
     isDraggingCanvasRef.current = false
     isTiltingCameraRef.current = false
     pointerDownRef.current = null
+  }
+
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = overlayCanvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const sx = e.clientX - rect.left
+    const sy = e.clientY - rect.top
+    const hit = getNodeAtScreenCoords(sx, sy)
+    if (hit) {
+      spawnRipple(hit)
+      onSelectNote(hit.id)
+    }
   }
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -1453,10 +1403,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
   }
 
   const activeInspectNode = useMemo(() => {
-    const id = hoveredNodeId || (isContemplationMode ? contemplatedNodeId : null)
+    const id =
+      pinnedPopoverNodeId ||
+      hoveredNodeId ||
+      selectedNodeId ||
+      (isContemplationMode ? contemplatedNodeId : null)
     if (!id) return null
     return nodes.find(n => n.id === id) || null
-  }, [hoveredNodeId, contemplatedNodeId, isContemplationMode, nodes])
+  }, [pinnedPopoverNodeId, hoveredNodeId, selectedNodeId, contemplatedNodeId, isContemplationMode, nodes])
 
   const activeInspectConnections = useMemo(() => {
     if (!activeInspectNode) return []
@@ -1477,7 +1431,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     <div
       ref={containerRef}
       onContextMenu={e => e.preventDefault()}
-      className="relative w-full h-full bg-[#030408] overflow-hidden flex flex-col select-none"
+      className="relative w-full h-full bg-[#010103] overflow-hidden flex flex-col select-none"
     >
       {/* 1. TOP HUD CONTROL BAR */}
       {!isContemplationMode && (
@@ -1625,7 +1579,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
       {/* 2. TOP-RIGHT INSPECTOR HUD CARD */}
       {activeInspectNode && (
-        <div className="absolute top-4 right-4 z-20 w-84 bg-[#080911]/90 backdrop-blur-2xl border border-white/[0.1] rounded-2xl p-4 shadow-2xl space-y-3 text-xs animate-in fade-in zoom-in-95 duration-150 select-none">
+        <div className="absolute top-4 right-4 z-20 w-84 bg-[#06070c]/90 backdrop-blur-2xl border border-white/[0.1] rounded-2xl p-4 shadow-2xl space-y-3 text-xs animate-in fade-in zoom-in-95 duration-150 select-none">
           <div className="flex items-start justify-between gap-2 border-b border-white/[0.07] pb-2.5">
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400">
@@ -1634,18 +1588,36 @@ export const GraphView: React.FC<GraphViewProps> = ({
                   style={{ backgroundColor: activeInspectNode.color, color: activeInspectNode.color }}
                 />
                 <span>CONSTELAÇÃO // {activeInspectNode.folderShort}</span>
+                {pinnedPopoverNodeId === activeInspectNode.id && (
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono border border-amber-500/30">
+                    FIXO
+                  </span>
+                )}
               </div>
               <h3 className="text-sm font-bold text-zinc-100 leading-snug">
                 {activeInspectNode.title}
               </h3>
             </div>
-            <button
-              onClick={() => onSelectNote(activeInspectNode.id)}
-              className="p-1.5 rounded-lg bg-[var(--accent)]/15 hover:bg-[var(--accent)] text-[var(--accent)] hover:text-zinc-950 transition-all cursor-pointer shadow-sm"
-              title="Abrir nota no editor"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => onSelectNote(activeInspectNode.id)}
+                className="p-1.5 rounded-lg bg-[var(--accent)]/15 hover:bg-[var(--accent)] text-[var(--accent)] hover:text-zinc-950 transition-all cursor-pointer shadow-sm"
+                title="Abrir nota no editor"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => {
+                  setPinnedPopoverNodeId(null)
+                  setSelectedNodeId(null)
+                  setHoveredNodeId(null)
+                }}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-white/10 transition-all cursor-pointer"
+                title="Fechar (ou clique fora)"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {activeInspectNode.excerpt && (
@@ -1663,8 +1635,12 @@ export const GraphView: React.FC<GraphViewProps> = ({
                 {activeInspectConnections.map(c => (
                   <button
                     key={c.id}
-                    onClick={() => onSelectNote(c.id)}
+                    onClick={() => {
+                      setSelectedNodeId(c.id)
+                      setPinnedPopoverNodeId(c.id)
+                    }}
                     className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.07] text-[10px] text-zinc-200 transition-colors cursor-pointer"
+                    title={`Ver grupo de: ${c.title}`}
                   >
                     <span
                       className="w-1.5 h-1.5 rounded-full"
@@ -1789,23 +1765,24 @@ export const GraphView: React.FC<GraphViewProps> = ({
                 className="accent-[var(--accent)] rounded cursor-pointer"
               />
             </label>
-
-            <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-[11px]">Fótons nas Conexões</span>
-              <input
-                type="checkbox"
-                checked={settings.enablePulses}
-                onChange={e =>
-                  setSettings(s => ({ ...s, enablePulses: e.target.checked }))
-                }
-                className="accent-[var(--accent)] rounded cursor-pointer"
-              />
-            </label>
           </div>
 
-          <div className="pt-1 text-[10px] text-zinc-500 font-mono leading-relaxed">
-            💡 Segure <span className="text-zinc-300">Botão Direito</span> ou{' '}
-            <span className="text-zinc-300">Alt + Arrastar</span> para inclinar o ângulo 3D.
+          <div className="pt-1 text-[10px] text-zinc-400 font-mono leading-relaxed space-y-1">
+            <div>
+              💡 <span className="text-zinc-200">Clique esquerdo</span>: Seleciona estrela e vê conexões
+            </div>
+            <div>
+              📌 <span className="text-zinc-200">Clique direito</span>: Fixa o card (popover)
+            </div>
+            <div>
+              🌌 <span className="text-zinc-200">Clique no fundo</span>: Desmarca e fecha o card
+            </div>
+            <div>
+              📖 <span className="text-zinc-200">Duplo clique</span>: Abre a nota no editor
+            </div>
+            <div>
+              🔭 <span className="text-zinc-200">Direito + arrastar</span>: Inclina o ângulo 3D
+            </div>
           </div>
         </div>
       )}
@@ -1905,6 +1882,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
         onWheel={handleWheel}
         className="relative z-10 w-full h-full cursor-default outline-none bg-transparent"
       />

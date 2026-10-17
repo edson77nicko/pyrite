@@ -63,11 +63,16 @@ async function publish() {
         name: `Pyrita ${tag}`,
         body: `### Novidades no Pyrita ${tag}:
 
-#### 🔭 Astrofotografia Hubble & Aba Persistente do Grafo:
-- **Grafo como Aba Persistente no Topo**: Agora, ao abrir o modo **Grafo**, ele cria uma aba dedicada (\`Grafo\`) na barra superior. Ao clicar em qualquer estrela/nota para editá-la, a aba do Grafo permanece aberta ao lado das suas notas — permitindo alternar instantaneamente sem nunca perder o seu zoom ou ângulo 3D!
-- **Estrelas Ópticas Reais estilo Hubble (Adeus círculos escuros e bordas grossas)**: Removemos 100% dos círculos pretos e cores neon artificiais. Cada nota agora é um ponto puro de emissão de luz aditiva (*Optical Point-Spread Function*) com temperaturas estelares reais (ouro solar, branco Sirius, marfim Vega, âmbar Antares) e raios de difração óptica de 4 pontas (\`+\`) estilo telescópio Hubble/James Webb.
-- **Horizonte de Eventos Puro & Anéis Filamentosos de Poeira**: Corrigida a mancha branca sólida no centro e na lateral do buraco negro. O interior da singularidade agora é um abismo negro absoluto cercado por um anel de fótons fino como navalha e centenas de sulcos filamentosos de poeira e plasma dourado/cobre.
-- **Fundo Deep-Field do Hubble**: Campo estelar profundo em 3 camadas de magnitude com nebulosas interestelares sutis e filamentos de poeira escura.`
+#### 🌌 Universo Imersivo & Interação Estelar Avançada no Grafo:
+- **Visualização Pura sem Nenhuma Nota Ativa**: Agora é possível contemplar o cosmos sem nenhuma nota forçada na seleção. Clicar no fundo vazio do universo desmarca tudo, deixando todas as estrelas orbitando em harmonia natural.
+- **Remoção dos Pontos em Movimento nas Linhas**: Removidos completamente os pacotes/fótons de pulso que ficavam correndo pelas linhas, eliminando poluição visual em grafos densos com muitas notas.
+- **Cosmos Mais Profundo & Escuro**: O fundo do universo foi reajustado para um tom preto espacial mais escuro e de altíssimo contraste (Hubble Deep Field), preservando todo o calor e a riqueza das auroras douradas e acobreadas do disco de acreção.
+- **Tags de Texto Exclusivas para o Grupo Conectado**: O texto flutuante com o nome das notas agora aparece estritamente para a estrela em foco e suas notas conectadas diretas (mesmo ao aplicar zoom, garantindo limpeza visual absoluta).
+- **Seleção com Clique Esquerdo & Popover Fixo com Clique Direito**:
+  - **Clique Esquerdo em uma Estrela**: Seleciona a nota e destaca todo o seu grupo conectado sem fechar o grafo ou mudar de tela.
+  - **Clique Direito em uma Estrela**: Fixa o card (popover) na tela, permitindo mover o cursor livremente, ler o resumo e navegar entre conexões sem que o card suma.
+  - **Clique no Fundo**: Fecha o card/popover e limpa a seleção.
+  - **Duplo Clique**: Abre a nota diretamente no editor.`
       })
     });
     const updated = await patchRes.json();

@@ -103,24 +103,24 @@ vec3 renderHubbleStarLayer(vec2 uv, float scale, float densityThresh, float brig
 }
 
 vec3 renderHubbleDeepSpace(vec2 lensedUV) {
-  // Deepest cosmic void
-  vec3 space = vec3(0.006, 0.008, 0.014);
+  // Deepest inky cosmic void - high-contrast deep field
+  vec3 space = vec3(0.0003, 0.0004, 0.0008);
 
-  // Hubble Interstellar Nebulae (Carina / Cygnus inspired subtle gas + dark dust lanes)
+  // Hubble Interstellar Nebulae (Carina / Cygnus inspired subtle gas + dark dust lanes - darker tone)
   float n1 = fbm(lensedUV * 1.35 + vec2(2.4, -1.1));
   float n2 = fbm(lensedUV * 2.8 + vec2(-n1 * 0.9, n1 * 0.7));
   float darkDust = smoothstep(0.38, 0.68, fbm(lensedUV * 3.4 + vec2(8.1, 3.7)));
 
-  vec3 warmNebula = vec3(0.16, 0.07, 0.035) * pow(n1, 2.2);
-  vec3 coolNebula = vec3(0.03, 0.075, 0.15) * pow(n2, 2.0);
-  vec3 accentMist = u_accentColor * 0.035 * pow(n1 * n2, 1.6);
+  vec3 warmNebula = vec3(0.035, 0.015, 0.007) * pow(n1, 2.7);
+  vec3 coolNebula = vec3(0.007, 0.015, 0.035) * pow(n2, 2.5);
+  vec3 accentMist = u_accentColor * 0.008 * pow(n1 * n2, 1.9);
 
-  space += (warmNebula + coolNebula + accentMist) * (1.0 - darkDust * 0.75);
+  space += (warmNebula + coolNebula + accentMist) * (1.0 - darkDust * 0.85);
 
   // 3 octaves of pinpoint Hubble stars (faint background dust -> medium stars -> bright field stars)
-  space += renderHubbleStarLayer(lensedUV, 95.0, 0.82, 0.42);
-  space += renderHubbleStarLayer(lensedUV + vec2(17.3, 9.1), 46.0, 0.90, 0.85);
-  space += renderHubbleStarLayer(lensedUV + vec2(41.7, 23.4), 21.0, 0.955, 1.35);
+  space += renderHubbleStarLayer(lensedUV, 95.0, 0.85, 0.25);
+  space += renderHubbleStarLayer(lensedUV + vec2(17.3, 9.1), 46.0, 0.92, 0.55);
+  space += renderHubbleStarLayer(lensedUV + vec2(41.7, 23.4), 21.0, 0.97, 0.95);
 
   return space;
 }
