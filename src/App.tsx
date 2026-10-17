@@ -698,6 +698,37 @@ export const App: React.FC = () => {
             onConnectNote={handleConnectNote}
             onAddTag={handleAddTag}
             onInsertSnippet={handleInsertSnippet}
+            onCreateNote={(folder, initialTitle, initialContent) => {
+              const targetFolder = folder || currentNote?.folder || 'Início'
+              const title = initialTitle || `Nota ${notes.length + 1}`
+              const newNote: Note = {
+                id: `note_${Date.now()}`,
+                title,
+                content: initialContent || `Escreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`,
+                folder: targetFolder,
+                tags: [],
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+              }
+              const updated = [newNote, ...notes]
+              setNotes(updated)
+              saveNotes(updated)
+              handleSelectNote(newNote.id)
+
+              if (window.electronAPI?.isElectron && vaultPath) {
+                window.electronAPI.saveFile({
+                  vaultPath,
+                  folder: targetFolder,
+                  title: newNote.title,
+                  content: newNote.content
+                }).then(res => {
+                  if (res.success && res.filePath) {
+                    newNote.filePath = res.filePath
+                  }
+                })
+              }
+            }}
+            onUpdateNote={handleUpdateNote}
             onClose={() => setIsAiOpen(false)}
           />
         )}

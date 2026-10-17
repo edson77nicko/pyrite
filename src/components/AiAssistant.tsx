@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import type { Note } from '../types'
 import { extractWikiLinks } from '../utils/vault'
 import { MarkdownRenderer } from './MarkdownRenderer'
-import { AiModelSettingsModal } from './AiModelSettingsModal'
+import { AiSettingsModal, DEFAULT_AGENT_SKILLS } from './AiSettingsModal'
 import {
   Sparkles,
   Bot,
@@ -11,12 +11,16 @@ import {
   X,
   ArrowUp,
   ChevronDown,
-  Cpu,
   Loader2,
   KeyRound,
   Folder,
   FolderPlus,
-  Check
+  Check,
+  Settings,
+  PenLine,
+  Eye,
+  FilePlus2,
+  Copy
 } from 'lucide-react'
 
 interface AiAssistantProps {
@@ -25,8 +29,40 @@ interface AiAssistantProps {
   onConnectNote: (targetTitle: string) => void
   onAddTag: (tag: string) => void
   onInsertSnippet?: (snippet: string) => void
+  onCreateNote?: (folder?: string, initialTitle?: string, initialContent?: string) => void
+  onUpdateNote?: (note: Note) => void
   onClose: () => void
 }
+
+export type AgentRuleMode = 'analyst' | 'editor'
+
+export interface AgentRuleMeta {
+  id: AgentRuleMode
+  name: string
+  shortName: string
+  icon: string
+  tagline: string
+  badgeColor: string
+}
+
+export const AGENT_RULES: AgentRuleMeta[] = [
+  {
+    id: 'analyst',
+    name: 'Modo Analista',
+    shortName: 'Analista',
+    icon: '👁️',
+    tagline: 'Apenas conversa e ajuda com nota e pasta (Somente Leitura)',
+    badgeColor: '#38bdf8'
+  },
+  {
+    id: 'editor',
+    name: 'Modo Co-Autor',
+    shortName: 'Co-Autor',
+    icon: '✍️',
+    tagline: 'Pode criar/editar notas e adicionar artefatos diretamente',
+    badgeColor: '#c59b27'
+  }
+]
 
 interface ChatMessage {
   id: string
@@ -165,6 +201,8 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   onConnectNote,
   onAddTag,
   onInsertSnippet,
+  onCreateNote,
+  onUpdateNote,
   onClose
 }) => {
   const effectiveNote = currentNote || allNotes[0] || {
@@ -204,7 +242,22 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       return 'architect'
     }
   })
-  const [isSpecialtyMenuOpen, setIsSpecialtyMenuOpen] = useState(false)
+
+  // Agent Permission Rule Mode: 'analyst' (read-only consultant) vs 'editor' (co-author that creates/edits notes)
+  const [agentRule, setAgentRule] = useState<AgentRuleMode>(() => {
+    try {
+      const saved = localStorage.getItem('pyrita_ai_agent_rule')
+      return (saved === 'editor' ? 'editor' : 'analyst') as AgentRuleMode
+    } catch {
+      return 'analyst'
+    }
+  })
+  const [isRuleMenuOpen, setIsRuleMenuOpen] = useState(false)
+
+  // Feedback notifications for 1-click actions
+  const [insertedNotice, setInsertedNotice] = useState<string | null>(null)
+  const [createdNotice, setCreatedNotice] = useState<string | null>(null)
+  const [copiedNotice, setCopiedNotice] = useState<string | null>(null)
 
   const activeSpecialty = useMemo(() => {
     return AGENT_SPECIALTIES.find(s => s.id === activeSpecialtyId) || AGENT_SPECIALTIES[0]
@@ -215,7 +268,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const [selectedFolderContext, setSelectedFolderContext] = useState<string | null>(null)
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false)
 
-  const specialtyMenuRef = useRef<HTMLDivElement | null>(null)
+  const ruleMenuRef = useRef<HTMLDivElement | null>(null)
   const folderPickerRef = useRef<HTMLDivElement | null>(null)
 
   // Compute all available folders with note counts
@@ -233,8 +286,8 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   // Click outside listener for dropdown popovers
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (specialtyMenuRef.current && !specialtyMenuRef.current.contains(e.target as Node)) {
-        setIsSpecialtyMenuOpen(false)
+      if (ruleMenuRef.current && !ruleMenuRef.current.contains(e.target as Node)) {
+        setIsRuleMenuOpen(false)
       }
       if (folderPickerRef.current && !folderPickerRef.current.contains(e.target as Node)) {
         setIsFolderPickerOpen(false)
@@ -423,11 +476,36 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           contextBlock += `\n(Nenhum contexto específico de nota ou pasta ativo no momento. Responda com base no conhecimento geral e visão geral do Vault).\n`
         }
 
+        // Active skills directives from localStorage
+        let skillsDirectiveBlock = ''
+        try {
+          const savedSkills = localStorage.getItem('pyrita_agent_skills')
+          const skillMap: Record<string, boolean> = savedSkills ? JSON.parse(savedSkills) : {}
+          const activeDirectives = DEFAULT_AGENT_SKILLS
+            .filter(s => (skillMap[s.id] !== undefined ? skillMap[s.id] : s.installed))
+            .map(s => `- ${s.directive}`)
+          if (activeDirectives.length > 0) {
+            skillsDirectiveBlock = `\nHabilidades e Skills Ativas:\n${activeDirectives.join('\n')}\n`
+          }
+        } catch {}
+
+        const ruleDirective = agentRule === 'editor'
+          ? `REGRA DE OPERAÇÃO: MODO CO-AUTOR (ESCRITA & CRIAÇÃO ATIVA).
+- Você tem permissão de escrita e edição direta no Vault do usuário.
+- Ao produzir artefatos visuais concêntricos (:::kpi, :::timeline, :::comparison, :::card), resumos ou novas seções, forneça blocos prontos e refinados para que possam ser inseridos diretamente na nota ativa ou transformados em uma nova nota.
+- Seja proativo na formatação e estruture o texto pronto para inserção no documento.`
+          : `REGRA DE OPERAÇÃO: MODO ANALISTA (SOMENTE LEITURA).
+- Você atua exclusivamente como consultor, parceiro de pensamento e analista de conhecimento.
+- Analise a nota e a pasta em profundidade, formule hipóteses, aponte conexões e proponha melhorias.
+- Não altere arquivos nem modifique notas diretamente. Todas as interações devem ser no chat.`
+
         const systemPrompt = `Você é o Agente de IA do Pyrita, assistente de alto nível para gestão de conhecimento e pensamento (estilo Obsidian) com foco em produtividade e artefatos concêntricos.
 Especialidade atual: ${activeSpecialty.name} (${activeSpecialty.icon})
 Diretriz de Especialidade:
 ${activeSpecialty.systemDirective}
 
+${ruleDirective}
+${skillsDirectiveBlock}
 Contexto fornecido pelo usuário:
 ${contextBlock}
 
@@ -548,40 +626,46 @@ Diretrizes gerais:
       style={{ width: `${panelWidth}px` }}
       className="h-full bg-[#0c0c0f] border-r border-zinc-800/80 flex flex-col select-none shrink-0 text-xs z-10 relative"
     >
-      {/* 1. TOP HEADER: AGENT SPECIALTY SELECTOR & MODEL PILL */}
+      {/* 1. TOP HEADER: AGENT RULE SELECTOR (ANALISTA vs CO-AUTOR) & SETTINGS ICON */}
       <div className="h-10 px-3 border-b border-zinc-800/80 bg-[#0e0e12] flex items-center justify-between shrink-0 gap-1.5">
-        {/* Agent Specialty Dropdown Selector */}
-        <div ref={specialtyMenuRef} className="relative">
+        {/* Agent Rule Selector: Modo Analista (Leitura) vs Modo Co-Autor (Edita Notas) */}
+        <div ref={ruleMenuRef} className="relative">
           <button
             type="button"
-            onClick={() => setIsSpecialtyMenuOpen(o => !o)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700/70 hover:border-zinc-500 text-zinc-200 text-xs transition-all cursor-pointer shadow-sm"
-            title="Alterar Especialidade do Agente de IA"
+            onClick={() => setIsRuleMenuOpen(o => !o)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs transition-all cursor-pointer shadow-sm ${
+              agentRule === 'editor'
+                ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-[var(--accent)]'
+                : 'bg-zinc-900 border-zinc-700/70 text-zinc-200 hover:border-zinc-500'
+            }`}
+            title="Permissão do Agente: Modo Analista (Leitura) ou Modo Co-Autor (Edita Notas)"
           >
-            <span>{activeSpecialty.icon}</span>
-            <span className="font-semibold text-[11px] text-zinc-100">{activeSpecialty.shortName}</span>
+            <span>{agentRule === 'editor' ? '✍️' : '👁️'}</span>
+            <span className="font-semibold text-[11px]">
+              {agentRule === 'editor' ? 'Modo Co-Autor' : 'Modo Analista'}
+            </span>
             <ChevronDown className="w-3 h-3 text-zinc-500 ml-0.5" />
           </button>
 
-          {isSpecialtyMenuOpen && (
+          {isRuleMenuOpen && (
             <div className="absolute top-9 left-0 z-50 w-72 bg-[#101117] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl space-y-1 animate-in fade-in zoom-in-95 duration-100">
               <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
-                <span>ESPECIALIDADES DO AGENTE</span>
-                <span className="text-[9px] text-zinc-500">5 perfis</span>
+                <span>REGRA DE OPERAÇÃO DO AGENTE</span>
+                <span className="text-[9px] text-zinc-500">Permissão</span>
               </div>
               <div className="space-y-0.5 pt-0.5">
-                {AGENT_SPECIALTIES.map(s => {
-                  const isCur = activeSpecialtyId === s.id
+                {AGENT_RULES.map(rule => {
+                  const isCur = agentRule === rule.id
                   return (
                     <button
-                      key={s.id}
+                      key={rule.id}
                       type="button"
                       onClick={() => {
-                        setActiveSpecialtyId(s.id)
+                        setAgentRule(rule.id)
                         try {
-                          localStorage.setItem('pyrita_ai_specialty', s.id)
+                          localStorage.setItem('pyrita_ai_agent_rule', rule.id)
                         } catch {}
-                        setIsSpecialtyMenuOpen(false)
+                        setIsRuleMenuOpen(false)
                       }}
                       className={`w-full text-left px-2.5 py-2 rounded-lg flex items-start gap-2.5 transition-all cursor-pointer ${
                         isCur
@@ -589,14 +673,14 @@ Diretrizes gerais:
                           : 'hover:bg-zinc-850 text-zinc-300'
                       }`}
                     >
-                      <span className="text-base leading-none mt-0.5">{s.icon}</span>
+                      <span className="text-base leading-none mt-0.5">{rule.icon}</span>
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-xs flex items-center justify-between">
-                          <span className={isCur ? 'text-[var(--accent)]' : 'text-zinc-100'}>{s.name}</span>
+                          <span className={isCur ? 'text-[var(--accent)]' : 'text-zinc-100'}>{rule.name}</span>
                           {isCur && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
                         </div>
-                        <p className="text-[10px] text-zinc-400 leading-tight mt-0.5 line-clamp-2">
-                          {s.tagline}
+                        <p className="text-[10px] text-zinc-400 leading-tight mt-0.5">
+                          {rule.tagline}
                         </p>
                       </div>
                     </button>
@@ -607,25 +691,22 @@ Diretrizes gerais:
           )}
         </div>
 
-        {/* LLM Model & Provider Indicator Pill */}
-        <button
-          type="button"
-          onClick={() => setIsSettingsOpen(true)}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-zinc-100 text-xs transition-colors cursor-pointer shrink-0"
-          title="Configurações de Provedor & Modelo LLM"
-        >
-          <Cpu className="w-3.5 h-3.5 text-[var(--accent)]" />
-          <span className="font-bold text-[10px] tracking-wide uppercase text-zinc-300">
-            {activeProvider}
-          </span>
-          {hasActiveKey || activeProvider === 'ollama' ? (
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" title="Chave configurada e ativa" />
-          ) : (
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title="Chave não configurada" />
-          )}
-        </button>
-
+        {/* Action Buttons: Settings Icon Only (NO text!), Smart Discovery, Close */}
         <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer relative"
+            title="Configurações do Agente (Modelos, Especialidades, Skills)"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            {hasActiveKey || activeProvider === 'ollama' ? (
+              <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" title="Chave configurada e ativa" />
+            ) : (
+              <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" title="Chave não configurada" />
+            )}
+          </button>
+
           <button
             onClick={runSmartDiscovery}
             disabled={isAnalyzing}
@@ -752,23 +833,113 @@ Diretrizes gerais:
                       </div>
                     )}
 
-                    {m.text.includes(':::') && onInsertSnippet && (
-                      <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-end">
+                    {/* Co-Autor Mode: Direct note insertion & note creation actions */}
+                    {agentRule === 'editor' && !m.isActionable && m.text !== 'Pensando...' && (
+                      <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {m.text.includes(':::') && onInsertSnippet && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const matches = m.text.match(/:::[\s\S]*?:::/g)
+                                const snippet = matches ? matches.join('\n\n') : m.text
+                                onInsertSnippet(snippet)
+                                setInsertedNotice(m.id)
+                                setTimeout(() => setInsertedNotice(null), 3000)
+                              }}
+                              className="px-2.5 py-1 bg-[var(--accent)]/15 hover:bg-[var(--accent)]/25 border border-[var(--accent)]/30 text-[var(--accent)] rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+                              title="Inserir artefato concêntrico diretamente na nota ativa"
+                            >
+                              <Sparkles className="w-3 h-3 text-[var(--accent)]" />
+                              <span>{insertedNotice === m.id ? '✓ Inserido na Nota!' : '+ Inserir Artefato na Nota'}</span>
+                            </button>
+                          )}
+
+                          {onInsertSnippet && !m.text.includes(':::') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onInsertSnippet(m.text)
+                                setInsertedNotice(m.id)
+                                setTimeout(() => setInsertedNotice(null), 3000)
+                              }}
+                              className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 border border-zinc-700/60 text-zinc-200 rounded-lg text-[10px] font-medium transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+                              title="Inserir resposta no final da nota ativa"
+                            >
+                              <PenLine className="w-3 h-3 text-zinc-400" />
+                              <span>{insertedNotice === m.id ? '✓ Inserido!' : 'Inserir na Nota'}</span>
+                            </button>
+                          )}
+
+                          {onCreateNote && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const lines = m.text.split('\n').filter(l => l.trim().length > 0)
+                                const firstHeading = lines.find(l => l.startsWith('#'))?.replace(/^#+\s*/, '')
+                                const title = firstHeading || `Síntese - ${activeSpecialty.shortName} (${new Date().toLocaleDateString('pt-BR')})`
+                                onCreateNote(effectiveNote.folder || 'Início', title, m.text)
+                                setCreatedNotice(m.id)
+                                setTimeout(() => setCreatedNotice(null), 3000)
+                              }}
+                              className="px-2.5 py-1 bg-zinc-850 hover:bg-zinc-800 border border-zinc-750 text-zinc-300 rounded-lg text-[10px] font-medium transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+                              title="Criar nova nota no cofre com esta resposta"
+                            >
+                              <FilePlus2 className="w-3 h-3 text-zinc-400" />
+                              <span>{createdNotice === m.id ? '✓ Nova Nota Criada!' : '+ Nova Nota'}</span>
+                            </button>
+                          )}
+
+                          {onUpdateNote && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onUpdateNote({ ...effectiveNote, content: m.text, updatedAt: Date.now() })
+                                setInsertedNotice(m.id)
+                                setTimeout(() => setInsertedNotice(null), 3000)
+                              }}
+                              className="px-2.5 py-1 bg-zinc-850 hover:bg-zinc-800 border border-zinc-750 text-zinc-300 rounded-lg text-[10px] font-medium transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+                              title="Substituir todo o texto da nota ativa por esta resposta"
+                            >
+                              <span>{insertedNotice === m.id ? '✓ Nota Atualizada!' : 'Substituir Nota'}</span>
+                            </button>
+                          )}
+                        </div>
+
                         <button
                           type="button"
                           onClick={() => {
-                            const matches = m.text.match(/:::[\s\S]*?:::/g)
-                            if (matches) {
-                              onInsertSnippet(matches.join('\n\n'))
-                            } else {
-                              onInsertSnippet(m.text)
-                            }
+                            navigator.clipboard.writeText(m.text)
+                            setCopiedNotice(m.id)
+                            setTimeout(() => setCopiedNotice(null), 2000)
                           }}
-                          className="px-2.5 py-1 bg-[var(--accent)]/15 hover:bg-[var(--accent)]/25 border border-[var(--accent)]/30 text-[var(--accent)] rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1 cursor-pointer shadow-sm"
-                          title="Inserir este artefato diretamente na nota atual"
+                          className="p-1 text-zinc-500 hover:text-zinc-300 rounded transition-colors cursor-pointer"
+                          title="Copiar texto em Markdown"
                         >
-                          <Sparkles className="w-3 h-3 text-[var(--accent)]" />
-                          + Inserir na Nota
+                          {copiedNotice === m.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Analyst Mode: Read-only badge and Copy button */}
+                    {agentRule === 'analyst' && !m.isActionable && m.text !== 'Pensando...' && (
+                      <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] text-zinc-500">
+                        <span className="italic flex items-center gap-1">
+                          <Eye className="w-3 h-3 text-sky-400/80" />
+                          Modo Analista (Consultivo)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(m.text)
+                            setCopiedNotice(m.id)
+                            setTimeout(() => setCopiedNotice(null), 2000)
+                          }}
+                          className="px-2 py-0.5 rounded bg-zinc-850 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 flex items-center gap-1 cursor-pointer transition-colors"
+                          title="Copiar análise"
+                        >
+                          {copiedNotice === m.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedNotice === m.id ? 'Copiado!' : 'Copiar'}</span>
                         </button>
                       </div>
                     )}
@@ -946,10 +1117,17 @@ Diretrizes gerais:
         </div>
       </form>
 
-      {/* AI Provider & Model Configuration Modal */}
-      <AiModelSettingsModal
+      {/* Unified AI Settings Modal with Left Sidebar (Modelos, Especialidades, Skills) */}
+      <AiSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        activeSpecialtyId={activeSpecialtyId}
+        onSelectSpecialty={id => {
+          setActiveSpecialtyId(id)
+          try {
+            localStorage.setItem('pyrita_ai_specialty', id)
+          } catch {}
+        }}
         onConfigSaved={refreshAiConfig}
       />
 

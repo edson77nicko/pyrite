@@ -63,22 +63,21 @@ async function publish() {
         name: `Pyrita ${tag}`,
         body: `### Novidades no Pyrita ${tag}:
 
-#### ✨ Ajuste Fino na Singularidade:
-- **Redução do Brilho e Halos das Estrelas**: A coroa difusa (*PSF halo*) e os raios de difração óptica foram refinados e reduzidos proporcionalmente, resultando em pontos estelares nítidos, elegantes e com proporções astronômicas reais do telescópio Hubble.
+#### 🌟 Estrelas Luminous & Calibradas (Óptica Hubble):
+- **Equilíbrio Óptico das Estrelas**: Restauração da luminosidade cromática, coroa difusa (*Point-Spread Function*) e raios de difração do espelho secundário (+).
+- As notas agora brilham como verdadeiras estrelas do Hubble com espectro de cor térmico estelar (Ouro Solar, Sirius Azul, Âmbar, Vega Cristal), disco colorido radiante e centro incandescente, sem parecerem meros pontinhos brancos estáticos.
 
-#### 🤖 Especialidades do Agente de IA:
-- **5 Perfis Especializados com Raciocínio Dedicado**:
-  1. 🧠 **Arquiteto de Conhecimento**: Mapeamento conceitual, conexões do Vault, links bidirecionais [[...]] e taxonomias.
-  2. ✍️ **Redator & Síntese**: Refinamento de escrita, clareza, fluidez, expansão de ideias e resumos executivos.
-  3. 📊 **Estrategista & Artefatos**: Geração de componentes concêntricos visuais nativos (:::kpi, :::timeline, :::comparison, :::card) e planos de ação.
-  4. 🔬 **Analista Crítico & Socrático**: Questionamento socrático, auditoria de riscos, trade-offs e premissas ocultas.
-  5. 💻 **Engenheiro & Técnico**: Especificações técnicas, modelagem de dados, arquitetura de sistemas e código documentado.
-- **Seletor de Especialidades**: Menu dropdown moderno no cabeçalho do agente para alternar o perfil instantaneamente, com persistência e atualização dinâmica dos botões de prompt rápido.
+#### 🤖 Novo Header do Agente & Seletor de Regras de Permissão:
+- **Header Minimalista**: Removido o texto do modelo do cabeçalho, exibindo exclusivamente o ícone de configurações com LED de status da chave.
+- **Regra do Agente (Modo Analista vs Modo Co-Autor)**:
+  - 👁️ **Modo Analista (Apenas Leitura)**: Foco estritamente consultivo e de pensamento. O agente analisa o contexto da nota e da pasta, dialoga e responde no chat sem alterar arquivos.
+  - ✍️ **Modo Co-Autor (Edição & Criação)**: O agente ganha autonomia de escrita para injetar artefatos concêntricos nativos (\`:::kpi\`, \`:::timeline\`, \`:::comparison\`, \`:::card\`) diretamente na nota ativa com um clique, substituir o conteúdo ou gerar novas notas no cofre.
 
-#### 📁 Contexto de Nota + Pasta Inteira no Chat:
-- **Trabalhe com Pastas Inteiras como Contexto**: Ao lado da pílula da nota atual (\`@ Nota\`), agora é possível adicionar uma **pasta inteira** (\`📁 + Pasta\`) como contexto para a IA.
-- **Cruzamento Semântico em Larga Escala**: Ao selecionar uma pasta, o conteúdo e títulos de todas as notas daquela pasta são injetados no contexto, permitindo à IA comparar, sintetizar e relacionar múltiplos documentos simultaneamente.
-- **Controle Flexível**: Alterne ou desative facilmente a nota ou a pasta com um clique nos botões dedicados (\`✕\`).`
+#### ⚙️ Modal Unificado de Configurações com Sidebar Lateral:
+- **Popup Completo em 3 Abas**:
+  1. 🤖 **Configurações do Modelo**: Gerenciamento de provedores (OpenRouter, OpenAI, Gemini, DeepSeek, Groq, Ollama), modelos e chaves protegidas por criptografia Windows DPAPI (safeStorage).
+  2. 🧠 **Especialidades do Agente**: Seleção e visualização dos 5 perfis cognitivos (Arquiteto, Redator, Estrategista, Crítico, Técnico) com diretrizes do sistema e prompts rápidos.
+  3. ⚡ **Instalar Skills (Habilidades)**: Catálogo modular para ativar/desativar habilidades do agente (Artefatos Concêntricos, Mapeador de Grafos, Auditor de Pastas, Co-Autoria, Exportador Executivo, etc.).`
       })
     });
     const updated = await patchRes.json();
