@@ -6,6 +6,7 @@ import {
   parseKpiBlock,
   parseTimelineBlock,
   parseComparisonBlock,
+  parseButtonsBlock,
   parseHeaderMeta
 } from '../utils/artifactParser'
 
@@ -13,12 +14,14 @@ interface MarkdownRendererProps {
   content: string
   onNavigate: (title: string) => void
   onToggleTask?: (taskIndex: number, completed: boolean) => void
+  onButtonClick?: (promptText: string) => void
 }
 
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   content,
   onNavigate,
-  onToggleTask
+  onToggleTask,
+  onButtonClick
 }) => {
   const [copiedCodeIndex, setCopiedCodeIndex] = React.useState<number | null>(null)
 
@@ -291,6 +294,40 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               badge={comp.badge}
               columns={comp.columns}
             />
+          </div>
+        )
+        continue
+      }
+
+      if (directiveType === 'buttons' || directiveType === 'actions' || directiveType === 'choices' || directiveType === 'options') {
+        const buttons = parseButtonsBlock(blockLines)
+        const { title, badge } = parseHeaderMeta(directiveHeader)
+        blocks.push(
+          <div key={`buttons-${i}`} className="my-3 p-3 rounded-2xl bg-[#111216]/90 border border-zinc-800/80 shadow-md">
+            {title && (
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800/60">
+                <span className="font-semibold text-xs text-zinc-300">{title}</span>
+                {badge && (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono bg-zinc-800 text-[var(--accent)] border border-zinc-700/60">
+                    {badge}
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {buttons.map((btn, bIdx) => (
+                <button
+                  key={bIdx}
+                  type="button"
+                  onClick={() => onButtonClick?.(btn.action)}
+                  className="px-3 py-1.5 rounded-xl bg-zinc-850 hover:bg-[var(--accent)]/15 border border-zinc-750 hover:border-[var(--accent)]/50 text-zinc-200 hover:text-[var(--accent)] text-xs font-medium transition-all shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95 group"
+                  title={`Enviar: "${btn.action}"`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] group-hover:scale-125 transition-transform" />
+                  <span>{btn.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )
         continue

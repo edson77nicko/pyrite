@@ -41,6 +41,63 @@ export interface ParsedGenericCard {
   contentLines: string[]
 }
 
+export interface ParsedButton {
+  label: string
+  action: string
+}
+
+export function parseButtonsBlock(lines: string[]): ParsedButton[] {
+  const buttons: ParsedButton[] = []
+  for (const rawLine of lines) {
+    const l = rawLine.trim()
+    if (!l) continue
+
+    // Format: [Label | Action] or [Label]
+    const bracketMatch = l.match(/^\[(.*?)\]$/)
+    if (bracketMatch) {
+      const inner = bracketMatch[1]
+      const pipeIdx = inner.indexOf('|')
+      if (pipeIdx !== -1) {
+        buttons.push({
+          label: inner.slice(0, pipeIdx).trim(),
+          action: inner.slice(pipeIdx + 1).trim()
+        })
+      } else {
+        buttons.push({
+          label: inner.trim(),
+          action: inner.trim()
+        })
+      }
+      continue
+    }
+
+    // Format: - Label | Action or - Label
+    if (l.startsWith('-') || l.startsWith('*') || l.startsWith('•')) {
+      const clean = l.replace(/^[-*•]\s*/, '').trim()
+      const pipeIdx = clean.indexOf('|')
+      if (pipeIdx !== -1) {
+        buttons.push({
+          label: clean.slice(0, pipeIdx).trim(),
+          action: clean.slice(pipeIdx + 1).trim()
+        })
+      } else {
+        buttons.push({
+          label: clean,
+          action: clean
+        })
+      }
+      continue
+    }
+
+    // Default line
+    buttons.push({
+      label: l,
+      action: l
+    })
+  }
+  return buttons
+}
+
 export function parseKpiBlock(lines: string[]): ParsedKpi {
   const result: ParsedKpi = {
     title: 'Métrica',

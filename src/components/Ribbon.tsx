@@ -9,7 +9,8 @@ import {
   Search,
   Calendar,
   SlidersHorizontal,
-  FolderSync
+  FolderSync,
+  MessageSquare
 } from 'lucide-react'
 
 interface RibbonProps {
@@ -23,6 +24,8 @@ interface RibbonProps {
   onToggleAi: () => void
   onOpenSettings: () => void
   onOpenVaultSwitcher?: () => void
+  isConversationsOpen?: boolean
+  onToggleConversations?: () => void
 }
 
 export const Ribbon: React.FC<RibbonProps> = ({
@@ -35,7 +38,9 @@ export const Ribbon: React.FC<RibbonProps> = ({
   isAiOpen,
   onToggleAi,
   onOpenSettings,
-  onOpenVaultSwitcher
+  onOpenVaultSwitcher,
+  isConversationsOpen,
+  onToggleConversations
 }) => {
   return (
     <aside className="w-11 h-full bg-[#09090b] border-r border-zinc-800/80 flex flex-col items-center py-2 select-none shrink-0 text-zinc-400 z-10">
@@ -130,8 +135,22 @@ export const Ribbon: React.FC<RibbonProps> = ({
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* 4. Bottom Utilities: Vault Switcher & Settings */}
+      {/* 4. Bottom Utilities: Conversations History, Vault Switcher & Settings */}
       <div className="flex flex-col items-center gap-1">
+        {onToggleConversations && (
+          <button
+            onClick={onToggleConversations}
+            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
+              isConversationsOpen
+                ? 'bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/40'
+                : 'text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/50'
+            }`}
+            title="Histórico de Conversas do Agente"
+          >
+            <MessageSquare className="w-4 h-4" />
+          </button>
+        )}
+
         {onOpenVaultSwitcher && (
           <button
             onClick={onOpenVaultSwitcher}

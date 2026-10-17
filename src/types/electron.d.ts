@@ -51,7 +51,7 @@ export interface ElectronAPI {
   aiChat: (params: {
     provider: string
     model?: string
-    messages: { role: string; content: string }[]
+    messages: { role: string; content: string | any[] }[]
     temperature?: number
   }) => Promise<{ success: boolean; text?: string; error?: string }>
 }

@@ -113,6 +113,7 @@ export const App: React.FC = () => {
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true)
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
   const [isAiOpen, setIsAiOpen] = useState(false)
+  const [isAiConversationsOpen, setIsAiConversationsOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const [isVaultSwitcherOpen, setIsVaultSwitcherOpen] = useState(false)
@@ -670,6 +671,11 @@ export const App: React.FC = () => {
           onToggleAi={() => setIsAiOpen(o => !o)}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenVaultSwitcher={() => setIsVaultSwitcherOpen(true)}
+          isConversationsOpen={isAiConversationsOpen}
+          onToggleConversations={() => {
+            setIsAiOpen(true)
+            setIsAiConversationsOpen(o => !o)
+          }}
         />
 
         {/* Left Sidebar (Hierarchical Subfolders & Notes Tree) */}
@@ -729,6 +735,8 @@ export const App: React.FC = () => {
               }
             }}
             onUpdateNote={handleUpdateNote}
+            isConversationsOpen={isAiConversationsOpen}
+            onToggleConversations={() => setIsAiConversationsOpen(o => !o)}
             onClose={() => setIsAiOpen(false)}
           />
         )}

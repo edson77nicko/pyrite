@@ -62,7 +62,7 @@ const electronAPI = {
     }>,
   aiDeleteKey: (provider: string) =>
     ipcRenderer.invoke('ai:deleteKey', provider) as Promise<{ success: boolean }>,
-  aiChat: (params: { provider: string; model?: string; messages: { role: string; content: string }[]; temperature?: number }) =>
+  aiChat: (params: { provider: string; model?: string; messages: { role: string; content: string | any[] }[]; temperature?: number }) =>
     ipcRenderer.invoke('ai:chat', params) as Promise<{ success: boolean; text?: string; error?: string }>,
 }
 
