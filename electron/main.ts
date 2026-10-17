@@ -509,7 +509,7 @@ ipcMain.handle('ai:chat', async (_event, params: {
   const p = (params.provider || creds.activeProvider || 'openrouter').toLowerCase()
   const entry = creds.providers?.[p]
 
-  if (!entry?.encryptedKey) {
+  if (!entry?.encryptedKey && p !== 'ollama') {
     return {
       success: false,
       error: `Chave de API não configurada para o provedor ${p.toUpperCase()}. Abra as configurações de IA para adicionar sua chave.`
@@ -517,18 +517,29 @@ ipcMain.handle('ai:chat', async (_event, params: {
   }
 
   let apiKey = ''
-  try {
-    if (entry.isEncrypted && safeStorage.isEncryptionAvailable()) {
-      const buf = Buffer.from(entry.encryptedKey, 'base64')
-      apiKey = safeStorage.decryptString(buf)
-    } else {
-      apiKey = Buffer.from(entry.encryptedKey, 'base64').toString('utf-8')
+  if (entry?.encryptedKey) {
+    try {
+      if (entry.isEncrypted && safeStorage.isEncryptionAvailable()) {
+        const buf = Buffer.from(entry.encryptedKey, 'base64')
+        apiKey = safeStorage.decryptString(buf)
+      } else {
+        apiKey = Buffer.from(entry.encryptedKey, 'base64').toString('utf-8')
+      }
+    } catch (err: any) {
+      return { success: false, error: 'Falha ao descriptografar a chave do Windows DPAPI: ' + err.message }
     }
-  } catch (err: any) {
-    return { success: false, error: 'Falha ao descriptografar a chave do Windows DPAPI: ' + err.message }
   }
 
-  const model = params.model || entry.model || 'google/gemini-2.5-flash'
+  const defaultModels: Record<string, string> = {
+    openrouter: 'google/gemini-2.5-flash',
+    openai: 'gpt-4o',
+    deepseek: 'deepseek-chat',
+    gemini: 'gemini-2.5-flash',
+    groq: 'llama-3.3-70b-versatile',
+    ollama: 'llama3'
+  }
+
+  const model = params.model || entry?.model || defaultModels[p] || 'google/gemini-2.5-flash'
 
   const endpoints: Record<string, { url: string; headers: Record<string, string> }> = {
     openrouter: {
@@ -556,10 +567,25 @@ ipcMain.handle('ai:chat', async (_event, params: {
       headers: {
         'Authorization': `Bearer ${apiKey}`
       }
+    },
+    groq: {
+      url: 'https://api.groq.com/openai/v1/chat/completions',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      }
+    },
+    ollama: {
+      url: 'http://localhost:11434/v1/chat/completions',
+      headers: {
+        'Authorization': `Bearer ${apiKey || 'ollama'}`
+      }
     }
   }
 
   const config = endpoints[p] || endpoints.openrouter
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 60000)
 
   try {
     const res = await fetch(config.url, {
@@ -572,8 +598,11 @@ ipcMain.handle('ai:chat', async (_event, params: {
         model,
         messages: params.messages,
         temperature: params.temperature ?? 0.7
-      })
+      }),
+      signal: controller.signal
     })
+
+    clearTimeout(timeoutId)
 
     if (!res.ok) {
       const errText = await res.text()
@@ -589,7 +618,11 @@ ipcMain.handle('ai:chat', async (_event, params: {
     const content = data?.choices?.[0]?.message?.content || ''
     return { success: true, text: content }
   } catch (err: any) {
+    clearTimeout(timeoutId)
     console.error('[AI Chat] Request failed:', err)
+    if (err.name === 'AbortError') {
+      return { success: false, error: 'A solicitação excedeu o tempo limite (60 segundos). Verifique sua conexão ou status do provedor.' }
+    }
     return { success: false, error: 'Falha ao conectar com o provedor: ' + err.message }
   }
 })

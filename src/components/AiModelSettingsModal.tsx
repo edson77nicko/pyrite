@@ -19,7 +19,7 @@ export interface AiModelSettingsModalProps {
   onConfigSaved?: () => void
 }
 
-type ProviderKey = 'openai' | 'gemini' | 'deepseek' | 'openrouter'
+type ProviderKey = 'openai' | 'gemini' | 'deepseek' | 'openrouter' | 'groq' | 'ollama'
 
 interface ProviderMeta {
   id: ProviderKey
@@ -30,10 +30,12 @@ interface ProviderMeta {
 }
 
 const PROVIDERS: ProviderMeta[] = [
+  { id: 'openrouter', name: 'OpenRouter', defaultModel: 'google/gemini-2.5-flash', placeholderModel: 'google/gemini-2.5-flash ou anthropic/claude-3.5-sonnet', keyPrefix: 'sk-or-v1-...' },
   { id: 'openai', name: 'OpenAI', defaultModel: 'gpt-4o', placeholderModel: 'gpt-4o ou gpt-4o-mini', keyPrefix: 'sk-...' },
   { id: 'gemini', name: 'Gemini', defaultModel: 'gemini-2.5-flash', placeholderModel: 'gemini-2.5-flash ou gemini-1.5-pro', keyPrefix: 'AIza...' },
   { id: 'deepseek', name: 'DeepSeek', defaultModel: 'deepseek-chat', placeholderModel: 'deepseek-chat ou deepseek-reasoner', keyPrefix: 'sk-...' },
-  { id: 'openrouter', name: 'OpenRouter', defaultModel: 'google/gemini-2.5-flash', placeholderModel: 'google/gemini-2.5-flash ou anthropic/claude-3.5-sonnet', keyPrefix: 'sk-or-v1-...' }
+  { id: 'groq', name: 'Groq', defaultModel: 'llama-3.3-70b-versatile', placeholderModel: 'llama-3.3-70b-versatile ou mixtral-8x7b-32768', keyPrefix: 'gsk_...' },
+  { id: 'ollama', name: 'Ollama (Local)', defaultModel: 'llama3', placeholderModel: 'llama3, mistral ou qwen2.5 (localhost:11434)', keyPrefix: 'opcional' }
 ]
 
 export const AiModelSettingsModal: React.FC<AiModelSettingsModalProps> = ({
@@ -46,19 +48,25 @@ export const AiModelSettingsModal: React.FC<AiModelSettingsModalProps> = ({
     openrouter: 'google/gemini-2.5-flash',
     openai: 'gpt-4o',
     gemini: 'gemini-2.5-flash',
-    deepseek: 'deepseek-chat'
+    deepseek: 'deepseek-chat',
+    groq: 'llama-3.3-70b-versatile',
+    ollama: 'llama3'
   })
   const [multimodalMap, setMultimodalMap] = useState<Record<ProviderKey, boolean>>({
     openrouter: true,
     openai: true,
     gemini: true,
-    deepseek: false
+    deepseek: false,
+    groq: false,
+    ollama: false
   })
   const [hasKeyMap, setHasKeyMap] = useState<Record<ProviderKey, boolean>>({
     openrouter: false,
     openai: false,
     gemini: false,
-    deepseek: false
+    deepseek: false,
+    groq: false,
+    ollama: true
   })
 
   const [inputKey, setInputKey] = useState('')
@@ -73,7 +81,7 @@ export const AiModelSettingsModal: React.FC<AiModelSettingsModalProps> = ({
 
     try {
       const data = await window.electronAPI.aiGetAllConfigs()
-      if (data.activeProvider && ['openai', 'gemini', 'deepseek', 'openrouter'].includes(data.activeProvider)) {
+      if (data.activeProvider && ['openai', 'gemini', 'deepseek', 'openrouter', 'groq', 'ollama'].includes(data.activeProvider)) {
         setActiveProvider(data.activeProvider as ProviderKey)
       }
 

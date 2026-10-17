@@ -63,16 +63,22 @@ async function publish() {
         name: `Pyrita ${tag}`,
         body: `### Novidades no Pyrita ${tag}:
 
-#### 🌌 Universo Imersivo & Interação Estelar Avançada no Grafo:
-- **Visualização Pura sem Nenhuma Nota Ativa**: Agora é possível contemplar o cosmos sem nenhuma nota forçada na seleção. Clicar no fundo vazio do universo desmarca tudo, deixando todas as estrelas orbitando em harmonia natural.
-- **Remoção dos Pontos em Movimento nas Linhas**: Removidos completamente os pacotes/fótons de pulso que ficavam correndo pelas linhas, eliminando poluição visual em grafos densos com muitas notas.
-- **Cosmos Mais Profundo & Escuro**: O fundo do universo foi reajustado para um tom preto espacial mais escuro e de altíssimo contraste (Hubble Deep Field), preservando todo o calor e a riqueza das auroras douradas e acobreadas do disco de acreção.
-- **Tags de Texto Exclusivas para o Grupo Conectado**: O texto flutuante com o nome das notas agora aparece estritamente para a estrela em foco e suas notas conectadas diretas (mesmo ao aplicar zoom, garantindo limpeza visual absoluta).
-- **Seleção com Clique Esquerdo & Popover Fixo com Clique Direito**:
-  - **Clique Esquerdo em uma Estrela**: Seleciona a nota e destaca todo o seu grupo conectado sem fechar o grafo ou mudar de tela.
-  - **Clique Direito em uma Estrela**: Fixa o card (popover) na tela, permitindo mover o cursor livremente, ler o resumo e navegar entre conexões sem que o card suma.
-  - **Clique no Fundo**: Fecha o card/popover e limpa a seleção.
-  - **Duplo Clique**: Abre a nota diretamente no editor.`
+#### ✨ Ajuste Fino na Singularidade:
+- **Redução do Brilho e Halos das Estrelas**: A coroa difusa (*PSF halo*) e os raios de difração óptica foram refinados e reduzidos proporcionalmente, resultando em pontos estelares nítidos, elegantes e com proporções astronômicas reais do telescópio Hubble.
+
+#### 🤖 Especialidades do Agente de IA:
+- **5 Perfis Especializados com Raciocínio Dedicado**:
+  1. 🧠 **Arquiteto de Conhecimento**: Mapeamento conceitual, conexões do Vault, links bidirecionais [[...]] e taxonomias.
+  2. ✍️ **Redator & Síntese**: Refinamento de escrita, clareza, fluidez, expansão de ideias e resumos executivos.
+  3. 📊 **Estrategista & Artefatos**: Geração de componentes concêntricos visuais nativos (:::kpi, :::timeline, :::comparison, :::card) e planos de ação.
+  4. 🔬 **Analista Crítico & Socrático**: Questionamento socrático, auditoria de riscos, trade-offs e premissas ocultas.
+  5. 💻 **Engenheiro & Técnico**: Especificações técnicas, modelagem de dados, arquitetura de sistemas e código documentado.
+- **Seletor de Especialidades**: Menu dropdown moderno no cabeçalho do agente para alternar o perfil instantaneamente, com persistência e atualização dinâmica dos botões de prompt rápido.
+
+#### 📁 Contexto de Nota + Pasta Inteira no Chat:
+- **Trabalhe com Pastas Inteiras como Contexto**: Ao lado da pílula da nota atual (\`@ Nota\`), agora é possível adicionar uma **pasta inteira** (\`📁 + Pasta\`) como contexto para a IA.
+- **Cruzamento Semântico em Larga Escala**: Ao selecionar uma pasta, o conteúdo e títulos de todas as notas daquela pasta são injetados no contexto, permitindo à IA comparar, sintetizar e relacionar múltiplos documentos simultaneamente.
+- **Controle Flexível**: Alterne ou desative facilmente a nota ou a pasta com um clique nos botões dedicados (\`✕\`).`
       })
     });
     const updated = await patchRes.json();

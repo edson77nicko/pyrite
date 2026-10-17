@@ -128,12 +128,12 @@ function drawHubbleStar(
 ) {
   const [r, g, b] = rgb
 
-  // 1. Soft Optical Point-Spread Function (PSF) Atmospheric Corona
-  const haloRadius = coreRadius * (options.isFocused ? 7.5 : 5.2)
+  // 1. Soft Optical Point-Spread Function (PSF) Atmospheric Corona (Refined and subtle)
+  const haloRadius = coreRadius * (options.isFocused ? 3.2 : 2.0)
   const corona = ctx.createRadialGradient(x, y, 0, x, y, haloRadius)
-  corona.addColorStop(0, `rgba(255, 255, 255, ${Math.min(1, alpha * 0.95)})`)
-  corona.addColorStop(0.18, `rgba(${r}, ${g}, ${b}, ${Math.min(1, alpha * 0.65)})`)
-  corona.addColorStop(0.48, `rgba(${r}, ${g}, ${b}, ${Math.min(1, alpha * 0.16)})`)
+  corona.addColorStop(0, `rgba(255, 255, 255, ${Math.min(1, alpha * 0.85)})`)
+  corona.addColorStop(0.25, `rgba(${r}, ${g}, ${b}, ${Math.min(1, alpha * 0.35)})`)
+  corona.addColorStop(0.65, `rgba(${r}, ${g}, ${b}, ${Math.min(1, alpha * 0.08)})`)
   corona.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`)
 
   ctx.fillStyle = corona
@@ -144,18 +144,18 @@ function drawHubbleStar(
   // 2. Hubble Secondary-Mirror 4-Point Diffraction Spikes (+)
   if (options.hasSpikes) {
     const sLen = options.spikeLength
-    const spikeAlpha = Math.min(1, alpha * (options.isFocused ? 0.92 : 0.58))
+    const spikeAlpha = Math.min(1, alpha * (options.isFocused ? 0.85 : 0.50))
 
     // Horizontal spike
     const gradH = ctx.createLinearGradient(x - sLen, y, x + sLen, y)
     gradH.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`)
-    gradH.addColorStop(0.42, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.45})`)
+    gradH.addColorStop(0.42, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.40})`)
     gradH.addColorStop(0.5, `rgba(255, 255, 255, ${spikeAlpha})`)
-    gradH.addColorStop(0.58, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.45})`)
+    gradH.addColorStop(0.58, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.40})`)
     gradH.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`)
 
     ctx.strokeStyle = gradH
-    ctx.lineWidth = options.isFocused ? 1.25 : 0.75
+    ctx.lineWidth = options.isFocused ? 0.95 : 0.55
     ctx.beginPath()
     ctx.moveTo(x - sLen, y)
     ctx.lineTo(x + sLen, y)
@@ -164,23 +164,23 @@ function drawHubbleStar(
     // Vertical spike
     const gradV = ctx.createLinearGradient(x, y - sLen, x, y + sLen)
     gradV.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`)
-    gradV.addColorStop(0.42, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.45})`)
+    gradV.addColorStop(0.42, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.40})`)
     gradV.addColorStop(0.5, `rgba(255, 255, 255, ${spikeAlpha})`)
-    gradV.addColorStop(0.58, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.45})`)
+    gradV.addColorStop(0.58, `rgba(${r}, ${g}, ${b}, ${spikeAlpha * 0.40})`)
     gradV.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`)
 
     ctx.strokeStyle = gradV
-    ctx.lineWidth = options.isFocused ? 1.25 : 0.75
+    ctx.lineWidth = options.isFocused ? 0.95 : 0.55
     ctx.beginPath()
     ctx.moveTo(x, y - sLen)
     ctx.lineTo(x, y + sLen)
     ctx.stroke()
 
-    // Subtle 45-degree JWST/Hubble secondary micro-glint for active or hovered star
-    if (options.isFocused || options.isCurrent) {
-      const diagLen = sLen * 0.42
-      ctx.strokeStyle = `rgba(255, 248, 230, ${spikeAlpha * 0.38})`
-      ctx.lineWidth = 0.65
+    // Subtle 45-degree JWST/Hubble secondary micro-glint for active star
+    if (options.isFocused) {
+      const diagLen = sLen * 0.35
+      ctx.strokeStyle = `rgba(255, 248, 230, ${spikeAlpha * 0.30})`
+      ctx.lineWidth = 0.5
       ctx.beginPath()
       ctx.moveTo(x - diagLen, y - diagLen)
       ctx.lineTo(x + diagLen, y + diagLen)
@@ -193,7 +193,7 @@ function drawHubbleStar(
   // 3. Incandescent White-Hot Pinpoint Star Core (NO black border!)
   ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1, alpha)})`
   ctx.beginPath()
-  ctx.arc(x, y, Math.max(1.1, coreRadius * 0.68), 0, Math.PI * 2)
+  ctx.arc(x, y, Math.max(0.75, coreRadius * 0.52), 0, Math.PI * 2)
   ctx.fill()
 }
 
@@ -232,7 +232,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     repulsion: 1800,
     linkDistance: 115,
     centerGravity: 0.008,
-    nodeSize: 1.0,
+    nodeSize: 0.85,
     showLabels: false,
     showArrows: true,
     isLocalGraph: false,
@@ -406,8 +406,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
           const orbitElevation = ((idxInFolder % 7) - 3) * 0.011 * orbitRadius
           const orbitPhase = (idxInFolder * 1.7) % (Math.PI * 2)
 
-          // Pinpoint star core radius (delicate, realistic astronomical proportions: 1.8px to 4.8px)
-          const radius = Math.max(1.8, Math.min(5.2, 1.8 + Math.sqrt(connections) * 0.85))
+          // Pinpoint star core radius (delicate, realistic astronomical proportions: 1.1px to 3.2px)
+          const radius = Math.max(1.1, Math.min(3.2, 1.1 + Math.sqrt(connections) * 0.45))
 
           const rawText = note.content
             .replace(/[#*`>~\[\]\(\)-]/g, ' ')
@@ -839,11 +839,11 @@ export const GraphView: React.FC<GraphViewProps> = ({
             node.radius *
             node.projectedScale *
             settings.nodeSize *
-            (isFocal ? 1.45 : 1.0)
+            (isFocal ? 1.25 : 0.85)
 
           const isFocalStar = isFocal || isNeighbor
           const hasSpikes = isFocalStar || (focalNodeId === null && node.connections >= 2) || isSearchMatch
-          const spikeLen = coreR * (isFocal ? 6.5 : isNeighbor ? 4.8 : 3.6)
+          const spikeLen = coreR * (isFocal ? 3.4 : isNeighbor ? 2.4 : 1.8)
 
           drawHubbleStar(ctx, node.screenX, node.screenY, coreR, node.rgb, starAlpha, {
             hasSpikes,
