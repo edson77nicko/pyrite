@@ -11,7 +11,15 @@ import {
   Mic,
   Bot,
   Zap,
-  ShieldCheck
+  ShieldCheck,
+  Folder,
+  FolderPlus,
+  RefreshCw,
+  Edit2,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  FileText
 } from 'lucide-react'
 import { AGENT_SPECIALTIES } from './AiAssistant'
 
@@ -45,6 +53,25 @@ export const PROVIDERS: ProviderMeta[] = [
   { id: 'ollama', name: 'Ollama (Local)', defaultModel: 'llama3', placeholderModel: 'llama3, mistral ou qwen2.5 (localhost:11434)', keyPrefix: 'sem chave', badge: 'Offline' }
 ]
 
+export interface CustomSkillFile {
+  name: string
+  folder: string
+  path: string
+  content: string
+}
+
+export interface CustomAgentSkill {
+  id: string
+  name: string
+  description: string
+  folderPath: string
+  enabled: boolean
+  filesCount: number
+  files: CustomSkillFile[]
+  importedAt: number
+  updatedAt: number
+}
+
 export interface AgentSkill {
   id: string
   name: string
@@ -57,89 +84,8 @@ export interface AgentSkill {
   tags: string[]
 }
 
-export const DEFAULT_AGENT_SKILLS: AgentSkill[] = [
-  {
-    id: 'concentric_artifacts',
-    name: 'Artefatos Concêntricos Nativos',
-    category: 'Artefatos',
-    icon: '📊',
-    description: 'Gera e formata blocos visuais nativos: KPIs ($R_{ext} = R_{int} + P$), Timelines embutidas, Matrizes de Decisão e Cartões Inset.',
-    directive: 'HABILIDADE ATIVA: Geração de Artefatos Concêntricos do Pyrita (:::kpi, :::timeline, :::comparison, :::card). Use-os ativamente para sintetizar métricas, processos e trade-offs.',
-    installed: true,
-    isCore: true,
-    tags: ['Design', 'KPIs', 'Fórmula R_ext']
-  },
-  {
-    id: 'vault_graph_mapper',
-    name: 'Mapeador de Grafos & Backlinks',
-    category: 'Vault',
-    icon: '🔗',
-    description: 'Identifica conceitos transversais no cofre e sugere conexões semânticas automáticas com sintaxe bidirecional [[Nome da Nota]].',
-    directive: 'HABILIDADE ATIVA: Mapeamento de Grafo & Conexões do Vault. Analise o contexto e sugira links bidirecionais [[...]] com notas relevantes do cofre.',
-    installed: true,
-    tags: ['Vault', 'WikiLinks', 'Grafo 3D']
-  },
-  {
-    id: 'folder_context_auditor',
-    name: 'Auditor de Pastas & Contexto Amplo',
-    category: 'Vault',
-    icon: '📂',
-    description: 'Ingere e cruza informações de múltiplos arquivos de uma pasta inteira no cofre para diagnósticos abrangentes.',
-    directive: 'HABILIDADE ATIVA: Auditoria de Pastas & Contexto Amplo. Cruze dados de todas as notas fornecidas no bloco de pasta selecionada.',
-    installed: true,
-    tags: ['Contexto', 'Multinotas', 'Pastas']
-  },
-  {
-    id: 'note_coauthor_write',
-    name: 'Injetor de Notas & Co-Autoria',
-    category: 'Escrita',
-    icon: '✍️',
-    description: 'No Modo Co-Autor, gera conteúdos prontos e injeta artefatos diretamente na nota ativa ou cria novas notas no cofre.',
-    directive: 'HABILIDADE ATIVA: Co-Autoria e Injeção de Conteúdo. Entregue textos e artefatos prontos para serem salvos diretamente no documento.',
-    installed: true,
-    tags: ['Co-Autor', 'Edição', 'Automação']
-  },
-  {
-    id: 'executive_exporter',
-    name: 'Exportador Markdown & Relatórios Executivos',
-    category: 'Produtividade',
-    icon: '📄',
-    description: 'Formata notas e sínteses em resumos executivos de alta densidade, apresentações em tópicos e sumários prontos para compartilhamento.',
-    directive: 'HABILIDADE ATIVA: Síntese Executiva de Alta Densidade. Estruture informações em tópicos concisos, bullets de ação e resumos executivos claros.',
-    installed: true,
-    tags: ['Executivo', 'Resumos', 'Produtividade']
-  },
-  {
-    id: 'web_research',
-    name: 'Pesquisa Web & Conhecimento Externo',
-    category: 'Pesquisa',
-    icon: '🌐',
-    description: 'Sugere termos de busca chave e referências externas para enriquecer as ideias do cofre com fontes contemporâneas.',
-    directive: 'HABILIDADE ATIVA: Pesquisa e Referenciamento Externo. Sugira termos de busca chave e cite fontes e melhores práticas da indústria.',
-    installed: false,
-    tags: ['Web', 'Referências', 'Atualização']
-  },
-  {
-    id: 'vault_cleaner',
-    name: 'Organizador de Vault & Auditoria de Tags',
-    category: 'Vault',
-    icon: '🧹',
-    description: 'Audita o cofre em busca de notas órfãs, tags despadronizadas e links quebrados, sugerindo reorganização.',
-    directive: 'HABILIDADE ATIVA: Organização e Auditoria do Vault. Aponte redundâncias conceituais e sugira padronização de taxonomia.',
-    installed: false,
-    tags: ['Taxonomia', 'Limpeza', 'Refatoração']
-  },
-  {
-    id: 'deep_code_spec',
-    name: 'Engenheiro de Código & Arquitetura',
-    category: 'Produtividade',
-    icon: '💻',
-    description: 'Especificações técnicas, diagramas de arquitetura e snippets de código funcionais tipados e comentados.',
-    directive: 'HABILIDADE ATIVA: Engenharia e Arquitetura de Software. Entregue código limpo, arquitetura modular e diagramas conceituais.',
-    installed: true,
-    tags: ['TypeScript', 'Arquitetura', 'Código']
-  }
-]
+// System skills cleared per user request to prioritize folder-based sub-vault skills
+export const DEFAULT_AGENT_SKILLS: AgentSkill[] = []
 
 export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
   isOpen,
@@ -184,20 +130,24 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  // Tab 3: Skills State with localStorage persistence
-  const [skills, setSkills] = useState<AgentSkill[]>(() => {
+  // Tab 3: Custom Skills State with localStorage persistence
+  const [customSkills, setCustomSkills] = useState<CustomAgentSkill[]>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_agent_skills')
+      const saved = localStorage.getItem('pyrita_agent_custom_skills_v1')
       if (saved) {
-        const parsed = JSON.parse(saved) as Record<string, boolean>
-        return DEFAULT_AGENT_SKILLS.map(s => ({
-          ...s,
-          installed: parsed[s.id] !== undefined ? parsed[s.id] : s.installed
-        }))
+        return JSON.parse(saved)
       }
     } catch {}
-    return DEFAULT_AGENT_SKILLS
+    return []
   })
+
+  const [isImporting, setIsImporting] = useState(false)
+  const [reloadingSkillId, setReloadingSkillId] = useState<string | null>(null)
+  const [expandedSkillId, setExpandedSkillId] = useState<string | null>(null)
+  const [previewFile, setPreviewFile] = useState<CustomSkillFile | null>(null)
+  const [editingSkillId, setEditingSkillId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editDesc, setEditDesc] = useState('')
 
   // Load provider configurations from Electron safeStorage
   const loadStoredConfigs = async () => {
@@ -322,29 +272,145 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
     }
   }
 
-  const handleToggleSkill = (skillId: string) => {
-    setSkills(prev => {
-      const updated = prev.map(s => {
-        if (s.id === skillId) {
-          if (s.isCore) return s // Core skill cannot be disabled
-          return { ...s, installed: !s.installed }
+  const saveCustomSkills = (newSkills: CustomAgentSkill[]) => {
+    setCustomSkills(newSkills)
+    try {
+      localStorage.setItem('pyrita_agent_custom_skills_v1', JSON.stringify(newSkills))
+    } catch (err) {
+      console.error('Failed to save custom skills to localStorage', err)
+    }
+  }
+
+  const handleImportSkillFolder = async () => {
+    if (!window.electronAPI?.selectFolder || !window.electronAPI?.readVault) {
+      alert('Esta funcionalidade requer a execução do Pyrita no Electron.')
+      return
+    }
+
+    try {
+      const folderPath = await window.electronAPI.selectFolder()
+      if (!folderPath) return
+
+      setIsImporting(true)
+      const vaultFiles = await window.electronAPI.readVault(folderPath)
+
+      const folderName = folderPath.split(/[\\/]/).filter(Boolean).pop() || 'Nova Skill'
+
+      let description = `Skill com ${vaultFiles.length} arquivo(s) .md como sub-cofre de conhecimento.`
+      const docFile = vaultFiles.find(f => /^(skill|readme|doc|instrucoes)\.md$/i.test(f.title?.trim() || ''))
+      if (docFile && docFile.content) {
+        const firstLines = docFile.content
+          .split('\n')
+          .map(l => l.replace(/^[#\-*>\s]+/, '').trim())
+          .filter(l => l.length > 5)
+        if (firstLines.length > 0) {
+          description = firstLines.slice(0, 2).join(' — ').slice(0, 160)
+        }
+      }
+
+      const newSkill: CustomAgentSkill = {
+        id: `skill_${Date.now()}`,
+        name: folderName,
+        description,
+        folderPath,
+        enabled: true,
+        filesCount: vaultFiles.length,
+        files: vaultFiles.map(f => ({
+          name: f.title || f.filePath.split(/[\\/]/).pop() || 'nota.md',
+          folder: f.folder || '',
+          path: f.filePath,
+          content: f.content || ''
+        })),
+        importedAt: Date.now(),
+        updatedAt: Date.now()
+      }
+
+      saveCustomSkills([newSkill, ...customSkills])
+    } catch (err: any) {
+      console.error('Erro ao importar pasta de skill:', err)
+      alert('Erro ao importar pasta: ' + (err.message || String(err)))
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  const handleReloadSkillFolder = async (skill: CustomAgentSkill) => {
+    if (!window.electronAPI?.readVault) return
+    setReloadingSkillId(skill.id)
+    try {
+      const vaultFiles = await window.electronAPI.readVault(skill.folderPath)
+      const updated = customSkills.map(s => {
+        if (s.id === skill.id) {
+          return {
+            ...s,
+            filesCount: vaultFiles.length,
+            files: vaultFiles.map(f => ({
+              name: f.title || f.filePath.split(/[\\/]/).pop() || 'nota.md',
+              folder: f.folder || '',
+              path: f.filePath,
+              content: f.content || ''
+            })),
+            updatedAt: Date.now()
+          }
         }
         return s
       })
-
-      try {
-        const map: Record<string, boolean> = {}
-        updated.forEach(s => {
-          map[s.id] = s.installed
-        })
-        localStorage.setItem('pyrita_agent_skills', JSON.stringify(map))
-      } catch {}
-
-      return updated
-    })
+      saveCustomSkills(updated)
+    } catch (err: any) {
+      alert('Erro ao recarregar pasta da skill: ' + (err.message || String(err)))
+    } finally {
+      setReloadingSkillId(null)
+    }
   }
 
-  const installedSkillsCount = skills.filter(s => s.installed).length
+  const handleToggleCustomSkill = (skillId: string) => {
+    const updated = customSkills.map(s => {
+      if (s.id === skillId) {
+        return { ...s, enabled: !s.enabled }
+      }
+      return s
+    })
+    saveCustomSkills(updated)
+  }
+
+  const handleDeleteCustomSkill = (skillId: string) => {
+    if (confirm('Tem certeza que deseja remover esta skill do Pyrita? Seus arquivos em disco continuarão intactos.')) {
+      const updated = customSkills.filter(s => s.id !== skillId)
+      saveCustomSkills(updated)
+      if (expandedSkillId === skillId) setExpandedSkillId(null)
+    }
+  }
+
+  const handleStartEdit = (skill: CustomAgentSkill) => {
+    setEditingSkillId(skill.id)
+    setEditName(skill.name)
+    setEditDesc(skill.description)
+  }
+
+  const handleSaveEdit = (skillId: string) => {
+    if (!editName.trim()) return
+    const updated = customSkills.map(s => {
+      if (s.id === skillId) {
+        return {
+          ...s,
+          name: editName.trim(),
+          description: editDesc.trim(),
+          updatedAt: Date.now()
+        }
+      }
+      return s
+    })
+    saveCustomSkills(updated)
+    setEditingSkillId(null)
+  }
+
+  const handleOpenInExplorer = (folderPath: string) => {
+    if (window.electronAPI?.openInExplorer) {
+      window.electronAPI.openInExplorer(folderPath)
+    }
+  }
+
+  const installedSkillsCount = customSkills.filter(s => s.enabled).length
 
   return (
     <>
@@ -429,7 +495,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                 <Zap className={`w-4 h-4 ${currentTab === 'skills' ? 'text-[var(--accent)]' : 'text-zinc-500'}`} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-medium leading-tight">Instalar Skills</div>
-                  <div className="text-[9px] text-zinc-500 truncate mt-0.5">Habilidades do agente</div>
+                  <div className="text-[9px] text-zinc-500 truncate mt-0.5">Pastas como cofres</div>
                 </div>
                 <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-zinc-400 text-[9px] font-mono">
                   {installedSkillsCount}
@@ -460,12 +526,12 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
               <h3 className="font-bold text-sm text-zinc-100">
                 {currentTab === 'models' && 'Configurações do Modelo LLM'}
                 {currentTab === 'specialties' && 'Especialidades Cognitivas do Agente'}
-                {currentTab === 'skills' && 'Catálogo de Skills & Habilidades'}
+                {currentTab === 'skills' && 'Habilidades & Cofres de Conhecimento'}
               </h3>
               <p className="text-[10px] text-zinc-500">
                 {currentTab === 'models' && 'Selecione o provedor, modelo e conecte sua chave de API'}
-                {currentTab === 'specialties' && 'Escolha a persona e diretrizes ativas para o pensamento do agente'}
-                {currentTab === 'skills' && 'Ative ou desative capacidades modulares e artefatos visuais'}
+                {currentTab === 'specialties' && 'Escolha a persona e o modo de raciocínio ativo para o agente'}
+                {currentTab === 'skills' && 'Importe pastas locais com notas e instruções para expandir as capacidades do agente'}
               </p>
             </div>
 
@@ -684,7 +750,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
             {currentTab === 'specialties' && (
               <div className="space-y-3">
                 <div className="text-[11px] text-zinc-400 pb-1">
-                  Selecione a especialidade padrão com a qual o agente de IA irá raciocinar e estruturar suas notas:
+                  Selecione a especialidade com a qual o agente de IA irá raciocinar e estruturar suas notas:
                 </div>
 
                 <div className="space-y-2.5">
@@ -716,7 +782,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                                   {s.shortName}
                                 </span>
                               </div>
-                              <p className="text-[11px] text-zinc-400 mt-0.5">{s.tagline}</p>
+                              <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">{s.tagline}</p>
                             </div>
                           </div>
 
@@ -728,9 +794,9 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                                 localStorage.setItem('pyrita_ai_specialty', s.id)
                               } catch {}
                             }}
-                            className={`px-3 py-1.5 rounded-xl font-semibold text-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                            className={`px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                               isCur
-                                ? 'bg-[var(--accent)] text-zinc-950 font-bold'
+                                ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
                                 : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
                             }`}
                           >
@@ -745,28 +811,20 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                           </button>
                         </div>
 
-                        {/* Directives Preview */}
-                        <div className="mt-2.5 pt-2 border-t border-zinc-850 text-[10px] text-zinc-400 space-y-1">
-                          <span className="font-semibold text-zinc-500 uppercase tracking-wider text-[9px]">
-                            Diretrizes cognitivas:
-                          </span>
-                          <p className="font-mono text-zinc-400 whitespace-pre-line leading-relaxed bg-[#0b0b0e] p-2 rounded-lg border border-zinc-850">
-                            {s.systemDirective}
-                          </p>
-                        </div>
-
                         {/* Quick Presets Pills */}
-                        <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[9px] text-zinc-500 font-semibold uppercase">Prompts rápidos:</span>
-                          {s.presets.map((p, idx) => (
-                            <span
-                              key={idx}
-                              className="px-2 py-0.5 rounded-md bg-zinc-850 border border-zinc-800 text-[10px] text-zinc-300"
-                            >
-                              {p.label}
-                            </span>
-                          ))}
-                        </div>
+                        {s.presets.length > 0 && (
+                          <div className="mt-2.5 pt-2 border-t border-zinc-800/60 flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[9px] text-zinc-500 font-semibold uppercase">Prompts rápidos:</span>
+                            {s.presets.map((p, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 py-0.5 rounded-md bg-zinc-850 border border-zinc-800 text-[10px] text-zinc-300"
+                              >
+                                {p.label}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -775,83 +833,279 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
             )}
 
             {/* ------------------------------------------------------------------- */}
-            {/* TAB 3: SKILLS CATALOG */}
+            {/* TAB 3: SKILLS CATALOG & FOLDER SUB-VAULTS */}
             {/* ------------------------------------------------------------------- */}
             {currentTab === 'skills' && (
-              <div className="space-y-3">
+              <div className="space-y-4">
+                {/* Header action bar */}
                 <div className="flex items-center justify-between pb-1">
-                  <p className="text-[11px] text-zinc-400">
-                    Instale ou ative habilidades para expandir o raciocínio e automações do agente:
-                  </p>
-                  <span className="text-[10px] font-mono text-zinc-500">
-                    {installedSkillsCount} de {skills.length} ativas
-                  </span>
+                  <div>
+                    <p className="text-[11px] text-zinc-300 font-medium">
+                      Habilidades baseadas em Pastas & Cofres
+                    </p>
+                    <p className="text-[10px] text-zinc-500">
+                      Importe qualquer pasta com arquivos .md para que o agente utilize como base de conhecimento ativa.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleImportSkillFolder}
+                    disabled={isImporting}
+                    className="px-3.5 py-1.5 rounded-xl bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 text-zinc-950 font-bold text-xs transition-all shadow-md shadow-black/40 cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" />
+                    <span>{isImporting ? 'Lendo pasta...' : '+ Importar Pasta de Skill'}</span>
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
-                  {skills.map(skill => {
-                    return (
-                      <div
-                        key={skill.id}
-                        className={`p-3.5 rounded-2xl border flex flex-col justify-between transition-all ${
-                          skill.installed
-                            ? 'bg-[#12141a] border-zinc-700/80 shadow-sm'
-                            : 'bg-[#0f1013] border-zinc-850 opacity-70'
-                        }`}
+                {/* Empty State */}
+                {customSkills.length === 0 && (
+                  <div className="border border-dashed border-zinc-800 rounded-2xl p-8 text-center space-y-3 bg-[#0f1013]/50">
+                    <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-[var(--accent)]">
+                      <Folder className="w-6 h-6" />
+                    </div>
+                    <div className="max-w-md mx-auto space-y-1">
+                      <h4 className="font-bold text-xs text-zinc-200">Nenhuma Skill Instalada</h4>
+                      <p className="text-[11px] text-zinc-400 leading-relaxed">
+                        Transforme qualquer pasta do seu computador contendo arquivos <code className="text-zinc-200">.md</code> (instruções, diretrizes de redação, manuais, prompts e subpastas) em uma Habilidade para o Agente.
+                      </p>
+                      <p className="text-[10px] text-zinc-500 pt-1">
+                        O agente ingere todos os arquivos markdown da pasta automaticamente, funcionando como um sub-cofre vivo.
+                      </p>
+                    </div>
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={handleImportSkillFolder}
+                        disabled={isImporting}
+                        className="px-4 py-2 rounded-xl bg-[var(--accent)] hover:opacity-90 text-zinc-950 font-bold text-xs transition-all shadow-md shadow-black/40 cursor-pointer inline-flex items-center gap-1.5"
                       >
-                        <div className="space-y-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xl">{skill.icon}</span>
-                              <div>
-                                <h4 className="font-bold text-xs text-zinc-100 flex items-center gap-1.5">
-                                  <span>{skill.name}</span>
-                                  {skill.isCore && (
-                                    <span className="px-1 py-0.2 rounded bg-zinc-800 text-[8px] font-mono text-zinc-400 uppercase">
-                                      Core
-                                    </span>
-                                  )}
-                                </h4>
-                                <span className="text-[9px] text-[var(--accent)] font-medium">
-                                  {skill.category}
-                                </span>
+                        <FolderPlus className="w-4 h-4" />
+                        <span>{isImporting ? 'Lendo pasta...' : 'Selecionar Pasta no Computador'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Skills Cards */}
+                {customSkills.length > 0 && (
+                  <div className="space-y-3">
+                    {customSkills.map(skill => {
+                      const isExpanded = expandedSkillId === skill.id
+                      const isEditing = editingSkillId === skill.id
+                      const isReloading = reloadingSkillId === skill.id
+
+                      return (
+                        <div
+                          key={skill.id}
+                          className={`p-3.5 rounded-2xl border transition-all ${
+                            skill.enabled
+                              ? 'bg-[#12141a] border-zinc-700/80 shadow-sm'
+                              : 'bg-[#0f1013] border-zinc-850 opacity-75'
+                          }`}
+                        >
+                          {/* Header row */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 flex-1 min-w-0">
+                              <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
+                                <Folder className="w-4 h-4" />
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                {isEditing ? (
+                                  <div className="space-y-2 max-w-md">
+                                    <input
+                                      type="text"
+                                      value={editName}
+                                      onChange={e => setEditName(e.target.value)}
+                                      className="w-full bg-[#161820] border border-zinc-700 rounded-lg px-2.5 py-1 text-xs text-zinc-100 outline-none focus:border-[var(--accent)]"
+                                      placeholder="Nome da Skill"
+                                    />
+                                    <textarea
+                                      value={editDesc}
+                                      onChange={e => setEditDesc(e.target.value)}
+                                      rows={2}
+                                      className="w-full bg-[#161820] border border-zinc-700 rounded-lg px-2.5 py-1 text-[11px] text-zinc-200 outline-none focus:border-[var(--accent)] resize-none"
+                                      placeholder="Descrição da habilidade..."
+                                    />
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSaveEdit(skill.id)}
+                                        className="px-2.5 py-1 rounded bg-[var(--accent)] text-zinc-950 font-bold text-[10px] cursor-pointer"
+                                      >
+                                        Salvar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingSkillId(null)}
+                                        className="px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 text-[10px] cursor-pointer"
+                                      >
+                                        Cancelar
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <h4 className="font-bold text-xs text-zinc-100">{skill.name}</h4>
+                                      <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 border border-zinc-700/60 text-[9px] font-mono text-zinc-300">
+                                        {skill.filesCount} arquivo{skill.filesCount !== 1 ? 's' : ''} .md
+                                      </span>
+                                      {skill.enabled && (
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" />
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">
+                                      {skill.description}
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
-                            {/* Toggle Switch */}
+                            {/* Actions Right */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {/* Reload Sync button */}
+                              <button
+                                type="button"
+                                onClick={() => handleReloadSkillFolder(skill)}
+                                disabled={isReloading}
+                                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+                                title="Recarregar arquivos da pasta em disco"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isReloading ? 'animate-spin text-[var(--accent)]' : ''}`} />
+                              </button>
+
+                              {/* Open in Windows Explorer */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenInExplorer(skill.folderPath)}
+                                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+                                title="Abrir pasta no Windows Explorer"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Edit Name & Desc */}
+                              {!isEditing && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEdit(skill)}
+                                  className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+                                  title="Editar nome e descrição"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+
+                              {/* Delete Skill */}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCustomSkill(skill.id)}
+                                className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-950/30 transition-colors cursor-pointer"
+                                title="Remover Skill do Pyrita"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Toggle switch */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCustomSkill(skill.id)}
+                                className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer flex items-center ml-1 ${
+                                  skill.enabled ? 'bg-[var(--accent)] justify-end' : 'bg-zinc-700 justify-start'
+                                }`}
+                                title={skill.enabled ? 'Habilidade ativa no contexto' : 'Habilidade desativada'}
+                              >
+                                <div className="w-3.5 h-3.5 rounded-full bg-zinc-950 shadow-md" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Path and Expand Bar */}
+                          <div className="mt-2.5 pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] text-zinc-500">
+                            <span className="font-mono truncate max-w-[380px]" title={skill.folderPath}>
+                              📁 {skill.folderPath}
+                            </span>
+
                             <button
                               type="button"
-                              onClick={() => handleToggleSkill(skill.id)}
-                              disabled={skill.isCore}
-                              className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer flex items-center shrink-0 ${
-                                skill.installed ? 'bg-[var(--accent)] justify-end' : 'bg-zinc-700 justify-start'
-                              } ${skill.isCore ? 'opacity-80 cursor-not-allowed' : ''}`}
-                              title={skill.isCore ? 'Habilidade fundamental' : 'Ativar/desativar habilidade'}
+                              onClick={() => setExpandedSkillId(isExpanded ? null : skill.id)}
+                              className="flex items-center gap-1 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer px-1.5 py-0.5 rounded hover:bg-zinc-800"
                             >
-                              <div className="w-3.5 h-3.5 rounded-full bg-zinc-950 shadow-md" />
+                              <span>{isExpanded ? 'Ocultar arquivos' : `Ver ${skill.filesCount} arquivos`}</span>
+                              {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                             </button>
                           </div>
 
-                          <p className="text-[10px] text-zinc-400 leading-relaxed">
-                            {skill.description}
-                          </p>
+                          {/* Expanded Files List */}
+                          {isExpanded && (
+                            <div className="mt-2.5 pt-2 border-t border-zinc-850 space-y-1.5 animate-in fade-in duration-150">
+                              <div className="text-[10px] text-zinc-400 font-mono flex items-center justify-between">
+                                <span>ARQUIVOS .MD INGERIDOS NESTA SKILL:</span>
+                                <span className="text-[9px] text-zinc-500">Clique para inspecionar</span>
+                              </div>
+                              <div className="max-h-40 overflow-y-auto custom-chat-scrollbar space-y-1 bg-[#090a0d] p-2 rounded-xl border border-zinc-850">
+                                {skill.files.map((file, fIdx) => (
+                                  <button
+                                    key={fIdx}
+                                    type="button"
+                                    onClick={() => setPreviewFile(file)}
+                                    className="w-full text-left px-2 py-1 rounded hover:bg-zinc-800/80 text-zinc-300 flex items-center justify-between text-[11px] cursor-pointer transition-colors"
+                                  >
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <FileText className="w-3 h-3 text-[var(--accent)] shrink-0" />
+                                      <span className="truncate font-mono">{file.name}</span>
+                                    </div>
+                                    <span className="text-[9px] text-zinc-500 font-mono shrink-0 ml-2">
+                                      {file.folder || '/'} • {file.content.length} chars
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
+                      )
+                    })}
+                  </div>
+                )}
 
-                        {/* Tags */}
-                        <div className="mt-3 pt-2 border-t border-zinc-800/60 flex items-center gap-1 flex-wrap">
-                          {skill.tags.map((tag, tIdx) => (
-                            <span
-                              key={tIdx}
-                              className="px-1.5 py-0.2 rounded bg-zinc-850 text-zinc-400 text-[9px] font-mono"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
+                {/* File Inspection Modal (when previewFile is selected) */}
+                {previewFile && (
+                  <div
+                    className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
+                    onClick={() => setPreviewFile(null)}
+                  >
+                    <div
+                      className="bg-[#121318] border border-zinc-700 rounded-2xl w-[600px] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-100"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
+                        <div className="flex items-center gap-2 truncate">
+                          <FileText className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                          <div>
+                            <h4 className="font-bold text-xs text-zinc-100 truncate">{previewFile.name}</h4>
+                            <p className="text-[10px] text-zinc-500 font-mono truncate">{previewFile.path}</p>
+                          </div>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewFile(null)}
+                          className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       </div>
-                    )
-                  })}
-                </div>
+                      <div className="p-4 overflow-y-auto flex-1 custom-chat-scrollbar">
+                        <pre className="font-mono text-[11px] text-zinc-300 whitespace-pre-wrap leading-relaxed select-text">
+                          {previewFile.content || '(arquivo sem conteúdo)'}
+                        </pre>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

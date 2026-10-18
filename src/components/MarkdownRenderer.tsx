@@ -1,7 +1,7 @@
 import React from 'react'
-import { Info, Lightbulb, AlertTriangle, AlertCircle, Copy, Check } from 'lucide-react'
+import { Info, Lightbulb, AlertTriangle, AlertCircle, Copy, Check, Plus } from 'lucide-react'
 import { NestedCard } from './NestedCard'
-import { KpiCard, TimelineCard, ComparisonCard } from './ArtifactComponents'
+import { KpiCard, TimelineCard, ComparisonCard, renderWikilinks } from './ArtifactComponents'
 import {
   parseKpiBlock,
   parseTimelineBlock,
@@ -15,13 +15,15 @@ interface MarkdownRendererProps {
   onNavigate: (title: string) => void
   onToggleTask?: (taskIndex: number, completed: boolean) => void
   onButtonClick?: (promptText: string) => void
+  onInsertSnippet?: (snippet: string) => void
 }
 
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   content,
   onNavigate,
   onToggleTask,
-  onButtonClick
+  onButtonClick,
+  onInsertSnippet
 }) => {
   const [copiedCodeIndex, setCopiedCodeIndex] = React.useState<number | null>(null)
 
@@ -254,10 +256,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       }
       i++ // skip closing :::
 
+      const rawBlock = [directiveHeader, ...blockLines, ':::'].join('\n')
+
       if (directiveType === 'kpi' || directiveType === 'metric') {
         const kpi = parseKpiBlock(blockLines)
         blocks.push(
-          <div key={`kpi-${i}`} className="my-4">
+          <div key={`kpi-${i}`} className="my-3">
             <KpiCard
               title={kpi.title}
               value={kpi.value}
@@ -265,7 +269,21 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               trend={kpi.trend}
               subtitle={kpi.subtitle}
               badge={kpi.badge}
+              onNavigate={onNavigate}
             />
+            {onInsertSnippet && (
+              <div className="flex justify-end mt-1 mb-1">
+                <button
+                  type="button"
+                  onClick={() => onInsertSnippet(rawBlock)}
+                  className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 bg-zinc-900/60 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                  title="Inserir apenas este artefato na nota"
+                >
+                  <Plus className="w-2.5 h-2.5" />
+                  <span>Adicionar à nota</span>
+                </button>
+              </div>
+            )}
           </div>
         )
         continue
@@ -274,12 +292,26 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       if (directiveType === 'timeline') {
         const tl = parseTimelineBlock(directiveHeader, blockLines)
         blocks.push(
-          <div key={`timeline-${i}`} className="my-4">
+          <div key={`timeline-${i}`} className="my-3">
             <TimelineCard
               title={tl.title}
               badge={tl.badge}
               items={tl.items}
+              onNavigate={onNavigate}
             />
+            {onInsertSnippet && (
+              <div className="flex justify-end mt-1 mb-1">
+                <button
+                  type="button"
+                  onClick={() => onInsertSnippet(rawBlock)}
+                  className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 bg-zinc-900/60 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                  title="Inserir apenas este artefato na nota"
+                >
+                  <Plus className="w-2.5 h-2.5" />
+                  <span>Adicionar à nota</span>
+                </button>
+              </div>
+            )}
           </div>
         )
         continue
@@ -288,12 +320,26 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       if (directiveType === 'comparison' || directiveType === 'versus') {
         const comp = parseComparisonBlock(directiveHeader, blockLines)
         blocks.push(
-          <div key={`comparison-${i}`} className="my-4">
+          <div key={`comparison-${i}`} className="my-3">
             <ComparisonCard
               title={comp.title}
               badge={comp.badge}
               columns={comp.columns}
+              onNavigate={onNavigate}
             />
+            {onInsertSnippet && (
+              <div className="flex justify-end mt-1 mb-1">
+                <button
+                  type="button"
+                  onClick={() => onInsertSnippet(rawBlock)}
+                  className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 bg-zinc-900/60 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                  title="Inserir apenas este artefato na nota"
+                >
+                  <Plus className="w-2.5 h-2.5" />
+                  <span>Adicionar à nota</span>
+                </button>
+              </div>
+            )}
           </div>
         )
         continue
@@ -306,7 +352,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           <div key={`buttons-${i}`} className="my-3 p-3 rounded-2xl bg-[#111216]/90 border border-zinc-800/80 shadow-md">
             {title && (
               <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800/60">
-                <span className="font-semibold text-xs text-zinc-300">{title}</span>
+                <span className="font-semibold text-xs text-zinc-300">{renderWikilinks(title, onNavigate)}</span>
                 {badge && (
                   <span className="px-2 py-0.5 rounded-full text-[9px] font-mono bg-zinc-800 text-[var(--accent)] border border-zinc-700/60">
                     {badge}
@@ -336,9 +382,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       // Generic nested card :::card or :::nested
       const { title, badge } = parseHeaderMeta(directiveHeader)
       blocks.push(
-        <div key={`nested-card-${i}`} className="my-4">
+        <div key={`nested-card-${i}`} className="my-3">
           <NestedCard
-            title={title}
+            title={renderWikilinks(title, onNavigate)}
             badge={badge}
             size="md"
             variant="default"
@@ -349,6 +395,19 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               ))}
             </div>
           </NestedCard>
+          {onInsertSnippet && (
+            <div className="flex justify-end mt-1 mb-1">
+              <button
+                type="button"
+                onClick={() => onInsertSnippet(rawBlock)}
+                className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 bg-zinc-900/60 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                title="Inserir apenas este artefato na nota"
+              >
+                <Plus className="w-2.5 h-2.5" />
+                <span>Adicionar à nota</span>
+              </button>
+            </div>
+          )}
         </div>
       )
       continue

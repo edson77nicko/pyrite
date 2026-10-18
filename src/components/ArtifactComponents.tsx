@@ -14,6 +14,51 @@ import {
   ArrowUpRight
 } from 'lucide-react'
 
+/**
+ * Universal Wikilink Parser for Artifacts:
+ * Parses [[Target]] or [[Target|Alias]] into interactive clickable note buttons.
+ */
+export function renderWikilinks(text?: string, onNavigate?: (title: string) => void): React.ReactNode {
+  if (!text) return text
+  const parts: (string | React.ReactNode)[] = []
+  let cursor = 0
+  const regex = /\[\[(.*?)\]\]/g
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > cursor) {
+      parts.push(text.substring(cursor, match.index))
+    }
+    const rawTarget = match[1]
+    const [targetName, alias] = rawTarget.split('|')
+    const displayName = (alias || targetName).split('#')[0].trim()
+    const destination = targetName.split('#')[0].trim()
+
+    parts.push(
+      <button
+        key={`wikilink-${match.index}`}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          if (onNavigate) onNavigate(destination)
+        }}
+        className="inline-flex items-center text-amber-300 hover:text-amber-100 bg-amber-950/30 hover:bg-amber-900/50 border border-amber-800/40 hover:border-amber-500/70 rounded px-1.5 py-0.5 mx-0.5 font-medium transition-all text-[11px] cursor-pointer shadow-xs"
+        title={`Abrir nota: ${destination}`}
+      >
+        <span className="underline decoration-amber-500/40 hover:decoration-amber-300 underline-offset-2">
+          {displayName}
+        </span>
+      </button>
+    )
+    cursor = match.index + match[0].length
+  }
+
+  if (cursor < text.length) {
+    parts.push(text.substring(cursor))
+  }
+  return parts.length > 0 ? <>{parts}</> : text
+}
+
 // ==========================================
 // 1. KPI / Metric Card (Craft Edition)
 // ==========================================
@@ -27,6 +72,7 @@ export interface KpiCardProps {
   progress?: number // e.g. 85 for 85%
   benchmark?: string
   className?: string
+  onNavigate?: (title: string) => void
 }
 
 export const KpiCard: React.FC<KpiCardProps> = ({
@@ -38,11 +84,12 @@ export const KpiCard: React.FC<KpiCardProps> = ({
   badge,
   progress = 76,
   benchmark = 'Meta Superada',
-  className = ''
+  className = '',
+  onNavigate
 }) => {
   return (
     <NestedCard
-      title={title}
+      title={renderWikilinks(title, onNavigate)}
       icon={<Activity className="w-3.5 h-3.5 text-[#c59b27]" />}
       badge={badge}
       size="md"
@@ -93,7 +140,7 @@ export const KpiCard: React.FC<KpiCardProps> = ({
 
         {/* Subtitle & Micro-footer */}
         <div className="pt-1 border-t border-white/[0.04] flex items-center justify-between text-[10px] text-zinc-400">
-          <span className="truncate">{subtitle || 'Comparativo histórico baseado no Vault'}</span>
+          <span className="truncate">{renderWikilinks(subtitle, onNavigate) || 'Comparativo histórico baseado no Vault'}</span>
           <span className="shrink-0 font-mono text-[9px] text-[#c59b27] bg-[#1a1711] px-1.5 py-0.5 rounded border border-[#c59b27]/20">
             {benchmark}
           </span>
@@ -119,17 +166,19 @@ export interface TimelineCardProps {
   badge?: string
   items: TimelineItem[]
   className?: string
+  onNavigate?: (title: string) => void
 }
 
 export const TimelineCard: React.FC<TimelineCardProps> = ({
   title,
   badge,
   items,
-  className = ''
+  className = '',
+  onNavigate
 }) => {
   return (
     <NestedCard
-      title={title}
+      title={renderWikilinks(title, onNavigate)}
       icon={<Calendar className="w-3.5 h-3.5 text-[#c59b27]" />}
       badge={badge}
       size="md"
@@ -165,7 +214,7 @@ export const TimelineCard: React.FC<TimelineCardProps> = ({
               <div className="flex-1 bg-[#111114] rounded-[8px] p-2.5 border border-white/[0.05] hover:border-white/[0.1] transition-all shadow-xs">
                 <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
                   <span className="font-semibold text-zinc-200 text-xs flex items-center gap-1.5">
-                    {item.title}
+                    {renderWikilinks(item.title, onNavigate)}
                     {isCurrent && (
                       <span className="text-[9px] font-sans px-1.5 py-0.2 rounded-full bg-[#1c1912] text-[#d4af37] border border-[#c59b27]/30">
                         Ativo
@@ -181,7 +230,7 @@ export const TimelineCard: React.FC<TimelineCardProps> = ({
 
                 {item.description && (
                   <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    {item.description}
+                    {renderWikilinks(item.description, onNavigate)}
                   </p>
                 )}
               </div>
@@ -209,17 +258,19 @@ export interface ComparisonCardProps {
   badge?: string
   columns: ComparisonColumn[]
   className?: string
+  onNavigate?: (title: string) => void
 }
 
 export const ComparisonCard: React.FC<ComparisonCardProps> = ({
   title,
   badge,
   columns,
-  className = ''
+  className = '',
+  onNavigate
 }) => {
   return (
     <NestedCard
-      title={title}
+      title={renderWikilinks(title, onNavigate)}
       icon={<Layers className="w-3.5 h-3.5 text-[#c59b27]" />}
       badge={badge}
       size="md"
@@ -241,9 +292,9 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
               <div className="flex items-center justify-between gap-1 pb-2 mb-2 border-b border-white/[0.05]">
                 <div>
                   <h4 className="font-semibold text-zinc-100 text-xs flex items-center gap-1.5">
-                    {col.title}
+                    {renderWikilinks(col.title, onNavigate)}
                   </h4>
-                  {col.subtitle && <p className="text-[10px] text-zinc-500">{col.subtitle}</p>}
+                  {col.subtitle && <p className="text-[10px] text-zinc-500">{renderWikilinks(col.subtitle, onNavigate)}</p>}
                 </div>
                 {col.highlight ? (
                   <span className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded bg-[#1c1913] text-[#d4af37] border border-[#c59b27]/30">
@@ -261,7 +312,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
                 {col.items.map((it, itIdx) => (
                   <li key={itIdx} className="flex items-start gap-1.5">
                     <span className="text-[#c59b27] text-xs mt-0.5 shrink-0">✓</span>
-                    <span className="leading-snug text-[11px] text-zinc-300">{it}</span>
+                    <span className="leading-snug text-[11px] text-zinc-300">{renderWikilinks(it, onNavigate)}</span>
                   </li>
                 ))}
               </ul>
@@ -292,13 +343,15 @@ export interface ActionCardProps {
   badge?: string
   items: ActionCardItem[]
   className?: string
+  onNavigate?: (title: string) => void
 }
 
 export const ActionCard: React.FC<ActionCardProps> = ({
   title,
   badge,
   items,
-  className = ''
+  className = '',
+  onNavigate
 }) => {
   const completedCount = items.filter(i => i.completed).length
   const totalCount = items.length
@@ -306,7 +359,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
 
   return (
     <NestedCard
-      title={title}
+      title={renderWikilinks(title, onNavigate)}
       icon={<Sparkles className="w-3.5 h-3.5 text-[#c59b27]" />}
       badge={badge || `${completedCount}/${totalCount} Concluídas`}
       size="md"
@@ -336,7 +389,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
                   it.completed ? 'line-through text-zinc-500' : 'text-zinc-200'
                 }`}
               >
-                {it.text}
+                {renderWikilinks(it.text, onNavigate)}
               </span>
             </div>
           ))}

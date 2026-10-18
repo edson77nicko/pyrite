@@ -11,8 +11,6 @@ import {
   Focus,
   Sliders,
   Sparkles,
-  Cpu,
-  Radar,
   ExternalLink,
   Layers,
   ArrowRight,
@@ -27,8 +25,6 @@ interface GraphViewProps {
   currentNoteId?: string
   onSelectNote: (noteId: string) => void
 }
-
-type GraphLayoutMode = 'constellation' | 'circuit' | 'radar'
 
 interface StellarTint {
   name: string
@@ -224,7 +220,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const [pinnedPopoverNodeId, setPinnedPopoverNodeId] = useState<string | null>(null)
   const [hoveredFolder, setHoveredFolder] = useState<string | null>(null)
   const [isLocalMode, setIsLocalMode] = useState(false)
-  const [layoutMode, setLayoutMode] = useState<GraphLayoutMode>('constellation')
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [isContemplationMode, setIsContemplationMode] = useState(false)
@@ -265,7 +260,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const draggedNodeRef = useRef<SimNode | null>(null)
   const animationFrameRef = useRef<number | null>(null)
   const simAlphaRef = useRef<number>(1.0)
-  const radarAngleRef = useRef<number>(0)
 
   const sparksRef = useRef<AccretionSpark[]>([])
   const ripplesRef = useRef<SpacetimeRipple[]>([])
@@ -612,7 +606,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
       const accentRgb = hexToNormalizedRgb(computedAccent)
 
       // 1. RENDER WEBGL GARGANTUA SHADER
-      if (layoutMode === 'constellation' && bhRendererRef.current) {
+      if (bhRendererRef.current) {
         rotationRef.current = (rotationRef.current + effectiveDt * 0.16) % (Math.PI * 2)
         bhRendererRef.current.render({
           width,
@@ -652,10 +646,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
       }
 
       // =========================================================================
-      // MODE A: SINGULARITY / HUBBLE ASTROPHOTOGRAPHY (Pure Additive Starlight)
+      // SINGULARITY / HUBBLE ASTROPHOTOGRAPHY (Pure Additive Starlight)
       // =========================================================================
-      if (layoutMode === 'constellation') {
-        if (!bhRendererRef.current) {
+      if (!bhRendererRef.current) {
           ctx.fillStyle = '#010103'
           ctx.fillRect(0, 0, width, height)
         }
@@ -911,283 +904,29 @@ export const GraphView: React.FC<GraphViewProps> = ({
           ctx.fillText(labelText, node.screenX, pillY + pillH / 2)
         }
         ctx.restore()
-      } else {
-        // =========================================================================
-        // MODE B & C: CIRCUIT BLUEPRINT & RADAR ECOSPHERE (2D Modes)
-        // =========================================================================
-        const dt2d = Math.min(32, rawDt * 1000) / 16.66
-        radarAngleRef.current = (radarAngleRef.current + 0.015 * settings.orbitalSpeed) % (Math.PI * 2)
-
-        const nodeMap = new Map(nodes.map(n => [n.id, n]))
-
-        if (simAlphaRef.current > 0.001 || draggedNodeRef.current) {
-          const alpha = simAlphaRef.current
-
-          if (layoutMode === 'radar' && currentNoteId) {
-            const centerNode = nodeMap.get(currentNoteId)
-            if (centerNode) {
-              centerNode.x += (0 - centerNode.x) * 0.1
-              centerNode.y += (0 - centerNode.y) * 0.1
-
-              const directNeighbors = new Set<string>()
-              for (const e of edges) {
-                if (e.source === currentNoteId) directNeighbors.add(e.target)
-                if (e.target === currentNoteId) directNeighbors.add(e.source)
-              }
-
-              const orbit1 = Array.from(directNeighbors)
-                .map(id => nodeMap.get(id))
-                .filter(Boolean) as SimNode[]
-              orbit1.forEach((n, idx) => {
-                const angle = (idx / Math.max(1, orbit1.length)) * Math.PI * 2
-                const targetX = Math.cos(angle) * 190
-                const targetY = Math.sin(angle) * 190
-                if (draggedNodeRef.current?.id !== n.id) {
-                  n.x += (targetX - n.x) * 0.06
-                  n.y += (targetY - n.y) * 0.06
-                }
-              })
-
-              const outer = nodes.filter(
-                n => n.id !== currentNoteId && !directNeighbors.has(n.id)
-              )
-              outer.forEach((n, idx) => {
-                const angle = (idx / Math.max(1, outer.length)) * Math.PI * 2
-                const targetX = Math.cos(angle) * 380
-                const targetY = Math.sin(angle) * 380
-                if (draggedNodeRef.current?.id !== n.id) {
-                  n.x += (targetX - n.x) * 0.05
-                  n.y += (targetY - n.y) * 0.05
-                }
-              })
-            }
-          } else {
-            const repulsion = settings.repulsion * alpha
-            const springLength = settings.linkDistance
-            const springStrength = 0.04 * alpha
-            const centerPull = settings.centerGravity * alpha
-            const damping = 0.85
-
-            const folderCentroids = new Map<string, { x: number; y: number; count: number }>()
-            for (const n of nodes) {
-              const cur = folderCentroids.get(n.folderShort) || { x: 0, y: 0, count: 0 }
-              cur.x += n.x
-              cur.y += n.y
-              cur.count++
-              folderCentroids.set(n.folderShort, cur)
-            }
-            folderCentroids.forEach(val => {
-              val.x /= val.count
-              val.y /= val.count
-            })
-
-            const len = nodes.length
-            for (let i = 0; i < len; i++) {
-              const n1 = nodes[i]
-              for (let j = i + 1; j < len; j++) {
-                const n2 = nodes[j]
-                const dx = n2.x - n1.x
-                const dy = n2.y - n1.y
-                const distSq = dx * dx + dy * dy || 1
-                if (distSq < 160000) {
-                  const dist = Math.sqrt(distSq)
-                  const force = repulsion / (distSq + 600)
-                  const fx = (dx / dist) * force
-                  const fy = (dy / dist) * force
-                  if (draggedNodeRef.current?.id !== n1.id) {
-                    n1.vx -= fx
-                    n1.vy -= fy
-                  }
-                  if (draggedNodeRef.current?.id !== n2.id) {
-                    n2.vx += fx
-                    n2.vy += fy
-                  }
-                }
-              }
-            }
-
-            for (const edge of edges) {
-              const s = nodeMap.get(edge.source)
-              const t = nodeMap.get(edge.target)
-              if (s && t) {
-                const dx = t.x - s.x
-                const dy = t.y - s.y
-                const dist = Math.sqrt(dx * dx + dy * dy) || 1
-                const delta = dist - springLength
-                const fx = (dx / dist) * delta * springStrength
-                const fy = (dy / dist) * delta * springStrength
-                if (draggedNodeRef.current?.id !== s.id) {
-                  s.vx += fx
-                  s.vy += fy
-                }
-                if (draggedNodeRef.current?.id !== t.id) {
-                  t.vx -= fx
-                  t.vy -= fy
-                }
-              }
-            }
-
-            for (const n of nodes) {
-              if (draggedNodeRef.current?.id !== n.id) {
-                const fc = folderCentroids.get(n.folderShort)
-                if (fc && fc.count > 1) {
-                  n.vx += (fc.x - n.x) * settings.clusterStrength * alpha
-                  n.vy += (fc.y - n.y) * settings.clusterStrength * alpha
-                }
-                n.vx -= n.x * centerPull
-                n.vy -= n.y * centerPull
-                n.vx *= damping
-                n.vy *= damping
-                n.x += n.vx * dt2d
-                n.y += n.vy * dt2d
-              }
-            }
-          }
-
-          if (!draggedNodeRef.current) {
-            simAlphaRef.current *= 0.988
-          }
-        }
-
-        ctx.fillStyle = '#05060a'
-        ctx.fillRect(0, 0, width, height)
-
-        const dotSpacing = 36 * transform.scale
-        if (dotSpacing > 14) {
-          const offX = centerX % dotSpacing
-          const offY = centerY % dotSpacing
-          ctx.fillStyle = 'rgba(180, 210, 255, 0.04)'
-          for (let x = offX; x < width; x += dotSpacing) {
-            for (let y = offY; y < height; y += dotSpacing) {
-              ctx.fillRect(x, y, 1, 1)
-            }
-          }
-        }
-
-        ctx.save()
-        ctx.translate(centerX, centerY)
-        ctx.scale(transform.scale, transform.scale)
-
-        if (layoutMode === 'radar') {
-          const rings = [100, 190, 280, 380, 500]
-          rings.forEach((r, idx) => {
-            ctx.beginPath()
-            ctx.arc(0, 0, r, 0, Math.PI * 2)
-            ctx.strokeStyle =
-              idx === 1 ? 'rgba(255, 214, 153, 0.22)' : 'rgba(255, 255, 255, 0.05)'
-            ctx.lineWidth = 1
-            ctx.stroke()
-          })
-
-          const sweepAngle = radarAngleRef.current
-          const sweepGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, 500)
-          sweepGrad.addColorStop(0, 'rgba(255, 214, 153, 0.12)')
-          sweepGrad.addColorStop(1, 'rgba(255, 214, 153, 0)')
-          ctx.beginPath()
-          ctx.moveTo(0, 0)
-          ctx.arc(0, 0, 500, sweepAngle - 0.35, sweepAngle)
-          ctx.closePath()
-          ctx.fillStyle = sweepGrad
-          ctx.fill()
-        }
-
-        for (const edge of edges) {
-          const s = nodeMap.get(edge.source)
-          const t = nodeMap.get(edge.target)
-          if (!s || !t) continue
-          const isHighlighted = focalNodeId
-            ? edge.source === focalNodeId || edge.target === focalNodeId
-            : false
-
-          ctx.save()
-          if (hoveredNodeId && !isHighlighted) ctx.globalAlpha = 0.08
-          ctx.beginPath()
-          if (layoutMode === 'circuit') {
-            const midX = (s.x + t.x) / 2
-            ctx.moveTo(s.x, s.y)
-            ctx.lineTo(midX, s.y)
-            ctx.lineTo(midX, t.y)
-            ctx.lineTo(t.x, t.y)
-            ctx.strokeStyle = isHighlighted ? '#b8d8ff' : 'rgba(184, 216, 255, 0.14)'
-            ctx.lineWidth = isHighlighted ? 1.5 : 0.8
-            ctx.stroke()
-          } else {
-            ctx.moveTo(s.x, s.y)
-            ctx.lineTo(t.x, t.y)
-            ctx.strokeStyle = isHighlighted ? s.color : 'rgba(255, 255, 255, 0.09)'
-            ctx.lineWidth = isHighlighted ? 1.4 : 0.7
-            ctx.stroke()
-          }
-          ctx.restore()
-        }
-
-        ctx.save()
-        ctx.globalCompositeOperation = 'lighter'
-        for (const node of nodes) {
-          node.screenX = centerX + node.x * transform.scale
-          node.screenY = centerY + node.y * transform.scale
-          node.projectedScale = transform.scale
-
-          const isCurrent = node.id === currentNoteId
-          const isHovered = node.id === hoveredNodeId
-          const isNeighbor = activeNeighborIds.has(node.id)
-          const alpha = hoveredNodeId && !isHovered && !isNeighbor ? 0.15 : 0.95
-
-          drawHubbleStar(
-            ctx,
-            node.x,
-            node.y,
-            node.radius * (isHovered ? 1.45 : 1.1),
-            node.rgb,
-            alpha,
-            {
-              hasSpikes: isHovered || isCurrent || node.connections >= 1,
-              spikeLength: node.radius * 4.6,
-              isFocused: isHovered || isCurrent,
-              isCurrent
-            }
-          )
-        }
-        ctx.restore()
-
-        for (const node of nodes) {
-          const isCurrent = node.id === currentNoteId
-          const isHovered = node.id === hoveredNodeId
-          const isNeighbor = activeNeighborIds.has(node.id)
-          if (isHovered || isCurrent || (hoveredNodeId && isNeighbor)) {
-            ctx.font = '600 11px "Inter", system-ui, sans-serif'
-            ctx.textAlign = 'center'
-            ctx.fillStyle = '#ffffff'
-            ctx.fillText(node.title, node.x, node.y - node.radius - 10)
-          }
-        }
 
         ctx.restore()
+        animationFrameRef.current = requestAnimationFrame(render)
       }
 
-      ctx.restore()
       animationFrameRef.current = requestAnimationFrame(render)
-    }
-
-    animationFrameRef.current = requestAnimationFrame(render)
-    return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
-    }
-  }, [
-    nodes,
-    edges,
-    currentNoteId,
-    hoveredNodeId,
-    selectedNodeId,
-    pinnedPopoverNodeId,
-    contemplatedNodeId,
-    hoveredFolder,
-    searchQuery,
-    settings,
-    layoutMode,
-    isPaused,
-    isContemplationMode
-  ])
+      return () => {
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
+      }
+    }, [
+      nodes,
+      edges,
+      currentNoteId,
+      hoveredNodeId,
+      selectedNodeId,
+      pinnedPopoverNodeId,
+      contemplatedNodeId,
+      hoveredFolder,
+      searchQuery,
+      settings,
+      isPaused,
+      isContemplationMode
+    ])
 
   // Screen-space Hit Testing
   const getNodeAtScreenCoords = useCallback(
@@ -1276,21 +1015,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
       const centerX = rect.width / 2 + transform.x
       const centerY = rect.height / 2 + transform.y
 
-      if (layoutMode === 'constellation') {
-        const baseUnit = Math.min(rect.width, rect.height) * 0.42 * transform.scale
-        const dx = (sx - centerX) / Math.max(1, baseUnit)
-        const dy = (centerY - sy) / Math.max(1, baseUnit) / Math.max(0.25, Math.sin(tiltRef.current))
-        const newR = Math.max(0.4, Math.min(2.35, Math.hypot(dx, dy) * 2.1))
-        const newAngle = Math.atan2(dy, dx)
-        draggedNodeRef.current.orbitRadius = newR
-        draggedNodeRef.current.orbitAngle = newAngle
-      } else {
-        draggedNodeRef.current.x = (sx - centerX) / transform.scale
-        draggedNodeRef.current.y = (sy - centerY) / transform.scale
-        draggedNodeRef.current.vx = 0
-        draggedNodeRef.current.vy = 0
-        simAlphaRef.current = 0.4
-      }
+      const baseUnit = Math.min(rect.width, rect.height) * 0.42 * transform.scale
+      const dx = (sx - centerX) / Math.max(1, baseUnit)
+      const dy = (centerY - sy) / Math.max(1, baseUnit) / Math.max(0.25, Math.sin(tiltRef.current))
+      const newR = Math.max(0.4, Math.min(2.35, Math.hypot(dx, dy) * 2.1))
+      const newAngle = Math.atan2(dy, dx)
+      draggedNodeRef.current.orbitRadius = newR
+      draggedNodeRef.current.orbitAngle = newAngle
       return
     }
 
@@ -1468,83 +1199,25 @@ export const GraphView: React.FC<GraphViewProps> = ({
             )}
           </div>
 
-          {/* 3 Visualization Modes */}
-          <div className="flex items-center bg-[#0f111c]/90 border border-white/[0.06] rounded-xl p-0.5 text-xs">
-            <button
-              onClick={() => {
-                setLayoutMode('constellation')
-                simAlphaRef.current = 1.0
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
-                layoutMode === 'constellation'
-                  ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Singularidade (Hubble & Gargantua): Estrelas reais orbitando um buraco negro relativístico"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Singularidade</span>
-            </button>
+          <button
+            onClick={() => setIsPaused(p => !p)}
+            className={`p-1.5 rounded-xl transition-all cursor-pointer ${
+              isPaused
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+            }`}
+            title={isPaused ? 'Retomar órbita' : 'Pausar órbita'}
+          >
+            {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+          </button>
 
-            <button
-              onClick={() => {
-                setLayoutMode('circuit')
-                simAlphaRef.current = 1.0
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
-                layoutMode === 'circuit'
-                  ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Circuito Neural"
-            >
-              <Cpu className="w-3.5 h-3.5" />
-              <span>Circuito</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setLayoutMode('radar')
-                simAlphaRef.current = 1.0
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
-                layoutMode === 'radar'
-                  ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Radar Ecosfera"
-            >
-              <Radar className="w-3.5 h-3.5" />
-              <span>Radar</span>
-            </button>
-          </div>
-
-          <div className="h-4 w-px bg-white/10" />
-
-          {layoutMode === 'constellation' && (
-            <button
-              onClick={() => setIsPaused(p => !p)}
-              className={`p-1.5 rounded-xl transition-all cursor-pointer ${
-                isPaused
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
-              }`}
-              title={isPaused ? 'Retomar órbita' : 'Pausar órbita'}
-            >
-              {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-            </button>
-          )}
-
-          {layoutMode === 'constellation' && (
-            <button
-              onClick={() => setIsContemplationMode(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-amber-200/90 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition-all cursor-pointer"
-              title="Modo Contemplação: Oculta a interface para contemplação astronômica"
-            >
-              <Eye className="w-3.5 h-3.5 text-amber-400" />
-              <span>Contemplar</span>
-            </button>
-          )}
+          <button
+            onClick={() => setIsContemplationMode(true)}
+            className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all cursor-pointer"
+            title="Modo Contemplação (Ocultar interface)"
+          >
+            <Eye className="w-3.5 h-3.5" />
+          </button>
 
           <button
             onClick={() => setIsLocalMode(m => !m)}
@@ -1883,9 +1556,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
       {/* 6. LAYER 1: WEBGL HUBBLE DEEP-FIELD & GARGANTUA SHADER CANVAS */}
       <canvas
         ref={webglCanvasRef}
-        className={`absolute inset-0 w-full h-full pointer-events-none transition-opacity duration-500 ${
-          layoutMode === 'constellation' ? 'opacity-100' : 'opacity-0'
-        }`}
+        className="absolute inset-0 w-full h-full pointer-events-none opacity-100"
       />
 
       {/* 7. LAYER 2: ADDITIVE OPTICAL STARLIGHT & ORBITAL PARTICLES CANVAS */}

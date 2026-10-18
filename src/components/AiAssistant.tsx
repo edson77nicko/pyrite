@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import type { Note } from '../types'
 import { extractWikiLinks } from '../utils/vault'
 import { MarkdownRenderer } from './MarkdownRenderer'
-import { AiSettingsModal, DEFAULT_AGENT_SKILLS } from './AiSettingsModal'
+import { AiSettingsModal } from './AiSettingsModal'
 import { FolderTreePicker } from './FolderTreePicker'
 import {
   Sparkles,
@@ -24,6 +24,7 @@ import {
   MessageSquare,
   Plus,
   Trash2,
+  Pencil,
   Mic,
   Square,
   Search,
@@ -82,19 +83,31 @@ export interface AgentSpecialty {
 
 export const AGENT_SPECIALTIES: AgentSpecialty[] = [
   {
+    id: 'none',
+    name: 'Modo Padrão (Sem Especialidade)',
+    shortName: 'Padrão',
+    badgeColor: '#71717a',
+    icon: '🤖',
+    tagline: 'Comportamento natural do modelo LLM sem direcionamento de persona adicional',
+    systemDirective: '',
+    presets: []
+  },
+  {
     id: 'architect',
     name: 'Arquiteto de Conhecimento',
     shortName: 'Arquiteto',
     badgeColor: '#c59b27',
     icon: '🧠',
-    tagline: 'Mapeamento conceitual, conexões do Vault e taxonomias',
-    systemDirective: `Sua especialidade é ARQUITETURA DE CONHECIMENTO.
-- Analise as notas e pastas fornecidas como nós de uma rede de ideias interconectadas.
-- Identifique padrões transversais, proponha links bidirecionais [[Nome da Nota]] e sugira novas categorias e tags.
-- Identifique lacunas conceituais e sugira como conectar este tópico a outros domínios do cofre.`,
+    tagline: 'Construção de segundo cérebro, mapeamento ontológico, taxonomia e pontes no Vault',
+    systemDirective: `Sua persona e missão principal é a ARQUITETURA DE CONHECIMENTO E GESTÃO DE PENSAMENTO EM REDE (Segundo Cérebro / Zettelkasten).
+- Trate cada nota e pasta não como arquivos isolados, mas como nós de um grafo vivo e interconectado de ideias.
+- Identifique ativamente pontes conceituais latentes e conexões não óbvias entre diferentes tópicos e disciplinas presentes no cofre.
+- Proponha links bidirecionais [[Nome da Nota]] ou [[Nome da Nota|Alias]] sempre que oportuno, justificando a sinergia.
+- Ajude a estruturar MOCs (Maps of Content), taxonomias orgânicas de tags e categorias para organização sustentável de longo prazo.
+- Detecte lacunas conceituais e sugira desdobramentos lógicos para aprofundamento do tema.`,
     presets: [
       { label: '🔗 Conexões no Vault', prompt: 'Analise o contexto e sugira conexões semânticas com outras ideias do cofre, indicando links bidirecionais [[...]].' },
-      { label: '🧩 Mapa Conceitual', prompt: 'Crie um mapa conceitual dos termos e ideias centrais presentes neste contexto.' },
+      { label: '🧩 Mapa Conceitual', prompt: 'Crie um mapa conceitual das ideias centrais presentes neste contexto.' },
       { label: '🏷️ Taxonomia & Tags', prompt: 'Sugira uma taxonomia de tags e categorias para organizar este material no cofre.' },
       { label: '🌌 Análise Sistêmica', prompt: 'Faça uma síntese sistêmica de como os conceitos desta nota/pasta se relacionam entre si.' }
     ]
@@ -105,11 +118,12 @@ export const AGENT_SPECIALTIES: AgentSpecialty[] = [
     shortName: 'Redator',
     badgeColor: '#38bdf8',
     icon: '✍️',
-    tagline: 'Refinamento de escrita, clareza e resumos executivos',
-    systemDirective: `Sua especialidade é REDAÇÃO E SÍNTESE DE CONTEÚDO.
-- Escreva com estilo polido, claro, conciso e elegante.
-- Elimine prolixidade, estruture ideias em tópicos de alto impacto e crie resumos executivos rápidos de digerir.
-- Quando solicitado a expandir, traga analogias claras e profundidade sem perder a essência.`,
+    tagline: 'Comunicação executiva de alto impacto, clareza cirúrgica, elegância e ritmo',
+    systemDirective: `Sua persona e missão principal é a REDAÇÃO DE ELITE, CLAREZA RADICAL E SÍNTESE EXECUTIVA.
+- Escreva com máxima densidade informacional e elegância: cada parágrafo deve entregar valor indispensável sem desperdício de palavras.
+- Elimine jargões vazios, rodeios e prolixidade. Estruture o texto com ritmo fluido, títulos escaneáveis e frases de alto impacto.
+- Ao sintetizar, capture a essência nuclear das notas sem perder os nuances críticos.
+- Ao expandir tópicos, utilize analogias memoráveis, exemplos práticos concretos e distinções conceituais nítidas.`,
     presets: [
       { label: '✨ Melhorar Redação', prompt: 'Reescreva e aprimore o texto do contexto com maior elegância, fluidez e clareza.' },
       { label: '📋 Resumo Executivo', prompt: 'Gere um resumo executivo em tópicos com os pontos mais importantes do contexto.' },
@@ -118,54 +132,17 @@ export const AGENT_SPECIALTIES: AgentSpecialty[] = [
     ]
   },
   {
-    id: 'strategist',
-    name: 'Estrategista & Artefatos',
-    shortName: 'Estrategista',
-    badgeColor: '#10b981',
-    icon: '📊',
-    tagline: 'Painéis executivos e componentes visuais concêntricos',
-    systemDirective: `Sua especialidade é ESTRATÉGIA E ARTEFATOS VISUAIS CONCÊNTRICOS.
-- Transforme os dados e conceitos em componentes visuais nativos do Pyrita:
-  1) :::kpi
-     title: Nome da Métrica
-     value: 85%
-     change: +12%
-     trend: up
-     subtitle: Descrição
-     badge: Meta
-     :::
-  2) :::timeline [Título da Linha do Tempo] badge: 2026
-     - Etapa 1 | Subtítulo | Descrição detalhada
-     - Etapa 2 | Subtítulo | Descrição detalhada
-     :::
-  3) :::comparison [Título Comparativo] badge: Análise
-     ### Abordagem A (Destaque)
-     - Vantagem
-     ### Abordagem B
-     - Consideração
-     :::
-  4) :::card [Título do Cartão] badge: Destaque
-     Texto do cartão com detalhes em camadas.
-     :::
-- Foque em planos de ação práticos, métricas mensuráveis e roadmaps cronológicos.`,
-    presets: [
-      { label: '📊 + KPI Concêntrico', prompt: 'Gere um cartão de KPI concêntrico extraindo as métricas principais do contexto.' },
-      { label: '📅 + Roadmap 2026', prompt: 'Crie uma linha do tempo/roadmap em camadas concêntricas das etapas necessárias.' },
-      { label: '⚖️ + Comparativo', prompt: 'Faça uma matriz comparativa de prós, contras e trade-offs sobre este tema.' },
-      { label: '✨ + Cartão Inset', prompt: 'Gere um cartão concêntrico em camadas sintetizando o ponto mais importante.' }
-    ]
-  },
-  {
     id: 'critic',
     name: 'Analista Crítico & Socrático',
     shortName: 'Crítico',
     badgeColor: '#f43f5e',
     icon: '🔬',
-    tagline: 'Rigor lógico, questionamento socrático e auditoria de riscos',
-    systemDirective: `Sua especialidade é ANÁLISE CRÍTICA E MÉTODO SOCRÁTICO.
-- Questione premissas ocultas, desafie conclusões precipitadas e aponte contradições ou inconsistências lógicas.
-- Formule perguntas provocativas que estimulem reflexão profunda.
-- Aponte riscos não mapeados e analise a antítese de cada ideia.`,
+    tagline: 'Pensamento por primeiros princípios, testes de estresse em teses e método socrático',
+    systemDirective: `Sua persona e missão principal é a ANÁLISE CRÍTICA RIGOROSA, QUESTIONAMENTO SOCRÁTICO E PENSAMENTO POR PRIMEIROS PRINCÍPIOS.
+- Atue como um parceiro intelectual exigente: desafie premissas não comprovadas, vieses de confirmação e conclusões precipitadas.
+- Construa a melhor antítese possível (steel-man) para a tese defendida pelo usuário, testando sua solidez lógica.
+- Formule perguntas socráticas cirúrgicas que provoquem reflexão profunda e desvelem ângulos cegos.
+- Avalie efeitos de segunda e terceira ordem, custos de oportunidade, riscos não mapeados e trade-offs implícitos.`,
     presets: [
       { label: '🔍 Auditoria Crítica', prompt: 'Analise criticamente o conteúdo apontando fragilidades, premissas não comprovadas e possíveis falhas.' },
       { label: '❓ Perguntas Socráticas', prompt: 'Elabore 4 perguntas socráticas desafiadoras para testar a consistência desta tese.' },
@@ -179,11 +156,12 @@ export const AGENT_SPECIALTIES: AgentSpecialty[] = [
     shortName: 'Técnico',
     badgeColor: '#a855f7',
     icon: '💻',
-    tagline: 'Especificações técnicas, arquitetura de sistemas e código',
-    systemDirective: `Sua especialidade é ENGENHARIA E ESPECIFICAÇÃO TÉCNICA.
-- Forneça arquiteturas de software, diagramas lógicos, modelagem de dados e especificações funcionais.
-- Entregue código limpo, moderno, tipado e com comentários explicativos quando solicitado.
-- Crie checklists de implementação e boas práticas de engenharia.`,
+    tagline: 'Arquitetura de sistemas, especificações técnicas rigorosas e engenharia limpa',
+    systemDirective: `Sua persona e missão principal é a ENGENHARIA DE SOFTWARE E ESPECIFICAÇÃO TÉCNICA DE ALTO PADRÃO.
+- Projete soluções com rigor arquitetural: desacoplamento, manutenibilidade, escalabilidade e respeito a padrões consolidados.
+- Ao propor arquiteturas, pondere os trade-offs de engenharia (complexidade vs. flexibilidade, performance vs. legibilidade).
+- Quando fornecer código, entregue implementações idiomáticas, tipadas, robustas, com tratamento preventivo de erros e documentação contextualizada.
+- Crie especificações funcionais, checklists técnicos de implementação e diagramas textuais estruturados.`,
     presets: [
       { label: '💻 Especificação Técnica', prompt: 'Elabore uma especificação técnica detalhada com requisitos funcionais e não funcionais.' },
       { label: '📐 Arquitetura de Dados', prompt: 'Proponha uma arquitetura de componentes ou modelo de dados para suportar este projeto.' },
@@ -256,14 +234,19 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const [isMultimodalActive, setIsMultimodalActive] = useState<boolean>(true)
   const [isGenerating, setIsGenerating] = useState<boolean>(false)
 
-  // Local conversations sidebar open state (can be toggled internally or via external prop)
+  // Local conversations sidebar open state
   const [isLocalConversationsOpen, setIsLocalConversationsOpen] = useState<boolean>(false)
   const showConversationsSidebar = externalConversationsOpen ?? isLocalConversationsOpen
+
+  // Renaming state for conversations
+  const [editingConvId, setEditingConvId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
 
   // Agent Specialty State with persistence
   const [activeSpecialtyId, setActiveSpecialtyId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('pyrita_ai_specialty')
+      if (saved === 'strategist') return 'architect'
       return saved || 'architect'
     } catch {
       return 'architect'
@@ -287,7 +270,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const [toastNotice, setToastNotice] = useState<string | null>(null)
 
   const activeSpecialty = useMemo(() => {
-    return AGENT_SPECIALTIES.find(s => s.id === activeSpecialtyId) || AGENT_SPECIALTIES[0]
+    if (activeSpecialtyId === 'none') {
+      return AGENT_SPECIALTIES[0]
+    }
+    return AGENT_SPECIALTIES.find(s => s.id === activeSpecialtyId) || AGENT_SPECIALTIES[1]
   }, [activeSpecialtyId])
 
   // Context Selection States (Note, Folder & Additional Tagged Notes)
@@ -334,7 +320,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           {
             id: 'm1',
             sender: 'ai',
-            text: `Olá! Sou o **Agente de IA do Pyrita** atuando como **Arquiteto de Conhecimento** (🧠).\n\nEstou pronto para analisar sua nota ativa e pastas selecionadas com raciocínio profundo e geração de artefatos concêntricos!`
+            text: `Olá! Sou o **Agente de IA do Pyrita**.\n\nEstou pronto para analisar sua nota ativa e pastas selecionadas com raciocínio profundo.`
           }
         ]
       }
@@ -425,7 +411,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
             {
               id: `msg_${Date.now()}`,
               sender: 'ai',
-              text: `Conversas anteriores excluídas. Iniciando novo chat com **${activeSpecialty.name}**.`
+              text: `Conversas anteriores excluídas. Iniciando novo chat.`
             }
           ]
         }
@@ -437,6 +423,20 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       }
       return remaining
     })
+  }
+
+  const handleStartRename = (conv: AgentConversation, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingConvId(conv.id)
+    setEditingTitle(conv.title)
+  }
+
+  const handleSaveRename = (convId: string, e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    if (editingTitle.trim()) {
+      setConversations(prev => prev.map(c => c.id === convId ? { ...c, title: editingTitle.trim() } : c))
+    }
+    setEditingConvId(null)
   }
 
   // Compute all available folders with note counts
@@ -490,7 +490,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const [input, setInput] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [suggestedConnections, setSuggestedConnections] = useState<{ note: Note; reason: string }[]>([])
-  const [summary, setSummary] = useState<string | null>(null)
   const [suggestedTags, setSuggestedTags] = useState<string[]>([])
   const [conversationFilter, setConversationFilter] = useState('')
 
@@ -556,10 +555,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
       setSuggestedConnections(top3)
 
-      // Generate Auto-Summary
-      const lines = effectiveNote.content.split('\n').filter(l => l.trim().length > 15)
-      const keyPoints = lines.slice(0, 3).map(l => l.replace(/^[#\-*>\s]+/, '').trim())
-      setSummary(keyPoints.join(' • ') || 'Nota em construção ou com pouco texto.')
 
       // Suggest Tags
       const potentialTags = ['conhecimento', 'produtividade', 'metodologia', 'arquitetura', 'ideias', 'estudos']
@@ -669,7 +664,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     if (!extraContextNotes.some(n => n.id === note.id)) {
       setExtraContextNotes(prev => [...prev, note])
     }
-    // Clean `@query` from input
     const cleaned = input.replace(/@([a-zA-Z0-9\u00C0-\u017F\s_-]*)$/, '').trim()
     setInput(cleaned)
     setAtSearchOpen(false)
@@ -681,33 +675,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     setInput('')
     setSlashSearchOpen(false)
     executePrompt(promptText)
-  }
-
-  // Offline / Fallback generator tailored to active specialty
-  const generateReply = (rawPrompt: string) => {
-    const prompt = rawPrompt.toLowerCase()
-    const targetTitle = isNoteContextActive ? effectiveNote.title : selectedFolderContext ? `Pasta ${selectedFolderContext}` : 'Vault'
-
-    if (prompt.includes('kpi') || prompt.includes('metrica') || prompt.includes('métrica')) {
-      return `Gerei o cartão de KPI concêntrico ($R_{ext} = R_{int} + P$) para este contexto:\n\n:::kpi\ntitle: Métrica de Execução\nvalue: 84.2%\nchange: +18.5%\ntrend: up\nsubtitle: Desempenho relativo a "${targetTitle}"\nbadge: Meta 2026\n:::`
-    }
-    if (prompt.includes('timeline') || prompt.includes('roadmap') || prompt.includes('linha do tempo') || prompt.includes('cronograma')) {
-      return `Estruturei o roadmap cronológico embutido em camadas:\n\n:::timeline [Roadmap Estratégico: ${targetTitle}] badge: 2026\n- Etapa 1 | Diagnóstico e Alinhamento | Mapeamento dos conceitos e requisitos\n- Etapa 2 | Prototipagem e Estrutura | Aplicação de bordas concêntricas e design visual\n- Etapa 3 | Validação e Entrega | Integração contínua e documentação\n:::`
-    }
-    if (prompt.includes('compar') || prompt.includes('versus') || prompt.includes('prós') || prompt.includes('trade')) {
-      return `Aqui está a matriz comparativa concêntrica de decisões:\n\n:::comparison [Matriz de Decisão: ${targetTitle}] badge: Análise\n### Abordagem A (Destaque)\n- Menor consumo de tokens da IA\n- Renderização concêntrica instantânea\n- Foco em produtividade local\n### Abordagem B\n- Estrutura convencional sem camadas\n- Maior sobrecarga e ruído visual\n- Manutenção descentralizada\n:::`
-    }
-    if (prompt.includes('card') || prompt.includes('artefato') || prompt.includes('camada') || prompt.includes('cartão')) {
-      return `Aqui está o cartão de camadas concêntrico com a fórmula aplicada:\n\n:::card [Padrão Inset / Nested Card] badge: Craft UI\nContainer externo com borda concêntrica: border-radius externo = border-radius interno + padding. Proporciona contraste sutil e harmonia óptica uniforme.\n:::`
-    }
-    if (prompt.includes('resumo') || prompt.includes('resumir')) {
-      return `Aqui está o resumo executivo de **"${targetTitle}"**:\n\n${summary || 'O contexto reúne notas estruturadas com conexões e conceitos-chave no Vault.'}`
-    }
-    if (prompt.includes('conectar') || prompt.includes('conex')) {
-      return `Encontrei potenciais conexões no Vault. Destaque para **[[${suggestedConnections[0]?.note.title || 'Grafos de Conhecimento'}]]**.`
-    }
-
-    return `Atuando como **${activeSpecialty.name}**:\n\nAnalisando sua solicitação com base em **"${targetTitle}"**${selectedFolderContext ? ` e na pasta **"${selectedFolderContext}"**` : ''}. Para ter respostas inteligentes em tempo real alimentadas por LLM, configure sua chave de API nas opções acima!`
   }
 
   // Interactive Vault Chat with Real LLM, Context Injection & Canvas Auto-Update
@@ -776,16 +743,24 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           contextBlock += `\n(Nenhum contexto específico de nota ou pasta ativo no momento. Responda com base no conhecimento geral e visão geral do Vault).\n`
         }
 
-        // Active skills directives from localStorage
+        // Ingest active custom skills from localStorage
         let skillsDirectiveBlock = ''
         try {
-          const savedSkills = localStorage.getItem('pyrita_agent_skills')
-          const skillMap: Record<string, boolean> = savedSkills ? JSON.parse(savedSkills) : {}
-          const activeDirectives = DEFAULT_AGENT_SKILLS
-            .filter(s => (skillMap[s.id] !== undefined ? skillMap[s.id] : s.installed))
-            .map(s => `- ${s.directive}`)
-          if (activeDirectives.length > 0) {
-            skillsDirectiveBlock = `\nHabilidades e Skills Ativas:\n${activeDirectives.join('\n')}\n`
+          const savedCustomSkills = localStorage.getItem('pyrita_agent_custom_skills_v1')
+          if (savedCustomSkills) {
+            const parsedCustomSkills: any[] = JSON.parse(savedCustomSkills)
+            const activeCustomSkills = parsedCustomSkills.filter(s => s.enabled)
+            if (activeCustomSkills.length > 0) {
+              const skillTexts: string[] = []
+              for (const sk of activeCustomSkills) {
+                const filesContent = (sk.files || [])
+                  .slice(0, 5)
+                  .map((f: any) => `[Arquivo: ${f.name || f.path}]\n${f.content ? f.content.slice(0, 2000) : ''}`)
+                  .join('\n\n')
+                skillTexts.push(`### HABILIDADE / SKILL ATIVA: "${sk.name}"\nDescrição: ${sk.description || ''}\n${filesContent}`)
+              }
+              skillsDirectiveBlock = `\n${skillTexts.join('\n\n')}\n`
+            }
           }
         } catch {}
 
@@ -799,19 +774,28 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   (todo o conteúdo revisado em markdown da nota aqui)
   <<<END_REPLACE_NOTE>>>
   O Pyrita irá detectar esse bloco e atualizar a nota do usuário automaticamente no editor!
-- Fora do bloco <<<REPLACE_NOTE>>>, explique resumidamente no chat as melhorias feitas.
-- Ao produzir artefatos visuais concêntricos (:::kpi, :::timeline, :::comparison, :::card), forneça blocos elegantes prontos para inserção.`
+- Fora do bloco <<<REPLACE_NOTE>>>, explique resumidamente no chat o que foi aprimorado.`
           : `REGRA DE OPERAÇÃO: MODO ANALISTA (SOMENTE LEITURA).
 - Você atua exclusivamente como consultor, parceiro de pensamento e analista de conhecimento.
 - Analise a nota e a pasta em profundidade, formule hipóteses, aponte conexões e proponha melhorias.
 - Não altere arquivos nem modifique notas diretamente. Todas as interações devem ser no chat.`
 
-        const systemPrompt = `Você é o Agente de IA do Pyrita, assistente de alto nível para gestão de conhecimento e pensamento (estilo Obsidian) com foco em produtividade e artefatos concêntricos.
-Especialidade atual: ${activeSpecialty.name} (${activeSpecialty.icon})
-Diretriz de Especialidade:
-${activeSpecialty.systemDirective}
+        const specialtyBlock = activeSpecialty.id !== 'none' && activeSpecialty.systemDirective
+          ? `Especialidade cognitiva ativa: ${activeSpecialty.name} (${activeSpecialty.icon})\nDiretriz de Especialidade:\n${activeSpecialty.systemDirective}\n`
+          : `Modo Geral Padrão: Atue conforme os parâmetros base do modelo LLM sem direcionamento de persona específica.\n`
 
+        const artifactsDirective = `DIRETRIZ CRUCIAL SOBRE ARTEFATOS CONCÊNTRICOS (:::kpi, :::timeline, :::comparison, :::card):
+- USE COM PARCIMÔNIA E MODERAÇÃO EXTREMA.
+- NÃO gere artefatos em conversas rotineiras, explicações conceituais normais ou respostas simples.
+- Gere um bloco de artefato APENAS quando a informação for altamente estruturada e tiver real potencial e valor para ser adicionada como um componente visual dentro da nota do usuário (ex: métricas de desempenho para um KPI, etapas cronológicas reais para uma timeline, ou comparação estruturada de decisões).
+- Quando a resposta for conceitual, analítica ou textual, responda com formatação Markdown normal limpa, sem blocos :::.
+- Quando utilizar artefatos e fizer referências a notas do cofre dentro deles, utilize sempre a sintaxe de link bidirecional [[Nome da Nota]].`
+
+        const systemPrompt = `Você é o Agente de IA do Pyrita, assistente de alto nível para gestão de conhecimento e pensamento (estilo Obsidian) com foco em produtividade e pensamento em rede.
+
+${specialtyBlock}
 ${ruleDirective}
+${artifactsDirective}
 ${skillsDirectiveBlock}
 Contexto fornecido pelo usuário:
 ${contextBlock}
@@ -825,29 +809,7 @@ Diretrizes gerais:
   :::buttons [Escolha uma opção]
   - Opção 1 | Prompt enviado ao clicar na Opção 1
   - Opção 2 | Prompt enviado ao clicar na Opção 2
-  :::
-- Sempre que oportuno para resumir métricas, processos ou comparativos, utilize os blocos de componentes concêntricos do Pyrita:
-  1) :::kpi
-     title: Nome da Métrica
-     value: 85%
-     change: +12%
-     trend: up
-     subtitle: Descrição
-     badge: Meta
-     :::
-  2) :::timeline [Título da Linha do Tempo] badge: 2026
-     - Etapa 1 | Subtítulo | Descrição detalhada
-     - Etapa 2 | Subtítulo | Descrição detalhada
-     :::
-  3) :::comparison [Título Comparativo] badge: Análise
-     ### Abordagem A (Destaque)
-     - Ponto positivo
-     ### Abordagem B
-     - Ponto a considerar
-     :::
-  4) :::card [Título do Cartão] badge: Destaque
-     Texto do cartão com detalhes em camadas.
-     :::`
+  :::`
 
         const history = messages
           .filter(m => m.id !== loadingId && !m.text.startsWith('⚠️'))
@@ -941,23 +903,17 @@ Diretrizes gerais:
       return
     }
 
-    // Fallback: If no API key configured, check for generative preset keywords or prompt user
+    // Fallback: If no API key configured
     setTimeout(() => {
-      const isPreset = ['kpi', 'metrica', 'métrica', 'timeline', 'roadmap', 'cronograma', 'compar', 'versus', 'card', 'resumo'].some(k => raw.toLowerCase().includes(k))
-      if (isPreset) {
-        const reply = generateReply(raw)
-        setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'ai', text: reply }])
-      } else {
-        setMessages(prev => [
-          ...prev,
-          {
-            id: `ai_${Date.now()}`,
-            sender: 'ai',
-            text: `Chave de API do **${activeProvider.toUpperCase()}** não está configurada.\n\nConfigure sua chave no ícone de configurações para conversar com a IA e ter respostas inteligentes em tempo real sobre sua nota e pastas selecionadas!`,
-            isActionable: true
-          }
-        ])
-      }
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `ai_${Date.now()}`,
+          sender: 'ai',
+          text: `Chave de API do **${activeProvider.toUpperCase()}** não está configurada.\n\nConfigure sua chave no ícone de configurações para conversar com a IA e ter respostas inteligentes em tempo real sobre sua nota e pastas selecionadas!`,
+          isActionable: true
+        }
+      ])
     }, 300)
   }
 
@@ -996,11 +952,22 @@ Diretrizes gerais:
       }
     }
 
-    for (const sk of DEFAULT_AGENT_SKILLS) {
-      if (sk.name.toLowerCase().includes(q) || sk.description.toLowerCase().includes(q)) {
-        list.push({ label: `${sk.icon} ${sk.name}`, prompt: `Aplicar habilidade "${sk.name}": analise o contexto conforme esta especialidade.`, category: 'Skill' })
+    // Include custom skills
+    try {
+      const savedCustomSkills = localStorage.getItem('pyrita_agent_custom_skills_v1')
+      if (savedCustomSkills) {
+        const parsed: any[] = JSON.parse(savedCustomSkills)
+        for (const sk of parsed) {
+          if (sk.name.toLowerCase().includes(q) || (sk.description && sk.description.toLowerCase().includes(q))) {
+            list.push({
+              label: `📁 ${sk.name}`,
+              prompt: `Aplicar habilidade "${sk.name}": analise o contexto conforme esta especialidade e seus arquivos.`,
+              category: 'Custom Skill'
+            })
+          }
+        }
       }
-    }
+    } catch {}
 
     return list.slice(0, 8)
   }, [slashSearchOpen, slashQuery, activeSpecialty])
@@ -1154,7 +1121,7 @@ Diretrizes gerais:
         </div>
       </div>
 
-      {/* 2. CONVERSATIONS DRAWER OVERLAY (ChatGPT / Gemini Style) */}
+      {/* 2. CONVERSATIONS DRAWER OVERLAY (ChatGPT / Gemini Style with Edit Title) */}
       {showConversationsSidebar && (
         <div className="absolute inset-0 top-10 z-40 bg-[#0e0f14]/95 backdrop-blur-md flex flex-col p-3 border-r border-zinc-800/90 animate-in fade-in slide-in-from-left duration-200">
           <div className="flex items-center justify-between pb-2 border-b border-zinc-800/70 mb-2">
@@ -1193,6 +1160,49 @@ Diretrizes gerais:
             ) : (
               filteredConversations.map(conv => {
                 const isCur = conv.id === activeConversationId
+                const isEditing = editingConvId === conv.id
+
+                if (isEditing) {
+                  return (
+                    <div
+                      key={conv.id}
+                      onClick={e => e.stopPropagation()}
+                      className="p-1.5 rounded-xl bg-zinc-900 border border-[var(--accent)]/50 flex items-center gap-1"
+                    >
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editingTitle}
+                        onChange={e => setEditingTitle(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleSaveRename(conv.id)
+                          if (e.key === 'Escape') setEditingConvId(null)
+                        }}
+                        className="flex-1 bg-transparent text-xs text-zinc-100 outline-none px-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => handleSaveRename(conv.id, e)}
+                        className="p-1 text-emerald-400 hover:text-emerald-300 rounded cursor-pointer"
+                        title="Salvar nome"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditingConvId(null)
+                        }}
+                        className="p-1 text-zinc-400 hover:text-zinc-200 rounded cursor-pointer"
+                        title="Cancelar"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )
+                }
+
                 return (
                   <div
                     key={conv.id}
@@ -1204,6 +1214,7 @@ Diretrizes gerais:
                         setIsLocalConversationsOpen(false)
                       }
                     }}
+                    onDoubleClick={(e) => handleStartRename(conv, e)}
                     className={`group w-full text-left p-2 rounded-xl flex items-center justify-between text-xs transition-all cursor-pointer ${
                       isCur
                         ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white font-medium'
@@ -1222,14 +1233,24 @@ Diretrizes gerais:
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={(e) => handleDeleteConversation(conv.id, e)}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 rounded transition-all cursor-pointer ml-1"
-                      title="Excluir conversa"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => handleStartRename(conv, e)}
+                        className="p-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-all cursor-pointer"
+                        title="Editar nome da conversa"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteConversation(conv.id, e)}
+                        className="p-1 text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 rounded transition-all cursor-pointer"
+                        title="Excluir conversa"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
                 )
               })
@@ -1347,6 +1368,7 @@ Diretrizes gerais:
                       content={m.text}
                       onNavigate={onConnectNote}
                       onButtonClick={(promptText) => executePrompt(promptText)}
+                      onInsertSnippet={agentRule === 'editor' ? onInsertSnippet : undefined}
                     />
                   )}
 
@@ -1363,29 +1385,11 @@ Diretrizes gerais:
                     </div>
                   )}
 
-                  {/* Co-Autor Mode: Direct note insertion & Copy actions (NO manual "Substituir Nota" and NO "+ Nova Nota") */}
-                  {agentRule === 'editor' && !m.isActionable && m.text !== 'Pensando...' && (
-                    <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between gap-1.5 flex-wrap">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {m.text.includes(':::') && onInsertSnippet && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const matches = m.text.match(/:::[\s\S]*?:::/g)
-                              const snippet = matches ? matches.join('\n\n') : m.text
-                              onInsertSnippet(snippet)
-                              setInsertedNotice(m.id)
-                              setTimeout(() => setInsertedNotice(null), 3000)
-                            }}
-                            className="px-2.5 py-1 bg-[var(--accent)]/15 hover:bg-[var(--accent)]/25 border border-[var(--accent)]/30 text-[var(--accent)] rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1 cursor-pointer shadow-sm"
-                            title="Inserir artefato concêntrico diretamente na nota ativa"
-                          >
-                            <Sparkles className="w-3 h-3 text-[var(--accent)]" />
-                            <span>{insertedNotice === m.id ? '✓ Inserido na Nota!' : '+ Inserir Artefato na Nota'}</span>
-                          </button>
-                        )}
-
-                        {onInsertSnippet && !m.text.includes(':::') && (
+                  {/* Message Bottom Action Bar: Minimalist style */}
+                  {!m.isActionable && m.text !== 'Pensando...' && (
+                    <div className="pt-2 border-t border-zinc-800/40 flex items-center justify-between gap-1.5">
+                      <div>
+                        {agentRule === 'editor' && onInsertSnippet && (
                           <button
                             type="button"
                             onClick={() => {
@@ -1393,12 +1397,18 @@ Diretrizes gerais:
                               setInsertedNotice(m.id)
                               setTimeout(() => setInsertedNotice(null), 3000)
                             }}
-                            className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 border border-zinc-700/60 text-zinc-200 rounded-lg text-[10px] font-medium transition-all flex items-center gap-1 cursor-pointer shadow-sm"
-                            title="Inserir resposta no final da nota ativa"
+                            className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 bg-zinc-900/40 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                            title="Inserir todo o texto e artefatos desta resposta na nota ativa"
                           >
-                            <PenLine className="w-3 h-3 text-zinc-400" />
-                            <span>{insertedNotice === m.id ? '✓ Inserido!' : 'Inserir no Final da Nota'}</span>
+                            <PenLine className="w-2.5 h-2.5" />
+                            <span>{insertedNotice === m.id ? '✓ Inserido!' : 'Inserir resposta na nota'}</span>
                           </button>
+                        )}
+                        {agentRule === 'analyst' && (
+                          <span className="text-[10px] text-zinc-500 italic flex items-center gap-1">
+                            <Eye className="w-3 h-3 text-sky-400/70" />
+                            Modo Analista (Consultivo)
+                          </span>
                         )}
                       </div>
 
@@ -1409,32 +1419,10 @@ Diretrizes gerais:
                           setCopiedNotice(m.id)
                           setTimeout(() => setCopiedNotice(null), 2000)
                         }}
-                        className="p-1 text-zinc-500 hover:text-zinc-300 rounded transition-colors cursor-pointer"
+                        className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 bg-zinc-900/40 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
                         title="Copiar texto em Markdown"
                       >
-                        {copiedNotice === m.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Analyst Mode: Read-only badge and Copy button */}
-                  {agentRule === 'analyst' && !m.isActionable && m.text !== 'Pensando...' && (
-                    <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] text-zinc-500">
-                      <span className="italic flex items-center gap-1">
-                        <Eye className="w-3 h-3 text-sky-400/80" />
-                        Modo Analista (Consultivo)
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(m.text)
-                          setCopiedNotice(m.id)
-                          setTimeout(() => setCopiedNotice(null), 2000)
-                        }}
-                        className="px-2 py-0.5 rounded bg-zinc-850 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 flex items-center gap-1 cursor-pointer transition-colors"
-                        title="Copiar análise"
-                      >
-                        {copiedNotice === m.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        {copiedNotice === m.id ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
                         <span>{copiedNotice === m.id ? 'Copiado!' : 'Copiar'}</span>
                       </button>
                     </div>
@@ -1501,19 +1489,21 @@ Diretrizes gerais:
         )}
 
         {/* Dynamic Specialty Prompt Chips */}
-        <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10px]">
-          {activeSpecialty.presets.map((pr, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => handleSendPreset(pr.prompt)}
-              className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-[var(--accent)] hover:border-[var(--accent)]/40"
-              title={pr.prompt}
-            >
-              {pr.label}
-            </button>
-          ))}
-        </div>
+        {activeSpecialty.presets.length > 0 && (
+          <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10px]">
+            {activeSpecialty.presets.map((pr, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleSendPreset(pr.prompt)}
+                className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-[var(--accent)] hover:border-[var(--accent)]/40"
+                title={pr.prompt}
+              >
+                {pr.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Input Box Card */}
         <div className="bg-[#141418] border border-zinc-800 focus-within:border-[var(--accent)]/60 rounded-2xl p-2 transition-all shadow-inner flex flex-col gap-2">
