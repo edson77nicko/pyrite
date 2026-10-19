@@ -3,6 +3,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { autoUpdater } from 'electron-updater'
+import { createVaultLibrary } from './vaultLibrary'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -128,6 +129,17 @@ ipcMain.handle('vault:openInExplorer', (_event, folderPath: string) => {
   }
 })
 
+const vaultLibrary = createVaultLibrary({ settingsPath: path.join(app.getPath('userData'), 'vault-library.json'), defaultRootPath: path.join(app.getPath('documents'), 'Pyrita', 'Cofres') })
+ipcMain.handle('vault:getSettings', () => vaultLibrary.getSettings())
+ipcMain.handle('vault:setRoot', async (_event, rootPath: string) => {
+  try { return { success: true, ...await vaultLibrary.setRoot(rootPath) } }
+  catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+})
+ipcMain.handle('vault:duplicate', async (_event, { sourcePath, vaultName }: { sourcePath: string; vaultName: string }) => {
+  try { return { success: true, ...await vaultLibrary.duplicateVault(sourcePath, vaultName) } }
+  catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+})
+
 // IPC: Discover known vaults (Pyrite default + Obsidian configs if present)
 ipcMain.handle('vault:getKnownVaults', async () => {
   const vaults: { id: string; name: string; path: string; lastOpened: number }[] = []
@@ -174,22 +186,16 @@ ipcMain.handle('vault:getKnownVaults', async () => {
     console.warn('[Vault] Failed to read obsidian.json:', err)
   }
 
+  for (const vault of await vaultLibrary.listManagedVaults()) {
+    if (!vaults.some(item => path.resolve(item.path).toLowerCase() === path.resolve(vault.path).toLowerCase())) vaults.push(vault)
+  }
   return vaults
 })
 
 // IPC: Create a new vault folder on disk with starter note
 ipcMain.handle('vault:createVault', async (_event, { parentPath, vaultName }: { parentPath: string; vaultName: string }) => {
   try {
-    const safeName = vaultName.replace(/[/\\?%*:|"<>]/g, '_').trim()
-    if (!safeName) {
-      return { success: false, error: 'Nome do cofre inválido' }
-    }
-    const newVaultPath = path.join(parentPath, safeName)
-    if (!fs.existsSync(newVaultPath)) {
-      fs.mkdirSync(newVaultPath, { recursive: true })
-    }
-
-    return { success: true, vaultPath: newVaultPath }
+    return { success: true, ...await vaultLibrary.createVault(parentPath, vaultName) }
   } catch (err: any) {
     return { success: false, error: err.message }
   }

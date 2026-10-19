@@ -671,9 +671,6 @@ export const App: React.FC = () => {
   // Switch to an existing or newly created vault by absolute path
   const handleSwitchVault = async (targetPath: string) => {
     try {
-      localStorage.setItem('pyrite_electron_vault_path', targetPath)
-      setVaultPath(targetPath)
-
       if (window.electronAPI?.isElectron) {
         const files = await window.electronAPI.readVault(targetPath)
         if (files.length > 0) {
@@ -707,8 +704,12 @@ export const App: React.FC = () => {
           setActiveTabId('')
         }
       }
+      localStorage.setItem('pyrite_electron_vault_path', targetPath)
+      setVaultPath(targetPath)
+      setCurrentView('editor')
     } catch (err) {
       console.error('Error switching vault in Electron:', err)
+      throw err
     }
   }
 

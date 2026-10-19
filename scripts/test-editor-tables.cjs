@@ -103,7 +103,7 @@ async function main() {
     assert.equal(await page.getByText('Linha do Tempo / Roadmap', { exact: true }).count(), 0)
     assert.equal(await page.getByText('Comparativo Lado a Lado', { exact: true }).count(), 0)
     assert.equal(await page.getByText('Cartão Embutido (Nested Card)', { exact: true }).count(), 0)
-    await page.getByText('Células editáveis, linhas e colunas', { exact: true }).click()
+    await page.getByRole('listbox', { name: 'Comandos rápidos' }).getByRole('option', { name: 'Tabela', exact: true }).click()
     assert.equal(await page.locator('.pyrita-table').count(), 2, 'Slash insertion creates an editable table')
     await page.getByTitle('Inserir tabela').click()
     assert.equal(await page.locator('.pyrita-table').count(), 3, 'Toolbar insertion creates an editable table')

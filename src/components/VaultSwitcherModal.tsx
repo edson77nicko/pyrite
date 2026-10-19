@@ -1,476 +1,144 @@
-import React, { useState, useEffect } from 'react'
-import type { SavedVault } from '../types'
-import {
-  MoreVertical,
-  X,
-  ExternalLink,
-  Trash2,
-  Sparkles,
-  HelpCircle,
-  ChevronDown
-} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Copy, FolderOpen, MoreVertical, Plus, Trash2, X } from 'lucide-react'
+import { loadVaultCatalog, mergeVaultCatalog, normalizeVaultPath, openVaultInCatalog, removeVaultFromCatalog, VAULT_CATALOG_KEY, type VaultCatalog } from '../utils/vaultCatalog'
 
-interface VaultSwitcherModalProps {
+interface Props {
   isOpen: boolean
   currentVaultPath?: string
   onClose: () => void
-  onSelectVault: (vaultPath: string) => void
+  onSelectVault: (vaultPath: string) => void | Promise<void>
 }
+const emptyCatalog: VaultCatalog = { vaults: [], hiddenPaths: [] }
+const basename = (value: string) => value.split(/[/\\]/).filter(Boolean).pop() || 'Cofre'
 
-const STORAGE_SAVED_VAULTS = 'pyrite_saved_vaults'
-
-export const VaultSwitcherModal: React.FC<VaultSwitcherModalProps> = ({
-  isOpen,
-  currentVaultPath,
-  onClose,
-  onSelectVault
-}) => {
-  const [vaults, setVaults] = useState<SavedVault[]>([])
-  const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
-
-  // Creation State
-  const [isCreating, setIsCreating] = useState(false)
-  const [newVaultName, setNewVaultName] = useState('')
-  const [newVaultParentPath, setNewVaultParentPath] = useState('')
-  const [creationError, setCreationError] = useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  // Load known and saved vaults on mount / open
+export function VaultSwitcherModal({ isOpen, currentVaultPath, onClose, onSelectVault }: Props) {
+  const [catalog, setCatalog] = useState<VaultCatalog>(emptyCatalog)
+  const catalogRef = useRef(catalog)
+  const [rootPath, setRootPath] = useState('')
+  const [mode, setMode] = useState<'create' | 'copy' | null>(null)
+  const [sourcePath, setSourcePath] = useState('')
+  const [name, setName] = useState('')
+  const [menu, setMenu] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
+  const [error, setError] = useState('')
+  const desktop = !!window.electronAPI?.getVaultSettings
+  const persist = (next: VaultCatalog) => {
+    localStorage.setItem(VAULT_CATALOG_KEY, JSON.stringify(next))
+    catalogRef.current = next
+    setCatalog(next)
+  }
   useEffect(() => {
     if (!isOpen) return
-
-    const loadVaults = async () => {
-      // 1. Read existing vaults from localStorage
-      let localVaults: SavedVault[] = []
+    let cancelled = false
+    setError(''); setMode(null); setMenu(null)
+    const load = async () => {
       try {
-        const saved = localStorage.getItem(STORAGE_SAVED_VAULTS)
-        if (saved) {
-          localVaults = JSON.parse(saved)
-        }
-      } catch (e) {
-        console.error('Failed to read saved vaults from localStorage', e)
-      }
-
-      // 2. Query known vaults from Electron (auto-discovering Obsidian vaults + default)
-      if (window.electronAPI?.getKnownVaults) {
-        try {
-          const discovered = await window.electronAPI.getKnownVaults()
-          for (const d of discovered) {
-            const exists = localVaults.some(v => v.path.toLowerCase() === d.path.toLowerCase())
-            if (!exists) {
-              localVaults.push({
-                id: d.id,
-                name: d.name,
-                path: d.path,
-                lastOpened: d.lastOpened
-              })
-            }
-          }
-        } catch (err) {
-          console.warn('Could not query known vaults from Electron', err)
-        }
-      }
-
-      // 3. Ensure current vault is always in the list
-      if (currentVaultPath) {
-        const normalizedCurrent = currentVaultPath.replace(/\\/g, '/')
-        const exists = localVaults.some(v => v.path.replace(/\\/g, '/').toLowerCase() === normalizedCurrent.toLowerCase())
-        if (!exists) {
-          const parts = currentVaultPath.split(/[/\\]/).filter(Boolean)
-          const name = parts[parts.length - 1] || 'Pyrita Vault'
-          localVaults.unshift({
-            id: `vault_${Date.now()}`,
-            name,
-            path: currentVaultPath,
-            lastOpened: Date.now()
-          })
-        }
-      }
-
-      // Sort by last opened
-      localVaults.sort((a, b) => (b.lastOpened || 0) - (a.lastOpened || 0))
-      setVaults(localVaults)
-      try {
-        localStorage.setItem(STORAGE_SAVED_VAULTS, JSON.stringify(localVaults))
-      } catch {}
+        const saved = loadVaultCatalog(localStorage)
+        catalogRef.current = saved; setCatalog(saved)
+        const [discovered, settings] = await Promise.all([
+          window.electronAPI?.getKnownVaults?.() ?? [],
+          window.electronAPI?.getVaultSettings?.() ?? { rootPath: '' }
+        ])
+        if (cancelled) return
+        setRootPath(settings.rootPath)
+        // Read the latest catalog: a removal while discovery runs must stay removed.
+        persist(mergeVaultCatalog(catalogRef.current, discovered, currentVaultPath))
+      } catch (err) { if (!cancelled) setError(String(err instanceof Error ? err.message : err)) }
     }
-
-    loadVaults()
+    void load()
+    return () => { cancelled = true }
   }, [isOpen, currentVaultPath])
-
+  useEffect(() => {
+    if (!isOpen) return
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busyRef.current) { if (menu) setMenu(null); else onClose() }
+    }
+    window.addEventListener('keydown', escape)
+    return () => window.removeEventListener('keydown', escape)
+  }, [isOpen, menu, onClose])
   if (!isOpen) return null
 
-  // Save updated list
-  const persistVaults = (newList: SavedVault[]) => {
-    setVaults(newList)
-    try {
-      localStorage.setItem(STORAGE_SAVED_VAULTS, JSON.stringify(newList))
-    } catch {}
+  const run = async (action: () => Promise<void>) => {
+    if (busyRef.current) return
+    busyRef.current = true; setBusy(true); setError(''); setMenu(null)
+    try { await action() }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { busyRef.current = false; setBusy(false) }
   }
-
-  // Open / Switch to a vault
-  const handleOpenVault = (targetPath: string) => {
-    // Update lastOpened timestamp
-    const updated = vaults.map(v =>
-      v.path.toLowerCase() === targetPath.toLowerCase() ? { ...v, lastOpened: Date.now() } : v
-    )
-    persistVaults(updated)
-    onSelectVault(targetPath)
+  const open = async (vaultPath: string) => {
+    await onSelectVault(vaultPath)
+    persist(openVaultInCatalog(catalogRef.current, vaultPath))
     onClose()
   }
-
-  // Browse folder and open as vault
-  const handleBrowseAndOpen = async () => {
-    if (window.electronAPI?.selectFolder) {
-      try {
-        const selected = await window.electronAPI.selectFolder()
-        if (selected) {
-          const parts = selected.split(/[/\\]/).filter(Boolean)
-          const name = parts[parts.length - 1] || 'Cofre'
-          const existing = vaults.find(v => v.path.toLowerCase() === selected.toLowerCase())
-          let updated = vaults
-          if (!existing) {
-            const newV: SavedVault = {
-              id: `vault_${Date.now()}`,
-              name,
-              path: selected,
-              lastOpened: Date.now()
-            }
-            updated = [newV, ...vaults]
-            persistVaults(updated)
-          }
-          handleOpenVault(selected)
-        }
-      } catch (err) {
-        console.error('Failed to select folder:', err)
-      }
-    }
+  const beginCopy = (source: string) => {
+    setSourcePath(source); setName(basename(source) + ' - cópia'); setMode('copy'); setMenu(null); setError('')
   }
-
-  // Pick parent directory for creating new vault
-  const handlePickParentDirectory = async () => {
-    if (window.electronAPI?.selectFolder) {
-      try {
-        const selected = await window.electronAPI.selectFolder()
-        if (selected) {
-          setNewVaultParentPath(selected)
-        }
-      } catch (err) {
-        console.error('Failed to pick parent directory:', err)
-      }
-    }
-  }
-
-  // Submit creation of new vault
-  const handleCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newVaultName.trim()) {
-      setCreationError('Digite um nome para o cofre.')
-      return
-    }
-    if (!newVaultParentPath.trim()) {
-      setCreationError('Escolha a pasta de destino onde o cofre será criado.')
-      return
-    }
-
-    setIsSubmitting(true)
-    setCreationError(null)
-
-    try {
-      if (window.electronAPI?.createVault) {
-        const res = await window.electronAPI.createVault({
-          parentPath: newVaultParentPath.trim(),
-          vaultName: newVaultName.trim()
-        })
-
-        if (res.success && res.vaultPath) {
-          const newV: SavedVault = {
-            id: `vault_${Date.now()}`,
-            name: newVaultName.trim(),
-            path: res.vaultPath,
-            lastOpened: Date.now()
-          }
-          const updated = [newV, ...vaults.filter(v => v.path.toLowerCase() !== res.vaultPath!.toLowerCase())]
-          persistVaults(updated)
-          setIsCreating(false)
-          setNewVaultName('')
-          setNewVaultParentPath('')
-          handleOpenVault(res.vaultPath)
-        } else {
-          setCreationError(res.error || 'Não foi possível criar o cofre.')
-        }
-      }
-    } catch (err: any) {
-      setCreationError(err.message || 'Erro ao criar cofre.')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-
-  // Reveal in Windows Explorer
-  const handleRevealInExplorer = (path: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setActiveMenuId(null)
-    if (window.electronAPI?.openInExplorer) {
-      window.electronAPI.openInExplorer(path)
-    }
-  }
-
-  // Remove from recent list
-  const handleRemoveFromList = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setActiveMenuId(null)
-    const filtered = vaults.filter(v => v.id !== id)
-    persistVaults(filtered)
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4 select-none">
-      {/* Modal Dialog Container */}
-      <div className="relative w-full max-w-[840px] h-[550px] bg-[#121214] border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/80 flex overflow-hidden text-zinc-200">
-        {/* Close Button Top Right */}
-        <button
-          onClick={onClose}
-          className="absolute top-3.5 right-3.5 w-7 h-7 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors z-20 cursor-pointer"
-          title="Fechar Seletor de Cofres (Esc)"
-        >
-          <X className="w-4 h-4" />
-        </button>
-
-        {/* ========================================================
-            LEFT COLUMN: Lista de Cofres Conectados (Estilo Obsidian)
-            ======================================================== */}
-        <div className="w-[300px] bg-[#0c0c0e] border-r border-white/[0.06] flex flex-col shrink-0">
-          <div className="p-4 border-b border-white/[0.06] flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-              Seus Cofres ({vaults.length})
-            </span>
-          </div>
-
-          {/* Vaults Scrollable List */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-chat-scrollbar">
-            {vaults.length === 0 ? (
-              <div className="p-4 text-center text-xs text-zinc-600 italic">
-                Nenhum cofre recente encontrado.
-              </div>
-            ) : (
-              vaults.map(v => {
-                const isActive =
-                  currentVaultPath &&
-                  v.path.replace(/\\/g, '/').toLowerCase() === currentVaultPath.replace(/\\/g, '/').toLowerCase()
-
-                // Format parent path display like in Obsidian: e.g. "D:\obsidian"
-                const parentDir = v.path.replace(/[/\\][^/\\]+$/, '')
-
-                return (
-                  <div
-                    key={v.id}
-                    onClick={() => handleOpenVault(v.path)}
-                    className={`group relative flex items-center justify-between p-2.5 rounded-xl text-left cursor-pointer transition-all border ${
-                      isActive
-                        ? 'bg-[#18181c] border-[#c59b27]/40 shadow-sm'
-                        : 'bg-transparent hover:bg-zinc-900/60 border-transparent hover:border-white/[0.05]'
-                    }`}
-                  >
-                    <div className="flex-1 min-w-0 pr-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-xs text-zinc-100 truncate block">
-                          {v.name}
-                        </span>
-                        {isActive && (
-                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-[#1c1912] text-[#d4af37] border border-[#c59b27]/30 shrink-0">
-                            Ativo
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[11px] text-zinc-500 font-mono truncate block mt-0.5" title={v.path}>
-                        {parentDir || v.path}
-                      </span>
-                    </div>
-
-                    {/* Three Dots Menu Button */}
-                    <div className="relative shrink-0">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setActiveMenuId(activeMenuId === v.id ? null : v.id)
-                        }}
-                        className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded-md transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
-                        title="Opções do cofre"
-                      >
-                        <MoreVertical className="w-3.5 h-3.5" />
-                      </button>
-
-                      {/* Dropdown Menu */}
-                      {activeMenuId === v.id && (
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 top-6 w-48 bg-[#18181c] border border-zinc-700/80 rounded-xl shadow-2xl py-1 z-30 text-xs"
-                        >
-                          <button
-                            type="button"
-                            onClick={(e) => handleRevealInExplorer(v.path, e)}
-                            className="w-full px-3 py-1.5 text-left text-zinc-300 hover:text-white hover:bg-zinc-800 flex items-center gap-2 transition-colors cursor-pointer"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5 text-[#c59b27]" />
-                            <span>Abrir no Explorador</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => handleRemoveFromList(v.id, e)}
-                            className="w-full px-3 py-1.5 text-left text-rose-400 hover:text-rose-300 hover:bg-zinc-800 flex items-center gap-2 transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Remover da lista</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </div>
-        </div>
-
-        {/* ========================================================
-            RIGHT COLUMN: Pyrita Branding & Ações de Criação/Abertura
-            ======================================================== */}
-        <div className="flex-1 bg-[#121214] p-7 flex flex-col justify-between overflow-y-auto custom-chat-scrollbar">
-          {/* Top Brand Hero */}
-          <div className="flex flex-col items-center text-center pt-2 pb-4">
-            {/* Pyrita Glowing Mineral Gemstone */}
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#d4af37] via-[#9e7922] to-[#423214] flex items-center justify-center shadow-lg shadow-black/60 border border-[#c59b27]/40 mb-3">
-              <Sparkles className="w-7 h-7 text-zinc-950 fill-[#fef08a]" />
-            </div>
-            <h2 className="text-xl font-bold tracking-tight text-zinc-100">
-              Pyrita
-            </h2>
-            <p className="text-xs text-zinc-500 font-mono mt-0.5">
-              Versão 1.0.3 • Ambiente Local-First de Pensamento
-            </p>
-          </div>
-
-          {/* Action Cards (Nested concentric cards matching reference layout) */}
-          <div className="space-y-2.5 max-w-[440px] w-full mx-auto my-auto">
-            {/* Card 1: Criar um novo cofre */}
-            <div className="bg-[#18181c] border border-white/[0.06] rounded-[15px] px-[12px] py-[10px] shadow-md flex flex-col transition-all">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-xs text-zinc-100">
-                    Criar um novo cofre
-                  </div>
-                  <div className="text-[11px] text-zinc-400 leading-snug mt-0.5">
-                    Cria um novo cofre do Pyrita dentro de uma pasta.
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreating(!isCreating)
-                    setCreationError(null)
-                  }}
-                  className="px-4 py-1.5 bg-[#c59b27] hover:bg-[#d8b150] text-zinc-950 rounded-lg text-xs font-semibold transition-all shrink-0 shadow-sm cursor-pointer"
-                >
-                  {isCreating ? 'Fechar' : 'Criar'}
-                </button>
-              </div>
-
-              {/* Inline Creation Form */}
-              {isCreating && (
-                <form onSubmit={handleCreateSubmit} className="mt-3 pt-3 border-t border-white/[0.06] space-y-2">
-                  <div>
-                    <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                      Nome do Cofre
-                    </label>
-                    <input
-                      type="text"
-                      autoFocus
-                      placeholder="Ex: Meu Segundo Cérebro"
-                      value={newVaultName}
-                      onChange={(e) => setNewVaultName(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-[#0e0e11] border border-zinc-700/80 rounded-lg text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#c59b27]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                      Local de Destino
-                    </label>
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex-1 px-2.5 py-1.5 bg-[#0e0e11] border border-zinc-700/80 rounded-lg text-xs text-zinc-400 font-mono truncate">
-                        {newVaultParentPath || 'Nenhuma pasta selecionada'}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handlePickParentDirectory}
-                        className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium border border-zinc-700/60 cursor-pointer shrink-0"
-                      >
-                        Procurar...
-                      </button>
-                    </div>
-                  </div>
-
-                  {creationError && (
-                    <div className="text-[11px] text-rose-400 bg-rose-950/40 border border-rose-900/50 rounded-lg px-2.5 py-1">
-                      {creationError}
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setIsCreating(false)}
-                      className="px-3 py-1 text-zinc-400 hover:text-zinc-200 text-xs cursor-pointer"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="px-3.5 py-1 bg-[#c59b27] hover:bg-[#d8b150] text-zinc-950 rounded-lg text-xs font-semibold shadow-sm cursor-pointer disabled:opacity-50"
-                    >
-                      {isSubmitting ? 'Criando...' : 'Criar e Abrir'}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-
-            {/* Card 2: Abrir pasta como um cofre */}
-            <div className="bg-[#18181c] border border-white/[0.06] rounded-[15px] px-[12px] py-[10px] shadow-md flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-xs text-zinc-100">
-                  Abrir pasta como um cofre
-                </div>
-                <div className="text-[11px] text-zinc-400 leading-snug mt-0.5">
-                  Abra uma pasta existente com arquivos Markdown.
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleBrowseAndOpen}
-                className="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 rounded-lg text-xs font-semibold transition-all shrink-0 border border-zinc-700/60 shadow-sm cursor-pointer"
-              >
-                Abrir
+  const chooseRoot = () => run(async () => {
+    const selected = await window.electronAPI?.selectFolder()
+    if (!selected) return
+    const result = await window.electronAPI!.setVaultRoot(selected)
+    if (!result.success || !result.rootPath) throw new Error(result.error || 'Não foi possível salvar a pasta raiz.')
+    setRootPath(result.rootPath)
+    const discovered = await window.electronAPI!.getKnownVaults()
+    persist(mergeVaultCatalog(catalogRef.current, discovered, currentVaultPath))
+  })
+  const button = 'flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-40 disabled:cursor-wait'
+  return <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-6" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose() }}>
+    <section role="dialog" aria-modal="true" aria-label="Gerenciar cofres" className="relative w-full max-w-[900px] h-[590px] max-h-[90vh] flex rounded-2xl border border-white/10 bg-[#121214] text-zinc-200 shadow-2xl overflow-hidden">
+      <button disabled={busy} onClick={onClose} aria-label="Fechar gerenciador de cofres" className="absolute right-3 top-3 p-2 rounded-lg hover:bg-white/5 disabled:opacity-40"><X size={18}/></button>
+      <aside className="w-[310px] shrink-0 bg-[#0c0c0e] border-r border-white/10 flex flex-col">
+        <h2 className="p-5 text-sm font-semibold">Seus cofres ({catalog.vaults.length})</h2>
+        <div className="flex-1 overflow-y-auto px-2 pb-3">
+          {catalog.vaults.length === 0 && <p className="p-3 text-sm text-zinc-500">Nenhum cofre na lista.</p>}
+          {catalog.vaults.map(vault => <div key={normalizeVaultPath(vault.path)} data-vault-path={vault.path} className="mb-1 rounded-lg bg-white/[0.025]">
+            <div className="flex items-center">
+              <button disabled={busy} onClick={() => void run(() => open(vault.path))} className="min-w-0 flex-1 p-3 text-left hover:bg-white/5 rounded-lg" title={vault.path}>
+                <div className="truncate text-sm font-medium">{vault.name}{currentVaultPath && normalizeVaultPath(currentVaultPath) === normalizeVaultPath(vault.path) && <span className="ml-2 text-[10px] text-zinc-500">Atual</span>}</div>
+                <div className="truncate mt-1 text-[11px] text-zinc-500">{vault.path}</div>
               </button>
+              <button disabled={busy} aria-label={`Opções de ${vault.name}`} onClick={() => setMenu(menu === vault.path ? null : vault.path)} className="p-2 hover:bg-white/5 rounded-lg"><MoreVertical size={16}/></button>
             </div>
-          </div>
-
-          {/* Bottom Footer with Language Selector */}
-          <div className="pt-4 flex items-center justify-center gap-2 text-zinc-500 text-xs">
-            <HelpCircle className="w-3.5 h-3.5 text-zinc-500" />
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#18181c] border border-white/[0.05] text-zinc-400 text-[11px]">
-              <span>Português do Brasil</span>
-              <ChevronDown className="w-3 h-3 text-zinc-600" />
-            </div>
-          </div>
+            {menu === vault.path && <div role="menu" className="border-t border-white/10 p-1 text-xs">
+              <button disabled={busy || !desktop} role="menuitem" className="w-full flex gap-2 p-2 hover:bg-white/5 rounded" onClick={() => beginCopy(vault.path)}><Copy size={14}/>Duplicar para meus cofres</button>
+              <button disabled={busy || !desktop} role="menuitem" className="w-full flex gap-2 p-2 hover:bg-white/5 rounded" onClick={() => void run(async () => { await window.electronAPI?.openInExplorer(vault.path) })}><FolderOpen size={14}/>Mostrar na pasta</button>
+              <button disabled={busy} role="menuitem" className="w-full flex gap-2 p-2 text-red-400 hover:bg-white/5 rounded" onClick={() => { try { persist(removeVaultFromCatalog(catalogRef.current, vault.path)); setMenu(null) } catch { setError('Não foi possível salvar a remoção.') } }}><Trash2 size={14}/>Remover da lista</button>
+            </div>}
+          </div>)}
         </div>
-      </div>
-    </div>
-  )
+        <p className="p-4 text-[11px] text-zinc-500 border-t border-white/5">Remover da lista mantém os arquivos na pasta original.</p>
+      </aside>
+      <main className="flex-1 min-w-0 overflow-y-auto p-7 pt-8">
+        <h1 className="text-xl font-semibold mb-1">Gerenciar cofres</h1>
+        <p className="text-sm text-zinc-500 mb-6">Organize seus espaços de notas.</p>
+        <div className="rounded-xl border border-white/10 p-3 mb-5">
+          <div className="flex justify-between items-center gap-2"><span className="text-xs font-medium">Pasta dos meus cofres</span><button disabled={busy || !desktop} onClick={() => void chooseRoot()} className="text-xs text-zinc-400 hover:text-white disabled:opacity-40">Escolher pasta</button></div>
+          <p className="text-xs text-zinc-500 mt-2 break-all" data-testid="vault-root">{rootPath || 'Disponível no aplicativo desktop'}</p>
+        </div>
+        {!mode ? <div className="space-y-3">
+          <button disabled={busy || !desktop} className={button + ' w-full'} onClick={() => { setMode('create'); setName(''); setError('') }}><Plus size={17}/>Criar cofre</button>
+          <button disabled={busy || !desktop} className={button + ' w-full'} onClick={() => void run(async () => { const selected = await window.electronAPI!.selectFolder(); if (selected) await open(selected) })}><FolderOpen size={17}/>Abrir original</button>
+          <button disabled={busy || !desktop} className={button + ' w-full'} onClick={() => void run(async () => { const selected = await window.electronAPI!.selectFolder(); if (selected) beginCopy(selected) })}><Copy size={17}/>Importar uma cópia</button>
+          <p className="text-xs text-zinc-500 leading-relaxed">Importe uma cópia de um cofre do Obsidian ou de outra pasta. As alterações no Pyrita ficarão na cópia.</p>
+        </div> : <form onSubmit={event => { event.preventDefault(); void run(async () => {
+          const result = mode === 'copy'
+            ? await window.electronAPI!.duplicateVault({ sourcePath, vaultName: name })
+            : await window.electronAPI!.createVault({ parentPath: rootPath, vaultName: name })
+          if (!result.success || !result.vaultPath) throw new Error(result.error || 'Não foi possível criar o cofre.')
+          // Retain the successful copy even if opening it encounters a later error.
+          persist(openVaultInCatalog(catalogRef.current, result.vaultPath))
+          setMode(null)
+          await open(result.vaultPath)
+        }) }}>
+          <h3 className="text-sm font-medium mb-3">{mode === 'copy' ? 'Duplicar cofre' : 'Novo cofre'}</h3>
+          {mode === 'copy' && <p className="text-xs text-zinc-500 mb-3 break-all">Original: {sourcePath}</p>}
+          <label className="text-xs text-zinc-400">Nome do cofre<input autoFocus required disabled={busy} value={name} onChange={event => setName(event.target.value)} className="mt-2 mb-3 block w-full rounded-lg bg-black/30 border border-white/10 p-2 text-sm text-zinc-200 outline-none focus:border-zinc-500"/></label>
+          <p className="text-xs text-zinc-500 mb-4 break-all">Destino: {rootPath}{rootPath.endsWith('\\') || rootPath.endsWith('/') ? '' : '/'}{name || '…'}</p>
+          <div className="flex gap-2"><button type="submit" disabled={busy || !rootPath || !name.trim()} className={button}>{busy ? 'Aguarde…' : mode === 'copy' ? 'Copiar e abrir' : 'Criar e abrir'}</button><button type="button" disabled={busy} className={button} onClick={() => setMode(null)}>Cancelar</button></div>
+        </form>}
+        {busy && <p role="status" className="mt-4 text-xs text-zinc-400">Processando. Aguarde a conclusão.</p>}
+        {error && <p role="alert" className="mt-4 text-sm text-red-400 break-words">{error}</p>}
+      </main>
+    </section>
+  </div>
 }

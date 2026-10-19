@@ -38,6 +38,9 @@ const electronAPI = {
     ipcRenderer.invoke('vault:createFolder', params) as Promise<{ success: boolean; error?: string }>,
   revealInExplorer: (filePath: string) => ipcRenderer.invoke('vault:revealInExplorer', filePath),
   openInExplorer: (folderPath: string) => ipcRenderer.invoke('vault:openInExplorer', folderPath),
+  getVaultSettings: () => ipcRenderer.invoke('vault:getSettings') as Promise<{ rootPath: string }>,
+  setVaultRoot: (rootPath: string) => ipcRenderer.invoke('vault:setRoot', rootPath) as Promise<{ success: boolean; rootPath?: string; error?: string }>,
+  duplicateVault: (params: { sourcePath: string; vaultName: string }) => ipcRenderer.invoke('vault:duplicate', params) as Promise<{ success: boolean; vaultPath?: string; error?: string }>,
   getKnownVaults: () => ipcRenderer.invoke('vault:getKnownVaults') as Promise<{ id: string; name: string; path: string; lastOpened: number }[]>,
   createVault: (params: { parentPath: string; vaultName: string }) =>
     ipcRenderer.invoke('vault:createVault', params) as Promise<{ success: boolean; vaultPath?: string; error?: string }>,

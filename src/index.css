@@ -202,3 +202,46 @@ input[type="checkbox"]:focus-visible,
 .pyrita-table-menu button:hover, .pyrita-table-menu button:focus-visible { background: #3f3f46; }
 .pyrita-table-menu button:disabled { opacity: .35; cursor: default; }
 .pyrita-table-menu hr { border: 0; border-top: 1px solid #3f3f46; margin: 4px 0; }
+
+/* Every embedded block has a real caret landing point before/after it. */
+.pyrita-editor-surface { cursor: text; }
+.pyrita-editor-surface > p, .editor-paragraph { min-height: 1.65em; margin: 3px 0; }
+.pyrita-editor-surface > .editor-gap { min-height: 22px; margin: 0; }
+.pyrita-editor-surface[contenteditable="false"] > .editor-gap { display: none; }
+
+.editor-code-block { overflow: hidden; border: 1px solid #303036; border-radius: 9px; background: #111114; color: #d4d4d8; font-size: 12px; cursor: default; }
+.editor-code-block:focus-visible, .editor-callout:focus-visible { outline: 1px solid #71717a; outline-offset: 2px; }
+.editor-code-header, .editor-callout > header { display: flex; align-items: center; gap: 9px; min-height: 37px; padding: 6px 11px; }
+.editor-code-header { background: #1b1b1f; border-bottom: 1px solid #303036; }
+.editor-code-header > input, .editor-callout > header > input { flex: 1; min-width: 0; padding: 3px 0; outline: none; background: transparent; color: inherit; font: inherit; font-weight: 600; }
+.editor-code-header > input::placeholder { color: #a1a1aa; font-weight: 500; }
+.editor-code-title { flex: 1; min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+.editor-block-actions { display: flex; align-items: center; gap: 5px; }
+.editor-block-actions .editor-code-language { width: 90px; padding: 3px 5px; border-radius: 4px; outline: none; background: transparent; color: #8f8f99; font: 11px ui-monospace, monospace; text-align: right; }
+.editor-block-actions input:focus, .editor-code-header > input:focus, .editor-callout > header > input:focus { box-shadow: 0 1px #71717a; }
+.editor-block-actions button, .editor-callout > header > button { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; padding: 5px; border-radius: 4px; color: #8f8f99; cursor: pointer; }
+.editor-block-actions button:hover, .editor-callout > header > button:hover { color: #e4e4e7; background: #ffffff0a; }
+.editor-code-content, .editor-code-block > pre { display: block; width: 100%; min-height: 100px; max-height: 520px; overflow: auto; padding: 14px 16px; margin: 0; resize: vertical; border: 0; outline: 0; background: transparent; color: #d4d4d8; font: 12px/1.75 ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 2; field-sizing: content; white-space: pre; user-select: text; }
+.editor-code-block > pre { min-height: 0; }
+.editor-code-block > pre > code { font: inherit; }
+.editor-block-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 10px; font-size: 10px; color: #8f8f99; }
+.editor-code-block .editor-block-footer { border-top: 1px solid #26262c; }
+.editor-block-footer button { display: inline-flex; align-items: center; gap: 5px; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
+.editor-block-footer button:hover { background: #ffffff08; color: #d4d4d8; }
+.editor-copy-status { display: block; padding: 0 12px 6px; color: #a1a1aa; font-size: 10px; }
+.editor-callout { overflow: hidden; border: 1px solid #303c49; border-left: 3px solid #5b87b0; border-radius: 8px; background: #1b27352e; color: #a9c2db; font-size: 12px; cursor: default; }
+.editor-callout-tip { border-color: #2b3e36; border-left-color: #61947b; background: #1b35272e; color: #a6cbb8; }
+.editor-callout-warning, .editor-callout-important, .editor-callout-caution { border-color: #463c2b; border-left-color: #a58a57; background: #352c1b2e; color: #d1c09f; }
+.editor-callout > header > strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.editor-callout > header > input::placeholder { color: inherit; opacity: .9; }
+.editor-callout-content { display: block; width: 100%; min-height: 52px; max-height: 400px; resize: vertical; field-sizing: content; border: 0; outline: 0; padding: 2px 12px 10px; color: #d4d4d8; background: transparent; font: inherit; line-height: 1.75; user-select: text; overflow-wrap: anywhere; }
+.editor-callout div.editor-callout-content { min-height: 0; }
+.editor-code-block button:focus-visible, .editor-callout button:focus-visible { outline: 1px solid #a1a1aa; outline-offset: 1px; }
+
+/* Compact, monochrome slash commands. */
+.editor-command-menu { width: 242px; max-height: calc(100vh - 16px); padding: 4px; border: 1px solid #303036; border-radius: 8px; background: #1a1a1e; color: #c4c4cc; box-shadow: 0 10px 28px #0005; overflow: hidden; user-select: none; }
+.editor-command-heading { display: flex; align-items: center; justify-content: space-between; padding: 5px 7px 7px; font-size: 10px; color: #85858f; }
+.editor-command-items { max-height: min(312px, calc(100vh - 60px)); overflow-y: auto; }
+.editor-command-item { display: flex; align-items: center; gap: 8px; min-height: 27px; padding: 5px 7px; border: 0; border-radius: 4px; font-size: 11px; line-height: 17px; cursor: pointer; }
+.editor-command-item > svg { flex-shrink: 0; color: #8f8f99; }
+.editor-command-item:hover, .editor-command-item.is-selected { color: #ededf0; background: #ffffff08; }

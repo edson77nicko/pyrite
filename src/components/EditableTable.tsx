@@ -58,9 +58,14 @@ export function EditableTable({ markdown, readOnly, onChange, onDelete, onExit, 
     setTable(next)
     onChange(serializeMarkdownTable(next))
   }
-  const focusCell = (cell: Cell) => requestAnimationFrame(() => {
-    root.current?.querySelector<HTMLTextAreaElement>(`[data-row="${cell.row}"][data-column="${cell.column}"]`)?.focus()
-  })
+  const focusCell = (cell: Cell) => {
+    const previousFocus = document.activeElement
+    requestAnimationFrame(() => {
+      // A later click/focus takes precedence over a scheduled table-cell focus.
+      if (document.activeElement !== previousFocus && document.activeElement !== document.body) return
+      root.current?.querySelector<HTMLTextAreaElement>(`[data-row="${cell.row}"][data-column="${cell.column}"]`)?.focus()
+    })
+  }
   const addRow = (index: number, duplicate = false) => {
     const current = latest.current
     const row = duplicate ? [...current.rows[index - 1]] : current.columns.map(() => '')

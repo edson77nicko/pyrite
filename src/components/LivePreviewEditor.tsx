@@ -7,6 +7,11 @@ import React, {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { EditableTable } from './EditableTable'
+import { EditableCodeBlock } from './EditableCodeBlock'
+import { EditableCallout } from './EditableCallout'
+import { parseCodeInfo, serializeCodeBlock, serializeCallout } from '../utils/editorBlocks'
+import type { CodeBlockData, CalloutData } from '../utils/editorBlocks'
+import { ensureEditorLandingZones, exitEditorBlock, focusBlankEditorLine, insertEditorBlock } from '../utils/editorSurface'
 import { DEFAULT_TABLE, TABLE_METADATA } from '../utils/markdownTable'
 import type { Note } from '../types'
 import {
@@ -55,7 +60,6 @@ export interface LivePreviewEditorProps {
 interface SlashCommandItem {
   id: string
   title: string
-  subtitle: string
   icon: React.ReactNode
   keywords: string[]
 }
@@ -64,99 +68,85 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'h1',
     title: 'Título 1',
-    subtitle: 'Cabeçalho principal grande',
-    icon: <Heading1 className="w-4 h-4 text-amber-400" />,
+    icon: <Heading1 className="w-3.5 h-3.5" />,
     keywords: ['h1', 'titulo', 'header']
   },
   {
     id: 'h2',
     title: 'Título 2',
-    subtitle: 'Subtítulo médio',
-    icon: <Heading2 className="w-4 h-4 text-indigo-400" />,
+    icon: <Heading2 className="w-3.5 h-3.5" />,
     keywords: ['h2', 'subtitulo', 'header']
   },
   {
     id: 'h3',
     title: 'Título 3',
-    subtitle: 'Seção menor',
-    icon: <Heading3 className="w-4 h-4 text-blue-400" />,
+    icon: <Heading3 className="w-3.5 h-3.5" />,
     keywords: ['h3', 'secao', 'header']
   },
   {
     id: 'task',
     title: 'Lista de Tarefas',
-    subtitle: 'Checklist interativo',
-    icon: <ListTodo className="w-4 h-4 text-emerald-400" />,
+    icon: <ListTodo className="w-3.5 h-3.5" />,
     keywords: ['todo', 'task', 'checklist', 'tarefa']
   },
   {
     id: 'bullet',
     title: 'Lista com Marcadores',
-    subtitle: 'Tópicos simples',
-    icon: <List className="w-4 h-4 text-amber-400" />,
+    icon: <List className="w-3.5 h-3.5" />,
     keywords: ['bullet', 'lista', 'topicos']
   },
   {
     id: 'number',
     title: 'Lista Numerada',
-    subtitle: 'Sequência ordenada',
-    icon: <ListOrdered className="w-4 h-4 text-orange-400" />,
+    icon: <ListOrdered className="w-3.5 h-3.5" />,
     keywords: ['number', 'numero', 'ordenada']
   },
   {
     id: 'quote',
     title: 'Citação',
-    subtitle: 'Bloco de destaque em itálico',
-    icon: <Sparkles className="w-4 h-4 text-zinc-400" />,
+    icon: <Sparkles className="w-3.5 h-3.5" />,
     keywords: ['quote', 'citacao', 'frase']
   },
   {
     id: 'table',
     title: 'Tabela',
-    subtitle: 'Células editáveis, linhas e colunas',
-    icon: <TableIcon className="w-4 h-4 text-purple-400" />,
+    icon: <TableIcon className="w-3.5 h-3.5" />,
     keywords: ['tabela', 'table', 'grade']
   },
   {
     id: 'code',
     title: 'Bloco de Código',
-    subtitle: 'Área com formatação monospace',
-    icon: <Code className="w-4 h-4 text-emerald-400" />,
+    icon: <Code className="w-3.5 h-3.5" />,
     keywords: ['code', 'codigo', 'script']
   },
   {
     id: 'callout-note',
     title: 'Callout de Nota',
-    subtitle: 'Destaque azul informativo',
-    icon: <Info className="w-4 h-4 text-blue-400" />,
+    icon: <Info className="w-3.5 h-3.5" />,
     keywords: ['callout', 'nota', 'info']
   },
   {
     id: 'callout-tip',
     title: 'Callout de Dica',
-    subtitle: 'Caixa verde com ideia útil',
-    icon: <Sparkles className="w-4 h-4 text-emerald-400" />,
+    icon: <Sparkles className="w-3.5 h-3.5" />,
     keywords: ['tip', 'dica', 'verde']
   },
   {
     id: 'callout-warning',
     title: 'Callout de Aviso',
-    subtitle: 'Alerta âmbar',
-    icon: <AlertTriangle className="w-4 h-4 text-amber-400" />,
+    icon: <AlertTriangle className="w-3.5 h-3.5" />,
     keywords: ['warning', 'aviso', 'alerta']
   },
   {
     id: 'hr',
     title: 'Linha Divisória',
-    subtitle: 'Separador horizontal sutil',
-    icon: <Divide className="w-4 h-4 text-zinc-400" />,
+    icon: <Divide className="w-3.5 h-3.5" />,
     keywords: ['hr', 'linha', 'divisoria']
   },
   {
     id: 'wikilink',
     title: 'Link Bidirecional',
-    subtitle: 'Conectar com outra nota [[...]]',
-    icon: <Link2 className="w-4 h-4 text-amber-400" />,
+    icon: <Link2 className="w-3.5 h-3.5" />,
     keywords: ['link', 'wikilink', 'conectar']
   }
 ]
@@ -279,6 +269,21 @@ function tableShell(markdown: string): string {
   return `<div class="table-wrapper my-4" contenteditable="false" data-raw-table="${encodeURIComponent(markdown)}"><div data-table-host>Carregando tabela…</div></div>`
 }
 
+function codeShell(block: CodeBlockData): string {
+  return `<div class="code-block-wrapper my-4" contenteditable="false" data-raw-code="${encodeURIComponent(block.content)}" data-code-lang="${escapeHtml(block.language)}" data-code-title="${encodeURIComponent(block.title)}"><div data-code-host>Carregando código…</div></div>`
+}
+
+function calloutShell(block: CalloutData): string {
+  return `<div class="callout-wrapper my-4" contenteditable="false" data-type="callout" data-callout-type="${escapeHtml(block.type)}" data-callout-title="${encodeURIComponent(block.title)}" data-raw-callout="${encodeURIComponent(block.content)}"><div data-callout-host>Carregando destaque…</div></div>`
+}
+
+interface EmbeddedHost {
+  kind: 'table' | 'code' | 'callout'
+  host: HTMLElement
+  wrapper: HTMLElement
+  id: string
+}
+
 function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): string {
   const cleanMd = stripDuplicateTitleFromContent(md, noteTitle)
   if (!cleanMd.trim()) {
@@ -292,31 +297,16 @@ function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): strin
   while (i < lines.length) {
     const line = lines[i]
 
-    // Code block ```
-    if (line.trim().startsWith('```')) {
-      const lang = line.trim().slice(3).trim()
+    const tick = String.fromCharCode(96)
+    const fence = line.trim().match(new RegExp('^(' + tick + '{3,})(.*)$'))
+    if (fence) {
+      const info = parseCodeInfo(fence[2].trim())
+      const closing = new RegExp('^' + tick + '{' + fence[1].length + ',}\\s*$')
       const codeLines: string[] = []
       i++
-      while (i < lines.length && !lines[i].trim().startsWith('```')) {
-        codeLines.push(lines[i])
-        i++
-      }
-      i++ // skip closing ```
-      const rawCode = codeLines.join('\n')
-      htmlParts.push(`
-        <div class="code-block-wrapper my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/90 text-xs font-mono shadow-lg" contenteditable="false" data-raw-code="${encodeURIComponent(rawCode)}" data-code-lang="${lang}">
-          <div class="flex items-center justify-between px-3.5 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400">
-            <span class="uppercase font-semibold tracking-wider text-[11px] text-zinc-300 flex items-center gap-1.5">
-              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-              ${lang || 'código'}
-            </span>
-            <button type="button" class="copy-code-btn flex items-center gap-1 px-2 py-0.5 rounded hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer">
-              Copiar
-            </button>
-          </div>
-          <pre class="p-4 overflow-x-auto text-zinc-300 leading-relaxed font-mono"><code>${escapeHtml(rawCode)}</code></pre>
-        </div>
-      `)
+      while (i < lines.length && !closing.test(lines[i].trim())) codeLines.push(lines[i++])
+      if (i < lines.length) i++
+      htmlParts.push(codeShell({ ...info, content: codeLines.join('\n') }))
       continue
     }
 
@@ -352,26 +342,12 @@ function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): strin
       const calloutType = (match ? match[1] : 'NOTE').toUpperCase()
       const title = match && match[2] ? match[2].trim() : ''
       const calloutLines: string[] = []
-      if (title) calloutLines.push(title)
       i++
       while (i < lines.length && lines[i].trim().startsWith('>')) {
         calloutLines.push(lines[i].replace(/^>\s?/, ''))
         i++
       }
-      const rawCallout = calloutLines.join('\n')
-      let theme = 'border-blue-500/60 bg-blue-950/20 text-blue-200'
-      if (calloutType === 'TIP') theme = 'border-emerald-500/60 bg-emerald-950/20 text-emerald-200'
-      else if (calloutType === 'WARNING') theme = 'border-amber-500/60 bg-amber-950/20 text-amber-200'
-      else if (calloutType === 'IMPORTANT' || calloutType === 'CAUTION') theme = 'border-rose-500/60 bg-rose-950/20 text-rose-200'
-
-      htmlParts.push(`
-        <div class="callout-wrapper my-4 p-3.5 rounded-xl border-l-4 ${theme} text-xs shadow-sm" data-type="callout" data-callout-type="${calloutType}">
-          <div class="font-semibold mb-1 flex items-center gap-1.5 select-none" contenteditable="false">
-            <span>${calloutType}</span>
-          </div>
-          <div class="callout-content text-zinc-300 leading-relaxed">${formatInlineHtml(rawCallout, allNotes)}</div>
-        </div>
-      `)
+      htmlParts.push(calloutShell({ type: calloutType, title, content: calloutLines.join('\n') }))
       continue
     }
 
@@ -561,6 +537,7 @@ function domToMarkdown(root: HTMLElement): string {
     if (child.nodeType !== Node.ELEMENT_NODE) continue
     const el = child as HTMLElement
     const tag = el.tagName.toLowerCase()
+    if (el.hasAttribute('data-editor-gap') && !el.textContent?.trim()) continue
 
     // 0. Image Card or standalone <img>
     if (el.classList.contains('image-wrapper') || el.hasAttribute('data-raw-img') || tag === 'img') {
@@ -578,11 +555,14 @@ function domToMarkdown(root: HTMLElement): string {
       continue
     }
 
-    // 1. Code Block
     if (el.hasAttribute('data-raw-code')) {
-      const code = decodeURIComponent(el.getAttribute('data-raw-code') || '')
-      const lang = el.getAttribute('data-code-lang') || ''
-      lines.push(`\`\`\`${lang}\n${code}\n\`\`\``)
+      if (lines.length && lines[lines.length - 1] !== '') lines.push('')
+      lines.push(serializeCodeBlock({ content: decodeURIComponent(el.dataset.rawCode || ''), language: el.dataset.codeLang || '', title: decodeURIComponent(el.dataset.codeTitle || '') }), '')
+      continue
+    }
+    if (el.hasAttribute('data-raw-callout')) {
+      if (lines.length && lines[lines.length - 1] !== '') lines.push('')
+      lines.push(serializeCallout({ type: el.dataset.calloutType || 'NOTE', title: decodeURIComponent(el.dataset.calloutTitle || ''), content: decodeURIComponent(el.dataset.rawCallout || '') }), '')
       continue
     }
 
@@ -685,17 +665,19 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   editorRef
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [tableHosts, setTableHosts] = useState<{ host: HTMLElement; wrapper: HTMLElement; markdown: string; id: string }[]>([])
-  const refreshTables = useCallback(() => {
-    if (!containerRef.current) return
-    setTableHosts(previous => {
-      const next = Array.from(containerRef.current!.querySelectorAll<HTMLElement>('[data-table-host]')).map(host => {
+  const [blockHosts, setBlockHosts] = useState<EmbeddedHost[]>([])
+  const refreshBlocks = useCallback(() => {
+    const root = containerRef.current
+    if (!root) return
+    ensureEditorLandingZones(root)
+    setBlockHosts(previous => {
+      const next = Array.from(root.querySelectorAll<HTMLElement>('[data-table-host], [data-code-host], [data-callout-host]')).map(host => {
         const existing = previous.find(value => value.host === host)
         if (existing) return existing
-        const wrapper = host.closest<HTMLElement>('[data-raw-table]')!
-        // Native document undo may restore a clone of a previously rendered table.
+        const kind: EmbeddedHost['kind'] = host.hasAttribute('data-code-host') ? 'code' : host.hasAttribute('data-callout-host') ? 'callout' : 'table'
+        const wrapper = host.parentElement!
         host.replaceChildren()
-        return { host, wrapper, markdown: decodeURIComponent(wrapper.dataset.rawTable || ''), id: crypto.randomUUID() }
+        return { host, wrapper, kind, id: crypto.randomUUID() }
       })
       return next.length === previous.length && next.every((value, index) => value === previous[index]) ? previous : next
     })
@@ -728,6 +710,10 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   } | null>(null)
 
   const isEditable = displayMode === 'live'
+
+  useEffect(() => {
+    if (slashMenu) document.querySelector('.editor-command-item[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [slashMenu])
 
   // Debounced Markdown Synchronization to parent state
   const handleSync = useCallback(() => {
@@ -764,7 +750,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       currentNoteIdRef.current = note.id
       lastSyncedMdRef.current = note.content
       containerRef.current.innerHTML = markdownToHtml(note.content, allNotes, note.title)
-      refreshTables()
+      refreshBlocks()
       setSlashMenu(null)
       setWikiSuggest(null)
       setSelectionToolbar(null)
@@ -775,48 +761,18 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       // Only sync if content was updated externally and user is not focused on editor
       lastSyncedMdRef.current = note.content
       containerRef.current.innerHTML = markdownToHtml(note.content, allNotes, note.title)
-      refreshTables()
+      refreshBlocks()
     }
-  }, [note.id, note.content, note.title, allNotes, refreshTables])
+  }, [note.id, note.content, note.title, allNotes, refreshBlocks])
 
-  const insertTableBlock = () => {
-    const root = containerRef.current
-    if (!root) return
-    root.focus()
-    const inserted = document.execCommand('insertHTML', false, tableShell(DEFAULT_TABLE) + '<p><br></p>')
-    if (!inserted) {
-      // Chromium can reject block insertion at an empty text node. Preserve the
-      // text on both sides of the caret and insert the block at the document level.
-      const selection = window.getSelection()
-      const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : document.createRange()
-      if (!root.contains(range.startContainer)) { range.selectNodeContents(root); range.collapse(false) }
-      range.deleteContents()
-      const template = document.createElement('template')
-      template.innerHTML = tableShell(DEFAULT_TABLE)
-      const wrapper = template.content.firstElementChild!
-      const paragraph = document.createElement('p')
-      paragraph.innerHTML = '<br>'
-      let anchor: Node = range.startContainer
-      while (anchor !== root && anchor.parentNode !== root && anchor.parentNode) anchor = anchor.parentNode
-      if (anchor === root) {
-        root.insertBefore(wrapper, root.childNodes[range.startOffset] || null)
-        wrapper.after(paragraph)
-      } else if (anchor instanceof HTMLElement && anchor.contentEditable === 'false') {
-        anchor.after(wrapper, paragraph)
-      } else {
-        const tail = range.cloneRange()
-        tail.setEndAfter(anchor)
-        const remaining = tail.extractContents()
-        if (anchor.textContent?.trim()) anchor.parentNode!.insertBefore(wrapper, anchor.nextSibling)
-        else anchor.parentNode!.replaceChild(wrapper, anchor)
-        wrapper.after(paragraph, remaining)
-      }
-      range.selectNodeContents(paragraph); range.collapse(true)
-      selection?.removeAllRanges(); selection?.addRange(range)
-    }
-    refreshTables()
+  const insertBlock = (html: string) => {
+    if (!containerRef.current) return
+    insertEditorBlock(containerRef.current, html)
+    refreshBlocks()
+    setSelectionToolbar(null)
     persistContent()
   }
+  const insertTableBlock = () => insertBlock(tableShell(DEFAULT_TABLE))
 
   // Expose formatting commands to top toolbar via ref
   useImperativeHandle(editorRef, () => ({
@@ -835,7 +791,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">Nova tarefa...</span>
           </div>
         `
-        document.execCommand('insertHTML', false, taskHtml)
+        insertBlock(taskHtml)
       } else {
         document.execCommand('formatBlock', false, 'p')
       }
@@ -853,30 +809,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       insertWikiLinkHtml(target)
       handleSync()
     },
-    insertCodeBlock: () => {
-      const codeHtml = `
-        <div class="code-block-wrapper my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/90 text-xs font-mono shadow-lg" contenteditable="false" data-raw-code="console.log('Olá, Pyrite!');" data-code-lang="javascript">
-          <div class="flex items-center justify-between px-3.5 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400">
-            <span class="uppercase font-semibold tracking-wider text-[11px] text-zinc-300">javascript</span>
-            <button type="button" class="copy-code-btn flex items-center gap-1 px-2 py-0.5 rounded hover:bg-zinc-800 text-zinc-300">Copiar</button>
-          </div>
-          <pre class="p-4 overflow-x-auto text-zinc-300 font-mono"><code>console.log('Olá, Pyrite!');</code></pre>
-        </div>
-      `
-      document.execCommand('insertHTML', false, codeHtml)
-      handleSync()
-    },
-    insertCallout: (type: string) => {
-      const calloutType = type.toUpperCase() || 'NOTE'
-      const calloutHtml = `
-        <div class="callout-wrapper my-4 p-3.5 rounded-xl border-l-4 border-blue-500/60 bg-blue-950/20 text-blue-200 text-xs shadow-sm" data-type="callout" data-callout-type="${calloutType}">
-          <div class="font-semibold mb-1" contenteditable="false">${calloutType}</div>
-          <div class="callout-content text-zinc-300">Observação importante aqui...</div>
-        </div>
-      `
-      document.execCommand('insertHTML', false, calloutHtml)
-      handleSync()
-    },
+    insertCodeBlock: () => insertBlock(codeShell({ title: '', language: '', content: '' })),
+    insertCallout: (type: string) => insertBlock(calloutShell({ type: type.toUpperCase() || 'NOTE', title: '', content: '' })),
     insertTable: insertTableBlock
   }))
 
@@ -913,8 +847,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             </div>
             <p class="my-1.5 text-[13px] md:text-sm text-zinc-300 leading-relaxed"><br></p>
           `
-          document.execCommand('insertHTML', false, imgHtml)
-          handleSync()
+          insertBlock(imgHtml)
         }
         reader.readAsDataURL(file)
         return
@@ -925,7 +858,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   // Handle typing inside unified contentEditable
   const handleInput = () => {
     isTypingRef.current = true
-    refreshTables()
+    refreshBlocks()
     handleSync()
 
     const sel = window.getSelection()
@@ -947,8 +880,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         const rect = range.getBoundingClientRect()
         setSlashMenu({
           query: q.toLowerCase(),
-          top: Math.max(10, rect.bottom + 6),
-          left: Math.max(20, Math.min(window.innerWidth - 300, rect.left)),
+          top: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 356)),
+          left: Math.max(8, Math.min(window.innerWidth - 250, rect.left)),
           index: 0
         })
       } else {
@@ -980,6 +913,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
   // Handle smart keyboard shortcuts & live markdown transformation
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isEditable || e.nativeEvent.isComposing) return
     // If slash menu active, handle keys
     if (slashMenu && filteredSlashCommands.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -1027,6 +961,38 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         e.preventDefault()
         setWikiSuggest(null)
         return
+      }
+    }
+
+    // At a block boundary, first select/focus the block; a second Delete removes it.
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      const selection = window.getSelection()
+      const root = containerRef.current
+      if (root && selection?.rangeCount) {
+        const range = selection.getRangeAt(0)
+        const selector = '[data-raw-code], [data-raw-table], [data-type="callout"], [data-raw-img], [data-raw-artifact], hr'
+        if (!selection.isCollapsed && range.startContainer === root && range.endContainer === root && range.endOffset === range.startOffset + 1) {
+          const block = root.childNodes[range.startOffset]
+          if (block instanceof HTMLElement && block.matches(selector)) { e.preventDefault(); deleteBlock(block); return }
+        }
+        if (selection.isCollapsed) {
+          const element = range.startContainer instanceof HTMLElement ? range.startContainer : range.startContainer.parentElement
+          const paragraph = element?.closest('p')
+          if (paragraph?.parentElement === root) {
+            const boundary = range.cloneRange()
+            boundary.selectNodeContents(paragraph)
+            if (e.key === 'Backspace') boundary.setEnd(range.startContainer, range.startOffset)
+            else boundary.setStart(range.startContainer, range.startOffset)
+            const adjacent = e.key === 'Backspace' ? paragraph.previousElementSibling : paragraph.nextElementSibling
+            if (!boundary.toString() && adjacent instanceof HTMLElement && adjacent.matches(selector)) {
+              e.preventDefault()
+              const focusable = adjacent.querySelector<HTMLElement>('section[tabindex="0"]')
+              if (focusable) focusable.focus()
+              else { const blockRange = document.createRange(); blockRange.selectNode(adjacent); selection.removeAllRanges(); selection.addRange(blockRange) }
+              return
+            }
+          }
+        }
       }
     }
 
@@ -1284,7 +1250,11 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           // Re-establish the caret after replacing text; execCommand otherwise
           // receives a collapsed range outside the editing host in Chromium.
           containerRef.current?.focus()
-          range.setStart(node, slashIdx)
+          if (!node.textContent && node.parentElement?.childNodes.length === 1) {
+            const parent = node.parentElement
+            parent.replaceChildren(document.createElement('br'))
+            range.setStart(parent, 0)
+          } else range.setStart(node, slashIdx)
           range.collapse(true)
           sel.removeAllRanges()
           sel.addRange(range)
@@ -1300,7 +1270,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     else if (cmdId === 'bullet') document.execCommand('insertUnorderedList')
     else if (cmdId === 'number') document.execCommand('insertOrderedList')
     else if (cmdId === 'quote') document.execCommand('formatBlock', false, 'blockquote')
-    else if (cmdId === 'hr') document.execCommand('insertHorizontalRule')
+    else if (cmdId === 'hr') insertBlock('<hr class="my-5 border-zinc-800" contenteditable="false" />')
     else if (cmdId === 'task') {
       const taskHtml = `
         <div class="task-item flex items-start gap-2.5 my-1.5 group" data-type="task">
@@ -1308,30 +1278,14 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">Nova tarefa...</span>
         </div>
       `
-      document.execCommand('insertHTML', false, taskHtml)
+      insertBlock(taskHtml)
     } else if (cmdId === 'table') {
       insertTableBlock()
     } else if (cmdId === 'code') {
-      const codeHtml = `
-        <div class="code-block-wrapper my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/90 text-xs font-mono shadow-lg" contenteditable="false" data-raw-code="console.log('Olá, Pyrite!');" data-code-lang="javascript">
-          <div class="flex items-center justify-between px-3.5 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400">
-            <span class="uppercase font-semibold tracking-wider text-[11px] text-zinc-300">javascript</span>
-            <button type="button" class="copy-code-btn flex items-center gap-1 px-2 py-0.5 rounded hover:bg-zinc-800 text-zinc-300">Copiar</button>
-          </div>
-          <pre class="p-4 overflow-x-auto text-zinc-300 font-mono"><code>console.log('Olá, Pyrite!');</code></pre>
-        </div>
-      `
-      document.execCommand('insertHTML', false, codeHtml)
+      insertBlock(codeShell({ title: '', language: '', content: '' }))
     } else if (cmdId === 'callout-note' || cmdId === 'callout-tip' || cmdId === 'callout-warning') {
       const type = cmdId === 'callout-tip' ? 'TIP' : cmdId === 'callout-warning' ? 'WARNING' : 'NOTE'
-      const theme = type === 'TIP' ? 'border-emerald-500/60 bg-emerald-950/20 text-emerald-200' : type === 'WARNING' ? 'border-amber-500/60 bg-amber-950/20 text-amber-200' : 'border-blue-500/60 bg-blue-950/20 text-blue-200'
-      const calloutHtml = `
-        <div class="callout-wrapper my-4 p-3.5 rounded-xl border-l-4 ${theme} text-xs shadow-sm" data-type="callout" data-callout-type="${type}">
-          <div class="font-semibold mb-1" contenteditable="false">${type}</div>
-          <div class="callout-content text-zinc-300">Destaque importante aqui...</div>
-        </div>
-      `
-      document.execCommand('insertHTML', false, calloutHtml)
+      insertBlock(calloutShell({ type, title: '', content: '' }))
     } else if (cmdId === 'wikilink') {
       document.execCommand('insertText', false, '[[')
 
@@ -1416,6 +1370,10 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
   // Handle click delegation (wikilink navigation, task checkboxes, code copy)
   const handleEditorClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && containerRef.current && isEditable) {
+      focusBlankEditorLine(containerRef.current, e.clientY)
+      return
+    }
     // 1. Wikilink Navigation Click
     const wikiTargetEl = (e.target as HTMLElement).closest('.wiki-link')
     if (wikiTargetEl) {
@@ -1468,19 +1426,28 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     wrapper.dataset.rawTable = encodeURIComponent(markdown)
     persistContent()
   }
-  const exitTable = (wrapper: HTMLElement) => {
-    let next = wrapper.nextElementSibling as HTMLElement | null
-    if (!next || next.contentEditable === 'false') {
-      next = document.createElement('p'); next.innerHTML = '<br>'; wrapper.after(next)
-    }
-    containerRef.current?.focus()
-    const range = document.createRange(); range.selectNodeContents(next); range.collapse(true)
-    const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range)
+  const exitBlock = (wrapper: HTMLElement) => {
+    if (containerRef.current) exitEditorBlock(containerRef.current, wrapper)
   }
-  const deleteTable = (wrapper: HTMLElement) => {
-    exitTable(wrapper)
+  const deleteBlock = (wrapper: HTMLElement) => {
+    if (!containerRef.current?.contains(wrapper)) return
+    exitBlock(wrapper)
     wrapper.remove()
-    refreshTables()
+    refreshBlocks()
+    persistContent()
+  }
+  const updateCode = (wrapper: HTMLElement, block: CodeBlockData) => {
+    if (!containerRef.current?.contains(wrapper)) return
+    wrapper.dataset.rawCode = encodeURIComponent(block.content)
+    wrapper.dataset.codeLang = block.language
+    wrapper.dataset.codeTitle = encodeURIComponent(block.title)
+    persistContent()
+  }
+  const updateCallout = (wrapper: HTMLElement, block: CalloutData) => {
+    if (!containerRef.current?.contains(wrapper)) return
+    wrapper.dataset.rawCallout = encodeURIComponent(block.content)
+    wrapper.dataset.calloutType = block.type
+    wrapper.dataset.calloutTitle = encodeURIComponent(block.title)
     persistContent()
   }
 
@@ -1504,17 +1471,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     <div
       className="w-full min-h-[500px] relative pb-28"
       onClick={(e) => {
-        // If clicking on empty padding below content, place cursor at the end
         if (e.target === e.currentTarget && containerRef.current && isEditable) {
-          containerRef.current.focus()
-          const sel = window.getSelection()
-          if (sel) {
-            const range = document.createRange()
-            range.selectNodeContents(containerRef.current)
-            range.collapse(false)
-            sel.removeAllRanges()
-            sel.addRange(range)
-          }
+          focusBlankEditorLine(containerRef.current, e.clientY)
         }
       }}
     >
@@ -1524,15 +1482,21 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         contentEditable={isEditable}
         suppressContentEditableWarning
         onInput={handleInput}
+        onBlur={() => { if (isEditable) persistContent() }}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         onMouseUp={handleSelectionCheck}
         onKeyUp={handleSelectionCheck}
         onClick={handleEditorClick}
-        className={`w-full min-h-[400px] focus:outline-none font-sans text-zinc-300 leading-relaxed ${fontSizeClass} select-text`}
+        className={`pyrita-editor-surface w-full min-h-[400px] focus:outline-none font-sans text-zinc-300 leading-relaxed ${fontSizeClass} select-text`}
       />
 
-      {tableHosts.map(table => createPortal(<EditableTable markdown={table.markdown} readOnly={!isEditable} renderInline={text => formatInlineHtml(text, allNotes)} onChange={markdown => updateTable(table.wrapper, markdown)} onDelete={() => deleteTable(table.wrapper)} onExit={() => exitTable(table.wrapper)} />, table.host, table.id))}
+      {blockHosts.map(block => createPortal(block.kind === 'table'
+        ? <EditableTable markdown={decodeURIComponent(block.wrapper.dataset.rawTable || '')} readOnly={!isEditable} renderInline={text => formatInlineHtml(text, allNotes)} onChange={markdown => updateTable(block.wrapper, markdown)} onDelete={() => deleteBlock(block.wrapper)} onExit={() => exitBlock(block.wrapper)} />
+        : block.kind === 'code'
+          ? <EditableCodeBlock initial={{ content: decodeURIComponent(block.wrapper.dataset.rawCode || ''), title: decodeURIComponent(block.wrapper.dataset.codeTitle || ''), language: block.wrapper.dataset.codeLang || '' }} readOnly={!isEditable} onChange={data => updateCode(block.wrapper, data)} onDelete={() => deleteBlock(block.wrapper)} onExit={() => exitBlock(block.wrapper)} />
+          : <EditableCallout initial={{ type: block.wrapper.dataset.calloutType || 'NOTE', title: decodeURIComponent(block.wrapper.dataset.calloutTitle || ''), content: decodeURIComponent(block.wrapper.dataset.rawCallout || '') }} readOnly={!isEditable} renderInline={text => formatInlineHtml(text, allNotes)} onChange={data => updateCallout(block.wrapper, data)} onDelete={() => deleteBlock(block.wrapper)} onExit={() => exitBlock(block.wrapper)} />, block.host, block.id))}
+
       {/* Floating Notion-style Selection Popover Toolbar */}
       {isEditable && selectionToolbar && (
         <div
@@ -1638,35 +1602,32 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             left: `${slashMenu.left}px`,
             zIndex: 9999
           }}
+          role="listbox"
+          aria-label="Comandos rápidos"
           onMouseDown={e => e.preventDefault()}
-          className="w-72 bg-[#141418] border border-amber-500/40 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
+          className="editor-command-menu"
         >
-          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-400 border-b border-zinc-800 flex items-center justify-between">
+          <div className="editor-command-heading">
             <span>Comandos Rápidos</span>
             <span className="text-zinc-500 font-mono text-[10px]">↵ Inserir</span>
           </div>
-          <div className="max-h-56 overflow-y-auto space-y-0.5 pt-1 scrollbar-none">
+          <div className="editor-command-items">
             {filteredSlashCommands.map((cmd, cIdx) => {
               const isSelected = cIdx === slashMenu.index
               return (
                 <div
                   key={cmd.id}
+                  role="option"
+                  aria-selected={isSelected}
                   onMouseDown={e => {
                     e.preventDefault()
                     executeSlashCommand(cmd.id)
                   }}
                   onMouseEnter={() => setSlashMenu(prev => (prev ? { ...prev, index: cIdx } : null))}
-                  className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'bg-amber-500/15 text-amber-200 border border-amber-500/40'
-                      : 'text-zinc-300 hover:bg-zinc-800/60'
-                  }`}
+                  className={`editor-command-item${isSelected ? ' is-selected' : ''}`}
                 >
                   {cmd.icon}
-                  <div className="truncate">
-                    <div className="text-xs font-medium text-zinc-100">{cmd.title}</div>
-                    <div className="text-[10px] text-zinc-500 truncate">{cmd.subtitle}</div>
-                  </div>
+                  <span className="truncate">{cmd.title}</span>
                 </div>
               )
             })}
