@@ -254,7 +254,7 @@ ipcMain.handle('vault:readVault', (_event, vaultPath: string) => {
   return scanVaultDirectory(vaultPath, vaultPath)
 })
 
-ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content }: { vaultPath: string; folder: string; title: string; content: string }) => {
+ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content, exclusive }: { vaultPath: string; folder: string; title: string; content: string; exclusive?: boolean }) => {
   try {
     const safeTitle = title.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Sem título'
     const targetDir = folder && folder !== 'Início' ? path.join(vaultPath, folder.replace(/\//g, path.sep)) : vaultPath
@@ -264,7 +264,7 @@ ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content }:
     }
 
     const filePath = path.join(targetDir, `${safeTitle}.md`)
-    fs.writeFileSync(filePath, content, 'utf-8')
+    fs.writeFileSync(filePath, content, { encoding: 'utf-8', flag: exclusive ? 'wx' : 'w' })
     const stats = fs.statSync(filePath)
     return { success: true, filePath, updatedAt: stats.mtimeMs }
   } catch (err: any) {
@@ -628,3 +628,34 @@ ipcMain.handle('ai:chat', async (_event, params: {
 })
 
 app.whenReady().then(createWindow)
+
+// Sidebar management: constrain every operation to the selected vault.
+ipcMain.handle('vault:managePath', async (_event, params: { vaultPath: string; source: string; destination?: string; action: string }) => {
+  try {
+    const root = fs.realpathSync(params.vaultPath)
+    const checked = (input: string) => {
+      const resolved = path.resolve(input)
+      const relative = path.relative(root, resolved)
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Caminho fora do cofre.')
+      let ancestor = resolved
+      while (!fs.existsSync(ancestor)) ancestor = path.dirname(ancestor)
+      const realRelative = path.relative(root, fs.realpathSync(ancestor))
+      if (realRelative.startsWith('..') || path.isAbsolute(realRelative)) throw new Error('Caminho fora do cofre.')
+      return resolved
+    }
+    const source = checked(params.source)
+    if (params.action === 'open') { const error = await shell.openPath(source); if (error) throw new Error(error) }
+    else if (params.action === 'delete') await shell.trashItem(source)
+    else if (params.action === 'copy' || params.action === 'move') {
+      const destination = checked(params.destination || '')
+      if (source === destination) return { success: true }
+      const relative = path.relative(source, destination)
+      if (fs.statSync(source).isDirectory() && !relative.startsWith('..') && !path.isAbsolute(relative)) throw new Error('Destino dentro da própria pasta.')
+      if (fs.existsSync(destination)) throw new Error('Já existe um arquivo ou pasta no destino.')
+      fs.mkdirSync(path.dirname(destination), { recursive: true })
+      if (params.action === 'copy') fs.cpSync(source, destination, { recursive: true, force: false, errorOnExist: true })
+      else fs.renameSync(source, destination)
+    } else throw new Error('Operação inválida.')
+    return { success: true }
+  } catch (error: any) { return { success: false, error: error.message } }
+})

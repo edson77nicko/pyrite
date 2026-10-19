@@ -5,6 +5,9 @@ import React, {
   useCallback,
   useImperativeHandle
 } from 'react'
+import { createPortal } from 'react-dom'
+import { EditableTable } from './EditableTable'
+import { DEFAULT_TABLE, TABLE_METADATA } from '../utils/markdownTable'
 import type { Note } from '../types'
 import {
   Heading1,
@@ -24,10 +27,7 @@ import {
   Highlighter,
   Strikethrough,
   Info,
-  AlertTriangle,
-  Activity,
-  Calendar,
-  Layers
+  AlertTriangle
 } from 'lucide-react'
 import type { LiveBlock } from '../utils/markdownBlocks'
 import { renderArtifactHtml } from '../utils/artifactParser'
@@ -112,8 +112,8 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
   },
   {
     id: 'table',
-    title: 'Tabela Markdown',
-    subtitle: 'Grade de dados',
+    title: 'Tabela',
+    subtitle: 'Células editáveis, linhas e colunas',
     icon: <TableIcon className="w-4 h-4 text-purple-400" />,
     keywords: ['tabela', 'table', 'grade']
   },
@@ -158,34 +158,6 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
     subtitle: 'Conectar com outra nota [[...]]',
     icon: <Link2 className="w-4 h-4 text-amber-400" />,
     keywords: ['link', 'wikilink', 'conectar']
-  },
-  {
-    id: 'kpi',
-    title: 'Cartão KPI (Métrica Concêntrica)',
-    subtitle: 'Métrica com valor, variação e bordas concêntricas',
-    icon: <Activity className="w-4 h-4 text-amber-400" />,
-    keywords: ['kpi', 'metrica', 'numero', 'estatistica', 'card']
-  },
-  {
-    id: 'timeline',
-    title: 'Linha do Tempo / Roadmap',
-    subtitle: 'Marcos cronológicos embutidos',
-    icon: <Calendar className="w-4 h-4 text-amber-400" />,
-    keywords: ['timeline', 'roadmap', 'cronograma', 'etapas']
-  },
-  {
-    id: 'comparison',
-    title: 'Comparativo Lado a Lado',
-    subtitle: 'Colunas concêntricas para decisão e trade-offs',
-    icon: <Layers className="w-4 h-4 text-amber-400" />,
-    keywords: ['comparison', 'comparativo', 'versus', 'versus', 'pros']
-  },
-  {
-    id: 'card',
-    title: 'Cartão Embutido (Nested Card)',
-    subtitle: 'Moldura com cabeçalho e subsuperfície concêntrica',
-    icon: <Sparkles className="w-4 h-4 text-amber-400" />,
-    keywords: ['card', 'nested', 'moldura', 'bloco', 'camadas']
   }
 ]
 
@@ -303,6 +275,10 @@ export function stripDuplicateTitleFromContent(content: string, title?: string):
   return content
 }
 
+function tableShell(markdown: string): string {
+  return `<div class="table-wrapper my-4" contenteditable="false" data-raw-table="${encodeURIComponent(markdown)}"><div data-table-host>Carregando tabela…</div></div>`
+}
+
 function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): string {
   const cleanMd = stripDuplicateTitleFromContent(md, noteTitle)
   if (!cleanMd.trim()) {
@@ -365,33 +341,8 @@ function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): strin
         tableLines.push(lines[i].trim())
         i++
       }
-      const rawTable = tableLines.join('\n')
-      const headerCells = tableLines[0].split('|').slice(1, -1).map(c => c.trim())
-      const bodyRows = tableLines.slice(2).map(l => l.split('|').slice(1, -1).map(c => c.trim()))
-
-      htmlParts.push(`
-        <div class="table-wrapper my-4 rounded-xl border border-zinc-800 bg-zinc-950/40 overflow-hidden shadow-lg" contenteditable="false" data-raw-table="${encodeURIComponent(rawTable)}">
-          <div class="flex items-center justify-between px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400 font-medium">
-            <span>Tabela Markdown</span>
-          </div>
-          <div class="overflow-x-auto p-1">
-            <table class="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr class="border-b border-zinc-800 bg-zinc-900/40">
-                  ${headerCells.map(h => `<th class="p-2.5 font-semibold text-zinc-300">${escapeHtml(h)}</th>`).join('')}
-                </tr>
-              </thead>
-              <tbody>
-                ${bodyRows.map(row => `
-                  <tr class="border-b border-zinc-800/40 hover:bg-zinc-800/20">
-                    ${row.map(cell => `<td class="p-2.5 text-zinc-300">${escapeHtml(cell)}</td>`).join('')}
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      `)
+      if (i < lines.length && TABLE_METADATA.test(lines[i].trim())) tableLines.push(lines[i++].trim())
+      htmlParts.push(tableShell(tableLines.join('\n')))
       continue
     }
 
@@ -638,7 +589,9 @@ function domToMarkdown(root: HTMLElement): string {
     // 2. Table
     if (el.hasAttribute('data-raw-table')) {
       const table = decodeURIComponent(el.getAttribute('data-raw-table') || '')
-      lines.push(table)
+      // Adjacent grids need a blank line or Markdown parses them as one table.
+      if (lines.length && lines[lines.length - 1] !== '') lines.push('')
+      lines.push(table, '')
       continue
     }
 
@@ -732,6 +685,21 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   editorRef
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [tableHosts, setTableHosts] = useState<{ host: HTMLElement; wrapper: HTMLElement; markdown: string; id: string }[]>([])
+  const refreshTables = useCallback(() => {
+    if (!containerRef.current) return
+    setTableHosts(previous => {
+      const next = Array.from(containerRef.current!.querySelectorAll<HTMLElement>('[data-table-host]')).map(host => {
+        const existing = previous.find(value => value.host === host)
+        if (existing) return existing
+        const wrapper = host.closest<HTMLElement>('[data-raw-table]')!
+        // Native document undo may restore a clone of a previously rendered table.
+        host.replaceChildren()
+        return { host, wrapper, markdown: decodeURIComponent(wrapper.dataset.rawTable || ''), id: crypto.randomUUID() }
+      })
+      return next.length === previous.length && next.every((value, index) => value === previous[index]) ? previous : next
+    })
+  }, [])
   const isTypingRef = useRef(false)
   const syncTimerRef = useRef<any>(null)
   const currentNoteIdRef = useRef<string | null>(null)
@@ -765,9 +733,10 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   const handleSync = useCallback(() => {
     if (!containerRef.current) return
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+    const scheduledNoteId = currentNoteIdRef.current
 
     syncTimerRef.current = setTimeout(() => {
-      if (containerRef.current) {
+      if (containerRef.current && currentNoteIdRef.current === scheduledNoteId) {
         const md = domToMarkdown(containerRef.current)
         lastSyncedMdRef.current = md
         onUpdateContent(md)
@@ -775,6 +744,16 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       }
     }, 250)
   }, [onUpdateContent])
+
+  const persistContent = () => {
+    if (!containerRef.current) return
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+    const markdown = domToMarkdown(containerRef.current)
+    lastSyncedMdRef.current = markdown
+    onUpdateContent(markdown)
+  }
+
+  useEffect(() => () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current) }, [])
 
   // Synchronize initial HTML when note changes or on external update
   useEffect(() => {
@@ -785,6 +764,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       currentNoteIdRef.current = note.id
       lastSyncedMdRef.current = note.content
       containerRef.current.innerHTML = markdownToHtml(note.content, allNotes, note.title)
+      refreshTables()
       setSlashMenu(null)
       setWikiSuggest(null)
       setSelectionToolbar(null)
@@ -795,8 +775,48 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       // Only sync if content was updated externally and user is not focused on editor
       lastSyncedMdRef.current = note.content
       containerRef.current.innerHTML = markdownToHtml(note.content, allNotes, note.title)
+      refreshTables()
     }
-  }, [note.id, note.content, note.title, allNotes])
+  }, [note.id, note.content, note.title, allNotes, refreshTables])
+
+  const insertTableBlock = () => {
+    const root = containerRef.current
+    if (!root) return
+    root.focus()
+    const inserted = document.execCommand('insertHTML', false, tableShell(DEFAULT_TABLE) + '<p><br></p>')
+    if (!inserted) {
+      // Chromium can reject block insertion at an empty text node. Preserve the
+      // text on both sides of the caret and insert the block at the document level.
+      const selection = window.getSelection()
+      const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : document.createRange()
+      if (!root.contains(range.startContainer)) { range.selectNodeContents(root); range.collapse(false) }
+      range.deleteContents()
+      const template = document.createElement('template')
+      template.innerHTML = tableShell(DEFAULT_TABLE)
+      const wrapper = template.content.firstElementChild!
+      const paragraph = document.createElement('p')
+      paragraph.innerHTML = '<br>'
+      let anchor: Node = range.startContainer
+      while (anchor !== root && anchor.parentNode !== root && anchor.parentNode) anchor = anchor.parentNode
+      if (anchor === root) {
+        root.insertBefore(wrapper, root.childNodes[range.startOffset] || null)
+        wrapper.after(paragraph)
+      } else if (anchor instanceof HTMLElement && anchor.contentEditable === 'false') {
+        anchor.after(wrapper, paragraph)
+      } else {
+        const tail = range.cloneRange()
+        tail.setEndAfter(anchor)
+        const remaining = tail.extractContents()
+        if (anchor.textContent?.trim()) anchor.parentNode!.insertBefore(wrapper, anchor.nextSibling)
+        else anchor.parentNode!.replaceChild(wrapper, anchor)
+        wrapper.after(paragraph, remaining)
+      }
+      range.selectNodeContents(paragraph); range.collapse(true)
+      selection?.removeAllRanges(); selection?.addRange(range)
+    }
+    refreshTables()
+    persistContent()
+  }
 
   // Expose formatting commands to top toolbar via ref
   useImperativeHandle(editorRef, () => ({
@@ -857,24 +877,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       document.execCommand('insertHTML', false, calloutHtml)
       handleSync()
     },
-    insertTable: () => {
-      const defaultTable = `| Coluna 1 | Coluna 2 | Coluna 3 |\n| --- | --- | --- |\n| Exemplo 1 | Detalhe | Ativo |`
-      const tableHtml = `
-        <div class="table-wrapper my-4 rounded-xl border border-zinc-800 bg-zinc-950/40 overflow-hidden shadow-lg" contenteditable="false" data-raw-table="${encodeURIComponent(defaultTable)}">
-          <div class="flex items-center justify-between px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400 font-medium">
-            <span>Tabela Markdown</span>
-          </div>
-          <div class="overflow-x-auto p-1">
-            <table class="w-full text-left text-xs border-collapse">
-              <thead><tr class="border-b border-zinc-800 bg-zinc-900/40"><th class="p-2.5">Coluna 1</th><th class="p-2.5">Coluna 2</th><th class="p-2.5">Coluna 3</th></tr></thead>
-              <tbody><tr class="border-b border-zinc-800/40"><td class="p-2.5">Exemplo 1</td><td class="p-2.5">Detalhe</td><td class="p-2.5">Ativo</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-      `
-      document.execCommand('insertHTML', false, tableHtml)
-      handleSync()
-    }
+    insertTable: insertTableBlock
   }))
 
   const insertWikiLinkHtml = (targetTitle: string) => {
@@ -922,6 +925,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   // Handle typing inside unified contentEditable
   const handleInput = () => {
     isTypingRef.current = true
+    refreshTables()
     handleSync()
 
     const sel = window.getSelection()
@@ -1275,7 +1279,15 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         const text = node.textContent || ''
         const slashIdx = text.lastIndexOf('/')
         if (slashIdx !== -1) {
-          node.textContent = text.slice(0, slashIdx)
+          const suffix = text.slice(range.startOffset)
+          node.textContent = text.slice(0, slashIdx) + suffix
+          // Re-establish the caret after replacing text; execCommand otherwise
+          // receives a collapsed range outside the editing host in Chromium.
+          containerRef.current?.focus()
+          range.setStart(node, slashIdx)
+          range.collapse(true)
+          sel.removeAllRanges()
+          sel.addRange(range)
         }
       }
     }
@@ -1298,21 +1310,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       `
       document.execCommand('insertHTML', false, taskHtml)
     } else if (cmdId === 'table') {
-      const defaultTable = `| Coluna 1 | Coluna 2 | Coluna 3 |\n| --- | --- | --- |\n| Exemplo 1 | Detalhe | Ativo |`
-      const tableHtml = `
-        <div class="table-wrapper my-4 rounded-xl border border-zinc-800 bg-zinc-950/40 overflow-hidden shadow-lg" contenteditable="false" data-raw-table="${encodeURIComponent(defaultTable)}">
-          <div class="flex items-center justify-between px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400 font-medium">
-            <span>Tabela Markdown</span>
-          </div>
-          <div class="overflow-x-auto p-1">
-            <table class="w-full text-left text-xs border-collapse">
-              <thead><tr class="border-b border-zinc-800 bg-zinc-900/40"><th class="p-2.5">Coluna 1</th><th class="p-2.5">Coluna 2</th><th class="p-2.5">Coluna 3</th></tr></thead>
-              <tbody><tr class="border-b border-zinc-800/40"><td class="p-2.5">Exemplo 1</td><td class="p-2.5">Detalhe</td><td class="p-2.5">Ativo</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-      `
-      document.execCommand('insertHTML', false, tableHtml)
+      insertTableBlock()
     } else if (cmdId === 'code') {
       const codeHtml = `
         <div class="code-block-wrapper my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/90 text-xs font-mono shadow-lg" contenteditable="false" data-raw-code="console.log('Olá, Pyrite!');" data-code-lang="javascript">
@@ -1336,18 +1334,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       document.execCommand('insertHTML', false, calloutHtml)
     } else if (cmdId === 'wikilink') {
       document.execCommand('insertText', false, '[[')
-    } else if (cmdId === 'kpi') {
-      const kpiSnippet = `\n:::kpi\ntitle: Métrica Chave\nvalue: 84.5%\nchange: +12.3%\ntrend: up\nsubtitle: Desempenho acima da média\nbadge: Q3 Meta\n:::\n`
-      document.execCommand('insertText', false, kpiSnippet)
-    } else if (cmdId === 'timeline') {
-      const timelineSnippet = `\n:::timeline [Roadmap Estratégico] badge: 2026\n- 2026-Q1 | Fase de Descoberta | Alinhamento e prototipação\n- 2026-Q2 | Desenvolvimento Core | Arquitetura e componentes concêntricos\n- 2026-Q3 | Lançamento Oficial | Rollout para os usuários\n:::\n`
-      document.execCommand('insertText', false, timelineSnippet)
-    } else if (cmdId === 'comparison') {
-      const compSnippet = `\n:::comparison [Comparativo de Soluções] badge: Análise\n### Opção A (Destaque)\n- Alto desempenho\n- Foco em privacidade\n### Opção B\n- Modelo convencional\n- Dependência externa\n:::\n`
-      document.execCommand('insertText', false, compSnippet)
-    } else if (cmdId === 'card') {
-      const cardSnippet = `\n:::card [Título da Seção] badge: Destaque\nInsira aqui o conteúdo embutido na subsuperfície concêntrica.\n:::\n`
-      document.execCommand('insertText', false, cardSnippet)
+
     }
 
     handleSync()
@@ -1475,6 +1462,28 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     }
   }
 
+  // Table changes are persisted immediately; the DOM wrapper is the Markdown source of truth.
+  const updateTable = (wrapper: HTMLElement, markdown: string) => {
+    if (!containerRef.current?.contains(wrapper)) return
+    wrapper.dataset.rawTable = encodeURIComponent(markdown)
+    persistContent()
+  }
+  const exitTable = (wrapper: HTMLElement) => {
+    let next = wrapper.nextElementSibling as HTMLElement | null
+    if (!next || next.contentEditable === 'false') {
+      next = document.createElement('p'); next.innerHTML = '<br>'; wrapper.after(next)
+    }
+    containerRef.current?.focus()
+    const range = document.createRange(); range.selectNodeContents(next); range.collapse(true)
+    const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range)
+  }
+  const deleteTable = (wrapper: HTMLElement) => {
+    exitTable(wrapper)
+    wrapper.remove()
+    refreshTables()
+    persistContent()
+  }
+
   // Filter commands and notes for menus
   const filteredSlashCommands = SLASH_COMMANDS.filter(cmd => {
     if (!slashMenu?.query) return true
@@ -1523,6 +1532,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         className={`w-full min-h-[400px] focus:outline-none font-sans text-zinc-300 leading-relaxed ${fontSizeClass} select-text`}
       />
 
+      {tableHosts.map(table => createPortal(<EditableTable markdown={table.markdown} readOnly={!isEditable} renderInline={text => formatInlineHtml(text, allNotes)} onChange={markdown => updateTable(table.wrapper, markdown)} onDelete={() => deleteTable(table.wrapper)} onExit={() => exitTable(table.wrapper)} />, table.host, table.id))}
       {/* Floating Notion-style Selection Popover Toolbar */}
       {isEditable && selectionToolbar && (
         <div

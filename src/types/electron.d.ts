@@ -8,6 +8,7 @@ export interface VaultFileItem {
 }
 
 export interface ElectronAPI {
+  managePath: (params: { vaultPath: string; source: string; destination?: string; action: 'copy' | 'move' | 'delete' | 'open' }) => Promise<{ success: boolean; error?: string }>
   isElectron: boolean
   minimize: () => Promise<void>
   maximize: () => Promise<boolean>
@@ -22,6 +23,7 @@ export interface ElectronAPI {
     folder: string
     title: string
     content: string
+    exclusive?: boolean
   }) => Promise<{ success: boolean; filePath?: string; updatedAt?: number; error?: string }>
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
   createFolder: (params: { vaultPath: string; folderPath: string }) => Promise<{ success: boolean; error?: string }>

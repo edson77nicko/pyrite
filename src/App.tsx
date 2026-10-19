@@ -1,3 +1,4 @@
+import type { SidebarAction } from './components/SidebarMenu'
 import React, { useState, useEffect } from 'react'
 import type { Note, ViewMode, EditorDisplayMode, TabItem, AppSettings } from './types'
 import {
@@ -463,6 +464,80 @@ export const App: React.FC = () => {
     setTabs(prev => prev.map(t => t.noteId === finalNote.id ? { ...t, title: finalNote.title } : t))
   }
 
+  const handleSidebarAction = async (action: SidebarAction, target: { note?: Note; folder?: string }, value?: string) => {
+    const note = target.note
+    const folder = target.folder || ''
+    const inside = (f: string) => f === folder || f.startsWith(folder + '/')
+    const relative = note ? [note.folder === 'Início' ? '' : note.folder, note.filePath?.split(/[/\\]/).pop() || note.title + '.md'].filter(Boolean).join('/') : vaultPath && folder === 'Início' ? '' : folder
+    const absolute = note?.filePath || (vaultPath ? vaultPath.replace(/[\\/]$/, '') + '/' + relative : relative)
+    const api = window.electronAPI?.isElectron && vaultPath ? window.electronAPI : null
+    const check = (result: { success: boolean; error?: string }) => { if (!result.success) throw new Error(result.error || 'Não foi possível alterar o arquivo.') }
+    if (action === 'open' && note) {
+      const tab = { id: `tab_${crypto.randomUUID()}`, noteId: note.id, title: note.title }
+      setTabs(prev => [...prev, tab]); setActiveTabId(tab.id)
+      setCurrentNoteId(note.id); setCurrentView('editor'); return
+    }
+    if (action === 'favorite' && note) { handleToggleFavorite(note.id); return }
+    if (action === 'copy-path' || action === 'copy-relative') { await navigator.clipboard.writeText(action === 'copy-relative' ? relative : absolute); return }
+    if (action === 'reveal') { if (note?.filePath) await api?.revealInExplorer(note.filePath); else await api?.openInExplorer(absolute); return }
+    if (action === 'external') { if (api) check(await api.managePath({ vaultPath: vaultPath!, source: absolute, action: 'open' })); return }
+    if (action === 'delete') {
+      if (api) check(await api.managePath({ vaultPath: vaultPath!, source: absolute, action: 'delete' }))
+      const removed = notes.filter(n => note ? n.id === note.id : inside(n.folder))
+      const next = notes.filter(n => !removed.includes(n))
+      setNotes(next); saveNotes(next)
+      setTabs(prev => prev.filter(t => !removed.some(n => n.id === t.noteId)))
+      if (removed.some(n => n.id === currentNoteId)) {
+        const fallback = next[0]
+        setCurrentNoteId(fallback?.id || '')
+        if (fallback) {
+          const tab = { id: `tab_${crypto.randomUUID()}`, noteId: fallback.id, title: fallback.title }
+          setTabs(prev => [...prev, tab]); setActiveTabId(tab.id); setCurrentView('editor')
+        } else { setActiveTabId(''); setCurrentView('editor') }
+      }
+      if (!note) { const nextFolders = folders.filter(f => !inside(f)); setFolders(nextFolders); saveFolders(nextFolders) }
+      return
+    }
+    const validName = (name: string) => { if (!name.trim() || /[\\/:*?"<>|]/.test(name) || /[. ]$/.test(name) || name === '.' || name === '..' || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) throw new Error('Digite um nome válido, sem caracteres reservados.'); return name.trim() }
+    let name = action === 'rename' ? validName(value || '') : note?.title || folder.split('/').pop()!
+    const selectedFolder = action === 'move' ? value || '' : note?.folder || folder.split('/').slice(0, -1).join('/')
+    const destinationFolder = api && selectedFolder === 'Início' ? '' : selectedFolder
+    if (!note && action === 'move' && (destinationFolder === folder || destinationFolder.startsWith(folder + '/'))) throw new Error('Uma pasta não pode ser movida para dentro dela mesma.')
+    if (note) {
+      const collision = (title: string) => notes.some(n => n.id !== (action === 'copy' ? '' : note.id) && (n.folder || 'Início').toLowerCase() === (destinationFolder || 'Início').toLowerCase() && n.title.toLowerCase() === title.toLowerCase())
+      if (action === 'copy') { let count = 1; while (collision(name)) name = note.title + ' - cópia' + (count++ > 1 ? ' ' + (count - 1) : '') }
+      if (collision(name)) throw new Error('Já existe uma nota com esse nome na pasta de destino.')
+      const changed: Note = { ...note, id: action === 'copy' ? crypto.randomUUID() : note.id, title: name, folder: destinationFolder || 'Início', updatedAt: Date.now(), ...(action === 'copy' ? { createdAt: Date.now(), filePath: undefined } : {}) }
+      if (api) {
+        if (action !== 'copy' && note.filePath) {
+          const destination = vaultPath + '/' + (destinationFolder && destinationFolder !== 'Início' ? destinationFolder + '/' : '') + name + '.md'
+          check(await api.managePath({ vaultPath: vaultPath!, source: note.filePath, destination, action: 'move' }))
+          changed.filePath = destination
+        } else {
+          const result = await api.saveFile({ vaultPath: vaultPath!, folder: changed.folder, title: name, content: note.content, exclusive: true })
+          check(result); changed.filePath = result.filePath
+        }
+      }
+      const next = action === 'copy' ? [...notes, changed] : notes.map(n => n.id === note.id ? changed : n)
+      setNotes(next); saveNotes(next)
+      setTabs(prev => prev.map(t => t.noteId === changed.id ? { ...t, title: name } : t))
+      return
+    }
+    const exists = (path: string) => folders.some(f => f.toLowerCase() === path.toLowerCase()) || notes.some(n => n.folder.toLowerCase() === path.toLowerCase())
+    const join = (n: string) => [destinationFolder, n].filter(Boolean).join('/')
+    if (action === 'copy') { let count = 1; while (exists(join(name))) name = folder.split('/').pop()! + ' - cópia' + (count++ > 1 ? ' ' + (count - 1) : '') }
+    const destination = join(name)
+    if (destination === folder) return
+    if (exists(destination)) throw new Error('Já existe uma pasta com esse nome no destino.')
+    if (api) check(await api.managePath({ vaultPath: vaultPath!, source: absolute, destination: vaultPath + '/' + destination, action: action === 'copy' ? 'copy' : 'move' }))
+    const remap = (f: string) => destination + f.slice(folder.length)
+    const changed = notes.filter(n => inside(n.folder)).map(n => ({ ...n, folder: remap(n.folder), ...(action === 'copy' ? { id: crypto.randomUUID(), createdAt: Date.now() } : {}), filePath: api && n.filePath ? vaultPath + '/' + remap(n.folder) + '/' + n.filePath.split(/[\\/]/).pop() : undefined }))
+    const next = action === 'copy' ? [...notes, ...changed] : notes.map(n => changed.find(c => c.id === n.id) || n)
+    const affectedFolders = Array.from(new Set([folder, ...folders.filter(inside)]))
+    const nextFolders = action === 'copy' ? [...folders, ...affectedFolders.map(remap)] : [...folders.filter(f => !inside(f)), ...affectedFolders.map(remap)]
+    setNotes(next); saveNotes(next); setFolders(nextFolders); saveFolders(nextFolders)
+  }
+
   // AI Assistant helpers
   const handleConnectNote = (targetTitle: string) => {
     if (!currentNote) return
@@ -685,6 +760,7 @@ export const App: React.FC = () => {
           currentNoteId={currentNoteId}
           vaultPath={vaultPath}
           onSelectNote={handleSelectNote}
+          onManage={handleSidebarAction}
           onCreateNote={handleCreateNote}
           onCreateFolder={handleCreateFolder}
           onDeleteNote={handleDeleteNote}

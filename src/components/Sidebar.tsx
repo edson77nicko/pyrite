@@ -1,3 +1,5 @@
+import { SidebarMenu } from './SidebarMenu'
+import type { SidebarAction } from './SidebarMenu'
 import React, { useState } from 'react'
 import type { Note } from '../types'
 import {
@@ -11,7 +13,6 @@ import {
   Calendar,
   Star,
   ChevronDown,
-  ChevronRight,
   ChevronsDownUp,
   FolderSync
 } from 'lucide-react'
@@ -30,6 +31,7 @@ interface SidebarProps {
   onOpenLocalFolder: () => void
   onOpenInExplorer?: () => void
   onOpenVaultSwitcher?: () => void
+  onManage: (action: SidebarAction, target: { note?: Note; folder?: string }, value?: string) => Promise<void>
   isOpen: boolean
 }
 
@@ -54,8 +56,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenLocalFolder,
   onOpenInExplorer,
   onOpenVaultSwitcher,
-  isOpen
+  isOpen,
+  onManage
 }) => {
+  const [context, setContext] = useState<{ x: number; y: number; note?: Note; folder?: string } | null>(null)
+  const [folderFilter, setFolderFilter] = useState<string | null>(null)
+  const scope = `${vaultPath || ''}:${isOpen}`
+  const [previousScope, setPreviousScope] = useState(scope)
+  if (previousScope !== scope) {
+    setPreviousScope(scope)
+    setContext(null)
+    setFolderFilter(null)
+  }
+  const openContext = (e: React.MouseEvent, target: { note?: Note; folder?: string }) => { e.preventDefault(); e.stopPropagation(); setContext({ x: e.clientX, y: e.clientY, ...target }) }
   const [search, setSearch] = useState('')
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({})
   const [newFolderName, setNewFolderName] = useState('')
@@ -127,7 +140,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Filter notes by search query
   const filteredNotes = notes.filter(n => {
     const q = search.toLowerCase()
-    return (
+    return (!folderFilter || n.folder === folderFilter || n.folder.startsWith(`${folderFilter}/`)) && (
       n.title.toLowerCase().includes(q) ||
       n.content.toLowerCase().includes(q) ||
       n.tags.some(t => t.toLowerCase().includes(q))
@@ -135,7 +148,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   })
 
   // Favorite notes
-  const favoriteNotes = notes.filter(n => n.isFavorite)
+  const favoriteNotes = filteredNotes.filter(n => n.isFavorite)
 
   // Build hierarchical folder tree from all folder paths and notes
   const buildTree = (): TreeNode[] => {
@@ -229,31 +242,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }
 
   // Notes without a registered folder
-  const unassignedNotes = filteredNotes.filter(n => !n.folder || n.folder === 'Sem Pasta' || (!folders.includes(n.folder) && !n.folder.includes('/')))
+  const unassignedNotes = filteredNotes.filter(n => !n.folder || n.folder === 'Sem Pasta')
 
   // Recursive Tree Node Renderer - High Density & Compact Indentation
-  const renderFolderNode = (node: TreeNode, depth = 0) => {
+  const renderFolderNode = (node: TreeNode) => {
     const isCollapsed = !!collapsedFolders[node.fullPath]
     const totalSubNotes = node.notes.length + node.children.reduce((acc, c) => acc + c.notes.length, 0)
-    // Compact indent: 8px to 10px instead of 22px, preventing infinite drift to the right
-    const indentPadding = depth === 0 ? 'ml-1.5 pl-1.5' : 'ml-1.5 pl-1.5'
+    // Keep each nesting step small so deep folder trees remain readable.
+    const indentPadding = 'ml-0.5 pl-0.5'
 
     return (
       <div key={node.fullPath} className="space-y-[1px]">
         {/* Folder Header Row */}
         <div
+          onContextMenu={e => openContext(e, { folder: node.fullPath })}
           onClick={() => toggleFolder(node.fullPath)}
           title={node.fullPath}
           className="flex items-center justify-between px-1.5 py-[3px] rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 cursor-pointer text-[11.5px] font-medium group transition-colors"
         >
           <div className="flex items-center gap-1.5 truncate min-w-0">
-            <span className="text-zinc-500 hover:text-zinc-300 shrink-0">
-              {isCollapsed ? (
-                <ChevronRight className="w-3 h-3" />
-              ) : (
-                <ChevronDown className="w-3 h-3 text-zinc-400" />
-              )}
-            </span>
             {isCollapsed ? (
               <Folder className="w-3.5 h-3.5 opacity-80 shrink-0" style={{ color: 'var(--accent)' }} />
             ) : (
@@ -304,6 +311,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               return (
                 <div
                   key={note.id}
+                  onContextMenu={e => openContext(e, { note })}
                   onClick={() => onSelectNote(note.id)}
                   title={note.title}
                   className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
@@ -347,7 +355,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             })}
 
             {/* Nested Subfolders */}
-            {node.children.map(child => renderFolderNode(child, depth + 1))}
+            {node.children.map(child => renderFolderNode(child))}
           </div>
         )}
       </div>
@@ -462,6 +470,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
+      {folderFilter && <button className="px-3 py-1 text-left text-amber-400" onClick={() => setFolderFilter(null)}>Pesquisa em {folderFilter} · Limpar ×</button>}
+      {context && <SidebarMenu key={context.x + ':' + context.y + (context.note?.id || context.folder)} context={context} folders={folders} isVaultRoot={!!vaultPath && context.folder === 'Início'} onClose={() => setContext(null)} onAction={async (action, value) => {
+        if (action === 'new-note') onCreateNote(context.folder)
+        else if (action === 'new-folder') handleStartCreateFolder(vaultPath && context.folder === 'Início' ? undefined : context.folder)
+        else if (action === 'search') { setFolderFilter(context.folder!); setSearch('') }
+        else await onManage(action, context, value)
+      }} />}
       {/* Create Folder Modal / Inline input */}
       {isCreatingFolder && (
         <form onSubmit={handleCreateFolderSubmit} className="px-2.5 py-1.5 flex items-center gap-1 border-b border-zinc-800/60 bg-zinc-900/40">
@@ -504,6 +519,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 return (
                   <div
                     key={`fav-${n.id}`}
+                    onContextMenu={e => openContext(e, { note: n })}
                     onClick={() => onSelectNote(n.id)}
                     title={n.title}
                     className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
@@ -526,7 +542,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Recursive Subfolders & Notes Tree */}
         <div className="space-y-[1px] min-w-fit">
-          {rootFolderNodes.map(node => renderFolderNode(node, 0))}
+          {rootFolderNodes.map(node => renderFolderNode(node))}
         </div>
 
         {/* Unassigned notes (without folder) */}
@@ -541,7 +557,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 return (
                   <div
                     key={note.id}
-                    onClick={() => onSelectNote(note.id)}
+                    onContextMenu={e => openContext(e, { note })}
+                  onClick={() => onSelectNote(note.id)}
                     title={note.title}
                     className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
                       isActive

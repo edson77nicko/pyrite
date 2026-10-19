@@ -1,7 +1,7 @@
 {
   "name": "pyrite",
   "private": true,
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Pyrita - Local-First Knowledge Management & Thinking Environment",
   "author": "Pyrita Team",
   "type": "module",
@@ -11,8 +11,8 @@
     "dev:web": "vite --mode web",
     "build": "tsc -b && vite build",
     "build:win": "npm run build && electron-builder --win --x64",
-    "publish:win": "npm run build && electron-builder --win --x64 -p always",
-    "release": "node scripts/release.cjs && node scripts/upload_assets.cjs",
+    "publish:win": "npm run release",
+    "release": "node scripts/publish-update.cjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -52,7 +52,8 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "!dist/table-editor-*"
     ],
     "win": {
       "target": "nsis"

@@ -127,7 +127,7 @@ export const Editor: React.FC<EditorProps> = ({
               <button onClick={handleFormatTask} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Lista de Tarefas">
                 <ListTodo className="w-3.5 h-3.5" />
               </button>
-              <button onClick={handleFormatTable} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Tabela Markdown">
+              <button onMouseDown={event => event.preventDefault()} onClick={handleFormatTable} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Inserir tabela">
                 <Table className="w-3.5 h-3.5" />
               </button>
               <button onClick={handleFormatCode} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Bloco de Código">
