@@ -1,7 +1,7 @@
 import { SidebarMenu } from './SidebarMenu'
 import type { SidebarAction } from './SidebarMenu'
 import React, { useState } from 'react'
-import type { Note } from '../types'
+import type { Note, NoteType } from '../types'
 import {
   Folder,
   FolderOpen,
@@ -14,7 +14,8 @@ import {
   Star,
   ChevronDown,
   ChevronsDownUp,
-  FolderSync
+  FolderSync,
+  Palette
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -23,7 +24,7 @@ interface SidebarProps {
   currentNoteId?: string
   vaultPath?: string | null
   onSelectNote: (noteId: string) => void
-  onCreateNote: (folder?: string) => void
+  onCreateNote: (folder?: string, title?: string, type?: NoteType) => void
   onCreateFolder: (name: string, parentFolder?: string) => void
   onDeleteNote: (noteId: string) => void
   onToggleFavorite: (noteId: string) => void
@@ -273,12 +274,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                onCreateNote(node.fullPath)
+                onCreateNote(node.fullPath, undefined, 'note')
               }}
               className="p-0.5 hover:text-white rounded"
               title={`Nova nota em ${node.fullPath}`}
             >
               <Plus className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onCreateNote(node.fullPath, undefined, 'draw')
+              }}
+              className="p-0.5 hover:text-white rounded"
+              title={`Novo Draw em ${node.fullPath}`}
+            >
+              <Palette className="w-3 h-3" style={{ color: 'var(--accent)' }} />
             </button>
             <button
               onClick={(e) => {
@@ -308,12 +319,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {/* Direct Notes */}
             {node.notes.map(note => {
               const isActive = note.id === currentNoteId
+              const isDraw = note.type === 'draw'
+              const NoteIcon = isDraw ? Palette : FileText
               return (
                 <div
                   key={note.id}
                   onContextMenu={e => openContext(e, { note })}
                   onClick={() => onSelectNote(note.id)}
-                  title={note.title}
+                  title={`${note.title} (${isDraw ? 'Desenho / Draw' : 'Nota'})`}
                   className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
                     isActive
                       ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
@@ -322,7 +335,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   style={isActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
                 >
                   <div className="flex items-center gap-1.5 truncate min-w-0">
-                    <FileText className="w-3.5 h-3.5 shrink-0" style={isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
+                    <NoteIcon className="w-3.5 h-3.5 shrink-0" style={isActive || isDraw ? { color: 'var(--accent)' } : { color: '#71717a' }} />
                     <span className="truncate">{note.title}</span>
                   </div>
 
@@ -416,13 +429,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="px-2.5 py-1.5 flex items-center justify-between border-b border-zinc-800/60 bg-zinc-950/30 text-zinc-400">
         <div className="flex items-center gap-1">
           <button
-            onClick={() => onCreateNote()}
+            onClick={() => onCreateNote(undefined, undefined, 'note')}
             className="flex items-center gap-1 px-2 py-1 text-zinc-950 rounded-md text-[11px] font-semibold transition-all shadow-sm cursor-pointer hover:opacity-90"
             style={{ backgroundColor: 'var(--accent)' }}
-            title="Criar Nova Nota"
+            title="Criar Nova Nota de Texto"
           >
             <Plus className="w-3 h-3 stroke-[2.5]" />
             <span>Nota</span>
+          </button>
+
+          <button
+            onClick={() => onCreateNote(undefined, undefined, 'draw')}
+            className="flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 rounded-md text-[11px] font-medium transition-colors border border-zinc-700/60 cursor-pointer"
+            title="Criar Novo Quadro de Desenho (Draw estilo Excalidraw)"
+          >
+            <Palette className="w-3 h-3" style={{ color: 'var(--accent)' }} />
+            <span>Draw</span>
           </button>
 
           <button
@@ -452,7 +474,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <span className="text-[10px] text-zinc-500 font-mono">
-          {notes.length} notas
+          {notes.length} itens
         </span>
       </div>
 
@@ -472,7 +494,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {folderFilter && <button className="px-3 py-1 text-left text-amber-400" onClick={() => setFolderFilter(null)}>Pesquisa em {folderFilter} · Limpar ×</button>}
       {context && <SidebarMenu key={context.x + ':' + context.y + (context.note?.id || context.folder)} context={context} folders={folders} isVaultRoot={!!vaultPath && context.folder === 'Início'} onClose={() => setContext(null)} onAction={async (action, value) => {
-        if (action === 'new-note') onCreateNote(context.folder)
+        if (action === 'new-note') onCreateNote(context.folder, undefined, 'note')
+        else if (action === 'new-draw') onCreateNote(context.folder, undefined, 'draw')
         else if (action === 'new-folder') handleStartCreateFolder(vaultPath && context.folder === 'Início' ? undefined : context.folder)
         else if (action === 'search') { setFolderFilter(context.folder!); setSearch('') }
         else await onManage(action, context, value)
@@ -554,12 +577,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="space-y-[1px]">
               {unassignedNotes.map(note => {
                 const isActive = note.id === currentNoteId
+                const isDraw = note.type === 'draw'
+                const NoteIcon = isDraw ? Palette : FileText
                 return (
                   <div
                     key={note.id}
                     onContextMenu={e => openContext(e, { note })}
-                  onClick={() => onSelectNote(note.id)}
-                    title={note.title}
+                    onClick={() => onSelectNote(note.id)}
+                    title={`${note.title} (${isDraw ? 'Desenho / Draw' : 'Nota'})`}
                     className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
                       isActive
                         ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
@@ -568,7 +593,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     style={isActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
                   >
                     <div className="flex items-center gap-1.5 truncate min-w-0">
-                      <FileText className="w-3.5 h-3.5 shrink-0" style={isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
+                      <NoteIcon className="w-3.5 h-3.5 shrink-0" style={isActive || isDraw ? { color: 'var(--accent)' } : { color: '#71717a' }} />
                       <span className="truncate">{note.title}</span>
                     </div>
 

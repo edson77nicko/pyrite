@@ -1,3 +1,5 @@
+export type NoteType = 'note' | 'draw'
+
 export interface Note {
   id: string
   title: string
@@ -8,6 +10,7 @@ export interface Note {
   createdAt: number
   updatedAt: number
   filePath?: string // Full path on disk when running in Electron
+  type?: NoteType
 }
 
 export interface Folder {
@@ -70,7 +73,10 @@ export interface TabItem {
   noteId: string
   title: string
   isPinned?: boolean
+  type?: NoteType
 }
+
+export * from './draw'
 
 export type ViewMode = 'editor' | 'graph' | 'canvas'
 

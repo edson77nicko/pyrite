@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Copy, Pencil, Trash2, FolderInput, FilePlus, FolderPlus, Search, Star, Clipboard, ExternalLink, FileText } from 'lucide-react'
+import { Copy, Pencil, Trash2, FolderInput, FilePlus, FolderPlus, Search, Star, Clipboard, ExternalLink, FileText, Palette } from 'lucide-react'
 import type { Note } from '../types'
 
-export type SidebarAction = 'new-note' | 'new-folder' | 'search' | 'open' | 'copy' | 'move' | 'favorite' | 'copy-path' | 'copy-relative' | 'reveal' | 'external' | 'rename' | 'delete'
+export type SidebarAction = 'new-note' | 'new-draw' | 'new-folder' | 'search' | 'open' | 'copy' | 'move' | 'favorite' | 'copy-path' | 'copy-relative' | 'reveal' | 'external' | 'rename' | 'delete'
 interface Props {
   context: { x: number; y: number; note?: Note; folder?: string }
   folders: string[]
@@ -57,7 +57,7 @@ export function SidebarMenu({ context, folders, isVaultRoot, onClose, onAction }
         {editing === 'rename' ? <input autoFocus value={value} onChange={e => setValue(e.target.value)} className="mt-2 w-full rounded border border-zinc-600 bg-zinc-900 p-2" /> : <select autoFocus value={value} onChange={e => setValue(e.target.value)} className="mt-2 w-full rounded border border-zinc-600 bg-zinc-900 p-2"><option value="">Raiz do cofre</option>{folders.filter(f => !context.folder || (f !== context.folder && !f.startsWith(context.folder + '/'))).map(f => <option key={f} value={f}>{f}</option>)}</select>}
       </label><div className="flex gap-2"><button disabled={busy} className="rounded bg-zinc-700 px-3 py-1">{busy ? 'Salvando…' : 'Confirmar'}</button><button type="button" disabled={busy} onClick={onClose}>Cancelar</button></div>
     </form> : <>
-      {context.note ? item('open', 'Abrir em uma nova aba', FileText) : <>{item('new-note', 'Nova nota', FilePlus)}{item('new-folder', 'Nova pasta', FolderPlus)}</>}
+      {context.note ? item('open', 'Abrir em uma nova aba', context.note.type === 'draw' ? Palette : FileText) : <>{item('new-note', 'Nova nota', FilePlus)}{item('new-draw', 'Novo Draw (Desenho)', Palette)}{item('new-folder', 'Nova pasta', FolderPlus)}</>}
       {!isVaultRoot && <>{separator}{item('copy', 'Fazer uma cópia', Copy)}{item('move', context.note ? 'Mover arquivo para…' : 'Mover pasta para…', FolderInput)}</>}
       {!context.note && item('search', 'Pesquisa na pasta', Search)}
       {context.note && item('favorite', context.note.isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos', Star)}

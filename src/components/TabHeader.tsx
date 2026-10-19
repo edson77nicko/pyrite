@@ -16,7 +16,7 @@ import {
   RefreshCw,
   ArrowDownToLine,
   Share2,
-  LayoutGrid
+  Palette
 } from 'lucide-react'
 
 interface TabHeaderProps {
@@ -76,7 +76,8 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           const isActive = tab.id === activeTabId
           const isGraphTab = tab.noteId === '__graph__'
           const isCanvasTab = tab.noteId === '__canvas__'
-          const TabIcon = isGraphTab ? Share2 : isCanvasTab ? LayoutGrid : FileText
+          const isDrawTab = tab.type === 'draw'
+          const TabIcon = isGraphTab ? Share2 : (isCanvasTab || isDrawTab) ? Palette : FileText
           return (
             <div
               key={tab.id}

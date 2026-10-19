@@ -1,6 +1,6 @@
 import type { SidebarAction } from './components/SidebarMenu'
 import React, { useState, useEffect } from 'react'
-import type { Note, ViewMode, EditorDisplayMode, TabItem, AppSettings } from './types'
+import type { Note, NoteType, ViewMode, EditorDisplayMode, TabItem, AppSettings } from './types'
 import {
   loadNotes,
   saveNotes,
@@ -8,11 +8,13 @@ import {
   saveFolders,
   extractTags
 } from './utils/vault'
+import { createEmptyDrawDocument, isDrawContent, serializeDrawDocument } from './utils/drawUtils'
 import { Ribbon } from './components/Ribbon'
 import { TabHeader } from './components/TabHeader'
 import { Sidebar } from './components/Sidebar'
 import { RightSidebar } from './components/RightSidebar'
 import { Editor } from './components/Editor'
+import { DrawEditor } from './components/DrawEditor'
 import { GraphView } from './components/GraphView'
 import { CanvasView } from './components/CanvasView'
 import { CommandPalette } from './components/CommandPalette'
@@ -62,6 +64,7 @@ export const App: React.FC = () => {
             content: f.content,
             filePath: f.filePath,
             tags: extractTags(f.content),
+            type: (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md')) ? 'draw' : 'note',
             createdAt: f.createdAt,
             updatedAt: f.updatedAt
           }))
@@ -72,7 +75,7 @@ export const App: React.FC = () => {
           saveFolders(loadedFolders)
           if (loadedNotes[0]) {
             setCurrentNoteId(loadedNotes[0].id)
-            setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title }])
+            setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title, type: loadedNotes[0].type }])
             setActiveTabId(`tab_${loadedNotes[0].id}`)
           }
         } else {
@@ -251,7 +254,8 @@ export const App: React.FC = () => {
       const newTab: TabItem = {
         id: `tab_${noteId}_${Date.now()}`,
         noteId,
-        title: targetNote.title
+        title: targetNote.title,
+        type: targetNote.type
       }
       setActiveTabId(newTab.id)
 
@@ -323,15 +327,23 @@ export const App: React.FC = () => {
     }
   }
 
-  const handleCreateNote = (folder?: string, initialTitle?: string) => {
+  const handleCreateNote = (folder?: string, initialTitle?: string, type: NoteType = 'note') => {
     const targetFolder = folder || currentNote?.folder || 'Início'
-    const title = initialTitle || `Nota ${notes.length + 1}`
+    const drawCount = notes.filter(n => n.type === 'draw').length
+    const noteCount = notes.filter(n => n.type !== 'draw').length
+    const title = initialTitle || (type === 'draw' ? `Desenho ${drawCount + 1}` : `Nota ${noteCount + 1}`)
+
+    const content = type === 'draw'
+      ? serializeDrawDocument(createEmptyDrawDocument(title))
+      : `Escreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`
+
     const newNote: Note = {
-      id: `note_${Date.now()}`,
+      id: `${type}_${Date.now()}`,
       title,
-      content: `Escreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`,
+      content,
       folder: targetFolder,
-      tags: [],
+      tags: type === 'draw' ? ['draw', 'desenho'] : [],
+      type,
       createdAt: Date.now(),
       updatedAt: Date.now()
     }
@@ -566,16 +578,18 @@ export const App: React.FC = () => {
     const collectedFolders: string[] = []
 
     for await (const entry of dirHandle.values()) {
-      if (entry.kind === 'file' && entry.name.endsWith('.md')) {
+      if (entry.kind === 'file' && (entry.name.endsWith('.md') || entry.name.endsWith('.draw.json') || entry.name.endsWith('.draw.md'))) {
         const file = await entry.getFile()
         const text = await file.text()
-        const title = entry.name.replace(/\.md$/, '')
+        const title = entry.name.replace(/\.(draw\.json|draw\.md|md)$/i, '')
+        const isDraw = isDrawContent(text) || entry.name.endsWith('.draw.json') || entry.name.endsWith('.draw.md')
         collectedNotes.push({
           id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           title,
           content: text,
           folder: currentPath || dirHandle.name,
-          tags: extractTags(text),
+          tags: isDraw ? ['draw', 'desenho'] : extractTags(text),
+          type: isDraw ? 'draw' : 'note',
           createdAt: file.lastModified,
           updatedAt: file.lastModified
         })
@@ -615,6 +629,7 @@ export const App: React.FC = () => {
               content: f.content,
               filePath: f.filePath,
               tags: extractTags(f.content),
+              type: (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md')) ? 'draw' : 'note',
               createdAt: f.createdAt,
               updatedAt: f.updatedAt
             }))
@@ -681,6 +696,7 @@ export const App: React.FC = () => {
             content: f.content,
             filePath: f.filePath,
             tags: extractTags(f.content),
+            type: (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md')) ? 'draw' : 'note',
             createdAt: f.createdAt,
             updatedAt: f.updatedAt
           }))
@@ -691,7 +707,7 @@ export const App: React.FC = () => {
           saveFolders(loadedFolders)
           if (loadedNotes[0]) {
             setCurrentNoteId(loadedNotes[0].id)
-            setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title }])
+            setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title, type: loadedNotes[0].type }])
             setActiveTabId(`tab_${loadedNotes[0].id}`)
           }
         } else {
@@ -839,16 +855,25 @@ export const App: React.FC = () => {
           <div className="flex-1 flex overflow-hidden relative">
             <div className="flex-1 overflow-hidden relative">
               {currentView === 'editor' && currentNote && (
-                <Editor
-                  note={currentNote}
-                  allNotes={notes}
-                  displayMode={editorDisplayMode}
-                  onUpdateNote={handleUpdateNote}
-                  onNavigate={handleNavigate}
-                  settings={settings}
-                  isRightSidebarOpen={isRightSidebarOpen}
-                  onToggleRightSidebar={() => setIsRightSidebarOpen(o => !o)}
-                />
+                currentNote.type === 'draw' ? (
+                  <DrawEditor
+                    key={currentNote.id}
+                    note={currentNote}
+                    onUpdateNote={handleUpdateNote}
+                  />
+                ) : (
+                  <Editor
+                    key={currentNote.id}
+                    note={currentNote}
+                    allNotes={notes}
+                    displayMode={editorDisplayMode}
+                    onUpdateNote={handleUpdateNote}
+                    onNavigate={handleNavigate}
+                    settings={settings}
+                    isRightSidebarOpen={isRightSidebarOpen}
+                    onToggleRightSidebar={() => setIsRightSidebarOpen(o => !o)}
+                  />
+                )
               )}
 
               {(currentView === 'graph' || tabs.some(t => t.noteId === '__graph__')) && (
@@ -863,10 +888,12 @@ export const App: React.FC = () => {
 
               {currentView === 'canvas' && (
                 <CanvasView
-                  key={vaultPath || 'local'}
-                  vaultPath={vaultPath || undefined}
                   notes={notes}
-                  onOpenNote={handleSelectNote}
+                  currentNoteId={currentNoteId}
+                  vaultPath={vaultPath || undefined}
+                  onSelectNote={handleSelectNote}
+                  onCreateDraw={(folder, title) => handleCreateNote(folder, title, 'draw')}
+                  onUpdateNote={handleUpdateNote}
                 />
               )}
             </div>
@@ -905,6 +932,7 @@ export const App: React.FC = () => {
         notes={notes}
         onSelectNote={handleSelectNote}
         onCreateNote={handleCreateNote}
+        onCreateDraw={(folder, title) => handleCreateNote(folder, title, 'draw')}
         onChangeViewMode={handleChangeView}
         onOpenAi={() => setIsAiOpen(true)}
         onOpenLocalFolder={handleOpenLocalFolder}

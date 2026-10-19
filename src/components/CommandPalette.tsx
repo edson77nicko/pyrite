@@ -8,7 +8,8 @@ import {
   Plus,
   Sparkles,
   HardDrive,
-  FolderSync
+  FolderSync,
+  Palette
 } from 'lucide-react'
 
 interface CommandPaletteProps {
@@ -16,7 +17,8 @@ interface CommandPaletteProps {
   onClose: () => void
   notes: Note[]
   onSelectNote: (noteId: string) => void
-  onCreateNote: (title?: string) => void
+  onCreateNote: (folder?: string, title?: string, type?: any) => void
+  onCreateDraw?: (folder?: string, title?: string) => void
   onChangeViewMode: (mode: ViewMode) => void
   onOpenAi: () => void
   onOpenLocalFolder: () => void
@@ -37,6 +39,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   notes,
   onSelectNote,
   onCreateNote,
+  onCreateDraw,
   onChangeViewMode,
   onOpenAi,
   onOpenLocalFolder,
@@ -63,7 +66,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       title: 'Criar Nova Nota',
       subtitle: 'Cria uma nova nota em branco',
       icon: <Plus className="w-4 h-4 text-emerald-400" />,
-      action: () => onCreateNote()
+      action: () => onCreateNote(undefined, undefined, 'note')
+    },
+    {
+      id: 'cmd-new-draw',
+      title: 'Criar Novo Draw (Desenho)',
+      subtitle: 'Quadro em branco estilo Excalidraw',
+      icon: <Palette className="w-4 h-4 text-[#c59b27]" />,
+      action: () => onCreateDraw ? onCreateDraw() : onCreateNote(undefined, undefined, 'draw')
     },
     {
       id: 'cmd-open-graph',
@@ -74,8 +84,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     },
     {
       id: 'cmd-open-canvas',
-      title: 'Abrir Canvas Visual',
-      subtitle: 'Quadro infinito para cartões e ideias',
+      title: 'Abrir Canvas Visual / Draws',
+      subtitle: 'Quadros infinitos e desenhos livres',
       icon: <Layout className="w-4 h-4 text-cyan-400" />,
       action: () => onChangeViewMode('canvas')
     },
@@ -108,13 +118,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   // Note items matching query
   const noteItems: PaletteItem[] = notes
     .filter(n => n.title.toLowerCase().includes(query.toLowerCase()) || n.tags.some(t => t.toLowerCase().includes(query.toLowerCase())))
-    .map(n => ({
-      id: `note-${n.id}`,
-      title: n.title,
-      subtitle: `Pasta: ${n.folder} • ${n.tags.map(t => `#${t}`).join(' ')}`,
-      icon: <FileText className="w-4 h-4 text-zinc-400" />,
-      action: () => onSelectNote(n.id)
-    }))
+    .map(n => {
+      const isDraw = n.type === 'draw'
+      return {
+        id: `note-${n.id}`,
+        title: n.title,
+        subtitle: `${isDraw ? 'Desenho / Draw' : 'Nota'} • Pasta: ${n.folder} • ${n.tags.map(t => `#${t}`).join(' ')}`,
+        icon: isDraw ? <Palette className="w-4 h-4 text-[#c59b27]" /> : <FileText className="w-4 h-4 text-zinc-400" />,
+        action: () => onSelectNote(n.id)
+      }
+    })
 
   const commandItems = defaultCommands.filter(c =>
     c.title.toLowerCase().includes(query.toLowerCase()) || (c.subtitle && c.subtitle.toLowerCase().includes(query.toLowerCase()))

@@ -3,14 +3,14 @@ import type { ViewMode } from '../types'
 import {
   FileText,
   Share2,
-  Layout,
   PanelLeft,
   Bot,
   Search,
   Calendar,
   SlidersHorizontal,
   FolderSync,
-  MessageSquare
+  MessageSquare,
+  Palette
 } from 'lucide-react'
 
 interface RibbonProps {
@@ -92,9 +92,9 @@ export const Ribbon: React.FC<RibbonProps> = ({
               ? 'bg-[#c59b27]/15 text-[#d4af37] border border-[#c59b27]/30'
               : 'text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/50'
           }`}
-          title="Canvas Infinito"
+          title="Quadros de Desenho / Canvas (Excalidraw)"
         >
-          <Layout className="w-4 h-4" />
+          <Palette className="w-4 h-4" />
         </button>
 
         {/* AI Agent Icon right below Canvas */}
