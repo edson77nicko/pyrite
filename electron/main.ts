@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { autoUpdater } from 'electron-updater'
 import { createVaultLibrary } from './vaultLibrary'
+import { readCanvas, writeCanvas } from './canvasStorage'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -127,6 +128,12 @@ ipcMain.handle('vault:openInExplorer', (_event, folderPath: string) => {
   if (fs.existsSync(folderPath)) {
     shell.openPath(folderPath)
   }
+})
+
+ipcMain.handle('canvas:read', (_event, vaultPath: string) => readCanvas(vaultPath))
+ipcMain.handle('canvas:write', async (_event, vaultPath: string, document) => {
+  try { await writeCanvas(vaultPath, document); return { success: true } }
+  catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
 })
 
 const vaultLibrary = createVaultLibrary({ settingsPath: path.join(app.getPath('userData'), 'vault-library.json'), defaultRootPath: path.join(app.getPath('documents'), 'Pyrita', 'Cofres') })

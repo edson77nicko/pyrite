@@ -297,7 +297,9 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
   const ruleMenuRef = useRef<HTMLDivElement | null>(null)
   const folderPickerRef = useRef<HTMLDivElement | null>(null)
-  const inputRef = useRef<HTMLInputElement | null>(null)
+  const folderPopupRef = useRef<HTMLDivElement | null>(null)
+  const [completionIndex, setCompletionIndex] = useState(0)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   // Conversations History State with localStorage persistence
   const [conversations, setConversations] = useState<AgentConversation[]>(() => {
@@ -457,7 +459,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       if (ruleMenuRef.current && !ruleMenuRef.current.contains(e.target as Node)) {
         setIsRuleMenuOpen(false)
       }
-      if (folderPickerRef.current && !folderPickerRef.current.contains(e.target as Node)) {
+      if (folderPickerRef.current && !folderPickerRef.current.contains(e.target as Node) && !folderPopupRef.current?.contains(e.target as Node)) {
         setIsFolderPickerOpen(false)
       }
     }
@@ -632,9 +634,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   }
 
   // Input change handler supporting `/` (skills) and `@` (notes context)
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setInput(val)
+    setCompletionIndex(0)
 
     // Check for trailing `@query`
     const atMatch = val.match(/@([a-zA-Z0-9\u00C0-\u017F\s_-]*)$/)
@@ -672,9 +675,9 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
   // Select a `/` skill or preset to run
   const handleSelectSlashItem = (promptText: string) => {
-    setInput('')
+    setInput(promptText + '\n\n')
     setSlashSearchOpen(false)
-    executePrompt(promptText)
+    inputRef.current?.focus()
   }
 
   // Interactive Vault Chat with Real LLM, Context Injection & Canvas Auto-Update
@@ -927,9 +930,6 @@ Diretrizes gerais:
     executePrompt(text)
   }
 
-  const handleSendPreset = (presetText: string) => {
-    executePrompt(presetText)
-  }
 
   // Filtered notes for `@` autocomplete
   const filteredAtNotes = useMemo(() => {
@@ -1361,7 +1361,7 @@ Diretrizes gerais:
                   {m.text === 'Pensando...' ? (
                     <div className="flex items-center gap-2 py-1 text-zinc-400 font-mono text-[11px]">
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)] shrink-0" />
-                      <span>Processando com {activeProvider.toUpperCase()} ({activeModel})...</span>
+                      <span>Preparando uma resposta para você…</span>
                     </div>
                   ) : (
                     <MarkdownRenderer
@@ -1464,7 +1464,7 @@ Diretrizes gerais:
 
         {/* Floating Autocomplete for '/' (Skills / Presets) */}
         {slashSearchOpen && filteredSlashItems.length > 0 && (
-          <div className="absolute bottom-full left-2.5 right-2.5 mb-2 bg-[#12131a] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl z-50 space-y-0.5 max-h-56 overflow-y-auto custom-chat-scrollbar animate-in fade-in zoom-in-95 duration-100">
+          <div role="listbox" aria-label="Comandos do agente" className="absolute bottom-full left-2.5 right-2.5 mb-2 bg-[#12131a] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl z-50 space-y-0.5 max-h-56 overflow-y-auto custom-chat-scrollbar animate-in fade-in zoom-in-95 duration-100">
             <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
               <span>SKILLS & PRESETS DISPONÍVEIS (/)</span>
               <span className="text-[9px] text-zinc-500">{filteredSlashItems.length} opções</span>
@@ -1474,7 +1474,10 @@ Diretrizes gerais:
                 key={idx}
                 type="button"
                 onClick={() => handleSelectSlashItem(item.prompt)}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800/80 text-zinc-200 flex items-center justify-between text-xs cursor-pointer transition-colors"
+                role="option"
+                aria-selected={idx === Math.min(completionIndex, filteredSlashItems.length - 1)}
+                onMouseEnter={() => setCompletionIndex(idx)}
+                className={`w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800/80 text-zinc-200 flex items-center justify-between text-xs cursor-pointer transition-colors ${idx === Math.min(completionIndex, filteredSlashItems.length - 1) ? 'bg-white/[0.06]' : ''}`}
               >
                 <div className="flex items-center gap-1.5 truncate">
                   <Sparkles className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
@@ -1495,7 +1498,7 @@ Diretrizes gerais:
               <button
                 key={idx}
                 type="button"
-                onClick={() => handleSendPreset(pr.prompt)}
+                onClick={() => handleSelectSlashItem(pr.prompt)}
                 className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-[var(--accent)] hover:border-[var(--accent)]/40"
                 title={pr.prompt}
               >
@@ -1506,7 +1509,7 @@ Diretrizes gerais:
         )}
 
         {/* Input Box Card */}
-        <div className="bg-[#141418] border border-zinc-800 focus-within:border-[var(--accent)]/60 rounded-2xl p-2 transition-all shadow-inner flex flex-col gap-2">
+        <div className="bg-[#141418] border border-zinc-800 focus-within:border-zinc-600 rounded-2xl p-2 transition-all shadow-inner flex flex-col gap-2">
           {/* Audio Recording Live Banner */}
           {isRecording ? (
             <div className="flex items-center justify-between px-2 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs animate-pulse">
@@ -1534,13 +1537,32 @@ Diretrizes gerais:
               </div>
             </div>
           ) : (
-            <input
+            <textarea
               ref={inputRef}
-              type="text"
+              rows={2}
+              aria-label="Mensagem para o agente"
               value={input}
               onChange={handleInputChange}
               placeholder={`Pergunte ao ${activeSpecialty.shortName} (digite '/' para skills ou '@' para somar notas)...`}
-              className="w-full bg-transparent px-1 pt-0.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none"
+              className="agent-message-input w-full bg-transparent px-1 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none"
+              onKeyDown={event => {
+                if (event.nativeEvent.isComposing) return
+                const options = slashSearchOpen ? filteredSlashItems : atSearchOpen ? filteredAtNotes : []
+                if ((slashSearchOpen || atSearchOpen) && ['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)) {
+                  if (event.key === 'Escape') { event.preventDefault(); setSlashSearchOpen(false); setAtSearchOpen(false); return }
+                  if (event.key === 'Enter' || (options.length && ['ArrowDown', 'ArrowUp', 'Tab'].includes(event.key))) {
+                    event.preventDefault()
+                    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') setCompletionIndex(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length)
+                    else if (options.length) {
+                      const index = Math.min(completionIndex, options.length - 1)
+                      if (slashSearchOpen) handleSelectSlashItem(filteredSlashItems[index].prompt)
+                      else handleSelectAtNote(filteredAtNotes[index])
+                    }
+                    return
+                  }
+                }
+                if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); handleSendMessage(event) }
+              }}
             />
           )}
 
@@ -1629,18 +1651,19 @@ Diretrizes gerais:
 
                 {/* Hierarchical Folder Selection Popover with Subfolder Tree */}
                 {isFolderPickerOpen && (
-                  <div className="absolute bottom-8 left-0 z-50 w-72 bg-[#101117] border border-zinc-700/80 rounded-xl p-2 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
-                    <FolderTreePicker
+                  <FolderTreePicker
+                      anchorRef={folderPickerRef}
+                      popupRef={folderPopupRef}
                       folders={folderList}
                       selectedFolder={selectedFolderContext}
                       currentNoteFolder={effectiveNote.folder}
                       onSelectFolder={(f) => {
+                        inputRef.current?.focus()
                         setSelectedFolderContext(f)
                         setIsFolderPickerOpen(false)
                       }}
                       onClose={() => setIsFolderPickerOpen(false)}
                     />
-                  </div>
                 )}
               </div>
             </div>

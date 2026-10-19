@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Folder,
   FolderOpen,
@@ -19,6 +20,8 @@ export interface FolderTreeItem {
 }
 
 interface FolderTreePickerProps {
+  anchorRef: React.RefObject<HTMLDivElement | null>
+  popupRef: React.RefObject<HTMLDivElement | null>
   folders: { folder: string; count: number }[]
   selectedFolder: string | null
   currentNoteFolder?: string
@@ -88,6 +91,8 @@ function buildTree(folders: { folder: string; count: number }[]): FolderTreeItem
 }
 
 export const FolderTreePicker: React.FC<FolderTreePickerProps> = ({
+  anchorRef,
+  popupRef,
   folders,
   selectedFolder,
   currentNoteFolder,
@@ -95,6 +100,26 @@ export const FolderTreePicker: React.FC<FolderTreePickerProps> = ({
   onClose
 }) => {
   const [search, setSearch] = useState('')
+  const [position, setPosition] = useState({ left: 8, top: 8, width: 288, maxHeight: 360 })
+  useLayoutEffect(() => {
+    const place = () => {
+      const anchor = anchorRef.current?.getBoundingClientRect()
+      if (!anchor) return
+      const width = Math.min(288, innerWidth - 16)
+      const above = anchor.top - 16
+      const below = innerHeight - anchor.bottom - 16
+      const openAbove = above >= Math.min(360, below)
+      const maxHeight = Math.max(80, Math.min(360, openAbove ? above : below))
+      const height = Math.min(popupRef.current?.scrollHeight || maxHeight, maxHeight)
+      setPosition({ left: Math.max(8, Math.min(anchor.left, innerWidth - width - 8)), top: openAbove ? anchor.top - height - 8 : anchor.bottom + 8, width, maxHeight })
+    }
+    place()
+    const observer = new ResizeObserver(place)
+    if (popupRef.current) observer.observe(popupRef.current)
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => { observer.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
+  }, [anchorRef, popupRef])
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
     const initial = new Set<string>()
     if (selectedFolder) {
@@ -142,7 +167,7 @@ export const FolderTreePicker: React.FC<FolderTreePickerProps> = ({
           style={{ paddingLeft: `${depth * 14 + 6}px` }}
           className={`flex items-center justify-between py-1.5 pr-2 rounded-lg text-xs cursor-pointer transition-colors group ${
             isSelected
-              ? 'bg-amber-500/20 text-amber-200 font-semibold border border-amber-500/30'
+              ? 'bg-white/[0.07] text-zinc-100'
               : 'hover:bg-zinc-800/60 text-zinc-300'
           }`}
         >
@@ -164,9 +189,9 @@ export const FolderTreePicker: React.FC<FolderTreePickerProps> = ({
             )}
 
             {isExpanded ? (
-              <FolderOpen className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-amber-400' : 'text-amber-400/80'}`} />
+              <FolderOpen className={`w-3.5 h-3.5 shrink-0 text-zinc-400`} />
             ) : (
-              <Folder className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-amber-400' : 'text-amber-400/80'}`} />
+              <Folder className={`w-3.5 h-3.5 shrink-0 text-zinc-400`} />
             )}
 
             <span className="truncate">{node.name}</span>
@@ -176,7 +201,7 @@ export const FolderTreePicker: React.FC<FolderTreePickerProps> = ({
             <span className="text-[10px] font-mono text-zinc-500">
               {node.totalCount} {node.totalCount === 1 ? 'nota' : 'notas'}
             </span>
-            {isSelected && <Check className="w-3.5 h-3.5 text-amber-400" />}
+            {isSelected && <Check className="w-3.5 h-3.5 text-zinc-400" />}
           </div>
         </div>
 
@@ -189,16 +214,21 @@ export const FolderTreePicker: React.FC<FolderTreePickerProps> = ({
     )
   }
 
-  return (
+  return createPortal(
     <div
+      ref={popupRef}
+      role="dialog"
+      aria-label="Selecionar pasta de contexto"
+      style={position}
+      onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); anchorRef.current?.querySelector<HTMLButtonElement>('button')?.focus() } }}
       onClick={e => e.stopPropagation()}
-      className="absolute bottom-9 left-0 z-50 w-72 max-h-96 bg-[#101117] border border-zinc-750 rounded-xl p-2.5 shadow-2xl space-y-2 flex flex-col animate-in fade-in zoom-in-95 duration-100 select-none text-xs"
+      className="fixed z-[200] bg-[#18181b] border border-white/10 rounded-lg p-2 shadow-2xl space-y-2 flex flex-col overflow-hidden select-none text-xs text-zinc-300"
     >
       {/* Header */}
       <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800">
         <div className="flex items-center gap-1.5">
-          <FolderCheck className="w-3.5 h-3.5 text-amber-400" />
-          <span className="font-bold text-zinc-100 text-[11px]">Selecionar Pasta de Contexto</span>
+          <FolderCheck className="w-3.5 h-3.5 text-zinc-400" />
+          <span className="font-medium text-zinc-300 text-[11px]">Selecionar Pasta de Contexto</span>
         </div>
         <button
           type="button"
@@ -214,10 +244,12 @@ export const FolderTreePicker: React.FC<FolderTreePickerProps> = ({
         <Search className="w-3.5 h-3.5 absolute left-2 text-zinc-500" />
         <input
           type="text"
+          autoFocus
+          aria-label="Filtrar pastas"
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Filtrar pastas e subpastas..."
-          className="w-full bg-[#14151b] border border-zinc-800 focus:border-amber-500/60 rounded-lg pl-7 pr-7 py-1 text-xs text-zinc-100 placeholder-zinc-500 outline-none transition-all"
+          className="w-full bg-[#14151b] border border-zinc-800 focus:border-zinc-600 rounded-lg pl-7 pr-7 py-1 text-xs text-zinc-100 placeholder-zinc-500 outline-none transition-all"
         />
         {search && (
           <button
@@ -238,15 +270,15 @@ export const FolderTreePicker: React.FC<FolderTreePickerProps> = ({
             onSelectFolder(currentNoteFolder)
             onClose()
           }}
-          className="w-full px-2 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-[11px] font-medium flex items-center justify-between transition-colors cursor-pointer"
+          className="w-full px-2 py-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.07] text-zinc-300 text-[11px] font-medium flex items-center justify-between transition-colors cursor-pointer"
         >
-          <span className="truncate">📁 Pasta da nota: {currentNoteFolder}</span>
-          <span className="text-[10px] text-amber-400/80">Ativar</span>
+          <span className="truncate">Pasta da nota: {currentNoteFolder}</span>
+          <span className="text-[10px] text-zinc-400">Ativar</span>
         </button>
       )}
 
       {/* Hierarchical Folder List */}
-      <div className="flex-1 overflow-y-auto max-h-56 pr-1 space-y-0.5 custom-chat-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto max-h-56 pr-1 space-y-0.5 custom-chat-scrollbar">
         {tree.length === 0 ? (
           <div className="p-3 text-center text-zinc-500 text-xs">
             Nenhuma pasta encontrada no cofre.
@@ -268,12 +300,12 @@ export const FolderTreePicker: React.FC<FolderTreePickerProps> = ({
               onSelectFolder(null)
               onClose()
             }}
-            className="text-[10px] text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+            className="text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
           >
             Desativar Pasta
           </button>
         </div>
       )}
-    </div>
+    </div>, document.body
   )
 }

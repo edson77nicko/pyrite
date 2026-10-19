@@ -234,7 +234,7 @@ input[type="checkbox"]:focus-visible,
 .editor-callout-warning, .editor-callout-important, .editor-callout-caution { border-color: #463c2b; border-left-color: #a58a57; background: #352c1b2e; color: #d1c09f; }
 .editor-callout > header > strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .editor-callout > header > input::placeholder { color: inherit; opacity: .9; }
-.editor-callout-content { display: block; width: 100%; min-height: 52px; max-height: 400px; resize: vertical; field-sizing: content; border: 0; outline: 0; padding: 2px 12px 10px; color: #d4d4d8; background: transparent; font: inherit; line-height: 1.75; user-select: text; overflow-wrap: anywhere; }
+.editor-callout-content { display: block; width: 100%; min-height: 0; max-height: 400px; resize: none; field-sizing: content; border: 0; outline: 0; padding: 2px 12px 10px; color: #d4d4d8; background: transparent; font: inherit; line-height: 1.75; user-select: text; overflow-wrap: anywhere; }
 .editor-callout div.editor-callout-content { min-height: 0; }
 .editor-code-block button:focus-visible, .editor-callout button:focus-visible { outline: 1px solid #a1a1aa; outline-offset: 1px; }
 
@@ -245,3 +245,63 @@ input[type="checkbox"]:focus-visible,
 .editor-command-item { display: flex; align-items: center; gap: 8px; min-height: 27px; padding: 5px 7px; border: 0; border-radius: 4px; font-size: 11px; line-height: 17px; cursor: pointer; }
 .editor-command-item > svg { flex-shrink: 0; color: #8f8f99; }
 .editor-command-item:hover, .editor-command-item.is-selected { color: #ededf0; background: #ffffff08; }
+
+/* Two visible message lines, growing naturally up to four. */
+.agent-message-input { display: block; box-sizing: border-box; field-sizing: content; min-height: 44px; max-height: 84px; line-height: 20px; padding-top: 2px; padding-bottom: 2px; resize: none; overflow-y: auto; }
+
+/* Project canvases */
+.canvas-project { position: relative; width: 100%; height: 100%; overflow: hidden; background: #101013; color: #d4d4d8; font-size: 12px; touch-action: none; }
+.canvas-dots { position: absolute; inset: 0; background-image: radial-gradient(circle, #3f3f46 1px, transparent 1px); opacity: .5; pointer-events: none; }
+.canvas-ui { position: absolute; z-index: 20; }
+.canvas-project-toolbar { top: 14px; left: 16px; right: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding: 10px 12px; border: 1px solid #ffffff12; border-radius: 10px; background: #19191df5; box-shadow: 0 8px 24px #0003; }
+.canvas-project-heading { min-width: 180px; flex: 1; }
+.canvas-project-heading > div { display: flex; gap: 12px; align-items: center; }
+.canvas-eyebrow { font-size: 10px; color: #a1a1aa; }
+.canvas-project-heading small { color: #71717a; font-size: 10px; }
+.canvas-project select { margin-top: 3px; max-width: 240px; width: 100%; background: #19191d; color: #e4e4e7; border: 0; font-size: 13px; font-weight: 600; outline: none; }
+.canvas-toolbar-actions, .canvas-navigation, .canvas-edge-editor, .canvas-board-form form > div, .canvas-board-form > div, .canvas-empty > div { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.canvas-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid #ffffff0d; padding: 6px 8px; border-radius: 6px; color: #bfc0c7; background: #ffffff03; cursor: pointer; font-size: 11px; }
+.canvas-button:hover { background: #ffffff09; color: #fff; }
+.canvas-button:disabled { opacity: .35; cursor: default; }
+.canvas-project button:focus-visible, .canvas-project select:focus-visible { outline: 1px solid #a1a1aa; outline-offset: 2px; }
+.canvas-project input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid #3f3f46; border-radius: 6px; background: #121215; color: #e4e4e7; outline: none; }
+.canvas-project input:focus { border-color: #71717a; }
+.canvas-note-picker { position: absolute; top: calc(100% + 8px); right: 0; width: min(340px, 100%); background: #1c1c20; padding: 8px; border: 1px solid #3f3f46; border-radius: 9px; box-shadow: 0 10px 30px #0006; }
+.canvas-note-picker > div { max-height: 250px; overflow-y: auto; margin-top: 5px; }
+.canvas-note-picker button { display: flex; flex-direction: column; gap: 3px; text-align: left; width: 100%; padding: 8px; border-radius: 5px; cursor: pointer; }
+.canvas-note-picker button:hover { background: #ffffff08; }
+.canvas-note-picker small { color: #71717a; font-size: 10px; }
+.canvas-world { position: absolute; inset: 0; transform-origin: 0 0; pointer-events: none; }
+.canvas-lines { position: absolute; width: 1px; height: 1px; overflow: visible; }
+.canvas-edge { pointer-events: auto; cursor: pointer; }
+.canvas-edge text { fill: #a1a1aa; font: 11px sans-serif; paint-order: stroke; stroke: #101013; stroke-width: 5px; stroke-linejoin: round; }
+.canvas-card { position: absolute; display: flex; flex-direction: column; border: 1px solid #3f3f46; border-radius: 9px; background: #1a1a1e; box-shadow: 0 6px 18px #0003; pointer-events: auto; overflow: hidden; }
+.canvas-card.is-selected, .canvas-card.is-connecting { border-color: #a1a1aa; box-shadow: 0 0 0 1px #a1a1aa44; }
+.canvas-card header { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 7px; padding: 8px 12px; border-bottom: 1px solid #ffffff09; cursor: grab; user-select: none; }
+.canvas-card header strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.canvas-card header input { flex: 1; padding: 0; border: 0; border-radius: 0; background: transparent; font-size: 12px; font-weight: 600; }
+.canvas-drag-handle { margin-left: auto; color: #71717a; font-size: 18px; }
+.canvas-card textarea, .canvas-linked-content { flex: 1; min-height: 0; width: 100%; padding: 12px; background: transparent; color: #bfc0c7; font-size: 12px; line-height: 1.7; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.canvas-card textarea { border: 0; outline: none; resize: none; }
+.canvas-linked-content p { margin: 0; }
+.canvas-linked-content .canvas-missing { color: #93939d; font-style: italic; }
+.canvas-card footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 7px 9px; border-top: 1px solid #ffffff09; font-size: 10px; color: #71717a; }
+.canvas-card footer > div { display: flex; align-items: center; gap: 5px; }
+.canvas-card footer button { cursor: pointer; padding: 3px; border-radius: 4px; color: #a1a1aa; }
+.canvas-card footer button:hover { background: #ffffff09; color: #fff; }
+.canvas-navigation { bottom: 16px; right: 16px; padding: 5px; border: 1px solid #ffffff12; border-radius: 8px; background: #19191df5; }
+.canvas-navigation span { min-width: 36px; text-align: center; font-size: 10px; color: #a1a1aa; }
+.canvas-hint { bottom: 24px; left: 18px; display: flex; gap: 5px; align-items: center; color: #71717a; font-size: 10px; pointer-events: none; }
+.canvas-board-form { top: 104px; left: 50%; transform: translateX(-50%); width: min(380px, 90%); padding: 16px; border: 1px solid #3f3f46; border-radius: 10px; background: #1c1c20; box-shadow: 0 20px 50px #0006; }
+.canvas-board-form label { display: block; color: #a1a1aa; font-size: 11px; }
+.canvas-board-form input { margin: 7px 0 12px; }
+.canvas-board-form p { margin-bottom: 14px; font-size: 12px; line-height: 1.7; }
+.canvas-empty { top: 40%; left: 50%; transform: translateX(-50%); text-align: center; width: min(370px, 90%); }
+.canvas-empty h2 { font-size: 18px; color: #d4d4d8; }
+.canvas-empty p { margin: 10px 0 18px; color: #71717a; line-height: 1.7; }
+.canvas-empty > div { justify-content: center; }
+.canvas-edge-editor { bottom: 65px; left: 18px; background: #1c1c20; padding: 10px; border: 1px solid #3f3f46; border-radius: 9px; max-width: calc(100% - 36px); }
+.canvas-edge-editor label { font-size: 10px; color: #a1a1aa; }
+.canvas-edge-editor input { display: block; margin-top: 4px; width: 230px; }
+.canvas-error { top: 104px; left: 18px; right: 18px; padding: 10px; background: #271f20; border: 1px solid #674448; border-radius: 8px; font-size: 11px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+@media (max-width: 1150px) { .canvas-hint { display: none; } }

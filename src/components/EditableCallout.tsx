@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowDown, Info, Lightbulb, TriangleAlert, Trash2 } from 'lucide-react'
+import { Info, Lightbulb, TriangleAlert, Trash2 } from 'lucide-react'
 import type { CalloutData } from '../utils/editorBlocks'
 
 interface Props {
@@ -23,9 +23,8 @@ export function EditableCallout({ initial, readOnly, renderInline, onChange, onD
     if (event.target === event.currentTarget && ['Backspace', 'Delete'].includes(event.key)) { event.preventDefault(); onDelete() }
   }}>
     <header><Icon size={15} />{readOnly ? <strong>{block.title || label}</strong> : <input aria-label="Título do callout" placeholder={label} value={block.title} onChange={event => update({ ...block, title: event.target.value })} />}{!readOnly && <button type="button" aria-label="Excluir callout" title="Excluir callout" onClick={onDelete}><Trash2 size={14} /></button>}</header>
-    {readOnly ? <div className="editor-callout-content" dangerouslySetInnerHTML={{ __html: block.content.split('\n').map(renderInline).join('<br>') }} /> : <textarea aria-label="Conteúdo do callout" className="editor-callout-content" placeholder="Escreva aqui…" value={block.content} rows={2} onChange={event => update({ ...block, content: event.target.value })} onKeyDown={event => {
+    {readOnly ? <div className="editor-callout-content" dangerouslySetInnerHTML={{ __html: block.content.split('\n').map(renderInline).join('<br>') }} /> : <textarea aria-label="Conteúdo do callout" className="editor-callout-content" placeholder="Escreva aqui…" value={block.content} rows={1} onChange={event => update({ ...block, content: event.target.value })} onKeyDown={event => {
       if (!event.nativeEvent.isComposing && event.key === 'Backspace' && !block.content) { event.preventDefault(); onDelete() }
     }} />}
-    {!readOnly && <footer className="editor-block-footer"><button type="button" onClick={onExit}><ArrowDown size={13} />Escrever abaixo</button></footer>}
   </section>
 }

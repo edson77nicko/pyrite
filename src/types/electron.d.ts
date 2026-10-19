@@ -8,6 +8,8 @@ export interface VaultFileItem {
 }
 
 export interface ElectronAPI {
+  readCanvas: (vaultPath: string) => Promise<import('../utils/canvasBoards').CanvasDocument | null>
+  writeCanvas: (vaultPath: string, document: import('../utils/canvasBoards').CanvasDocument) => Promise<{ success: boolean; error?: string }>
   managePath: (params: { vaultPath: string; source: string; destination?: string; action: 'copy' | 'move' | 'delete' | 'open' }) => Promise<{ success: boolean; error?: string }>
   isElectron: boolean
   minimize: () => Promise<void>

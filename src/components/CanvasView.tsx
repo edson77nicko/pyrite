@@ -1,460 +1,196 @@
-import React, { useState, useRef } from 'react'
-import type { CanvasCard, CanvasConnection, Note } from '../types'
-import {
-  Plus,
-  Trash2,
-  ArrowRight,
-  ZoomIn,
-  ZoomOut,
-  FileText,
-  Sparkles
-} from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowRight, FileText, Link2, Maximize2, Plus, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
+import type { CanvasCard, Note } from '../types'
+import { createBoard, initialCanvas, isCanvasDocument, linkedNote, notePath, type CanvasBoard, type CanvasDocument } from '../utils/canvasBoards'
 
-interface CanvasViewProps {
-  notes?: Note[]
-  onOpenNote?: (noteId: string) => void
-}
+interface Props { notes?: Note[]; vaultPath?: string; onOpenNote?: (noteId: string) => void }
+const uid = () => crypto.randomUUID()
+const cleanPath = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 
-const DEFAULT_CARDS: CanvasCard[] = [
-  {
-    id: 'c1',
-    x: 120,
-    y: 120,
-    width: 260,
-    height: 150,
-    text: '💡 Arquitetura do Segundo Cérebro\n\nConectar pensamentos através de grafos e escrita livre sem atrito.',
-    color: '#8b5cf6'
-  },
-  {
-    id: 'c2',
-    x: 520,
-    y: 90,
-    width: 270,
-    height: 150,
-    text: '⚡ Motor de Grafo em Física 2D\n\nForças de repulsão e atração simuladas a 60 FPS com links bidirecionais [[...]].',
-    color: '#38bdf8'
-  },
-  {
-    id: 'c3',
-    x: 520,
-    y: 310,
-    width: 270,
-    height: 150,
-    text: '🤖 Inteligência Semântica\n\nDescoberta de afinidades semânticas ocultas e sínteses automáticas.',
-    color: '#34d399'
-  }
-]
+export function CanvasView({ notes = [], vaultPath, onOpenNote }: Props) {
+  const storageKey = 'pyrita_canvas_v2:' + (vaultPath ? cleanPath(vaultPath) : 'local')
+  const native = !!vaultPath && !!window.electronAPI?.readCanvas
+  const [document, setDocument] = useState<CanvasDocument | null>(null)
+  const latest = useRef<CanvasDocument | null>(null)
+  const mounted = useRef(true)
+  const [status, setStatus] = useState('Carregando quadros…')
+  const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState<string | null>(null)
+  const [edgeId, setEdgeId] = useState<string | null>(null)
+  const [picker, setPicker] = useState(false)
+  const [query, setQuery] = useState('')
+  const [form, setForm] = useState<'new' | 'rename' | 'delete' | null>(null)
+  const [boardName, setBoardName] = useState('')
+  const surface = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ pointer: number; card?: string; x: number; y: number; originX: number; originY: number } | null>(null)
+  const board = document?.boards.find(item => item.id === document.activeBoardId)
 
-const DEFAULT_CONNECTIONS: CanvasConnection[] = [
-  { id: 'conn1', from: 'c1', to: 'c2', label: 'alimenta' },
-  { id: 'conn2', from: 'c1', to: 'c3', label: 'conecta com' }
-]
-
-const COLOR_PALETTE = ['#8b5cf6', '#38bdf8', '#34d399', '#f59e0b', '#ec4899', '#71717a']
-
-export const CanvasView: React.FC<CanvasViewProps> = ({ notes = [], onOpenNote }) => {
-  const [cards, setCards] = useState<CanvasCard[]>(() => {
-    const saved = localStorage.getItem('pyrite_canvas_cards')
-    return saved ? JSON.parse(saved) : DEFAULT_CARDS
-  })
-
-  const [connections, setConnections] = useState<CanvasConnection[]>(() => {
-    const saved = localStorage.getItem('pyrite_canvas_conns')
-    return saved ? JSON.parse(saved) : DEFAULT_CONNECTIONS
-  })
-
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
-  const [connectingFromId, setConnectingFromId] = useState<string | null>(null)
-  const [showNotePicker, setShowNotePicker] = useState(false)
-  const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-
-  const isPanningRef = useRef(false)
-  const panStartRef = useRef({ x: 0, y: 0 })
-  const draggingCardRef = useRef<{ id: string; startX: number; startY: number; cardX: number; cardY: number } | null>(null)
-
-  const saveCanvas = (newCards: CanvasCard[], newConns: CanvasConnection[]) => {
-    setCards(newCards)
-    setConnections(newConns)
-    localStorage.setItem('pyrite_canvas_cards', JSON.stringify(newCards))
-    localStorage.setItem('pyrite_canvas_conns', JSON.stringify(newConns))
-  }
-
-  const handleAddCard = (customText?: string, title?: string, noteId?: string) => {
-    const newCard: CanvasCard = {
-      id: `c_${Date.now()}`,
-      x: -pan.x + 220 + Math.random() * 80,
-      y: -pan.y + 160 + Math.random() * 80,
-      width: 260,
-      height: 150,
-      text: customText || 'Novo pensamento...',
-      title,
-      noteId,
-      color: COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)]
+  const persist = useCallback((next: CanvasDocument) => {
+    latest.current = next; setDocument(next)
+    const token = uid()
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ document: next, pending: native, token }))
+      setError(''); setStatus(native ? 'Salvando…' : 'Salvo neste navegador')
+      if (native) void window.electronAPI!.writeCanvas(vaultPath!, next).then(result => {
+        const backup = JSON.parse(localStorage.getItem(storageKey) || 'null')
+        if (backup?.token !== token) return
+        if (!result.success) throw new Error(result.error || 'Não foi possível salvar no cofre.')
+        localStorage.setItem(storageKey, JSON.stringify({ document: next, pending: false, token }))
+        if (mounted.current) { setStatus('Salvo no cofre'); setError('') }
+      }).catch(err => { if (mounted.current) { setError(String(err instanceof Error ? err.message : err)); setStatus('Cópia local preservada') } })
+    } catch (err) { setError(String(err instanceof Error ? err.message : err)); setStatus('Falha ao salvar') }
+  }, [storageKey, native, vaultPath])
+  useEffect(() => {
+    mounted.current = true
+    let cancelled = false
+    const load = async () => {
+      try {
+        const backup = JSON.parse(localStorage.getItem(storageKey) || 'null')
+        const remote = native ? await window.electronAPI!.readCanvas(vaultPath!) : null
+        if (cancelled) return
+        if (remote !== null && !isCanvasDocument(remote)) throw new Error('O arquivo de quadros não é válido. O original foi preservado.')
+        const cached = isCanvasDocument(backup?.document) ? backup : null
+        const owner = localStorage.getItem('pyrita_canvas_legacy_owner')
+        const next = cached?.pending ? cached.document : remote || cached?.document || initialCanvas(localStorage, !owner || owner === storageKey)
+        latest.current = next; setDocument(next); setError('')
+        if (!owner) localStorage.setItem('pyrita_canvas_legacy_owner', storageKey)
+        if ((native && (!remote || cached?.pending)) || !cached && !native) persist(next)
+        else setStatus(native ? 'Salvo no cofre' : 'Salvo neste navegador')
+      } catch (err) { if (!cancelled) { setError(String(err instanceof Error ? err.message : err)); setStatus('Não foi possível abrir os quadros') } }
     }
-    saveCanvas([...cards, newCard], connections)
-    setSelectedCardId(newCard.id)
-  }
+    void load()
+    return () => { cancelled = true; mounted.current = false }
+  }, [storageKey, native, vaultPath, retry, persist])
 
-  const handleAddNoteCard = (note: Note) => {
-    handleAddCard(note.content.slice(0, 180) + '...', note.title, note.id)
-    setShowNotePicker(false)
+  const changeBoard = (update: (current: CanvasBoard) => CanvasBoard, save = true) => {
+    const current = latest.current
+    if (!current) return
+    const next = { ...current, boards: current.boards.map(item => item.id === current.activeBoardId ? update(item) : item) }
+    latest.current = next
+    if (save) persist(next); else setDocument(next)
   }
+  const ready = document !== null
+  // Store portable paths when a linked note is renamed or moved during this session.
+  useEffect(() => {
+    const current = latest.current
+    if (!current) return
+    let changed = false
+    const boards = current.boards.map(item => ({ ...item, cards: item.cards.map(card => {
+      if (!card.noteId && !card.notePath) return card
+      const note = linkedNote(card, notes, vaultPath)
+      if (!note || (card.notePath === notePath(note, vaultPath) && card.title === note.title && card.noteId === note.id)) return card
+      changed = true
+      return { ...card, notePath: notePath(note, vaultPath), noteId: note.id, title: note.title }
+    }) }))
+    if (changed) persist({ ...current, boards })
+  }, [notes, vaultPath, ready, persist])
 
-  const handleDeleteCard = (cardId: string) => {
-    const updatedCards = cards.filter(c => c.id !== cardId)
-    const updatedConns = connections.filter(c => c.from !== cardId && c.to !== cardId)
-    saveCanvas(updatedCards, updatedConns)
-    if (selectedCardId === cardId) setSelectedCardId(null)
-  }
-
-  const handleDeleteConnection = (connId: string) => {
-    const updatedConns = connections.filter(c => c.id !== connId)
-    saveCanvas(cards, updatedConns)
-  }
-
-  const handleUpdateCardText = (cardId: string, newText: string) => {
-    const updated = cards.map(c => c.id === cardId ? { ...c, text: newText } : c)
-    saveCanvas(updated, connections)
-  }
-
-  const handleChangeCardColor = (cardId: string, color: string) => {
-    const updated = cards.map(c => c.id === cardId ? { ...c, color } : c)
-    saveCanvas(updated, connections)
-  }
-
-  const handleStartConnect = (cardId: string) => {
-    if (!connectingFromId) {
-      setConnectingFromId(cardId)
-    } else {
-      if (connectingFromId !== cardId) {
-        const newConn: CanvasConnection = {
-          id: `conn_${Date.now()}`,
-          from: connectingFromId,
-          to: cardId
-        }
-        saveCanvas(cards, [...connections, newConn])
-      }
-      setConnectingFromId(null)
+  const resetSelection = () => { setSelected(null); setConnecting(null); setEdgeId(null); setPicker(false); setForm(null) }
+  const addCard = (note?: Note, point?: { x: number; y: number }) => {
+    if (!board) return
+    const rect = surface.current!.getBoundingClientRect()
+    const columns = Math.max(1, Math.floor((rect.width / board.view.zoom - 48) / 320))
+    let position = { x: (24 - board.view.x) / board.view.zoom, y: (150 - board.view.y) / board.view.zoom }
+    if (!point) for (let index = 0; index < 1000; index++) {
+      position = { x: (24 - board.view.x) / board.view.zoom + (index % columns) * 320, y: (150 - board.view.y) / board.view.zoom + Math.floor(index / columns) * 250 }
+      if (!board.cards.some(card => position.x < card.x + card.width + 16 && position.x + 296 > card.x && position.y < card.y + card.height + 16 && position.y + 226 > card.y)) break
     }
+    const card: CanvasCard = { id: uid(), title: note?.title || 'Nova ideia', text: '', noteId: note?.id, notePath: note ? notePath(note, vaultPath) : undefined, color: '#71717a', x: point?.x ?? position.x, y: point?.y ?? position.y, width: 280, height: 210 }
+    changeBoard(current => ({ ...current, cards: [...current.cards, card] })); setSelected(card.id); setPicker(false)
   }
-
-  // Mouse pan & drag handlers
-  const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('.canvas-card') || (e.target as HTMLElement).closest('button')) {
-      return
+  const removeCard = (id: string) => { changeBoard(current => ({ ...current, cards: current.cards.filter(card => card.id !== id), connections: current.connections.filter(edge => edge.from !== id && edge.to !== id) })); resetSelection() }
+  const connectTo = (id: string) => {
+    if (!connecting) { setConnecting(id); return }
+    if (connecting !== id) {
+      const existing = board?.connections.find(edge => edge.from === connecting && edge.to === id)
+      if (existing) setEdgeId(existing.id)
+      else { const edge = { id: uid(), from: connecting, to: id, label: 'relaciona-se com' }; changeBoard(current => ({ ...current, connections: [...current.connections, edge] })); setEdgeId(edge.id) }
     }
-    isPanningRef.current = true
-    panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y }
-    setSelectedCardId(null)
-    setConnectingFromId(null)
-    setShowNotePicker(false)
+    setConnecting(null)
   }
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (draggingCardRef.current) {
-      const { id, startX, startY, cardX, cardY } = draggingCardRef.current
-      const dx = (e.clientX - startX) / zoom
-      const dy = (e.clientY - startY) / zoom
-      setCards(prev => prev.map(c => c.id === id ? { ...c, x: cardX + dx, y: cardY + dy } : c))
-      return
-    }
-
-    if (isPanningRef.current) {
-      setPan({
-        x: e.clientX - panStartRef.current.x,
-        y: e.clientY - panStartRef.current.y
-      })
-    }
+  const fit = () => {
+    if (!board || !surface.current || !board.cards.length) return
+    const left = Math.min(...board.cards.map(card => card.x)), top = Math.min(...board.cards.map(card => card.y))
+    const width = Math.max(...board.cards.map(card => card.x + card.width)) - left
+    const height = Math.max(...board.cards.map(card => card.y + card.height)) - top
+    const bounds = surface.current.getBoundingClientRect()
+    const zoom = Math.max(.15, Math.min(1.5, (bounds.width - 80) / width, (bounds.height - 170) / height))
+    changeBoard(current => ({ ...current, view: { zoom, x: (bounds.width - width * zoom) / 2 - left * zoom, y: 110 - top * zoom } }))
   }
-
-  const handleMouseUp = () => {
-    if (draggingCardRef.current) {
-      localStorage.setItem('pyrite_canvas_cards', JSON.stringify(cards))
-      draggingCardRef.current = null
-    }
-    isPanningRef.current = false
+  const pointerDown = (event: React.PointerEvent, card?: CanvasCard) => {
+    if (event.button !== 0 || !board) return
+    if (!card && (event.target as HTMLElement).closest('.canvas-ui, .canvas-card, .canvas-edge')) return
+    event.preventDefault()
+    if (connecting && card) { connectTo(card.id); return }
+    surface.current?.setPointerCapture(event.pointerId)
+    drag.current = { pointer: event.pointerId, card: card?.id, x: event.clientX, y: event.clientY, originX: card?.x ?? board.view.x, originY: card?.y ?? board.view.y }
+    setSelected(card?.id || null); setPicker(false)
   }
-
-  const handleCardMouseDown = (e: React.MouseEvent, card: CanvasCard) => {
-    e.stopPropagation()
-    setSelectedCardId(card.id)
-    draggingCardRef.current = {
-      id: card.id,
-      startX: e.clientX,
-      startY: e.clientY,
-      cardX: card.x,
-      cardY: card.y
-    }
+  const stopDrag = () => { if (drag.current && latest.current) persist(latest.current); drag.current = null }
+  const zoomTo = (value: number) => {
+    if (!board || !surface.current) return
+    const zoom = Math.max(.15, Math.min(2.5, value)), centerX = surface.current.clientWidth / 2, centerY = surface.current.clientHeight / 2
+    changeBoard(current => ({ ...current, view: { zoom, x: centerX - (centerX - current.view.x) * zoom / current.view.zoom, y: centerY - (centerY - current.view.y) * zoom / current.view.zoom } }))
   }
-
-  const handleDoubleClickCanvas = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('.canvas-card')) return
-    const rect = e.currentTarget.getBoundingClientRect()
-    const clickX = (e.clientX - rect.left - pan.x) / zoom
-    const clickY = (e.clientY - rect.top - pan.y) / zoom
-
-    const newCard: CanvasCard = {
-      id: `c_${Date.now()}`,
-      x: clickX - 130,
-      y: clickY - 75,
-      width: 260,
-      height: 150,
-      text: 'Nova ideia...',
-      color: COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)]
-    }
-    saveCanvas([...cards, newCard], connections)
-    setSelectedCardId(newCard.id)
-  }
-
-  return (
-    <div
-      className="relative w-full h-full bg-[#0d0d10] overflow-hidden select-none"
-      onMouseDown={handleCanvasMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onDoubleClick={handleDoubleClickCanvas}
-    >
-      {/* Dot Grid Background */}
-      <div
-        className="absolute inset-0 pointer-events-none opacity-20"
-        style={{
-          backgroundImage: 'radial-gradient(circle, #52525b 1px, transparent 1px)',
-          backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
-          backgroundPosition: `${pan.x}px ${pan.y}px`
-        }}
-      />
-
-      {/* 1. Floating Canvas Action Toolbar */}
-      <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-zinc-900/90 backdrop-blur-md border border-zinc-800 rounded-xl p-1.5 shadow-2xl">
-        <button
-          onClick={() => handleAddCard()}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-zinc-950 rounded-lg text-xs font-semibold transition-all shadow-md shadow-amber-950/30 cursor-pointer"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Novo Cartão</span>
-        </button>
-
-        {notes.length > 0 && (
-          <div className="relative">
-            <button
-              onClick={() => setShowNotePicker(p => !p)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700/60 rounded-lg text-xs font-medium transition-colors"
-            >
-              <FileText className="w-3.5 h-3.5 text-amber-400" />
-              <span>Inserir Nota</span>
-            </button>
-
-            {showNotePicker && (
-              <div className="absolute top-10 left-0 w-56 bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl p-1 z-30 max-h-60 overflow-y-auto">
-                <div className="px-2 py-1 text-[10px] uppercase font-semibold text-zinc-500">
-                  Notas do Vault
-                </div>
-                {notes.map(n => (
-                  <button
-                    key={n.id}
-                    onClick={() => handleAddNoteCard(n)}
-                    className="w-full text-left px-2 py-1.5 hover:bg-zinc-800 rounded-lg text-xs text-zinc-300 hover:text-white truncate"
-                  >
-                    {n.title}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="h-4 w-px bg-zinc-800" />
-
-        <button
-          onClick={() => setZoom(z => Math.min(2.5, z + 0.15))}
-          className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors"
-          title="Zoom In"
-        >
-          <ZoomIn className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setZoom(z => Math.max(0.3, z - 0.15))}
-          className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors"
-          title="Zoom Out"
-        >
-          <ZoomOut className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }}
-          className="px-2 py-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors text-xs font-mono"
-          title="Resetar Zoom e Câmera"
-        >
-          {Math.round(zoom * 100)}%
-        </button>
-
-        {connectingFromId && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-medium animate-pulse">
-            <ArrowRight className="w-3.5 h-3.5" />
-            <span>Clique no cartão de destino</span>
-          </div>
-        )}
+  const editedEdge = board?.connections.find(edge => edge.id === edgeId)
+  const button = 'canvas-button'
+  return <div ref={surface} className="canvas-project" aria-label="Quadro do projeto" onPointerDown={event => pointerDown(event)} onPointerMove={event => {
+    const moving = drag.current
+    if (!moving || moving.pointer !== event.pointerId || !board) return
+    const dx = event.clientX - moving.x, dy = event.clientY - moving.y
+    changeBoard(current => moving.card ? { ...current, cards: current.cards.map(card => card.id === moving.card ? { ...card, x: moving.originX + dx / current.view.zoom, y: moving.originY + dy / current.view.zoom } : card) } : { ...current, view: { ...current.view, x: moving.originX + dx, y: moving.originY + dy } }, false)
+  }} onPointerUp={stopDrag} onPointerCancel={stopDrag} onDoubleClick={event => {
+    if ((event.target as HTMLElement).closest('.canvas-ui, .canvas-card, .canvas-edge') || !board) return
+    const rect = surface.current!.getBoundingClientRect()
+    addCard(undefined, { x: (event.clientX - rect.left - board.view.x) / board.view.zoom, y: (event.clientY - rect.top - board.view.y) / board.view.zoom })
+  }} onKeyDown={event => { if (event.key === 'Escape') resetSelection() }}>
+    <div className="canvas-dots" style={{ backgroundSize: `${24 * (board?.view.zoom || 1)}px ${24 * (board?.view.zoom || 1)}px`, backgroundPosition: `${board?.view.x || 0}px ${board?.view.y || 0}px` }}/>
+    <div className="canvas-ui canvas-project-toolbar">
+      <div className="canvas-project-heading"><div><span className="canvas-eyebrow">Quadros do projeto</span><small role="status">{status}</small></div>
+        <select aria-label="Selecionar quadro" value={document?.activeBoardId || ''} disabled={!document} onChange={event => { if (document) { persist({ ...document, activeBoardId: event.target.value }); resetSelection() } }}>{document?.boards.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       </div>
-
-      {/* 2. Curved Cubic Bezier SVG Connections Layer */}
-      <svg
-        className="absolute inset-0 w-full h-full pointer-events-none z-0"
-        style={{
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-          transformOrigin: '0 0'
-        }}
-      >
-        <defs>
-          <marker
-            id="canvas-arrow"
-            viewBox="0 0 10 10"
-            refX="6"
-            refY="5"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#8b5cf6" />
-          </marker>
-        </defs>
-
-        {connections.map((conn, index) => {
-          const fromCard = cards.find(c => c.id === conn.from)
-          const toCard = cards.find(c => c.id === conn.to)
-          if (!fromCard || !toCard) return null
-
-          const x1 = fromCard.x + fromCard.width / 2
-          const y1 = fromCard.y + fromCard.height / 2
-          const x2 = toCard.x + toCard.width / 2
-          const y2 = toCard.y + toCard.height / 2
-
-          // Smooth cubic bezier curve control points
-          const dx = Math.abs(x2 - x1) * 0.5
-          const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
-
-          return (
-            <g key={`${conn.id}_${index}`} className="cursor-pointer pointer-events-auto group" onClick={() => handleDeleteConnection(conn.id)}>
-              <path
-                d={pathData}
-                fill="none"
-                stroke="#8b5cf6"
-                strokeWidth={2.5}
-                strokeDasharray="4 4"
-                markerEnd="url(#canvas-arrow)"
-                className="group-hover:stroke-rose-400 transition-colors"
-              />
-              {conn.label && (
-                <text
-                  x={(x1 + x2) / 2}
-                  y={(y1 + y2) / 2 - 8}
-                  fill="#c084fc"
-                  fontSize="11"
-                  textAnchor="middle"
-                  className="font-sans font-medium"
-                >
-                  {conn.label}
-                </text>
-              )}
-            </g>
-          )
-        })}
-      </svg>
-
-      {/* 3. Cards Layer */}
-      <div
-        className="absolute inset-0 w-full h-full"
-        style={{
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-          transformOrigin: '0 0'
-        }}
-      >
-        {cards.map(card => {
-          const isSelected = card.id === selectedCardId
-          const isConnectingSource = card.id === connectingFromId
-
-          return (
-            <div
-              key={card.id}
-              className={`canvas-card absolute rounded-2xl p-4 shadow-2xl flex flex-col justify-between border cursor-move transition-all backdrop-blur-sm ${
-                isSelected
-                  ? 'ring-2 ring-amber-400/80 border-transparent shadow-amber-950/40'
-                  : 'border-zinc-800/80 hover:border-zinc-700'
-              } ${isConnectingSource ? 'ring-2 ring-amber-400' : ''}`}
-              style={{
-                left: card.x,
-                top: card.y,
-                width: card.width,
-                height: card.height,
-                backgroundColor: '#16161a',
-                borderTop: `4px solid ${card.color}`
-              }}
-              onMouseDown={(e) => handleCardMouseDown(e, card)}
-            >
-              {card.title && (
-                <div className="flex items-center justify-between pb-1.5 mb-1 border-b border-zinc-800 text-xs font-semibold text-zinc-100">
-                  <span className="truncate">{card.title}</span>
-                  {card.noteId && onOpenNote && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onOpenNote(card.noteId!)
-                      }}
-                      className="p-1 hover:text-amber-400 rounded text-[10px]"
-                      title="Abrir nota no Editor"
-                    >
-                      ↗
-                    </button>
-                  )}
-                </div>
-              )}
-
-              <textarea
-                value={card.text}
-                onChange={(e) => handleUpdateCardText(card.id, e.target.value)}
-                className="w-full flex-1 bg-transparent resize-none text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none selectable-text leading-relaxed font-sans"
-                placeholder="Escreva sua ideia aqui..."
-              />
-
-              {/* Card Footer Controls */}
-              <div className="flex items-center justify-between pt-2 border-t border-zinc-800/80 text-zinc-500">
-                <div className="flex items-center gap-1.5">
-                  {COLOR_PALETTE.map(c => (
-                    <button
-                      key={c}
-                      onClick={() => handleChangeCardColor(card.id, c)}
-                      className="w-2.5 h-2.5 rounded-full hover:scale-150 transition-transform"
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => handleStartConnect(card.id)}
-                    className="p-1 hover:text-amber-400 hover:bg-zinc-800 rounded-md transition-colors"
-                    title="Conectar com outro cartão (clique aqui, depois no outro)"
-                  >
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteCard(card.id)}
-                    className="p-1 hover:text-rose-400 hover:bg-zinc-800 rounded-md transition-colors"
-                    title="Excluir cartão"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
-        })}
+      <div className="canvas-toolbar-actions">
+        <button className={button} disabled={!board} onClick={() => { setForm('new'); setBoardName(''); setPicker(false) }}><Plus size={14}/>Novo quadro</button>
+        <button className={button} disabled={!board} onClick={() => { setForm('rename'); setBoardName(board!.name) }}>Renomear</button>
+        <button className={button} disabled={!board} onClick={() => addCard()}><Plus size={14}/>Ideia</button>
+        <button className={button} disabled={!board} onClick={() => { setPicker(!picker); setQuery(''); setForm(null) }}><FileText size={14}/>Vincular nota</button>
+        <button className={button} disabled={!board} aria-label="Excluir quadro" onClick={() => setForm('delete')}><Trash2 size={14}/></button>
       </div>
-
-      {/* 4. Canvas Helper Pill */}
-      <div className="absolute bottom-5 left-5 z-20 bg-zinc-900/80 backdrop-blur-md border border-zinc-800 rounded-xl px-3.5 py-1.5 text-xs text-zinc-500 shadow-xl flex items-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-        <span>Dê duplo clique para criar um cartão em qualquer lugar</span>
-      </div>
+      {picker && <div className="canvas-note-picker"><input autoFocus aria-label="Buscar nota para vincular" placeholder="Buscar notas do cofre…" value={query} onChange={event => setQuery(event.target.value)}/><div>{notes.filter(note => (note.title + ' ' + note.folder).toLowerCase().includes(query.toLowerCase())).map(note => <button key={note.id} onClick={() => addCard(note)}><span>{note.title}</span><small>{note.folder || 'Início'}</small></button>)}{!notes.length && <p>Crie uma nota no editor para vinculá-la aqui.</p>}</div></div>}
     </div>
-  )
+    {error && <div className="canvas-ui canvas-error" role="alert">{error}<button className={button} onClick={() => document ? persist(document) : setRetry(value => value + 1)}>Tentar novamente</button></div>}
+    {form && <div className="canvas-ui canvas-board-form" role="dialog" aria-label={form === 'new' ? 'Novo quadro' : form === 'rename' ? 'Renomear quadro' : 'Excluir quadro'}>
+      {form === 'delete' ? <><p>Excluir “{board?.name}” e seus cartões? As notas vinculadas serão mantidas.</p><div><button className={button} onClick={() => { if (!document || !board) return; const remaining = document.boards.filter(item => item.id !== board.id); if (!remaining.length) remaining.push(createBoard('Novo projeto')); persist({ ...document, boards: remaining, activeBoardId: remaining[0].id }); resetSelection() }}>Excluir quadro</button><button className={button} onClick={() => setForm(null)}>Cancelar</button></div></> : <form onSubmit={event => { event.preventDefault(); if (!boardName.trim() || !document) return; if (form === 'new') { const next = createBoard(boardName.trim()); persist({ ...document, boards: [...document.boards, next], activeBoardId: next.id }) } else changeBoard(current => ({ ...current, name: boardName.trim() })); resetSelection() }}><label>Nome do projeto<input autoFocus required maxLength={100} value={boardName} onChange={event => setBoardName(event.target.value)}/></label><div><button className={button} type="submit">{form === 'new' ? 'Criar quadro' : 'Salvar nome'}</button><button type="button" className={button} onClick={() => setForm(null)}>Cancelar</button></div></form>}
+    </div>}
+    {board && <>
+      <div className="canvas-world" style={{ transform: `translate(${board.view.x}px, ${board.view.y}px) scale(${board.view.zoom})` }}>
+        <svg className="canvas-lines"><defs><marker id="project-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 1 L9 5 L0 9" fill="none" stroke="#a1a1aa"/></marker></defs>
+          {board.connections.map(edge => {
+            const from = board.cards.find(card => card.id === edge.from), to = board.cards.find(card => card.id === edge.to)
+            if (!from || !to) return null
+            const horizontal = Math.abs(to.x - from.x) > Math.abs(to.y - from.y)
+            const forward = horizontal ? to.x >= from.x : to.y >= from.y
+            const x1 = horizontal ? from.x + (forward ? from.width : 0) : from.x + from.width / 2, y1 = horizontal ? from.y + from.height / 2 : from.y + (forward ? from.height : 0)
+            const x2 = horizontal ? to.x + (forward ? 0 : to.width) : to.x + to.width / 2, y2 = horizontal ? to.y + to.height / 2 : to.y + (forward ? 0 : to.height)
+            const d = `M${x1} ${y1} L${x2} ${y2}`
+            return <g key={edge.id} className="canvas-edge" role="button" tabIndex={0} aria-label={`Editar conexão: ${edge.label || 'Sem nome'}`} onClick={() => setEdgeId(edge.id)} onKeyDown={event => { if (event.key === 'Enter') setEdgeId(edge.id) }}><path d={d} stroke="transparent" strokeWidth={20}/><path d={d} fill="none" stroke={edgeId === edge.id ? '#e4e4e7' : '#71717a'} strokeWidth={1.5} markerEnd="url(#project-arrow)"/><text x={(x1+x2)/2} y={(y1+y2)/2-9} textAnchor="middle">{edge.label || 'Nomear conexão'}</text></g>
+          })}
+        </svg>
+        {board.cards.map(card => {
+          const linked = !!card.noteId || !!card.notePath, note = linked ? linkedNote(card, notes, vaultPath) : undefined
+          return <article key={card.id} data-card-id={card.id} className={`canvas-card ${selected === card.id ? 'is-selected' : ''} ${connecting === card.id ? 'is-connecting' : ''}`} style={{ left: card.x, top: card.y, width: card.width, height: card.height }} onClick={() => { if (connecting && connecting !== card.id) connectTo(card.id); else setSelected(card.id) }}>
+            <header onPointerDown={event => { event.stopPropagation(); pointerDown(event, card) }} title="Arraste para mover o cartão">{linked ? <><FileText size={14}/><strong>{note?.title || card.title || 'Nota vinculada'}</strong></> : <input aria-label="Título da ideia" value={card.title || ''} onPointerDown={event => event.stopPropagation()} onChange={event => changeBoard(current => ({ ...current, cards: current.cards.map(item => item.id === card.id ? { ...item, title: event.target.value } : item) }))}/>}<span className="canvas-drag-handle">⠿</span></header>
+            {linked ? <div className="canvas-linked-content">{note ? <p>{note.content || 'Esta nota ainda está vazia.'}</p> : <p className="canvas-missing">Nota não encontrada no cofre. O vínculo foi preservado.</p>}</div> : <textarea aria-label="Conteúdo da ideia" placeholder="Escreva sua ideia…" value={card.text} onChange={event => changeBoard(current => ({ ...current, cards: current.cards.map(item => item.id === card.id ? { ...item, text: event.target.value } : item) }))}/>}
+            <footer><span>{linked ? note ? 'Vinculada à nota' : 'Vínculo indisponível' : 'Ideia livre'}</span><div>{note && <button title="Abrir nota no editor" onClick={event => { event.stopPropagation(); onOpenNote?.(note.id) }}>Abrir ↗</button>}<button title="Conectar cartão" aria-label={`Conectar ${note?.title || card.title || 'cartão'}`} onClick={event => { event.stopPropagation(); connectTo(card.id) }}><Link2 size={14}/></button><button title="Remover cartão" onClick={event => { event.stopPropagation(); removeCard(card.id) }}><X size={14}/></button></div></footer>
+          </article>
+        })}
+      </div>
+      {!board.cards.length && <div className="canvas-ui canvas-empty"><h2>Um espaço para este projeto</h2><p>Traga suas notas, escreva ideias e conecte o que faz sentido.</p><div><button className={button} onClick={() => addCard()}>Adicionar ideia</button><button className={button} onClick={() => { setPicker(true); setQuery('') }}>Vincular uma nota</button></div></div>}
+      {editedEdge && <div className="canvas-ui canvas-edge-editor"><label>Nome da conexão<input autoFocus value={editedEdge.label || ''} onChange={event => changeBoard(current => ({ ...current, connections: current.connections.map(edge => edge.id === editedEdge.id ? { ...edge, label: event.target.value } : edge) }))}/></label><button className={button} aria-label="Excluir conexão" onClick={() => { changeBoard(current => ({ ...current, connections: current.connections.filter(edge => edge.id !== editedEdge.id) })); setEdgeId(null) }}><Trash2 size={14}/></button><button className={button} aria-label="Fechar conexão" onClick={() => setEdgeId(null)}><X size={14}/></button></div>}
+      <div className="canvas-ui canvas-navigation"><button className={button} aria-label="Diminuir zoom" onClick={() => zoomTo(board.view.zoom - .15)}><ZoomOut size={15}/></button><span>{Math.round(board.view.zoom * 100)}%</span><button className={button} aria-label="Aumentar zoom" onClick={() => zoomTo(board.view.zoom + .15)}><ZoomIn size={15}/></button><button className={button} onClick={fit} title="Enquadrar todos os cartões"><Maximize2 size={15}/>Enquadrar</button></div>
+      <p className="canvas-ui canvas-hint">{connecting ? <><ArrowRight size={14}/>Escolha o cartão de destino. Esc cancela.</> : <>Arraste pelo cabeçalho · Duplo clique cria uma ideia</>}</p>
+    </>}
+  </div>
 }

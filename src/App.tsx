@@ -863,6 +863,8 @@ export const App: React.FC = () => {
 
               {currentView === 'canvas' && (
                 <CanvasView
+                  key={vaultPath || 'local'}
+                  vaultPath={vaultPath || undefined}
                   notes={notes}
                   onOpenNote={handleSelectNote}
                 />

@@ -54,6 +54,7 @@ export interface CanvasCard {
   text: string
   color: string
   noteId?: string
+  notePath?: string
   title?: string
 }
 
