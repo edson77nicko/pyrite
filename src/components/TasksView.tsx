@@ -257,7 +257,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   }
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#0f0f12] text-zinc-100 select-none overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-[#121215] text-zinc-100 select-none overflow-hidden">
       <style>{`
         @keyframes pyriteBurst1 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(-10px, -8px) scale(0); opacity: 0; } }
         @keyframes pyriteBurst2 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(0px, -12px) scale(0); opacity: 0; } }
@@ -858,7 +858,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
       ) : (
         /* KANBAN BOARD VIEW - Distinct Contrast, Refined Header & Cards */
-        <div className="flex-1 overflow-x-auto overflow-y-hidden custom-chat-scrollbar p-5 flex gap-4 items-start bg-[#0a0b0e]">
+        <div className="flex-1 overflow-x-auto overflow-y-hidden custom-chat-scrollbar p-5 flex gap-4 items-start bg-[#121215]">
           {kanbanGroupBy === 'status'
             ? settings.statuses.map(statusCol => {
                 const colTasks = filteredTasks.filter(t => t.statusId === statusCol.id)
@@ -885,12 +885,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       setDraggedTaskId(null)
                       setDragOverColumnId(null)
                     }}
-                    className={`w-76 shrink-0 flex flex-col max-h-full rounded-2xl bg-[#13141f] border border-zinc-800/80 shadow-md shadow-black/30 overflow-hidden transition-all ${
-                      isDragTarget ? 'ring-2 ring-[var(--accent)]/60 bg-[#171826]' : ''
+                    className={`w-76 shrink-0 flex flex-col max-h-full rounded-2xl bg-[#0e0e11] border-0 overflow-hidden transition-all ${
+                      isDragTarget ? 'ring-1 ring-[var(--accent)]/50 bg-[#111114]' : ''
                     }`}
                   >
                     {/* Differentiated Column Header */}
-                    <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#181926] border-b border-zinc-800/80 shrink-0">
+                    <div className="flex items-center justify-between mx-1.5 mt-1.5 px-3 py-2 rounded-xl bg-[#1b1b1f] shadow-[0_2px_6px_rgba(0,0,0,0.45)] shrink-0">
                       <div className="flex items-center gap-2 min-w-0">
                         <span
                           className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs"
@@ -899,7 +899,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <span className="text-xs font-semibold text-zinc-100 truncate tracking-wide">
                           {statusCol.name}
                         </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-medium bg-[#101118] text-zinc-400 border border-zinc-800/80 shrink-0">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-medium bg-[#0e0e11] text-zinc-400 shrink-0">
                           {colTasks.length}
                         </span>
                       </div>
@@ -908,7 +908,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           setAddingInColumnId(statusCol.id)
                           setNewColumnTaskTitle('')
                         }}
-                        className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/70 rounded-lg transition-colors cursor-pointer shrink-0"
+                        className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/40 rounded-lg transition-colors cursor-pointer shrink-0"
                         title="Adicionar tarefa nesta coluna"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -946,8 +946,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               isDragging ? 'opacity-40 scale-95' : 'opacity-100'
                             } ${
                               isSelected
-                                ? 'bg-[#202232] ring-1 ring-[var(--accent)] shadow-md border-0'
-                                : 'bg-[#181926] hover:bg-[#1d1e2e] border border-zinc-800/80 hover:border-zinc-700/80 shadow-xs'
+                                ? 'bg-[#1a1a1e] ring-1 ring-[var(--accent)]/70 border-0'
+                                : 'bg-[#161619] hover:bg-[#1a1a1e] border-0'
                             }`}
                           >
                             {/* Card Top: Checkbox, Title, Delete */}
@@ -992,7 +992,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
                               {/* Subtasks Progress Badge */}
                               {task.subtasks && task.subtasks.length > 0 && (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-[#1a1b24] text-zinc-300 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-800/50 text-zinc-300 whitespace-nowrap">
                                   <CheckSquare className="w-2.5 h-2.5 text-zinc-400 shrink-0" />
                                   <span>
                                     {task.subtasks.filter(st => st.completed).length}/{task.subtasks.length}
@@ -1078,7 +1078,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               if (!newColumnTaskTitle.trim()) setAddingInColumnId(null)
                             }}
                             placeholder="Nome da tarefa... (Enter)"
-                            className="w-full px-3 py-2 bg-[#181926] border border-zinc-750 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 shadow-inner"
+                            className="w-full px-3 py-2 bg-[#161619] border-0 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none"
                           />
                         </form>
                       )}
@@ -1092,7 +1092,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             setAddingInColumnId(statusCol.id)
                             setNewColumnTaskTitle('')
                           }}
-                          className="w-full py-1.5 px-3 flex items-center justify-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-xl transition-colors cursor-pointer border border-dashed border-zinc-800/70 hover:border-zinc-750"
+                          className="w-full py-1.5 px-3 flex items-center justify-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-[#161619] rounded-xl transition-colors cursor-pointer"
                         >
                           <Plus className="w-3 h-3" />
                           <span>Adicionar tarefa</span>
@@ -1127,12 +1127,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       setDraggedTaskId(null)
                       setDragOverColumnId(null)
                     }}
-                    className={`w-76 shrink-0 flex flex-col max-h-full rounded-2xl bg-[#13141f] border border-zinc-800/80 shadow-md shadow-black/30 overflow-hidden transition-all ${
-                      isDragTarget ? 'ring-2 ring-[var(--accent)]/60 bg-[#171826]' : ''
+                    className={`w-76 shrink-0 flex flex-col max-h-full rounded-2xl bg-[#0e0e11] border-0 overflow-hidden transition-all ${
+                      isDragTarget ? 'ring-1 ring-[var(--accent)]/50 bg-[#111114]' : ''
                     }`}
                   >
                     {/* Differentiated Column Header */}
-                    <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#181926] border-b border-zinc-800/80 shrink-0">
+                    <div className="flex items-center justify-between mx-1.5 mt-1.5 px-3 py-2 rounded-xl bg-[#1b1b1f] shadow-[0_2px_6px_rgba(0,0,0,0.45)] shrink-0">
                       <div className="flex items-center gap-2 min-w-0">
                         <Flag
                           className="w-3.5 h-3.5 shrink-0"
@@ -1141,7 +1141,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <span className="text-xs font-semibold text-zinc-100 truncate tracking-wide">
                           {priorityCol.label}
                         </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-medium bg-[#101118] text-zinc-400 border border-zinc-800/80 shrink-0">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-medium bg-[#0e0e11] text-zinc-400 shrink-0">
                           {colTasks.length}
                         </span>
                       </div>
@@ -1150,7 +1150,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           setAddingInColumnId(priorityCol.id)
                           setNewColumnTaskTitle('')
                         }}
-                        className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/70 rounded-lg transition-colors cursor-pointer shrink-0"
+                        className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/40 rounded-lg transition-colors cursor-pointer shrink-0"
                         title="Adicionar tarefa nesta coluna"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -1190,8 +1190,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               isDragging ? 'opacity-40 scale-95' : 'opacity-100'
                             } ${
                               isSelected
-                                ? 'bg-[#202232] ring-1 ring-[var(--accent)] shadow-md border-0'
-                                : 'bg-[#181926] hover:bg-[#1d1e2e] border border-zinc-800/80 hover:border-zinc-700/80 shadow-xs'
+                                ? 'bg-[#1a1a1e] ring-1 ring-[var(--accent)]/70 border-0'
+                                : 'bg-[#161619] hover:bg-[#1a1a1e] border-0'
                             }`}
                           >
                             {/* Card Top: Checkbox, Title, Delete */}
@@ -1236,7 +1236,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
                               {/* Subtasks Progress Badge */}
                               {task.subtasks && task.subtasks.length > 0 && (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-[#1a1b24] text-zinc-300 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-800/50 text-zinc-300 whitespace-nowrap">
                                   <CheckSquare className="w-2.5 h-2.5 text-zinc-400 shrink-0" />
                                   <span>
                                     {task.subtasks.filter(st => st.completed).length}/{task.subtasks.length}
@@ -1323,7 +1323,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               if (!newColumnTaskTitle.trim()) setAddingInColumnId(null)
                             }}
                             placeholder="Nome da tarefa... (Enter)"
-                            className="w-full px-3 py-2 bg-[#181926] border border-zinc-750 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 shadow-inner"
+                            className="w-full px-3 py-2 bg-[#161619] border-0 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none"
                           />
                         </form>
                       )}
@@ -1337,7 +1337,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             setAddingInColumnId(priorityCol.id)
                             setNewColumnTaskTitle('')
                           }}
-                          className="w-full py-1.5 px-3 flex items-center justify-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-xl transition-colors cursor-pointer border border-dashed border-zinc-800/70 hover:border-zinc-750"
+                          className="w-full py-1.5 px-3 flex items-center justify-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-[#161619] rounded-xl transition-colors cursor-pointer"
                         >
                           <Plus className="w-3 h-3" />
                           <span>Adicionar tarefa</span>
