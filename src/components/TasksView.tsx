@@ -348,12 +348,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
       {/* 2. Main Content: Lista or Kanban */}
       {viewMode === 'list' ? (
-        /* LIST / TABLE VIEW - Completely Borderless and Clean */
-        <div className="flex-1 overflow-x-auto overflow-y-auto custom-chat-scrollbar px-3 py-2">
-          <table className="w-full text-left text-xs border-separate border-spacing-y-0.5">
+        /* LIST / TABLE VIEW - Distinct Tonal Hierarchy and Seamless Cards */
+        <div className="flex-1 overflow-x-auto overflow-y-auto custom-chat-scrollbar px-5 py-3">
+          <table className="w-full text-left text-xs border-separate border-spacing-y-2">
             <thead>
-              <tr className="text-zinc-500 uppercase text-[9.5px] tracking-wider font-semibold">
-                <th className="w-9 px-3 py-2"></th>
+              <tr className="text-zinc-500 uppercase text-[10px] tracking-wider font-semibold">
+                <th className="w-10 px-3 py-2"></th>
                 <th className="px-3 py-2">Tarefa</th>
                 <th className="px-3 py-2 w-36">Status</th>
                 <th className="px-3 py-2 w-28">Prioridade</th>
@@ -380,30 +380,30 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     <tr
                       key={task.id}
                       onClick={() => onSelectTask(task)}
-                      className={`group transition-colors cursor-pointer ${
+                      className={`group transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-zinc-850/50'
-                          : 'hover:bg-zinc-850/30'
+                          ? 'bg-[#1b1b24]'
+                          : 'bg-[#141418] hover:bg-[#191920]'
                       }`}
                       style={
                         isSelected
                           ? {
-                              backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.08))'
+                              boxShadow: 'inset 0 0 0 1.5px var(--accent, #c59b27)'
                             }
                           : undefined
                       }
                     >
                       {/* Checkbox */}
-                      <td className="px-3 py-2 first:rounded-l-lg">
+                      <td className="px-3 py-2.5 first:rounded-l-xl">
                         <button
                           onClick={e => handleToggleComplete(task, e)}
                           className="transition-transform hover:scale-110 cursor-pointer flex items-center justify-center"
                         >
                           {task.completed ? (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                           ) : (
                             <Circle
-                              className="w-3.5 h-3.5 text-zinc-600 transition-colors"
+                              className="w-4 h-4 text-zinc-600 transition-colors"
                               style={{ color: isSelected ? 'var(--accent)' : undefined }}
                             />
                           )}
@@ -411,14 +411,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       </td>
 
                       {/* Task Title */}
-                      <td className="px-3 py-2 font-medium text-zinc-100 max-w-xs truncate">
+                      <td className="px-3 py-2.5 font-medium text-zinc-100 max-w-xs truncate text-[12.5px]">
                         <span className={task.completed ? 'line-through text-zinc-500' : ''}>
                           {task.title}
                         </span>
                       </td>
 
                       {/* Status Pill */}
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5">
                         <span
                           className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10.5px] font-medium"
                           style={{
@@ -435,7 +435,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       </td>
 
                       {/* Priority Pill */}
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5">
                         {task.priority !== 'none' ? (
                           <span
                             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-medium"
@@ -453,7 +453,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       </td>
 
                       {/* Deadline Pill - Never wraps */}
-                      <td className="px-3 py-2 text-zinc-300 relative whitespace-nowrap">
+                      <td className="px-3 py-2.5 text-zinc-300 relative whitespace-nowrap">
                         <div
                           ref={editingDeadlineTaskId === task.id ? deadlineBtnRef : undefined}
                           className="inline-block"
@@ -509,14 +509,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       </td>
 
                       {/* Context (Nota vinculada) */}
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5">
                         {task.contextNoteId ? (
                           <span
                             onClick={e => {
                               e.stopPropagation()
                               onOpenNote(task.contextNoteId!)
                             }}
-                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-850/80 hover:bg-zinc-800 transition-colors text-[11px] font-medium max-w-[190px] truncate"
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-800/80 hover:bg-zinc-750 transition-colors text-[11px] font-medium max-w-[190px] truncate"
                             style={{ color: 'var(--accent, #c59b27)' }}
                             title="Abrir nota vinculada no editor"
                           >
@@ -529,12 +529,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       </td>
 
                       {/* Tags */}
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1 flex-wrap">
                           {task.tags.map(tag => (
                             <span
                               key={tag}
-                              className="px-1.5 py-0.2 rounded bg-zinc-850/60 text-[10px] text-zinc-400 font-mono"
+                              className="px-1.5 py-0.2 rounded bg-zinc-850/80 text-[10px] text-zinc-400 font-mono"
                             >
                               #{tag}
                             </span>
@@ -543,7 +543,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       </td>
 
                       {/* Row Action */}
-                      <td className="px-3 py-2 text-right last:rounded-r-lg">
+                      <td className="px-3 py-2.5 text-right last:rounded-r-xl">
                         <button
                           onClick={e => {
                             e.stopPropagation()
@@ -554,7 +554,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition-opacity cursor-pointer"
                           title="Excluir tarefa"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </td>
                     </tr>
@@ -563,18 +563,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
               )}
 
               {/* Inline Quick Add Row */}
-              <tr className="hover:bg-zinc-850/20 transition-colors">
-                <td className="px-3 py-2 text-center first:rounded-l-lg">
-                  <Plus className="w-3 h-3 text-zinc-600" />
+              <tr className="bg-[#121215]/60 hover:bg-[#15151b] transition-colors rounded-xl">
+                <td className="px-3 py-2.5 text-center first:rounded-l-xl">
+                  <Plus className="w-3.5 h-3.5 text-zinc-500" />
                 </td>
-                <td colSpan={7} className="px-3 py-2 last:rounded-r-lg">
+                <td colSpan={7} className="px-3 py-2.5 last:rounded-r-xl">
                   <form onSubmit={handleQuickAddInList} className="flex items-center">
                     <input
                       type="text"
                       value={newTaskInput}
                       onChange={e => setNewTaskInput(e.target.value)}
                       placeholder="+ Adicionar nova tarefa e pressionar Enter..."
-                      className="w-full bg-transparent text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none"
+                      className="w-full bg-transparent text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none"
                     />
                   </form>
                 </td>
@@ -583,7 +583,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           </table>
         </div>
       ) : (
-        /* KANBAN BOARD VIEW - Borderless, Fluid Drag & Drop */
+        /* KANBAN BOARD VIEW - Borderless, Fluid Drag & Drop, No clipping */
         <div className="flex-1 overflow-x-auto overflow-y-hidden custom-chat-scrollbar p-5 flex gap-4 items-start">
           {kanbanGroupBy === 'status'
             ? settings.statuses.map(statusCol => {
@@ -641,8 +641,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       </button>
                     </div>
 
-                    {/* Column Cards Container */}
-                    <div className="flex-1 overflow-y-auto space-y-2 custom-chat-scrollbar pr-0.5">
+                    {/* Column Cards Container - px-1.5 py-1 ensures border/shadow is never clipped */}
+                    <div className="flex-1 overflow-y-auto space-y-2.5 custom-chat-scrollbar px-1.5 py-1">
                       {colTasks.length === 0 && !isAdding && (
                         <div className="py-8 text-center text-xs text-zinc-600">
                           Nenhuma tarefa
@@ -671,13 +671,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               isDragging ? 'opacity-40 scale-95' : 'opacity-100'
                             } ${
                               isSelected
-                                ? 'bg-[#1b1b22] ring-1'
+                                ? 'bg-[#1b1b22]'
                                 : 'bg-[#17171c] hover:bg-[#1f1f26]'
                             }`}
                             style={
                               isSelected
                                 ? {
-                                    boxShadow: '0 0 0 1px var(--accent, #c59b27)'
+                                    boxShadow: 'inset 0 0 0 1.5px var(--accent, #c59b27)'
                                   }
                                 : undefined
                             }
@@ -865,15 +865,15 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           setAddingInColumnId(priorityCol.id)
                           setNewColumnTaskTitle('')
                         }}
-                        className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
+                        className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-850/50 rounded-lg transition-colors cursor-pointer"
                         title="Adicionar tarefa nesta coluna"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
                     </div>
 
-                    {/* Column Cards Container */}
-                    <div className="flex-1 overflow-y-auto space-y-2 custom-chat-scrollbar pr-0.5">
+                    {/* Column Cards Container - px-1.5 py-1 ensures border/shadow is never clipped */}
+                    <div className="flex-1 overflow-y-auto space-y-2.5 custom-chat-scrollbar px-1.5 py-1">
                       {colTasks.length === 0 && !isAdding && (
                         <div className="py-8 text-center text-xs text-zinc-600">
                           Nenhuma tarefa
@@ -904,13 +904,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               isDragging ? 'opacity-40 scale-95' : 'opacity-100'
                             } ${
                               isSelected
-                                ? 'bg-[#1b1b22] ring-1'
+                                ? 'bg-[#1b1b22]'
                                 : 'bg-[#17171c] hover:bg-[#1f1f26]'
                             }`}
                             style={
                               isSelected
                                 ? {
-                                    boxShadow: '0 0 0 1px var(--accent, #c59b27)'
+                                    boxShadow: 'inset 0 0 0 1.5px var(--accent, #c59b27)'
                                   }
                                 : undefined
                             }
@@ -960,7 +960,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               >
                                 <span
                                   className="w-1.5 h-1.5 rounded-full shrink-0"
-                                  style={{ backgroundColor: statusObj.color }}
+                                  style={{ backgroundColor: statusColColor(statusObj.color) }}
                                 />
                                 <span>{statusObj.name}</span>
                               </span>
@@ -1063,6 +1063,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
       />
     </div>
   )
+}
+
+function statusColColor(color: string) {
+  return color || '#71717a'
 }
 
 export default TasksView

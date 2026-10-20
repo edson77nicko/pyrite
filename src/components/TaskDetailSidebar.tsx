@@ -496,7 +496,10 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
           </div>
         </div>
 
-        {/* 3. Internal Content / Notes of the Task (100% clean note surface, no guidance labels, no divider lines) */}
+        {/* Divisor bem apagado entre as propriedades e o conteúdo */}
+        <div className="h-px bg-zinc-800/25 my-3.5 mx-1" />
+
+        {/* 3. Internal Content / Notes of the Task (100% clean note surface, no guidance labels) */}
         <div className="flex-1 flex flex-col min-h-[300px] pt-1">
           <div className="flex-1 relative bg-transparent">
             <LivePreviewEditor

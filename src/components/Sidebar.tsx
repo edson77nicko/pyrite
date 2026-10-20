@@ -540,40 +540,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex-1 overflow-y-auto overflow-x-auto px-1.5 py-1 space-y-2 custom-chat-scrollbar min-w-0">
         
         {/* PARTE 1: WORKSPACE */}
-        <div className="space-y-0.5">
-          <div className="px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-zinc-500">
+        <div className="space-y-1.5 pt-1 pb-1">
+          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
             Workspace
           </div>
 
           <div
             onClick={onOpenTasks}
-            className={`group flex items-center justify-between px-2 py-1 rounded-md text-[11.5px] cursor-pointer transition-colors border ${
+            className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors border ${
               currentView === 'tasks'
                 ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'
             }`}
             style={currentView === 'tasks' ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
           >
-            <div className="flex items-center gap-1.5 truncate min-w-0">
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
-              <span className="truncate">Tarefas</span>
+            <div className="flex items-center gap-2 truncate min-w-0">
+              <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
+              <span className="truncate font-medium">Tarefas</span>
             </div>
             {pendingTasksCount !== undefined && pendingTasksCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-mono bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
+              <span className="px-1.5 py-0.5 rounded-full text-[9.5px] font-mono bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
                 {pendingTasksCount}
               </span>
             )}
           </div>
         </div>
 
-        {/* Divisor sutil */}
-        <div className="h-px bg-zinc-800/50 my-1 mx-1" />
+        {/* Divisor sutil e espaçado */}
+        <div className="h-px bg-zinc-800/30 my-3 mx-2" />
 
         {/* PARTE 2: DOCUMENTOS */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-zinc-500">
+        <div className="space-y-1.5 pt-1">
+          <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
             <span>Documentos</span>
-            <span className="text-[9px] font-mono text-zinc-600">{notes.length}</span>
+            <span className="text-[9.5px] font-mono text-zinc-600">{notes.length}</span>
           </div>
 
           {/* Favoritos (Star section) */}
