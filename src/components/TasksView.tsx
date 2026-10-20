@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState } from 'react'
 import type { TaskItem, TaskSettings, TaskPriority, SubTask } from '../types/tasks'
 import type { Note } from '../types'
 import { DEFAULT_TASK_SETTINGS } from '../utils/taskStorage'
@@ -89,7 +89,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   // Inline deadline datepicker
   const [editingDeadlineTaskId, setEditingDeadlineTaskId] = useState<string | null>(null)
-  const deadlineBtnRef = useRef<HTMLDivElement | null>(null)
+  const [deadlineAnchorEl, setDeadlineAnchorEl] = useState<HTMLElement | null>(null)
 
   const todayStr = new Date().toISOString().slice(0, 10)
 
@@ -345,7 +345,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
               {isGroupingMenuOpen && (
                 <div
-                  className="absolute top-full mt-1.5 left-0 z-30 w-44 rounded-xl bg-[#13141a] shadow-2xl p-1.5 space-y-0.5 animate-in fade-in-50 border border-zinc-750"
+                  className="absolute top-full mt-1.5 left-0 z-30 w-44 rounded-xl bg-[#13141a] shadow-lg p-1.5 space-y-0.5 animate-in fade-in-50 border border-zinc-800"
                   onMouseLeave={() => setIsGroupingMenuOpen(false)}
                 >
                   <div className="text-[10px] font-semibold text-zinc-500 px-2 py-1 uppercase tracking-wider">
@@ -596,16 +596,19 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
                             }`}
                           >
-                            <div
-                              ref={editingDeadlineTaskId === task.id ? deadlineBtnRef : undefined}
-                              className="inline-block"
-                            >
+                            <div className="inline-block">
                               {task.deadline ? (
                                 <div
                                   className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-zinc-800/40 transition-colors cursor-pointer whitespace-nowrap"
                                   onClick={e => {
                                     e.stopPropagation()
-                                    setEditingDeadlineTaskId(editingDeadlineTaskId === task.id ? null : task.id)
+                                    if (editingDeadlineTaskId === task.id) {
+                                      setEditingDeadlineTaskId(null)
+                                      setDeadlineAnchorEl(null)
+                                    } else {
+                                      setDeadlineAnchorEl(e.currentTarget)
+                                      setEditingDeadlineTaskId(task.id)
+                                    }
                                   }}
                                 >
                                   <Hourglass className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -627,6 +630,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                   type="button"
                                   onClick={e => {
                                     e.stopPropagation()
+                                    setDeadlineAnchorEl(e.currentTarget)
                                     setEditingDeadlineTaskId(task.id)
                                   }}
                                   className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity whitespace-nowrap cursor-pointer"
@@ -636,15 +640,19 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               )}
                             </div>
 
-                            {editingDeadlineTaskId === task.id && (
+                            {editingDeadlineTaskId === task.id && deadlineAnchorEl && (
                               <CustomDatePickerPopover
                                 value={task.deadline}
-                                anchorEl={deadlineBtnRef.current}
+                                anchorEl={deadlineAnchorEl}
                                 onChange={newDeadline => {
                                   onUpdateTask({ ...task, deadline: newDeadline, updatedAt: Date.now() })
                                   setEditingDeadlineTaskId(null)
+                                  setDeadlineAnchorEl(null)
                                 }}
-                                onClose={() => setEditingDeadlineTaskId(null)}
+                                onClose={() => {
+                                  setEditingDeadlineTaskId(null)
+                                  setDeadlineAnchorEl(null)
+                                }}
                                 align="left"
                               />
                             )}

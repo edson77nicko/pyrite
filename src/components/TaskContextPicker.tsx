@@ -58,7 +58,7 @@ export const TaskContextPicker: React.FC<TaskContextPickerProps> = ({
   return (
     <div
       ref={containerRef}
-      className="absolute top-full left-0 mt-1 w-72 max-w-sm bg-[#121215] border border-zinc-800 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col text-xs animate-in fade-in zoom-in-95 duration-100"
+      className="absolute top-full left-0 mt-1 w-72 max-w-sm bg-[#121215] border border-zinc-750 rounded-xl shadow-md z-50 overflow-hidden flex flex-col text-xs animate-in fade-in zoom-in-95 duration-100"
     >
       {/* Header Search */}
       <div className="p-2 border-b border-zinc-800/60 bg-[#0f0f12] flex items-center gap-2">

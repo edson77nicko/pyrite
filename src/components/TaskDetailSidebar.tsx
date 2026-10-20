@@ -363,7 +363,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               </button>
 
               {isStatusDropdownOpen && (
-                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#14151b] border border-zinc-800 rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-100">
+                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#14151b] border border-zinc-750 rounded-xl shadow-md p-1 space-y-0.5 animate-in fade-in duration-100">
                   {settings.statuses.map(st => {
                     const isSelected = st.id === activeStatus.id
                     return (
@@ -484,7 +484,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               </button>
 
               {isPriorityDropdownOpen && (
-                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#14151b] border border-zinc-800 rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-100">
+                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#14151b] border border-zinc-750 rounded-xl shadow-md p-1 space-y-0.5 animate-in fade-in duration-100">
                   {PRIORITY_OPTIONS.map(opt => {
                     const isSelected = opt.id === activePriority.id
                     return (

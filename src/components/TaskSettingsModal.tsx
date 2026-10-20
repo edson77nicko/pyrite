@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useMemo, Component, type ErrorInfo, type ReactNode } from 'react'
 import type { TaskSettings, TaskStatusOption, TaskPropertyConfig } from '../types/tasks'
 import { DEFAULT_TASK_SETTINGS } from '../utils/taskStorage'
 import { X, Plus, Trash2, Sliders, Calendar, Compass, Flag, Type, ChevronDown, Check, Eye, EyeOff, Tag } from 'lucide-react'
@@ -8,6 +8,47 @@ interface TaskSettingsModalProps {
   onClose: () => void
   settings: TaskSettings
   onUpdateSettings: (newSettings: TaskSettings) => void
+}
+
+class ModalErrorBoundary extends Component<{ children: ReactNode; onClose: () => void }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode; onClose: () => void }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('TaskSettingsModal crashed:', error, info)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#12131a] border border-rose-500/30 rounded-2xl p-5 max-w-md w-full text-zinc-200 text-xs space-y-3">
+            <h3 className="text-rose-400 font-semibold text-sm">Erro ao carregar configurações de tarefas</h3>
+            <p className="text-zinc-400">Houve uma falha ao renderizar as opções de tarefas do cofre.</p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  this.setState({ hasError: false })
+                  this.props.onClose()
+                }}
+                className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }
 
 const PRESET_COLORS = [
@@ -28,7 +69,7 @@ const PROPERTY_TYPE_OPTIONS: { id: TaskPropertyConfig['type']; label: string }[]
   { id: 'number', label: 'Número' }
 ]
 
-export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
+export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
   isOpen,
   onClose,
   settings,
@@ -46,10 +87,39 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
   const [newPropType, setNewPropType] = useState<TaskPropertyConfig['type']>('text')
   const [isPropTypeDropdownOpen, setIsPropTypeDropdownOpen] = useState(false)
 
-  if (!isOpen) return null
+  const safeStatuses = useMemo(() => {
+    return Array.isArray(settings?.statuses) && settings.statuses.length > 0
+      ? settings.statuses
+      : DEFAULT_TASK_SETTINGS.statuses
+  }, [settings?.statuses])
 
-  const safeStatuses = Array.isArray(settings?.statuses) ? settings.statuses : DEFAULT_TASK_SETTINGS.statuses
-  const safeProperties = Array.isArray(settings?.properties) ? settings.properties : DEFAULT_TASK_SETTINGS.properties
+  const safeProperties = useMemo(() => {
+    return Array.isArray(settings?.properties) && settings.properties.length > 0
+      ? settings.properties
+      : DEFAULT_TASK_SETTINGS.properties
+  }, [settings?.properties])
+
+  // Ensure default standard properties exist if not already present
+  const allDisplayProperties = useMemo(() => {
+    const list = [...safeProperties]
+    if (!list.some(p => p.id === 'prop_tags')) {
+      list.push({ id: 'prop_tags', name: 'Tags', type: 'text' })
+    }
+    return list
+  }, [safeProperties])
+
+  // Keyboard Escape listener
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
+  // Now return null safely AFTER all hooks are defined
+  if (!isOpen) return null
 
   const handleAddStatus = (e: React.FormEvent) => {
     e.preventDefault()
@@ -116,20 +186,17 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
     })
   }
 
-  // Ensure default standard properties exist if not already present
-  const allDisplayProperties = React.useMemo(() => {
-    const list = [...safeProperties]
-    if (!list.some(p => p.id === 'prop_tags')) {
-      list.push({ id: 'prop_tags', name: 'Tags', type: 'text' })
-    }
-    return list
-  }, [safeProperties])
-
   const selectedPropTypeLabel = PROPERTY_TYPE_OPTIONS.find(o => o.id === newPropType)?.label || 'Texto'
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 select-none">
-      <div className="w-full max-w-lg bg-[#0f0f13] border border-zinc-800/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-xs text-zinc-100 animate-in fade-in zoom-in-95 duration-100">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 select-none animate-in fade-in duration-100"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-lg bg-[#0f0f13] border border-zinc-800 rounded-2xl shadow-xl overflow-hidden flex flex-col text-xs text-zinc-100 animate-in zoom-in-95 duration-100"
+      >
         {/* Header - Unified with app header style */}
         <div className="px-5 py-3.5 bg-[#0c0c0f] border-b border-zinc-800/60 flex items-center justify-between">
           <div className="flex items-center gap-2 text-zinc-300 font-medium">
@@ -166,7 +233,7 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
             }`}
             style={activeTab === 'properties' ? { color: 'var(--accent, #ffffff)' } : undefined}
           >
-            Propriedades ({safeProperties.length})
+            Propriedades ({allDisplayProperties.length})
           </button>
         </div>
 
@@ -336,7 +403,7 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
                     </button>
 
                     {isPropTypeDropdownOpen && (
-                      <div className="absolute z-50 bottom-full right-0 mb-1.5 w-32 bg-[#13141a] border border-zinc-750 rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-75">
+                      <div className="absolute z-50 bottom-full right-0 mb-1.5 w-32 bg-[#13141a] border border-zinc-750 rounded-xl shadow-lg p-1 space-y-0.5 animate-in fade-in duration-75">
                         {PROPERTY_TYPE_OPTIONS.map(opt => {
                           const isSelected = opt.id === newPropType
                           return (
@@ -380,4 +447,13 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
     </div>
   )
 }
+
+export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = (props) => {
+  return (
+    <ModalErrorBoundary onClose={props.onClose}>
+      <TaskSettingsModalContent {...props} />
+    </ModalErrorBoundary>
+  )
+}
+
 export default TaskSettingsModal

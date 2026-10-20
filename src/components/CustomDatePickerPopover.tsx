@@ -308,7 +308,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
     <div
       ref={containerRef}
       data-popover-portal="true"
-      className="fixed z-[99999] bg-[#121216] rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] border border-white/[0.05] p-4 text-xs select-none animate-in fade-in zoom-in-95 duration-75"
+      className="fixed z-[99999] bg-[#121216] rounded-2xl shadow-xl border border-zinc-800 p-4 text-xs select-none animate-in fade-in zoom-in-95 duration-75"
       style={{
         top: coords.top,
         left: coords.left,
@@ -349,7 +349,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
                   <ChevronDown className="w-3 h-3 text-zinc-400" />
                 </button>
                 {showMonthSelect && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#181820] rounded-xl shadow-2xl p-1 z-30 grid grid-cols-3 gap-1 w-52 max-h-48 overflow-y-auto custom-chat-scrollbar border border-white/[0.06]">
+                  <div className="absolute top-full left-0 mt-1 bg-[#181820] rounded-xl shadow-lg p-1 z-30 grid grid-cols-3 gap-1 w-52 max-h-48 overflow-y-auto custom-chat-scrollbar border border-zinc-800">
                     {MONTH_NAMES.map((name, idx) => (
                       <button
                         type="button"
@@ -380,7 +380,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
                   <ChevronDown className="w-3 h-3 text-zinc-400" />
                 </button>
                 {showYearSelect && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#181820] rounded-xl shadow-2xl p-1 z-30 w-24 max-h-48 overflow-y-auto custom-chat-scrollbar border border-white/[0.06]">
+                  <div className="absolute top-full left-0 mt-1 bg-[#181820] rounded-xl shadow-lg p-1 z-30 w-24 max-h-48 overflow-y-auto custom-chat-scrollbar border border-zinc-800">
                     {Array.from({ length: 20 }, (_, i) => viewYear - 10 + i).map(y => (
                       <button
                         type="button"
