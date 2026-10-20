@@ -85,6 +85,20 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   const todayStr = new Date().toISOString().slice(0, 10)
 
+  // Column visibility check (Olhinho feature)
+  const isColumnHidden = (propId: string) => {
+    const prop = settings.properties.find(p => p.id === propId)
+    return Boolean(prop?.hidden)
+  }
+
+  const visibleColumnCount =
+    3 +
+    (!isColumnHidden('prop_status') ? 1 : 0) +
+    (!isColumnHidden('prop_priority') ? 1 : 0) +
+    (!isColumnHidden('prop_deadline') ? 1 : 0) +
+    (!isColumnHidden('prop_context') ? 1 : 0) +
+    (!isColumnHidden('prop_tags') ? 1 : 0)
+
   // Filter tasks based on search
   const filteredTasks = tasks.filter(t => {
     if (!searchQuery.trim()) return true
@@ -355,18 +369,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
               <tr className="text-zinc-500 uppercase text-[10px] tracking-wider font-semibold">
                 <th className="w-10 px-3 py-2"></th>
                 <th className="px-3 py-2">Tarefa</th>
-                <th className="px-3 py-2 w-36">Status</th>
-                <th className="px-3 py-2 w-28">Prioridade</th>
-                <th className="px-3 py-2 w-48 min-w-[180px]">Prazo</th>
-                <th className="px-3 py-2 w-48">Contexto (Nota)</th>
-                <th className="px-3 py-2">Tags</th>
+                {!isColumnHidden('prop_status') && <th className="px-3 py-2 w-36">Status</th>}
+                {!isColumnHidden('prop_priority') && <th className="px-3 py-2 w-28">Prioridade</th>}
+                {!isColumnHidden('prop_deadline') && <th className="px-3 py-2 w-48 min-w-[180px]">Prazo</th>}
+                {!isColumnHidden('prop_context') && <th className="px-3 py-2 w-48">Contexto (Nota)</th>}
+                {!isColumnHidden('prop_tags') && <th className="px-3 py-2">Tags</th>}
                 <th className="w-10 px-3 py-2 text-right"></th>
               </tr>
             </thead>
             <tbody className="font-normal">
               {filteredTasks.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-zinc-500 text-xs">
+                  <td colSpan={visibleColumnCount} className="text-center py-12 text-zinc-500 text-xs">
                     Nenhuma tarefa encontrada.
                   </td>
                 </tr>
@@ -379,6 +393,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   return (
                     <tr
                       key={task.id}
+                      data-task-item="true"
                       onClick={() => onSelectTask(task)}
                       className={`group transition-all cursor-pointer ${
                         isSelected
@@ -418,129 +433,139 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       </td>
 
                       {/* Status Pill */}
-                      <td className="px-3 py-2.5">
-                        <span
-                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10.5px] font-medium"
-                          style={{
-                            backgroundColor: `${statusObj.color}20`,
-                            color: statusObj.color
-                          }}
-                        >
+                      {!isColumnHidden('prop_status') && (
+                        <td className="px-3 py-2.5">
                           <span
-                            className="w-1.5 h-1.5 rounded-full shrink-0"
-                            style={{ backgroundColor: statusObj.color }}
-                          />
-                          <span className="truncate">{statusObj.name}</span>
-                        </span>
-                      </td>
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10.5px] font-medium"
+                            style={{
+                              backgroundColor: `${statusObj.color}20`,
+                              color: statusObj.color
+                            }}
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: statusObj.color }}
+                            />
+                            <span className="truncate">{statusObj.name}</span>
+                          </span>
+                        </td>
+                      )}
 
                       {/* Priority Pill */}
-                      <td className="px-3 py-2.5">
-                        {task.priority !== 'none' ? (
-                          <span
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-medium"
-                            style={{
-                              backgroundColor: priorityInfo.bg,
-                              color: priorityInfo.color
-                            }}
-                          >
-                            <Flag className="w-2.5 h-2.5" />
-                            <span>{priorityInfo.label}</span>
-                          </span>
-                        ) : (
-                          <span className="text-zinc-600">-</span>
-                        )}
-                      </td>
+                      {!isColumnHidden('prop_priority') && (
+                        <td className="px-3 py-2.5">
+                          {task.priority !== 'none' ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-medium"
+                              style={{
+                                backgroundColor: priorityInfo.bg,
+                                color: priorityInfo.color
+                              }}
+                            >
+                              <Flag className="w-2.5 h-2.5" />
+                              <span>{priorityInfo.label}</span>
+                            </span>
+                          ) : (
+                            <span className="text-zinc-600">-</span>
+                          )}
+                        </td>
+                      )}
 
                       {/* Deadline Pill - Never wraps */}
-                      <td className="px-3 py-2.5 text-zinc-300 relative whitespace-nowrap">
-                        <div
-                          ref={editingDeadlineTaskId === task.id ? deadlineBtnRef : undefined}
-                          className="inline-block"
-                        >
-                          {task.deadline ? (
-                            <div
-                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-zinc-800/40 transition-colors cursor-pointer whitespace-nowrap"
-                              onClick={e => {
-                                e.stopPropagation()
-                                setEditingDeadlineTaskId(editingDeadlineTaskId === task.id ? null : task.id)
-                              }}
-                            >
-                              <Hourglass className="w-3 h-3 text-zinc-500 shrink-0" />
-                              <span className="text-[11px] font-mono shrink-0 whitespace-nowrap">{task.deadline}</span>
-                              {task.deadline.slice(0, 10) === todayStr && (
-                                <span
-                                  className="text-[9.5px] px-1.5 py-0.2 rounded font-medium shrink-0 whitespace-nowrap leading-none"
-                                  style={{
-                                    backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
-                                    color: 'var(--accent, #c59b27)'
-                                  }}
-                                >
-                                  Hoje
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={e => {
-                                e.stopPropagation()
-                                setEditingDeadlineTaskId(task.id)
-                              }}
-                              className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity whitespace-nowrap"
-                            >
-                              + prazo
-                            </button>
-                          )}
-                        </div>
+                      {!isColumnHidden('prop_deadline') && (
+                        <td className="px-3 py-2.5 text-zinc-300 relative whitespace-nowrap">
+                          <div
+                            ref={editingDeadlineTaskId === task.id ? deadlineBtnRef : undefined}
+                            className="inline-block"
+                          >
+                            {task.deadline ? (
+                              <div
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-zinc-800/40 transition-colors cursor-pointer whitespace-nowrap"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setEditingDeadlineTaskId(editingDeadlineTaskId === task.id ? null : task.id)
+                                }}
+                              >
+                                <Hourglass className="w-3 h-3 text-zinc-500 shrink-0" />
+                                <span className="text-[11px] font-mono shrink-0 whitespace-nowrap">{task.deadline}</span>
+                                {task.deadline.slice(0, 10) === todayStr && (
+                                  <span
+                                    className="text-[9.5px] px-1.5 py-0.2 rounded font-medium shrink-0 whitespace-nowrap leading-none"
+                                    style={{
+                                      backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
+                                      color: 'var(--accent, #c59b27)'
+                                    }}
+                                  >
+                                    Hoje
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setEditingDeadlineTaskId(task.id)
+                                }}
+                                className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity whitespace-nowrap"
+                              >
+                                + prazo
+                              </button>
+                            )}
+                          </div>
 
-                        {editingDeadlineTaskId === task.id && (
-                          <CustomDatePickerPopover
-                            value={task.deadline}
-                            anchorEl={deadlineBtnRef.current}
-                            onChange={newDeadline => {
-                              onUpdateTask({ ...task, deadline: newDeadline, updatedAt: Date.now() })
-                              setEditingDeadlineTaskId(null)
-                            }}
-                            onClose={() => setEditingDeadlineTaskId(null)}
-                            align="left"
-                          />
-                        )}
-                      </td>
+                          {editingDeadlineTaskId === task.id && (
+                            <CustomDatePickerPopover
+                              value={task.deadline}
+                              anchorEl={deadlineBtnRef.current}
+                              onChange={newDeadline => {
+                                onUpdateTask({ ...task, deadline: newDeadline, updatedAt: Date.now() })
+                                setEditingDeadlineTaskId(null)
+                              }}
+                              onClose={() => setEditingDeadlineTaskId(null)}
+                              align="left"
+                            />
+                          )}
+                        </td>
+                      )}
 
                       {/* Context (Nota vinculada) */}
-                      <td className="px-3 py-2.5">
-                        {task.contextNoteId ? (
-                          <span
-                            onClick={e => {
-                              e.stopPropagation()
-                              onOpenNote(task.contextNoteId!)
-                            }}
-                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-800/80 hover:bg-zinc-750 transition-colors text-[11px] font-medium max-w-[190px] truncate"
-                            style={{ color: 'var(--accent, #c59b27)' }}
-                            title="Abrir nota vinculada no editor"
-                          >
-                            <Compass className="w-3 h-3 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
-                            <span className="truncate">{task.contextNoteTitle || 'Nota'}</span>
-                          </span>
-                        ) : (
-                          <span className="text-zinc-600">-</span>
-                        )}
-                      </td>
+                      {!isColumnHidden('prop_context') && (
+                        <td className="px-3 py-2.5">
+                          {task.contextNoteId ? (
+                            <span
+                              onClick={e => {
+                                e.stopPropagation()
+                                onOpenNote(task.contextNoteId!)
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-800/80 hover:bg-zinc-750 transition-colors text-[11px] font-medium max-w-[190px] truncate"
+                              style={{ color: 'var(--accent, #c59b27)' }}
+                              title="Abrir nota vinculada no editor"
+                            >
+                              <Compass className="w-3 h-3 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
+                              <span className="truncate">{task.contextNoteTitle || 'Nota'}</span>
+                            </span>
+                          ) : (
+                            <span className="text-zinc-600">-</span>
+                          )}
+                        </td>
+                      )}
 
                       {/* Tags */}
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {task.tags.map(tag => (
-                            <span
-                              key={tag}
-                              className="px-1.5 py-0.2 rounded bg-zinc-850/80 text-[10px] text-zinc-400 font-mono"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
+                      {!isColumnHidden('prop_tags') && (
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {task.tags.map(tag => (
+                              <span
+                                key={tag}
+                                className="px-1.5 py-0.2 rounded bg-zinc-850/80 text-[10px] text-zinc-400 font-mono"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      )}
 
                       {/* Row Action */}
                       <td className="px-3 py-2.5 text-right last:rounded-r-xl">
@@ -567,7 +592,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 <td className="px-3 py-2.5 text-center first:rounded-l-xl">
                   <Plus className="w-3.5 h-3.5 text-zinc-500" />
                 </td>
-                <td colSpan={7} className="px-3 py-2.5 last:rounded-r-xl">
+                <td colSpan={visibleColumnCount - 1} className="px-3 py-2.5 last:rounded-r-xl">
                   <form onSubmit={handleQuickAddInList} className="flex items-center">
                     <input
                       type="text"
@@ -657,6 +682,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         return (
                           <div
                             key={task.id}
+                            data-task-item="true"
                             draggable={true}
                             onDragStart={e => {
                               e.dataTransfer.setData('text/plain', task.id)
@@ -890,6 +916,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         return (
                           <div
                             key={task.id}
+                            data-task-item="true"
                             draggable={true}
                             onDragStart={e => {
                               e.dataTransfer.setData('text/plain', task.id)

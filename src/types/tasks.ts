@@ -20,6 +20,7 @@ export interface TaskPropertyConfig {
   name: string
   type: TaskPropertyType
   options?: TaskPropertyOption[]
+  hidden?: boolean
 }
 
 export interface TaskItem {

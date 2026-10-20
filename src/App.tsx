@@ -883,6 +883,7 @@ export const App: React.FC = () => {
         {/* AI Agent Panel - Opens beside main sidebar, to the left of the content (like reference image) */}
         {isAiOpen && (
           <AiAssistant
+            vaultPath={vaultPath || undefined}
             currentNote={currentNote}
             allNotes={notes}
             onConnectNote={handleConnectNote}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import type { TaskSettings, TaskStatusOption, TaskPropertyConfig } from '../types/tasks'
-import { X, Plus, Trash2, Sliders, Calendar, Compass, Flag, Type, ChevronDown, Check } from 'lucide-react'
+import { X, Plus, Trash2, Sliders, Calendar, Compass, Flag, Type, ChevronDown, Check, Eye, EyeOff, Tag } from 'lucide-react'
 
 interface TaskSettingsModalProps {
   isOpen: boolean
@@ -102,6 +102,24 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
       properties: settings.properties.filter(p => p.id !== propId)
     })
   }
+
+  const handleTogglePropertyHidden = (propId: string) => {
+    onUpdateSettings({
+      ...settings,
+      properties: settings.properties.map(p =>
+        p.id === propId ? { ...p, hidden: !p.hidden } : p
+      )
+    })
+  }
+
+  // Ensure default standard properties exist if not already present
+  const allDisplayProperties = React.useMemo(() => {
+    const list = [...settings.properties]
+    if (!list.some(p => p.id === 'prop_tags')) {
+      list.push({ id: 'prop_tags', name: 'Tags', type: 'text' })
+    }
+    return list
+  }, [settings.properties])
 
   const selectedPropTypeLabel = PROPERTY_TYPE_OPTIONS.find(o => o.id === newPropType)?.label || 'Texto'
 
@@ -235,7 +253,7 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
             <div className="space-y-4">
               {/* Existing Properties */}
               <div className="space-y-1 bg-zinc-950/30 p-2 rounded-xl">
-                {settings.properties.map(prop => (
+                {allDisplayProperties.map(prop => (
                   <div
                     key={prop.id}
                     className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-zinc-850/40 transition-colors"
@@ -247,26 +265,51 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
                         <Flag className="w-3.5 h-3.5" style={{ color: 'var(--accent, #c59b27)' }} />
                       ) : prop.type === 'date' ? (
                         <Calendar className="w-3.5 h-3.5 text-zinc-400" />
+                      ) : prop.id === 'prop_tags' ? (
+                        <Tag className="w-3.5 h-3.5 text-zinc-400" />
                       ) : (
                         <Type className="w-3.5 h-3.5 text-zinc-400" />
                       )}
-                      <span className="font-medium text-zinc-200 text-xs">{prop.name}</span>
+                      <span className={`font-medium text-xs ${prop.hidden ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+                        {prop.name}
+                      </span>
                       <span className="text-[10px] text-zinc-500 font-mono">({prop.type})</span>
+                      {prop.hidden && (
+                        <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-medium">
+                          Oculto na lista
+                        </span>
+                      )}
                     </div>
-                    {prop.id !== 'prop_context' && prop.id !== 'prop_priority' && prop.id !== 'prop_deadline' && (
+                    <div className="flex items-center gap-1.5">
+                      {/* Eye / Olhinho visibility toggle */}
                       <button
-                        onClick={() => handleDeleteProperty(prop.id)}
-                        className="text-zinc-500 hover:text-rose-400 p-1 rounded transition-colors cursor-pointer"
-                        title="Remover propriedade"
+                        type="button"
+                        onClick={() => handleTogglePropertyHidden(prop.id)}
+                        className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors cursor-pointer"
+                        title={prop.hidden ? "Exibir coluna na lista" : "Ocultar coluna da lista"}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        {prop.hidden ? (
+                          <EyeOff className="w-3.5 h-3.5 text-zinc-500" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5 text-zinc-300 hover:text-white" />
+                        )}
                       </button>
-                    )}
+
+                      {prop.id !== 'prop_context' && prop.id !== 'prop_priority' && prop.id !== 'prop_deadline' && prop.id !== 'prop_status' && prop.id !== 'prop_tags' && (
+                        <button
+                          onClick={() => handleDeleteProperty(prop.id)}
+                          className="text-zinc-500 hover:text-rose-400 p-1 rounded transition-colors cursor-pointer"
+                          title="Remover propriedade"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
 
-              {/* Add New Property Form with Custom Dropdown */}
+              {/* Add New Property Form with Custom Dropdown opening UPWARDS */}
               <form onSubmit={handleAddProperty} className="p-3 bg-zinc-950/20 rounded-xl space-y-2.5">
                 <div className="flex items-center gap-2">
                   <input
@@ -277,7 +320,7 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
                     className="flex-1 bg-zinc-900/80 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:bg-zinc-900 transition-colors"
                   />
 
-                  {/* Custom Property Type Dropdown */}
+                  {/* Custom Property Type Dropdown floating UPWARDS */}
                   <div className="relative">
                     <button
                       type="button"
@@ -289,7 +332,7 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
                     </button>
 
                     {isPropTypeDropdownOpen && (
-                      <div className="absolute z-50 top-full right-0 mt-1 w-28 bg-[#18181e] border border-zinc-800 rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-100">
+                      <div className="absolute z-50 bottom-full right-0 mb-1.5 w-32 bg-[#181820] border border-white/[0.08] rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-75">
                         {PROPERTY_TYPE_OPTIONS.map(opt => {
                           const isSelected = opt.id === newPropType
                           return (

@@ -182,6 +182,7 @@ export interface AgentConversation {
 }
 
 interface AiAssistantProps {
+  vaultPath?: string
   currentNote?: Note
   allNotes: Note[]
   onConnectNote: (targetTitle: string) => void
@@ -195,6 +196,7 @@ interface AiAssistantProps {
 }
 
 export const AiAssistant: React.FC<AiAssistantProps> = ({
+  vaultPath,
   currentNote,
   allNotes,
   onConnectNote,
@@ -205,6 +207,9 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   onToggleConversations,
   onClose
 }) => {
+  const vaultKey = useMemo(() => (vaultPath ? encodeURIComponent(vaultPath).replace(/%/g, '_') : 'default'), [vaultPath])
+  const storageKeyConversations = `pyrita_ai_conversations_v2_${vaultKey}`
+  const storageKeyActiveConvId = `pyrita_ai_active_conv_id_${vaultKey}`
   const effectiveNote = currentNote || allNotes[0] || {
     id: 'vault-root',
     title: 'Meu Vault',
@@ -301,10 +306,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const [completionIndex, setCompletionIndex] = useState(0)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
-  // Conversations History State with localStorage persistence
+  // Conversations History State with localStorage persistence per vault
   const [conversations, setConversations] = useState<AgentConversation[]>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_ai_conversations_v2')
+      const saved = localStorage.getItem(storageKeyConversations) || (vaultKey === 'default' ? localStorage.getItem('pyrita_ai_conversations_v2') : null)
       if (saved) {
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed) && parsed.length > 0) return parsed
@@ -331,12 +336,46 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
   const [activeConversationId, setActiveConversationId] = useState<string>(() => {
     try {
-      const savedId = localStorage.getItem('pyrita_ai_active_conv_id')
+      const savedId = localStorage.getItem(storageKeyActiveConvId) || (vaultKey === 'default' ? localStorage.getItem('pyrita_ai_active_conv_id') : null)
       return savedId || conversations[0]?.id || 'conv_initial'
     } catch {
       return conversations[0]?.id || 'conv_initial'
     }
   })
+
+  // Reload conversations when switching vaults
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKeyConversations) || (vaultKey === 'default' ? localStorage.getItem('pyrita_ai_conversations_v2') : null)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setConversations(parsed)
+          const savedId = localStorage.getItem(storageKeyActiveConvId) || (vaultKey === 'default' ? localStorage.getItem('pyrita_ai_active_conv_id') : null)
+          setActiveConversationId(savedId || parsed[0].id)
+          return
+        }
+      }
+    } catch {}
+
+    const fresh: AgentConversation = {
+      id: `conv_${Date.now()}`,
+      title: 'Conversa Inicial',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      specialtyId: 'architect',
+      ruleMode: 'analyst',
+      messages: [
+        {
+          id: 'm1',
+          sender: 'ai',
+          text: `Olá! Sou o **Agente de IA do Pyrita**.\n\nEstou pronto para analisar sua nota ativa e pastas selecionadas com raciocínio profundo.`
+        }
+      ]
+    }
+    setConversations([fresh])
+    setActiveConversationId(fresh.id)
+  }, [storageKeyConversations, storageKeyActiveConvId, vaultKey])
 
   // Synchronize active conversation with messages state
   const activeConversation = useMemo(() => {
@@ -364,12 +403,12 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   // Persist conversations to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('pyrita_ai_conversations_v2', JSON.stringify(conversations))
-      localStorage.setItem('pyrita_ai_active_conv_id', activeConversationId)
+      localStorage.setItem(storageKeyConversations, JSON.stringify(conversations))
+      localStorage.setItem(storageKeyActiveConvId, activeConversationId)
     } catch (err) {
       console.error('Failed to save conversations:', err)
     }
-  }, [conversations, activeConversationId])
+  }, [conversations, activeConversationId, storageKeyConversations, storageKeyActiveConvId])
 
   // New Conversation Creator
   const handleStartNewConversation = () => {

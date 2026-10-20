@@ -13,10 +13,10 @@ export const DEFAULT_TASK_SETTINGS: TaskSettings = {
   ],
   properties: [
     { id: 'prop_status', name: 'Status', type: 'status' },
-    { id: 'prop_date', name: 'Data', type: 'date' },
-    { id: 'prop_deadline', name: 'Deadline', type: 'date' },
     { id: 'prop_priority', name: 'Prioridade', type: 'priority' },
-    { id: 'prop_context', name: 'Contexto', type: 'context' }
+    { id: 'prop_deadline', name: 'Prazo', type: 'date' },
+    { id: 'prop_context', name: 'Contexto', type: 'context' },
+    { id: 'prop_tags', name: 'Tags', type: 'text' }
   ]
 }
 
@@ -89,22 +89,25 @@ export const INITIAL_TASKS: TaskItem[] = [
 export function loadTasks(vaultKey = 'default'): TaskItem[] {
   try {
     const key = `${TASKS_STORAGE_KEY}_${vaultKey}`
-    const saved = localStorage.getItem(key) || localStorage.getItem(TASKS_STORAGE_KEY)
+    const saved = localStorage.getItem(key)
     if (saved) {
       const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed)) return parsed
     }
   } catch (err) {
     console.warn('[TaskStorage] Erro ao carregar tarefas:', err)
   }
-  return INITIAL_TASKS
+  // Se for o cofre padrão e nunca foi iniciado, cria as tarefas iniciais de demonstração
+  if (vaultKey === 'default') {
+    return INITIAL_TASKS
+  }
+  return []
 }
 
 export function saveTasks(tasks: TaskItem[], vaultKey = 'default'): void {
   try {
     const key = `${TASKS_STORAGE_KEY}_${vaultKey}`
     localStorage.setItem(key, JSON.stringify(tasks))
-    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks))
   } catch (err) {
     console.warn('[TaskStorage] Erro ao salvar tarefas:', err)
   }
@@ -113,7 +116,7 @@ export function saveTasks(tasks: TaskItem[], vaultKey = 'default'): void {
 export function loadTaskSettings(vaultKey = 'default'): TaskSettings {
   try {
     const key = `${TASK_SETTINGS_STORAGE_KEY}_${vaultKey}`
-    const saved = localStorage.getItem(key) || localStorage.getItem(TASK_SETTINGS_STORAGE_KEY)
+    const saved = localStorage.getItem(key)
     if (saved) {
       const parsed = JSON.parse(saved)
       if (parsed && Array.isArray(parsed.statuses) && Array.isArray(parsed.properties)) {
@@ -130,7 +133,6 @@ export function saveTaskSettings(settings: TaskSettings, vaultKey = 'default'): 
   try {
     const key = `${TASK_SETTINGS_STORAGE_KEY}_${vaultKey}`
     localStorage.setItem(key, JSON.stringify(settings))
-    localStorage.setItem(TASK_SETTINGS_STORAGE_KEY, JSON.stringify(settings))
   } catch (err) {
     console.warn('[TaskStorage] Erro ao salvar configurações de tarefas:', err)
   }

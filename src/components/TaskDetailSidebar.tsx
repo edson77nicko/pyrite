@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import type { TaskItem, TaskSettings, TaskPriority } from '../types/tasks'
 import type { Note } from '../types'
 import { TaskContextPicker } from './TaskContextPicker'
@@ -52,8 +52,39 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [isPriorityDropdownOpen, setIsPriorityDropdownOpen] = useState(false)
 
+  const sidebarRef = useRef<HTMLElement>(null)
   const dateBtnRef = useRef<HTMLButtonElement>(null)
   const deadlineBtnRef = useRef<HTMLButtonElement>(null)
+
+  // Close sidebar on click outside, preserving task switches and portal popups
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (!target) return
+
+      // Don't close if clicking inside this sidebar
+      if (sidebarRef.current && sidebarRef.current.contains(target)) {
+        return
+      }
+
+      // Don't close if clicking inside modals, portals, popups, or task items
+      if (
+        target.closest('[data-popover-portal]') ||
+        target.closest('[role="dialog"]') ||
+        target.closest('.fixed') ||
+        target.closest('[data-task-item]')
+      ) {
+        return
+      }
+
+      onClose()
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+    }
+  }, [onClose])
 
   const [newTagInput, setNewTagInput] = useState('')
   const [isAddingTag, setIsAddingTag] = useState(false)
@@ -156,7 +187,10 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   }), [task.id, task.title, task.description, task.tags, task.createdAt, task.updatedAt])
 
   return (
-    <aside className="w-[420px] max-w-[460px] h-full bg-[#111114] flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl animate-in slide-in-from-right-4 duration-150">
+    <aside
+      ref={sidebarRef}
+      className="w-[420px] max-w-[460px] h-full bg-[#111114] flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl animate-in slide-in-from-right-4 duration-150"
+    >
       {/* 1. Header Toolbar - Sober without harsh white divider */}
       <div className="h-10 px-4 bg-[#0e0e11] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
