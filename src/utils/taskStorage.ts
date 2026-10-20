@@ -119,8 +119,11 @@ export function loadTaskSettings(vaultKey = 'default'): TaskSettings {
     const saved = localStorage.getItem(key)
     if (saved) {
       const parsed = JSON.parse(saved)
-      if (parsed && Array.isArray(parsed.statuses) && Array.isArray(parsed.properties)) {
-        return parsed
+      if (parsed) {
+        return {
+          statuses: Array.isArray(parsed.statuses) && parsed.statuses.length > 0 ? parsed.statuses : DEFAULT_TASK_SETTINGS.statuses,
+          properties: Array.isArray(parsed.properties) && parsed.properties.length > 0 ? parsed.properties : DEFAULT_TASK_SETTINGS.properties
+        }
       }
     }
   } catch (err) {

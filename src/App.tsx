@@ -920,6 +920,12 @@ export const App: React.FC = () => {
               }
             }}
             onUpdateNote={handleUpdateNote}
+            tasks={tasks}
+            taskSettings={taskSettings}
+            onCreateTask={handleCreateTask}
+            onUpdateTask={handleUpdateTask}
+            onDeleteTask={handleDeleteTask}
+            onOpenTasks={handleOpenTasks}
             isConversationsOpen={isAiConversationsOpen}
             onToggleConversations={() => setIsAiConversationsOpen(o => !o)}
             onClose={() => setIsAiOpen(false)}

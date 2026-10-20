@@ -23,6 +23,13 @@ export interface TaskPropertyConfig {
   hidden?: boolean
 }
 
+export interface SubTask {
+  id: string
+  title: string
+  completed: boolean
+  createdAt: number
+}
+
 export interface TaskItem {
   id: string
   title: string
@@ -35,6 +42,7 @@ export interface TaskItem {
   contextNoteTitle?: string
   tags: string[]
   description: string
+  subtasks?: SubTask[]
   customValues?: Record<string, any>
   createdAt: number
   updatedAt: number

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
-import type { TaskItem, TaskSettings, TaskPriority } from '../types/tasks'
+import type { TaskItem, TaskSettings, TaskPriority, SubTask } from '../types/tasks'
 import type { Note } from '../types'
 import { TaskContextPicker } from './TaskContextPicker'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
@@ -16,7 +16,8 @@ import {
   Plus,
   Trash2,
   ChevronDown,
-  Check
+  Check,
+  CheckSquare
 } from 'lucide-react'
 
 interface TaskDetailSidebarProps {
@@ -88,6 +89,8 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
 
   const [newTagInput, setNewTagInput] = useState('')
   const [isAddingTag, setIsAddingTag] = useState(false)
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
+  const [isAddingSubtask, setIsAddingSubtask] = useState(false)
 
   const activeStatus = settings.statuses.find(s => s.id === task.statusId) || settings.statuses[0]
   const activePriority = PRIORITY_OPTIONS.find(p => p.id === task.priority) || PRIORITY_OPTIONS[0]
@@ -171,6 +174,42 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
     })
   }
 
+  const handleToggleSubtask = (subtaskId: string) => {
+    const currentSubtasks = task.subtasks || []
+    const updated = currentSubtasks.map(st =>
+      st.id === subtaskId ? { ...st, completed: !st.completed } : st
+    )
+    onUpdateTask({ ...task, subtasks: updated, updatedAt: Date.now() })
+  }
+
+  const handleAddSubtask = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newSubtaskTitle.trim()) return
+    const newSt: SubTask = {
+      id: 'st_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6),
+      title: newSubtaskTitle.trim(),
+      completed: false,
+      createdAt: Date.now()
+    }
+    const currentSubtasks = task.subtasks || []
+    onUpdateTask({
+      ...task,
+      subtasks: [...currentSubtasks, newSt],
+      updatedAt: Date.now()
+    })
+    setNewSubtaskTitle('')
+    setIsAddingSubtask(false)
+  }
+
+  const handleDeleteSubtask = (subtaskId: string) => {
+    const currentSubtasks = task.subtasks || []
+    onUpdateTask({
+      ...task,
+      subtasks: currentSubtasks.filter(st => st.id !== subtaskId),
+      updatedAt: Date.now()
+    })
+  }
+
   const handleDescriptionChange = (description: string) => {
     onUpdateTask({ ...task, description, updatedAt: Date.now() })
   }
@@ -189,10 +228,10 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   return (
     <aside
       ref={sidebarRef}
-      className="w-[420px] max-w-[460px] h-full bg-[#111114] flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl animate-in slide-in-from-right-4 duration-150"
+      className="w-[420px] max-w-[460px] h-full bg-[#0c0c0f] border-l border-zinc-800/60 flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl animate-in slide-in-from-right-4 duration-150"
     >
       {/* 1. Header Toolbar - Sober without harsh white divider */}
-      <div className="h-10 px-4 bg-[#0e0e11] flex items-center justify-between shrink-0">
+      <div className="h-10 px-4 bg-[#0e0e12] border-b border-zinc-800/50 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <div
             className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-medium text-[11px]"
@@ -214,14 +253,14 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                 onClose()
               }
             }}
-            className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-zinc-850/60 rounded-md transition-colors cursor-pointer"
+            className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-[#181921] rounded-md transition-colors cursor-pointer"
             title="Excluir tarefa"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-850/60 rounded-md transition-colors cursor-pointer"
+            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-[#181921] rounded-md transition-colors cursor-pointer"
             title="Fechar detalhes"
           >
             <X className="w-4 h-4" />
@@ -264,7 +303,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
           {task.tags.map(t => (
             <span
               key={t}
-              className="group flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-850/60 text-[11px] text-zinc-300 font-mono"
+              className="group flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#13141a] border border-zinc-800/60 text-[11px] text-zinc-300 font-mono"
             >
               #{t}
               <button
@@ -285,22 +324,22 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                 onChange={e => setNewTagInput(e.target.value)}
                 onBlur={() => setIsAddingTag(false)}
                 placeholder="tag..."
-                className="w-20 px-1.5 py-0.5 bg-zinc-900 border rounded text-[11px] text-zinc-200 outline-none"
+                className="w-20 px-1.5 py-0.5 bg-[#13141a] border rounded text-[11px] text-zinc-200 outline-none"
                 style={{ borderColor: 'var(--accent, #c59b27)' }}
               />
             </form>
           ) : (
             <button
               onClick={() => setIsAddingTag(true)}
-              className="text-[11px] text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded hover:bg-zinc-850/40 transition-colors cursor-pointer"
+              className="text-[11px] text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded hover:bg-[#13141a] transition-colors cursor-pointer"
             >
               + Tag
             </button>
           )}
         </div>
 
-        {/* Properties Grid - Subtle tone separation, no white divider lines */}
-        <div className="space-y-2 pt-2 bg-zinc-950/25 p-3 rounded-xl">
+        {/* Properties Grid - Unified dark platform tone */}
+        <div className="space-y-2 pt-2 bg-[#13141a] border border-zinc-800/60 p-3 rounded-xl">
           {/* Status Custom Dropdown */}
           <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-xs relative">
             <div className="flex items-center gap-1.5 text-zinc-400">
@@ -314,7 +353,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                   setIsStatusDropdownOpen(o => !o)
                   setIsPriorityDropdownOpen(false)
                 }}
-                className="w-full flex items-center justify-between bg-zinc-900/80 hover:bg-zinc-850/90 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors cursor-pointer"
+                className="w-full flex items-center justify-between bg-[#181921] hover:bg-[#1f202b] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: activeStatus.color }} />
@@ -324,7 +363,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               </button>
 
               {isStatusDropdownOpen && (
-                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#16161b] border border-zinc-800 rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-100">
+                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#14151b] border border-zinc-800 rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-100">
                   {settings.statuses.map(st => {
                     const isSelected = st.id === activeStatus.id
                     return (
@@ -363,7 +402,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                   setIsDatePickerOpen(o => !o)
                   setIsDeadlinePickerOpen(false)
                 }}
-                className="w-full flex items-center justify-between bg-zinc-900/80 hover:bg-zinc-850/90 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
+                className="w-full flex items-center justify-between bg-[#181921] hover:bg-[#1f202b] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
               >
                 <span>{task.date || 'Definir data...'}</span>
                 <Calendar className="w-3.5 h-3.5 text-zinc-500" />
@@ -394,7 +433,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                   setIsDeadlinePickerOpen(o => !o)
                   setIsDatePickerOpen(false)
                 }}
-                className="flex-1 flex items-center justify-between bg-zinc-900/80 hover:bg-zinc-850/90 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
+                className="flex-1 flex items-center justify-between bg-[#181921] hover:bg-[#1f202b] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
               >
                 <span>{task.deadline || 'Definir prazo...'}</span>
                 <Hourglass className="w-3.5 h-3.5 text-zinc-500" />
@@ -435,7 +474,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                   setIsPriorityDropdownOpen(o => !o)
                   setIsStatusDropdownOpen(false)
                 }}
-                className="w-full flex items-center justify-between bg-zinc-900/80 hover:bg-zinc-850/90 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors cursor-pointer"
+                className="w-full flex items-center justify-between bg-[#181921] hover:bg-[#1f202b] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2">
                   <Flag className="w-3 h-3" style={{ color: activePriority.color }} />
@@ -445,7 +484,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               </button>
 
               {isPriorityDropdownOpen && (
-                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#16161b] border border-zinc-800 rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-100">
+                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#14151b] border border-zinc-800 rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-100">
                   {PRIORITY_OPTIONS.map(opt => {
                     const isSelected = opt.id === activePriority.id
                     return (
@@ -479,7 +518,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
 
             <div className="relative">
               {task.contextNoteId ? (
-                <div className="flex items-center justify-between p-1.5 bg-zinc-900/80 rounded-lg">
+                <div className="flex items-center justify-between p-1.5 bg-[#181921] rounded-lg">
                   <button
                     onClick={() => setIsContextPickerOpen(true)}
                     className="flex items-center gap-1.5 truncate text-left font-medium hover:underline max-w-[190px] cursor-pointer"
@@ -510,7 +549,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               ) : (
                 <button
                   onClick={() => setIsContextPickerOpen(true)}
-                  className="w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-dashed border-zinc-750 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 transition-colors text-left cursor-pointer"
+                  className="w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-dashed border-zinc-750 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 bg-[#181921]/40 transition-colors text-left cursor-pointer"
                 >
                   <Plus className="w-3 h-3" />
                   <span>Vincular nota do cofre...</span>
@@ -530,8 +569,97 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
           </div>
         </div>
 
+        {/* Subtarefas Section */}
+        <div className="bg-[#13141a] border border-zinc-800/60 p-3 rounded-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-zinc-300 font-medium">
+              <CheckSquare className="w-3.5 h-3.5 text-zinc-400" />
+              <span>Subtarefas</span>
+              {(task.subtasks?.length ?? 0) > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#181921] text-zinc-400 font-mono">
+                  {task.subtasks?.filter(st => st.completed).length}/{task.subtasks?.length}
+                </span>
+              )}
+            </div>
+
+            {!isAddingSubtask && (
+              <button
+                type="button"
+                onClick={() => setIsAddingSubtask(true)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-[#181921] transition-colors cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Adicionar</span>
+              </button>
+            )}
+          </div>
+
+          {/* Subtasks list */}
+          <div className="space-y-1">
+            {task.subtasks && task.subtasks.length > 0 ? (
+              task.subtasks.map(st => (
+                <div
+                  key={st.id}
+                  className="group flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-[#0c0c0f]/60 hover:bg-[#181921]/70 transition-colors"
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleToggleSubtask(st.id)}
+                    className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer"
+                  >
+                    {st.completed ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    ) : (
+                      <Circle className="w-3.5 h-3.5 text-zinc-500 shrink-0 hover:text-zinc-300" />
+                    )}
+                    <span
+                      className={`text-xs truncate ${
+                        st.completed ? 'line-through text-zinc-500' : 'text-zinc-200'
+                      }`}
+                    >
+                      {st.title}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSubtask(st.id)}
+                    className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-rose-400 transition-opacity cursor-pointer"
+                    title="Excluir subtarefa"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ))
+            ) : !isAddingSubtask ? (
+              <div className="text-[11px] text-zinc-500 italic py-1 px-1">
+                Nenhuma subtarefa
+              </div>
+            ) : null}
+
+            {isAddingSubtask && (
+              <form onSubmit={handleAddSubtask} className="pt-1 flex items-center gap-1.5">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newSubtaskTitle}
+                  onChange={e => setNewSubtaskTitle(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') setIsAddingSubtask(false)
+                  }}
+                  onBlur={() => {
+                    if (!newSubtaskTitle.trim()) setIsAddingSubtask(false)
+                  }}
+                  placeholder="Nome da subtarefa... (Enter)"
+                  className="flex-1 px-2.5 py-1.5 bg-[#0c0c0f] border border-zinc-800 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+                />
+              </form>
+            )}
+          </div>
+        </div>
+
         {/* Divisor bem apagado entre as propriedades e o conteúdo */}
-        <div className="h-px bg-zinc-800/25 my-3.5 mx-1" />
+        <div className="h-px bg-zinc-800/35 my-3.5 mx-1" />
 
         {/* 3. Internal Content / Notes of the Task (100% clean note surface, no guidance labels) */}
         <div className="flex-1 flex flex-col min-h-[300px] pt-1">

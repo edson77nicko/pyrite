@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import type { Note } from '../types'
+import type { TaskItem, TaskSettings, SubTask } from '../types/tasks'
 import { extractWikiLinks } from '../utils/vault'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { AiSettingsModal } from './AiSettingsModal'
@@ -29,7 +30,11 @@ import {
   Square,
   Search,
   FileText,
-  Clock
+  Clock,
+  CheckSquare,
+  Calendar,
+  Flag,
+  ListTodo
 } from 'lucide-react'
 
 export type AgentRuleMode = 'analyst' | 'editor'
@@ -79,6 +84,47 @@ export interface AgentSpecialty {
   tagline: string
   systemDirective: string
   presets: { label: string; prompt: string }[]
+}
+
+export interface ParsedTaskAction {
+  action: 'create' | 'update' | 'delete'
+  title: string
+  priority?: 'urgent' | 'high' | 'medium' | 'low' | 'none'
+  deadline?: string
+  tags?: string[]
+  subtasks?: string[]
+  description?: string
+}
+
+export function parseMessageTaskActions(text: string): { displayText: string; actions: ParsedTaskAction[] } {
+  const actions: ParsedTaskAction[] = []
+  if (!text || !text.includes('```task-action')) {
+    return { displayText: text || '', actions }
+  }
+
+  const regex = /```task-action\s*([\s\S]*?)\s*```/g
+  let match
+  while ((match = regex.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1])
+      if (parsed && parsed.title) {
+        actions.push({
+          action: parsed.action || 'create',
+          title: parsed.title,
+          priority: parsed.priority || 'medium',
+          deadline: parsed.deadline,
+          tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+          subtasks: Array.isArray(parsed.subtasks) ? parsed.subtasks : [],
+          description: parsed.description || ''
+        })
+      }
+    } catch (e) {
+      console.warn('Falha ao processar bloco task-action:', e)
+    }
+  }
+
+  const displayText = text.replace(/```task-action\s*[\s\S]*?\s*```/g, '').trim()
+  return { displayText, actions }
 }
 
 export const AGENT_SPECIALTIES: AgentSpecialty[] = [
@@ -168,6 +214,37 @@ export const AGENT_SPECIALTIES: AgentSpecialty[] = [
       { label: '🛠️ Snippet de Código', prompt: 'Gere um exemplo de código funcional e bem documentado implementando o conceito central.' },
       { label: '✅ Checklist de Entrega', prompt: 'Crie um checklist de tarefas técnicas para implementação e validação passo a passo.' }
     ]
+  },
+  {
+    id: 'project_manager',
+    name: 'Gestor de Projetos & Tarefas',
+    shortName: 'Gestor',
+    badgeColor: '#10b981',
+    icon: '📋',
+    tagline: 'Decomposição de metas em planos acionáveis, gestão de backlog, prazos e tarefas',
+    systemDirective: `Sua persona e missão principal é a GESTÃO ESTRATÉGICA DE PROJETOS, EXECUÇÃO E DECOMPOSIÇÃO DE METAS EM TAREFAS.
+- Atue como um experiente Gerente de Projetos e Tech Lead ágil.
+- Quando o usuário expressar um objetivo, projeto ou necessidade, ajude a decompô-lo em tarefas claras, prioritárias, estimadas e acionáveis com subtarefas lógicas.
+- Sempre que sugerir criar, atualizar ou estruturar tarefas no Pyrita, forneça blocos executáveis de ação de tarefas usando a sintaxe especial:
+\`\`\`task-action
+{
+  "action": "create",
+  "title": "Nome conciso da tarefa",
+  "priority": "high",
+  "deadline": "2026-10-25",
+  "tags": ["projeto", "prioridade"],
+  "subtasks": ["Passo 1", "Passo 2", "Passo 3"],
+  "description": "Detalhes sobre a entrega..."
+}
+\`\`\`
+- Prioridades aceitas: "urgent", "high", "medium", "low", "none".
+- Analise periodicamente a lista de tarefas existentes no Vault para identificar gargalos, tarefas atrasadas e dependências críticas.`,
+    presets: [
+      { label: '🎯 Decompor em Tarefas', prompt: 'Analise o contexto atual e crie um plano de execução estruturado com tarefas acionáveis e subtarefas detalhadas.' },
+      { label: '📊 Status & Priorização', prompt: 'Analise as tarefas do cofre e sugira a priorização recomendada para a semana/sprint com prazos.' },
+      { label: '⚡ Checklist Rápido', prompt: 'Gere um checklist executável de tarefas prioritárias para iniciar este objetivo imediatamente.' },
+      { label: '🔍 Auditoria de Gargalos', prompt: 'Identifique riscos, dependências ocultas e tarefas que podem travar o avanço do projeto.' }
+    ]
   }
 ]
 
@@ -190,6 +267,12 @@ interface AiAssistantProps {
   onInsertSnippet?: (snippet: string) => void
   onCreateNote?: (folder?: string, initialTitle?: string, initialContent?: string) => void
   onUpdateNote?: (note: Note) => void
+  tasks?: TaskItem[]
+  taskSettings?: TaskSettings
+  onCreateTask?: (initialTitle?: string, initialData?: Partial<TaskItem>) => void
+  onUpdateTask?: (task: TaskItem) => void
+  onDeleteTask?: (taskId: string) => void
+  onOpenTasks?: () => void
   isConversationsOpen?: boolean
   onToggleConversations?: () => void
   onClose: () => void
@@ -203,6 +286,12 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   onAddTag,
   onInsertSnippet,
   onUpdateNote,
+  tasks,
+  taskSettings,
+  onCreateTask,
+  onUpdateTask,
+  onDeleteTask,
+  onOpenTasks,
   isConversationsOpen: externalConversationsOpen,
   onToggleConversations,
   onClose
@@ -273,6 +362,52 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const [insertedNotice, setInsertedNotice] = useState<string | null>(null)
   const [copiedNotice, setCopiedNotice] = useState<string | null>(null)
   const [toastNotice, setToastNotice] = useState<string | null>(null)
+  const [executedTaskActions, setExecutedTaskActions] = useState<Record<string, boolean>>({})
+
+  const handleExecuteTaskAction = (act: ParsedTaskAction, key: string) => {
+    if (act.action === 'delete' && onDeleteTask) {
+      const existing = tasks?.find(t => t.title.toLowerCase() === act.title.toLowerCase())
+      if (existing) {
+        onDeleteTask(existing.id)
+        setExecutedTaskActions(prev => ({ ...prev, [key]: true }))
+        return
+      }
+    }
+
+    if (act.action === 'update' && onUpdateTask) {
+      const existing = tasks?.find(t => t.title.toLowerCase() === act.title.toLowerCase())
+      if (existing) {
+        onUpdateTask({
+          ...existing,
+          priority: (act.priority as any) || existing.priority,
+          deadline: act.deadline || existing.deadline,
+          tags: act.tags?.length ? act.tags : existing.tags,
+          description: act.description || existing.description,
+          updatedAt: Date.now()
+        })
+        setExecutedTaskActions(prev => ({ ...prev, [key]: true }))
+        return
+      }
+    }
+
+    if (!onCreateTask) return
+    const subtasksList: SubTask[] = (act.subtasks || []).map(stTitle => ({
+      id: 'st_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6),
+      title: stTitle,
+      completed: false,
+      createdAt: Date.now()
+    }))
+
+    onCreateTask(act.title, {
+      priority: (act.priority as any) || 'medium',
+      deadline: act.deadline,
+      tags: act.tags || [],
+      subtasks: subtasksList,
+      description: act.description || ''
+    })
+
+    setExecutedTaskActions(prev => ({ ...prev, [key]: true }))
+  }
 
   const activeSpecialty = useMemo(() => {
     if (activeSpecialtyId === 'none') {
@@ -833,12 +968,40 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 - Quando a resposta for conceitual, analítica ou textual, responda com formatação Markdown normal limpa, sem blocos :::.
 - Quando utilizar artefatos e fizer referências a notas do cofre dentro deles, utilize sempre a sintaxe de link bidirecional [[Nome da Nota]].`
 
+        const tasksSummary = tasks && tasks.length > 0
+          ? `Tarefas cadastradas no cofre (${tasks.length} tarefas):\n${tasks.slice(0, 30).map(t => `- [${t.completed ? 'x' : ' '}] ${t.title} (Status: ${t.statusId}, Prioridade: ${t.priority}${t.deadline ? `, Prazo: ${t.deadline}` : ''}${t.subtasks && t.subtasks.length > 0 ? `, ${t.subtasks.filter(st => st.completed).length}/${t.subtasks.length} subtarefas` : ''})`).join('\n')}`
+          : `Nenhuma tarefa cadastrada no cofre no momento.`
+
+        const statusesList = taskSettings?.statuses?.length
+          ? `Status disponíveis: ${taskSettings.statuses.map(s => s.name).join(', ')}.`
+          : ''
+
+        const tasksDirective = `DIRETRIZ DE GESTÃO DE PROJETOS E TAREFAS:
+- Você é capaz de atuar como gestor de projetos do usuário: planejar entregas, analisar gargalos e decompor objetivos em tarefas acionáveis e subtarefas.
+${statusesList ? `- ${statusesList}\n` : ''}- Quando sugerir criar tarefas, forneça blocos executáveis formatados com a sintaxe especial:
+\`\`\`task-action
+{
+  "action": "create",
+  "title": "Título conciso da tarefa",
+  "priority": "high",
+  "deadline": "2026-10-25",
+  "tags": ["projeto", "foco"],
+  "subtasks": ["Passo 1", "Passo 2", "Passo 3"],
+  "description": "Breve detalhamento..."
+}
+\`\`\`
+O Pyrita renderiza esses blocos automaticamente como cards com botão de 1 clique para criação direta no cofre.`
+
         const systemPrompt = `Você é o Agente de IA do Pyrita, assistente de alto nível para gestão de conhecimento e pensamento (estilo Obsidian) com foco em produtividade e pensamento em rede.
 
 ${specialtyBlock}
 ${ruleDirective}
 ${artifactsDirective}
+${tasksDirective}
 ${skillsDirectiveBlock}
+Contexto de Tarefas no Cofre:
+${tasksSummary}
+
 Contexto fornecido pelo usuário:
 ${contextBlock}
 
@@ -1396,77 +1559,214 @@ Diretrizes gerais:
                   {m.text}
                 </div>
               ) : (
-                <div className="w-full text-zinc-200 px-1 py-1 space-y-2">
-                  {m.text === 'Pensando...' ? (
-                    <div className="flex items-center gap-2 py-1 text-zinc-400 font-mono text-[11px]">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)] shrink-0" />
-                      <span>Preparando uma resposta para você…</span>
-                    </div>
-                  ) : (
-                    <MarkdownRenderer
-                      content={m.text}
-                      onNavigate={onConnectNote}
-                      onButtonClick={(promptText) => executePrompt(promptText)}
-                      onInsertSnippet={agentRule === 'editor' ? onInsertSnippet : undefined}
-                    />
-                  )}
+                (() => {
+                  const { displayText, actions: taskActions } = parseMessageTaskActions(m.text)
 
-                  {m.isActionable && (
-                    <div className="pt-2 border-t border-zinc-800/60 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsSettingsOpen(true)}
-                        className="px-3 py-1.5 rounded-xl bg-[var(--accent)] hover:opacity-90 text-zinc-950 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <KeyRound className="w-3.5 h-3.5" />
-                        <span>Configurar Chave & Modelo</span>
-                      </button>
-                    </div>
-                  )}
+                  return (
+                    <div className="w-full text-zinc-200 px-1 py-1 space-y-2">
+                      {m.text === 'Pensando...' ? (
+                        <div className="flex items-center gap-2 py-1 text-zinc-400 font-mono text-[11px]">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)] shrink-0" />
+                          <span>Preparando uma resposta para você…</span>
+                        </div>
+                      ) : (
+                        <MarkdownRenderer
+                          content={displayText}
+                          onNavigate={onConnectNote}
+                          onButtonClick={(promptText) => executePrompt(promptText)}
+                          onInsertSnippet={agentRule === 'editor' ? onInsertSnippet : undefined}
+                        />
+                      )}
 
-                  {/* Message Bottom Action Bar: Minimalist style */}
-                  {!m.isActionable && m.text !== 'Pensando...' && (
-                    <div className="pt-2 border-t border-zinc-800/40 flex items-center justify-between gap-1.5">
-                      <div>
-                        {agentRule === 'editor' && onInsertSnippet && (
+                      {/* Executable Task Actions Cards */}
+                      {taskActions.length > 0 && (
+                        <div className="mt-3 space-y-2 pt-2 border-t border-zinc-800/60">
+                          <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-400">
+                            <span className="flex items-center gap-1.5">
+                              <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Plano de Tarefas Proposto pelo Agente</span>
+                            </span>
+                            {taskActions.length > 1 && onCreateTask && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  taskActions.forEach((act, idx) => {
+                                    const key = `${m.id}_${idx}`
+                                    if (!executedTaskActions[key]) {
+                                      handleExecuteTaskAction(act, key)
+                                    }
+                                  })
+                                }}
+                                className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 font-medium transition-colors cursor-pointer"
+                              >
+                                Criar todas ({taskActions.length})
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="space-y-1.5">
+                            {taskActions.map((act, idx) => {
+                              const taskKey = `${m.id}_${idx}`
+                              const isDone = !!executedTaskActions[taskKey]
+
+                              return (
+                                <div
+                                  key={taskKey}
+                                  className="p-3 rounded-xl bg-[#13141a] border border-zinc-800/80 hover:border-zinc-700/80 transition-all space-y-2 shadow-xs"
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex items-start gap-2 min-w-0">
+                                      <CheckSquare className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                                      <div className="min-w-0">
+                                        <div className="font-semibold text-zinc-100 text-xs leading-snug">{act.title}</div>
+                                        {act.description && (
+                                          <div className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">{act.description}</div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {onCreateTask && (
+                                      <button
+                                        type="button"
+                                        disabled={isDone}
+                                        onClick={() => handleExecuteTaskAction(act, taskKey)}
+                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 transition-colors flex items-center gap-1 cursor-pointer ${
+                                          isDone
+                                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 cursor-default'
+                                            : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-sm'
+                                        }`}
+                                      >
+                                        {isDone ? (
+                                          <>
+                                            <Check className="w-3 h-3" />
+                                            <span>Criada!</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Plus className="w-3 h-3 stroke-[2.5]" />
+                                            <span>Criar Tarefa</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Badges */}
+                                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                    {act.priority && act.priority !== 'none' && (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-medium bg-zinc-800/80 text-zinc-300">
+                                        <Flag className="w-2.5 h-2.5 text-zinc-400" />
+                                        <span>Prioridade: {act.priority}</span>
+                                      </span>
+                                    )}
+                                    {act.deadline && (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-zinc-800/80 text-zinc-300">
+                                        <Calendar className="w-2.5 h-2.5 text-zinc-400" />
+                                        <span>Prazo: {act.deadline}</span>
+                                      </span>
+                                    )}
+                                    {act.subtasks && act.subtasks.length > 0 && (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] bg-zinc-800/80 text-zinc-300">
+                                        <ListTodo className="w-2.5 h-2.5 text-zinc-400" />
+                                        <span>{act.subtasks.length} subtarefas</span>
+                                      </span>
+                                    )}
+                                    {act.tags && act.tags.map(t => (
+                                      <span key={t} className="px-1.5 py-0.5 rounded bg-zinc-850 text-[9px] text-zinc-400 font-mono">
+                                        #{t}
+                                      </span>
+                                    ))}
+                                  </div>
+
+                                  {/* Subtasks Preview List */}
+                                  {act.subtasks && act.subtasks.length > 0 && (
+                                    <div className="pt-1.5 border-t border-zinc-800/60 space-y-1">
+                                      {act.subtasks.map((st, i) => (
+                                        <div key={i} className="flex items-center gap-1.5 text-[10.5px] text-zinc-400 pl-1">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0" />
+                                          <span>{st}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+
+                          {onOpenTasks && (
+                            <div className="pt-1 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={onOpenTasks}
+                                className="text-[10px] text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>Abrir quadro de tarefas</span>
+                                <span>→</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {m.isActionable && (
+                        <div className="pt-2 border-t border-zinc-800/60 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsSettingsOpen(true)}
+                            className="px-3 py-1.5 rounded-xl bg-[var(--accent)] hover:opacity-90 text-zinc-950 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            <span>Configurar Chave & Modelo</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Message Bottom Action Bar: Minimalist style */}
+                      {!m.isActionable && m.text !== 'Pensando...' && (
+                        <div className="pt-2 border-t border-zinc-800/40 flex items-center justify-between gap-1.5">
+                          <div>
+                            {agentRule === 'editor' && onInsertSnippet && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onInsertSnippet(displayText)
+                                  setInsertedNotice(m.id)
+                                  setTimeout(() => setInsertedNotice(null), 3000)
+                                }}
+                                className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 bg-zinc-900/40 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                                title="Inserir todo o texto e artefatos desta resposta na nota ativa"
+                              >
+                                <PenLine className="w-2.5 h-2.5" />
+                                <span>{insertedNotice === m.id ? '✓ Inserido!' : 'Inserir resposta na nota'}</span>
+                              </button>
+                            )}
+                            {agentRule === 'analyst' && (
+                              <span className="text-[10px] text-zinc-500 italic flex items-center gap-1">
+                                <Eye className="w-3 h-3 text-sky-400/70" />
+                                Modo Analista (Consultivo)
+                              </span>
+                            )}
+                          </div>
+
                           <button
                             type="button"
                             onClick={() => {
-                              onInsertSnippet(m.text)
-                              setInsertedNotice(m.id)
-                              setTimeout(() => setInsertedNotice(null), 3000)
+                              navigator.clipboard.writeText(displayText)
+                              setCopiedNotice(m.id)
+                              setTimeout(() => setCopiedNotice(null), 2000)
                             }}
                             className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 bg-zinc-900/40 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
-                            title="Inserir todo o texto e artefatos desta resposta na nota ativa"
+                            title="Copiar texto em Markdown"
                           >
-                            <PenLine className="w-2.5 h-2.5" />
-                            <span>{insertedNotice === m.id ? '✓ Inserido!' : 'Inserir resposta na nota'}</span>
+                            {copiedNotice === m.id ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
+                            <span>{copiedNotice === m.id ? 'Copiado!' : 'Copiar'}</span>
                           </button>
-                        )}
-                        {agentRule === 'analyst' && (
-                          <span className="text-[10px] text-zinc-500 italic flex items-center gap-1">
-                            <Eye className="w-3 h-3 text-sky-400/70" />
-                            Modo Analista (Consultivo)
-                          </span>
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(m.text)
-                          setCopiedNotice(m.id)
-                          setTimeout(() => setCopiedNotice(null), 2000)
-                        }}
-                        className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 bg-zinc-900/40 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
-                        title="Copiar texto em Markdown"
-                      >
-                        {copiedNotice === m.id ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
-                        <span>{copiedNotice === m.id ? 'Copiado!' : 'Copiar'}</span>
-                      </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  )
+                })()
               )}
             </div>
           ))}

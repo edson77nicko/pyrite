@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import type { TaskSettings, TaskStatusOption, TaskPropertyConfig } from '../types/tasks'
+import { DEFAULT_TASK_SETTINGS } from '../utils/taskStorage'
 import { X, Plus, Trash2, Sliders, Calendar, Compass, Flag, Type, ChevronDown, Check, Eye, EyeOff, Tag } from 'lucide-react'
 
 interface TaskSettingsModalProps {
@@ -47,6 +48,9 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
 
   if (!isOpen) return null
 
+  const safeStatuses = Array.isArray(settings?.statuses) ? settings.statuses : DEFAULT_TASK_SETTINGS.statuses
+  const safeProperties = Array.isArray(settings?.properties) ? settings.properties : DEFAULT_TASK_SETTINGS.properties
+
   const handleAddStatus = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newStatusName.trim()) return
@@ -59,8 +63,8 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
     }
 
     onUpdateSettings({
-      ...settings,
-      statuses: [...settings.statuses, newOption]
+      statuses: [...safeStatuses, newOption],
+      properties: safeProperties
     })
 
     setNewStatusName('')
@@ -68,13 +72,13 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
   }
 
   const handleDeleteStatus = (statusId: string) => {
-    if (settings.statuses.length <= 1) {
+    if (safeStatuses.length <= 1) {
       alert('Você precisa ter pelo menos um status configurado.')
       return
     }
     onUpdateSettings({
-      ...settings,
-      statuses: settings.statuses.filter(s => s.id !== statusId)
+      statuses: safeStatuses.filter(s => s.id !== statusId),
+      properties: safeProperties
     })
   }
 
@@ -89,8 +93,8 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
     }
 
     onUpdateSettings({
-      ...settings,
-      properties: [...settings.properties, newProp]
+      statuses: safeStatuses,
+      properties: [...safeProperties, newProp]
     })
 
     setNewPropName('')
@@ -98,15 +102,15 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
 
   const handleDeleteProperty = (propId: string) => {
     onUpdateSettings({
-      ...settings,
-      properties: settings.properties.filter(p => p.id !== propId)
+      statuses: safeStatuses,
+      properties: safeProperties.filter(p => p.id !== propId)
     })
   }
 
   const handleTogglePropertyHidden = (propId: string) => {
     onUpdateSettings({
-      ...settings,
-      properties: settings.properties.map(p =>
+      statuses: safeStatuses,
+      properties: safeProperties.map(p =>
         p.id === propId ? { ...p, hidden: !p.hidden } : p
       )
     })
@@ -114,20 +118,20 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
 
   // Ensure default standard properties exist if not already present
   const allDisplayProperties = React.useMemo(() => {
-    const list = [...settings.properties]
+    const list = [...safeProperties]
     if (!list.some(p => p.id === 'prop_tags')) {
       list.push({ id: 'prop_tags', name: 'Tags', type: 'text' })
     }
     return list
-  }, [settings.properties])
+  }, [safeProperties])
 
   const selectedPropTypeLabel = PROPERTY_TYPE_OPTIONS.find(o => o.id === newPropType)?.label || 'Texto'
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 select-none">
-      <div className="w-full max-w-lg bg-[#111114] rounded-2xl shadow-2xl overflow-hidden flex flex-col text-xs text-zinc-100 animate-in fade-in zoom-in-95 duration-100">
-        {/* Header - No harsh divider line */}
-        <div className="px-5 py-3.5 bg-[#0e0e11] flex items-center justify-between">
+      <div className="w-full max-w-lg bg-[#0f0f13] border border-zinc-800/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-xs text-zinc-100 animate-in fade-in zoom-in-95 duration-100">
+        {/* Header - Unified with app header style */}
+        <div className="px-5 py-3.5 bg-[#0c0c0f] border-b border-zinc-800/60 flex items-center justify-between">
           <div className="flex items-center gap-2 text-zinc-300 font-medium">
             <Sliders className="w-4 h-4 text-zinc-400" />
             <span className="text-sm font-semibold">Configurações de Tarefas</span>
@@ -141,28 +145,28 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
         </div>
 
         {/* Navigation Tabs - Sober pills with subtle tones */}
-        <div className="px-5 pt-3 pb-1 flex items-center gap-2 bg-[#0e0e11]">
+        <div className="px-5 pt-3 pb-2 flex items-center gap-2 bg-[#0c0c0f]">
           <button
             onClick={() => setActiveTab('status')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               activeTab === 'status'
-                ? 'bg-zinc-800/90 text-zinc-100 font-semibold shadow-xs'
+                ? 'bg-zinc-800 text-zinc-100 font-semibold shadow-xs'
                 : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/40'
             }`}
             style={activeTab === 'status' ? { color: 'var(--accent, #ffffff)' } : undefined}
           >
-            Status ({settings.statuses.length})
+            Status ({safeStatuses.length})
           </button>
           <button
             onClick={() => setActiveTab('properties')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               activeTab === 'properties'
-                ? 'bg-zinc-800/90 text-zinc-100 font-semibold shadow-xs'
+                ? 'bg-zinc-800 text-zinc-100 font-semibold shadow-xs'
                 : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/40'
             }`}
             style={activeTab === 'properties' ? { color: 'var(--accent, #ffffff)' } : undefined}
           >
-            Propriedades ({settings.properties.length})
+            Propriedades ({safeProperties.length})
           </button>
         </div>
 
@@ -171,11 +175,11 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
           {activeTab === 'status' && (
             <div className="space-y-4">
               {/* Existing Status List */}
-              <div className="space-y-1 bg-zinc-950/30 p-2 rounded-xl">
-                {settings.statuses.map(st => (
+              <div className="space-y-1 bg-[#13141a]/70 border border-zinc-800/40 p-2 rounded-xl">
+                {safeStatuses.map(st => (
                   <div
                     key={st.id}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-zinc-850/40 transition-colors"
+                    className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-zinc-800/40 transition-colors"
                   >
                     <div className="flex items-center gap-2.5">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: st.color }} />
@@ -198,14 +202,14 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
               </div>
 
               {/* Add New Status Form - Tone-separated */}
-              <form onSubmit={handleAddStatus} className="p-3 bg-zinc-950/20 rounded-xl space-y-2.5">
+              <form onSubmit={handleAddStatus} className="p-3 bg-[#13141a]/50 border border-zinc-800/30 rounded-xl space-y-2.5">
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     value={newStatusName}
                     onChange={e => setNewStatusName(e.target.value)}
                     placeholder="Nome do status..."
-                    className="flex-1 bg-zinc-900/80 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:bg-zinc-900 transition-colors"
+                    className="flex-1 bg-[#161720] border border-zinc-750/60 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition-colors"
                   />
                   <div className="flex items-center gap-1">
                     {PRESET_COLORS.map(c => (
@@ -252,11 +256,11 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
           {activeTab === 'properties' && (
             <div className="space-y-4">
               {/* Existing Properties */}
-              <div className="space-y-1 bg-zinc-950/30 p-2 rounded-xl">
+              <div className="space-y-1 bg-[#13141a]/70 border border-zinc-800/40 p-2 rounded-xl">
                 {allDisplayProperties.map(prop => (
                   <div
                     key={prop.id}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-zinc-850/40 transition-colors"
+                    className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-zinc-800/40 transition-colors"
                   >
                     <div className="flex items-center gap-2.5">
                       {prop.type === 'context' ? (
@@ -310,14 +314,14 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
               </div>
 
               {/* Add New Property Form with Custom Dropdown opening UPWARDS */}
-              <form onSubmit={handleAddProperty} className="p-3 bg-zinc-950/20 rounded-xl space-y-2.5">
+              <form onSubmit={handleAddProperty} className="p-3 bg-[#13141a]/50 border border-zinc-800/30 rounded-xl space-y-2.5">
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     value={newPropName}
                     onChange={e => setNewPropName(e.target.value)}
                     placeholder="Nome da propriedade..."
-                    className="flex-1 bg-zinc-900/80 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:bg-zinc-900 transition-colors"
+                    className="flex-1 bg-[#161720] border border-zinc-750/60 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition-colors"
                   />
 
                   {/* Custom Property Type Dropdown floating UPWARDS */}
@@ -325,14 +329,14 @@ export const TaskSettingsModal: React.FC<TaskSettingsModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsPropTypeDropdownOpen(o => !o)}
-                      className="flex items-center gap-1.5 bg-zinc-900/80 hover:bg-zinc-850 px-2.5 py-1.5 rounded-lg text-xs text-zinc-200 transition-colors cursor-pointer"
+                      className="flex items-center gap-1.5 bg-[#161720] border border-zinc-750/60 hover:bg-zinc-800 px-2.5 py-1.5 rounded-lg text-xs text-zinc-200 transition-colors cursor-pointer"
                     >
                       <span>{selectedPropTypeLabel}</span>
                       <ChevronDown className="w-3 h-3 text-zinc-400" />
                     </button>
 
                     {isPropTypeDropdownOpen && (
-                      <div className="absolute z-50 bottom-full right-0 mb-1.5 w-32 bg-[#181820] border border-white/[0.08] rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-75">
+                      <div className="absolute z-50 bottom-full right-0 mb-1.5 w-32 bg-[#13141a] border border-zinc-750 rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-75">
                         {PROPERTY_TYPE_OPTIONS.map(opt => {
                           const isSelected = opt.id === newPropType
                           return (

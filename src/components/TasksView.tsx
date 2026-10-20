@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
-import type { TaskItem, TaskSettings, TaskPriority } from '../types/tasks'
+import type { TaskItem, TaskSettings, TaskPriority, SubTask } from '../types/tasks'
 import type { Note } from '../types'
+import { DEFAULT_TASK_SETTINGS } from '../utils/taskStorage'
 import { TaskSettingsModal } from './TaskSettingsModal'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import {
@@ -17,7 +18,10 @@ import {
   Kanban,
   SlidersHorizontal,
   ChevronDown,
-  Check
+  ChevronRight,
+  Check,
+  CheckSquare,
+  CornerDownRight
 } from 'lucide-react'
 
 interface TasksViewProps {
@@ -70,6 +74,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
+  // Subtasks expanded state in list view
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set())
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState<Record<string, string>>({})
+
   // Drag and drop state
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
   const [dragOverColumnId, setDragOverColumnId] = useState<string | null>(null)
@@ -85,9 +93,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   const todayStr = new Date().toISOString().slice(0, 10)
 
+  const safeStatuses = Array.isArray(settings?.statuses) ? settings.statuses : DEFAULT_TASK_SETTINGS.statuses
+  const safeProperties = Array.isArray(settings?.properties) ? settings.properties : DEFAULT_TASK_SETTINGS.properties
+
   // Column visibility check (Olhinho feature)
   const isColumnHidden = (propId: string) => {
-    const prop = settings.properties.find(p => p.id === propId)
+    const prop = safeProperties.find(p => p.id === propId)
     return Boolean(prop?.hidden)
   }
 
@@ -98,6 +109,60 @@ export const TasksView: React.FC<TasksViewProps> = ({
     (!isColumnHidden('prop_deadline') ? 1 : 0) +
     (!isColumnHidden('prop_context') ? 1 : 0) +
     (!isColumnHidden('prop_tags') ? 1 : 0)
+
+  // Subtasks helpers
+  const toggleTaskExpand = (taskId: string) => {
+    setExpandedTaskIds(prev => {
+      const next = new Set(prev)
+      if (next.has(taskId)) {
+        next.delete(taskId)
+      } else {
+        next.add(taskId)
+      }
+      return next
+    })
+  }
+
+  const handleToggleSubtask = (task: TaskItem, subtaskId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    const updatedSubtasks = (task.subtasks || []).map(st =>
+      st.id === subtaskId ? { ...st, completed: !st.completed } : st
+    )
+    onUpdateTask({
+      ...task,
+      subtasks: updatedSubtasks,
+      updatedAt: Date.now()
+    })
+  }
+
+  const handleAddSubtask = (task: TaskItem, title: string, e?: React.FormEvent) => {
+    e?.preventDefault()
+    if (!title.trim()) return
+    const newSub: SubTask = {
+      id: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      title: title.trim(),
+      completed: false,
+      createdAt: Date.now()
+    }
+    const updatedSubtasks = [...(task.subtasks || []), newSub]
+    onUpdateTask({
+      ...task,
+      subtasks: updatedSubtasks,
+      updatedAt: Date.now()
+    })
+    setNewSubtaskTitle(prev => ({ ...prev, [task.id]: '' }))
+    setExpandedTaskIds(prev => new Set(prev).add(task.id))
+  }
+
+  const handleDeleteSubtask = (task: TaskItem, subtaskId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    const updatedSubtasks = (task.subtasks || []).filter(st => st.id !== subtaskId)
+    onUpdateTask({
+      ...task,
+      subtasks: updatedSubtasks,
+      updatedAt: Date.now()
+    })
+  }
 
   // Filter tasks based on search
   const filteredTasks = tasks.filter(t => {
@@ -170,7 +235,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     }
 
     if (kanbanGroupBy === 'status') {
-      const isCompletedStatus = settings.statuses.find(s => s.id === columnId)?.isCompleted || false
+      const isCompletedStatus = safeStatuses.find(s => s.id === columnId)?.isCompleted || false
       onCreateTask(newColumnTaskTitle.trim(), {
         statusId: columnId,
         completed: isCompletedStatus
@@ -187,8 +252,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   return (
     <div className="w-full h-full flex flex-col bg-[#0f0f12] text-zinc-100 select-none overflow-hidden">
-      {/* 1. Header Toolbar - Clean, seamless, no harsh borders */}
-      <div className="h-12 px-5 bg-[#121215]/80 flex items-center justify-between gap-4 shrink-0">
+      {/* 1. Header Toolbar - Seamless with Notes and Agent */}
+      <div className="h-12 px-5 bg-[#0c0c0f] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
         {/* Left: Title & Counters */}
         <div className="flex items-center gap-3">
           <div
@@ -218,7 +283,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
         {/* Center: View Mode Switcher (Lista vs Kanban) + Grouping Options */}
         <div className="flex items-center gap-2">
           {/* View switcher buttons */}
-          <div className="flex items-center gap-0.5 bg-zinc-900/70 p-0.5 rounded-lg">
+          <div className="flex items-center gap-0.5 bg-[#14151b] border border-zinc-800/60 p-0.5 rounded-lg">
             <button
               onClick={() => setViewMode('list')}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
@@ -267,7 +332,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             <div className="relative">
               <button
                 onClick={() => setIsGroupingMenuOpen(!isGroupingMenuOpen)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-zinc-900/60 hover:bg-zinc-850/80 text-zinc-300 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-[#14151b] border border-zinc-800/60 hover:bg-[#181922] text-zinc-300 transition-colors cursor-pointer"
                 title="Configurar qual propriedade define as colunas do Kanban"
               >
                 <SlidersHorizontal className="w-3 h-3 text-zinc-400" />
@@ -280,7 +345,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
               {isGroupingMenuOpen && (
                 <div
-                  className="absolute top-full mt-1.5 left-0 z-30 w-44 rounded-xl bg-zinc-900 shadow-2xl p-1.5 space-y-0.5 animate-in fade-in-50 border border-zinc-800/60"
+                  className="absolute top-full mt-1.5 left-0 z-30 w-44 rounded-xl bg-[#13141a] shadow-2xl p-1.5 space-y-0.5 animate-in fade-in-50 border border-zinc-750"
                   onMouseLeave={() => setIsGroupingMenuOpen(false)}
                 >
                   <div className="text-[10px] font-semibold text-zinc-500 px-2 py-1 uppercase tracking-wider">
@@ -293,7 +358,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     }}
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
                       kanbanGroupBy === 'status'
-                        ? 'bg-zinc-800/80 font-medium'
+                        ? 'bg-zinc-800 text-white font-medium'
                         : 'hover:bg-zinc-800/40 text-zinc-300'
                     }`}
                     style={kanbanGroupBy === 'status' ? { color: 'var(--accent, #c59b27)' } : undefined}
@@ -308,7 +373,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     }}
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
                       kanbanGroupBy === 'priority'
-                        ? 'bg-zinc-800/80 font-medium'
+                        ? 'bg-zinc-800 text-white font-medium'
                         : 'hover:bg-zinc-800/40 text-zinc-300'
                     }`}
                     style={kanbanGroupBy === 'priority' ? { color: 'var(--accent, #c59b27)' } : undefined}
@@ -332,14 +397,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Buscar tarefas..."
-              className="w-36 md:w-44 pl-7 pr-2.5 py-1 bg-zinc-900/60 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:bg-zinc-900 transition-all border-0"
+              className="w-36 md:w-44 pl-7 pr-2.5 py-1 bg-[#14151b] border border-zinc-800/60 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-all"
             />
           </div>
 
           {/* Settings Gear Button */}
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-[#14151b] border border-transparent hover:border-zinc-800/60 rounded-lg transition-colors cursor-pointer"
             title="Configurações das Tarefas (Propriedades e Status)"
           >
             <Settings className="w-3.5 h-3.5" />
@@ -362,9 +427,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
       {/* 2. Main Content: Lista or Kanban */}
       {viewMode === 'list' ? (
-        /* LIST / TABLE VIEW - Distinct Tonal Hierarchy and Seamless Cards */
+        /* LIST / TABLE VIEW - Refined, subtle selection & expandable subtasks */
         <div className="flex-1 overflow-x-auto overflow-y-auto custom-chat-scrollbar px-5 py-3">
-          <table className="w-full text-left text-xs border-separate border-spacing-y-2">
+          <table className="w-full text-left text-xs border-separate border-spacing-y-1.5">
             <thead>
               <tr className="text-zinc-500 uppercase text-[10px] tracking-wider font-semibold">
                 <th className="w-10 px-3 py-2"></th>
@@ -387,208 +452,357 @@ export const TasksView: React.FC<TasksViewProps> = ({
               ) : (
                 filteredTasks.map(task => {
                   const isSelected = selectedTaskId === task.id
-                  const statusObj = settings.statuses.find(s => s.id === task.statusId) || settings.statuses[0]
+                  const statusObj = safeStatuses.find(s => s.id === task.statusId) || safeStatuses[0]
                   const priorityInfo = PRIORITY_BADGES[task.priority]
+                  const isExpanded = expandedTaskIds.has(task.id)
+                  const subtasksCount = task.subtasks?.length || 0
+                  const completedSubtasksCount = task.subtasks?.filter(s => s.completed).length || 0
 
                   return (
-                    <tr
-                      key={task.id}
-                      data-task-item="true"
-                      onClick={() => onSelectTask(task)}
-                      className={`group transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-[#1b1b24]'
-                          : 'bg-[#141418] hover:bg-[#191920]'
-                      }`}
-                      style={
-                        isSelected
-                          ? {
-                              boxShadow: 'inset 0 0 0 1.5px var(--accent, #c59b27)'
-                            }
-                          : undefined
-                      }
-                    >
-                      {/* Checkbox */}
-                      <td className="px-3 py-2.5 first:rounded-l-xl">
-                        <button
-                          onClick={e => handleToggleComplete(task, e)}
-                          className="transition-transform hover:scale-110 cursor-pointer flex items-center justify-center"
+                    <React.Fragment key={task.id}>
+                      <tr
+                        data-task-item="true"
+                        onClick={() => onSelectTask(task)}
+                        className="group transition-all cursor-pointer"
+                      >
+                        {/* Checkbox */}
+                        <td
+                          className={`px-3 py-2.5 first:rounded-l-xl transition-all ${
+                            isSelected
+                              ? 'bg-[#1a1b24] border-l-[3px] border-l-[var(--accent,#c59b27)] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
+                              : 'bg-[#13141a] group-hover:bg-[#181921] border-l-[3px] border-l-transparent border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                          }`}
                         >
-                          {task.completed ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                          ) : (
-                            <Circle
-                              className="w-4 h-4 text-zinc-600 transition-colors"
-                              style={{ color: isSelected ? 'var(--accent)' : undefined }}
-                            />
-                          )}
-                        </button>
-                      </td>
-
-                      {/* Task Title */}
-                      <td className="px-3 py-2.5 font-medium text-zinc-100 max-w-xs truncate text-[12.5px]">
-                        <span className={task.completed ? 'line-through text-zinc-500' : ''}>
-                          {task.title}
-                        </span>
-                      </td>
-
-                      {/* Status Pill */}
-                      {!isColumnHidden('prop_status') && (
-                        <td className="px-3 py-2.5">
-                          <span
-                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10.5px] font-medium"
-                            style={{
-                              backgroundColor: `${statusObj.color}20`,
-                              color: statusObj.color
-                            }}
+                          <button
+                            onClick={e => handleToggleComplete(task, e)}
+                            className="transition-transform hover:scale-110 cursor-pointer flex items-center justify-center"
                           >
-                            <span
-                              className="w-1.5 h-1.5 rounded-full shrink-0"
-                              style={{ backgroundColor: statusObj.color }}
-                            />
-                            <span className="truncate">{statusObj.name}</span>
-                          </span>
-                        </td>
-                      )}
-
-                      {/* Priority Pill */}
-                      {!isColumnHidden('prop_priority') && (
-                        <td className="px-3 py-2.5">
-                          {task.priority !== 'none' ? (
-                            <span
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-medium"
-                              style={{
-                                backgroundColor: priorityInfo.bg,
-                                color: priorityInfo.color
-                              }}
-                            >
-                              <Flag className="w-2.5 h-2.5" />
-                              <span>{priorityInfo.label}</span>
-                            </span>
-                          ) : (
-                            <span className="text-zinc-600">-</span>
-                          )}
-                        </td>
-                      )}
-
-                      {/* Deadline Pill - Never wraps */}
-                      {!isColumnHidden('prop_deadline') && (
-                        <td className="px-3 py-2.5 text-zinc-300 relative whitespace-nowrap">
-                          <div
-                            ref={editingDeadlineTaskId === task.id ? deadlineBtnRef : undefined}
-                            className="inline-block"
-                          >
-                            {task.deadline ? (
-                              <div
-                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-zinc-800/40 transition-colors cursor-pointer whitespace-nowrap"
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  setEditingDeadlineTaskId(editingDeadlineTaskId === task.id ? null : task.id)
-                                }}
-                              >
-                                <Hourglass className="w-3 h-3 text-zinc-500 shrink-0" />
-                                <span className="text-[11px] font-mono shrink-0 whitespace-nowrap">{task.deadline}</span>
-                                {task.deadline.slice(0, 10) === todayStr && (
-                                  <span
-                                    className="text-[9.5px] px-1.5 py-0.2 rounded font-medium shrink-0 whitespace-nowrap leading-none"
-                                    style={{
-                                      backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
-                                      color: 'var(--accent, #c59b27)'
-                                    }}
-                                  >
-                                    Hoje
-                                  </span>
-                                )}
-                              </div>
+                            {task.completed ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                             ) : (
+                              <Circle
+                                className="w-4 h-4 text-zinc-600 transition-colors"
+                                style={{ color: isSelected ? 'var(--accent)' : undefined }}
+                              />
+                            )}
+                          </button>
+                        </td>
+
+                        {/* Task Title + Subtasks expander + quick action */}
+                        <td
+                          className={`px-3 py-2.5 font-medium text-zinc-100 max-w-xs text-[12.5px] transition-all ${
+                            isSelected
+                              ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
+                              : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={`truncate ${task.completed ? 'line-through text-zinc-500' : ''}`}>
+                              {task.title}
+                            </span>
+
+                            {/* Subtasks expand toggle badge if task has subtasks */}
+                            {subtasksCount > 0 && (
                               <button
                                 type="button"
                                 onClick={e => {
                                   e.stopPropagation()
-                                  setEditingDeadlineTaskId(task.id)
+                                  toggleTaskExpand(task.id)
                                 }}
-                                className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity whitespace-nowrap"
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#161722] hover:bg-zinc-800 text-[10px] text-zinc-400 font-mono transition-colors shrink-0 cursor-pointer border border-zinc-750/50"
+                                title={isExpanded ? 'Ocultar subtarefas' : 'Ver subtarefas'}
                               >
-                                + prazo
+                                <ChevronRight
+                                  className={`w-3 h-3 text-zinc-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                />
+                                <span>
+                                  {completedSubtasksCount}/{subtasksCount}
+                                </span>
                               </button>
                             )}
-                          </div>
 
-                          {editingDeadlineTaskId === task.id && (
-                            <CustomDatePickerPopover
-                              value={task.deadline}
-                              anchorEl={deadlineBtnRef.current}
-                              onChange={newDeadline => {
-                                onUpdateTask({ ...task, deadline: newDeadline, updatedAt: Date.now() })
-                                setEditingDeadlineTaskId(null)
-                              }}
-                              onClose={() => setEditingDeadlineTaskId(null)}
-                              align="left"
-                            />
-                          )}
-                        </td>
-                      )}
-
-                      {/* Context (Nota vinculada) */}
-                      {!isColumnHidden('prop_context') && (
-                        <td className="px-3 py-2.5">
-                          {task.contextNoteId ? (
-                            <span
+                            {/* Hover action to add subtask */}
+                            <button
+                              type="button"
                               onClick={e => {
                                 e.stopPropagation()
-                                onOpenNote(task.contextNoteId!)
+                                toggleTaskExpand(task.id)
                               }}
-                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-800/80 hover:bg-zinc-750 transition-colors text-[11px] font-medium max-w-[190px] truncate"
-                              style={{ color: 'var(--accent, #c59b27)' }}
-                              title="Abrir nota vinculada no editor"
+                              className="opacity-0 group-hover:opacity-100 text-[10px] text-zinc-500 hover:text-zinc-300 transition-opacity shrink-0 cursor-pointer"
+                              title="Adicionar subtarefas"
                             >
-                              <Compass className="w-3 h-3 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
-                              <span className="truncate">{task.contextNoteTitle || 'Nota'}</span>
-                            </span>
-                          ) : (
-                            <span className="text-zinc-600">-</span>
-                          )}
-                        </td>
-                      )}
-
-                      {/* Tags */}
-                      {!isColumnHidden('prop_tags') && (
-                        <td className="px-3 py-2.5">
-                          <div className="flex items-center gap-1 flex-wrap">
-                            {task.tags.map(tag => (
-                              <span
-                                key={tag}
-                                className="px-1.5 py-0.2 rounded bg-zinc-850/80 text-[10px] text-zinc-400 font-mono"
-                              >
-                                #{tag}
-                              </span>
-                            ))}
+                              + subtarefa
+                            </button>
                           </div>
                         </td>
-                      )}
 
-                      {/* Row Action */}
-                      <td className="px-3 py-2.5 text-right last:rounded-r-xl">
-                        <button
-                          onClick={e => {
-                            e.stopPropagation()
-                            if (confirm(`Excluir "${task.title}"?`)) {
-                              onDeleteTask(task.id)
-                            }
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition-opacity cursor-pointer"
-                          title="Excluir tarefa"
+                        {/* Status Pill */}
+                        {!isColumnHidden('prop_status') && (
+                          <td
+                            className={`px-3 py-2.5 transition-all ${
+                              isSelected
+                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
+                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                            }`}
+                          >
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10.5px] font-medium"
+                              style={{
+                                backgroundColor: `${statusObj.color}20`,
+                                color: statusObj.color
+                              }}
+                            >
+                              <span
+                                className="w-1.5 h-1.5 rounded-full shrink-0"
+                                style={{ backgroundColor: statusObj.color }}
+                              />
+                              <span className="truncate">{statusObj.name}</span>
+                            </span>
+                          </td>
+                        )}
+
+                        {/* Priority Pill */}
+                        {!isColumnHidden('prop_priority') && (
+                          <td
+                            className={`px-3 py-2.5 transition-all ${
+                              isSelected
+                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
+                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                            }`}
+                          >
+                            {task.priority !== 'none' ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-medium"
+                                style={{
+                                  backgroundColor: priorityInfo.bg,
+                                  color: priorityInfo.color
+                                }}
+                              >
+                                <Flag className="w-2.5 h-2.5" />
+                                <span>{priorityInfo.label}</span>
+                              </span>
+                            ) : (
+                              <span className="text-zinc-600">-</span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* Deadline Pill - Never wraps */}
+                        {!isColumnHidden('prop_deadline') && (
+                          <td
+                            className={`px-3 py-2.5 text-zinc-300 relative whitespace-nowrap transition-all ${
+                              isSelected
+                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
+                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                            }`}
+                          >
+                            <div
+                              ref={editingDeadlineTaskId === task.id ? deadlineBtnRef : undefined}
+                              className="inline-block"
+                            >
+                              {task.deadline ? (
+                                <div
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-zinc-800/40 transition-colors cursor-pointer whitespace-nowrap"
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    setEditingDeadlineTaskId(editingDeadlineTaskId === task.id ? null : task.id)
+                                  }}
+                                >
+                                  <Hourglass className="w-3 h-3 text-zinc-500 shrink-0" />
+                                  <span className="text-[11px] font-mono shrink-0 whitespace-nowrap">{task.deadline}</span>
+                                  {task.deadline.slice(0, 10) === todayStr && (
+                                    <span
+                                      className="text-[9.5px] px-1.5 py-0.2 rounded font-medium shrink-0 whitespace-nowrap leading-none"
+                                      style={{
+                                        backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
+                                        color: 'var(--accent, #c59b27)'
+                                      }}
+                                    >
+                                      Hoje
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    setEditingDeadlineTaskId(task.id)
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity whitespace-nowrap cursor-pointer"
+                                >
+                                  + prazo
+                                </button>
+                              )}
+                            </div>
+
+                            {editingDeadlineTaskId === task.id && (
+                              <CustomDatePickerPopover
+                                value={task.deadline}
+                                anchorEl={deadlineBtnRef.current}
+                                onChange={newDeadline => {
+                                  onUpdateTask({ ...task, deadline: newDeadline, updatedAt: Date.now() })
+                                  setEditingDeadlineTaskId(null)
+                                }}
+                                onClose={() => setEditingDeadlineTaskId(null)}
+                                align="left"
+                              />
+                            )}
+                          </td>
+                        )}
+
+                        {/* Context (Nota vinculada) */}
+                        {!isColumnHidden('prop_context') && (
+                          <td
+                            className={`px-3 py-2.5 transition-all ${
+                              isSelected
+                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
+                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                            }`}
+                          >
+                            {task.contextNoteId ? (
+                              <span
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  onOpenNote(task.contextNoteId!)
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#161722] hover:bg-zinc-800 transition-colors text-[11px] font-medium max-w-[190px] truncate cursor-pointer"
+                                style={{ color: 'var(--accent, #c59b27)' }}
+                                title="Abrir nota vinculada no editor"
+                              >
+                                <Compass className="w-3 h-3 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
+                                <span className="truncate">{task.contextNoteTitle || 'Nota'}</span>
+                              </span>
+                            ) : (
+                              <span className="text-zinc-600">-</span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* Tags */}
+                        {!isColumnHidden('prop_tags') && (
+                          <td
+                            className={`px-3 py-2.5 transition-all ${
+                              isSelected
+                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
+                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {task.tags.map(tag => (
+                                <span
+                                  key={tag}
+                                  className="px-1.5 py-0.2 rounded bg-zinc-850/80 text-[10px] text-zinc-400 font-mono"
+                                >
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                        )}
+
+                        {/* Row Action */}
+                        <td
+                          className={`px-3 py-2.5 text-right last:rounded-r-xl transition-all ${
+                            isSelected
+                              ? 'bg-[#1a1b24] border-r border-t border-b border-r-zinc-800/60 border-t-zinc-800/60 border-b-zinc-800/60'
+                              : 'bg-[#13141a] group-hover:bg-[#181921] border-r border-t border-b border-r-zinc-800/40 border-t-zinc-800/40 border-b-zinc-800/40'
+                          }`}
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              if (confirm(`Excluir "${task.title}"?`)) {
+                                onDeleteTask(task.id)
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition-opacity cursor-pointer"
+                            title="Excluir tarefa"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+
+                      {/* Expandable Subtasks Row in List View */}
+                      {isExpanded && (
+                        <tr key={`${task.id}_subtasks_row`} className="transition-all animate-in fade-in duration-150">
+                          <td
+                            colSpan={visibleColumnCount}
+                            className="px-4 py-2 first:rounded-l-xl last:rounded-r-xl bg-[#0e0f14] border border-zinc-800/50"
+                          >
+                            <div className="ml-6 pl-4 border-l-2 border-zinc-800 space-y-1.5 my-1">
+                              {task.subtasks && task.subtasks.length > 0 ? (
+                                task.subtasks.map(sub => (
+                                  <div
+                                    key={sub.id}
+                                    className="flex items-center justify-between py-1 px-2.5 rounded-lg hover:bg-[#14151e] group/sub transition-colors"
+                                  >
+                                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                      <button
+                                        type="button"
+                                        onClick={e => handleToggleSubtask(task, sub.id, e)}
+                                        className="cursor-pointer transition-transform hover:scale-110 shrink-0"
+                                      >
+                                        {sub.completed ? (
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                        ) : (
+                                          <Circle className="w-3.5 h-3.5 text-zinc-600 hover:text-zinc-400" />
+                                        )}
+                                      </button>
+                                      <span
+                                        className={`text-xs truncate ${sub.completed ? 'line-through text-zinc-500' : 'text-zinc-200'}`}
+                                      >
+                                        {sub.title}
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={e => handleDeleteSubtask(task, sub.id, e)}
+                                      className="opacity-0 group-hover/sub:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition-opacity cursor-pointer shrink-0"
+                                      title="Excluir subtarefa"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-[11px] text-zinc-500 py-0.5">Nenhuma subtarefa criada ainda.</div>
+                              )}
+
+                              {/* Inline quick add for subtask */}
+                              <form
+                                onSubmit={e => handleAddSubtask(task, newSubtaskTitle[task.id] || '', e)}
+                                className="flex items-center gap-2 pt-1.5"
+                              >
+                                <CornerDownRight className="w-3.5 h-3.5 text-zinc-500 shrink-0 ml-1" />
+                                <input
+                                  type="text"
+                                  value={newSubtaskTitle[task.id] || ''}
+                                  onChange={e =>
+                                    setNewSubtaskTitle(prev => ({ ...prev, [task.id]: e.target.value }))
+                                  }
+                                  placeholder="Nova subtarefa... (Pressione Enter)"
+                                  className="flex-1 bg-[#14151e] border border-zinc-750/50 rounded-lg px-2.5 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+                                />
+                                <button
+                                  type="submit"
+                                  className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
+                                >
+                                  Adicionar
+                                </button>
+                              </form>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   )
                 })
               )}
 
               {/* Inline Quick Add Row */}
-              <tr className="bg-[#121215]/60 hover:bg-[#15151b] transition-colors rounded-xl">
+              <tr className="bg-[#101117]/80 hover:bg-[#13141a] border border-dashed border-zinc-800/50 transition-colors rounded-xl">
                 <td className="px-3 py-2.5 text-center first:rounded-l-xl">
                   <Plus className="w-3.5 h-3.5 text-zinc-500" />
                 </td>
@@ -636,11 +850,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       setDraggedTaskId(null)
                       setDragOverColumnId(null)
                     }}
-                    className={`w-72 shrink-0 flex flex-col max-h-full rounded-2xl p-3 transition-colors ${
-                      isDragTarget ? 'bg-zinc-850/50 ring-1 ring-zinc-700/60' : 'bg-[#121215]/60'
+                    className={`w-72 shrink-0 flex flex-col max-h-full rounded-2xl p-3 transition-colors border ${
+                      isDragTarget ? 'bg-[#14151e] border-zinc-750' : 'bg-[#0c0c0f]/90 border-zinc-850/60'
                     }`}
                   >
-                    {/* Column Header - Clean, without divider line */}
+                    {/* Column Header - Clean, subtle count badge */}
                     <div className="flex items-center justify-between pb-2 mb-1">
                       <div className="flex items-center gap-2">
                         <span
@@ -650,7 +864,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <span className="text-xs font-semibold text-zinc-200 truncate">
                           {statusCol.name}
                         </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-zinc-900 text-zinc-400">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#14151b] text-zinc-400">
                           {colTasks.length}
                         </span>
                       </div>
@@ -659,7 +873,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           setAddingInColumnId(statusCol.id)
                           setNewColumnTaskTitle('')
                         }}
-                        className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
+                        className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-[#181921] rounded-lg transition-colors cursor-pointer"
                         title="Adicionar tarefa nesta coluna"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -693,20 +907,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               setDragOverColumnId(null)
                             }}
                             onClick={() => onSelectTask(task)}
-                            className={`group relative rounded-xl p-3 transition-all cursor-grab active:cursor-grabbing select-none shadow-xs ${
+                            className={`group relative rounded-xl p-3 transition-all cursor-grab active:cursor-grabbing select-none border ${
                               isDragging ? 'opacity-40 scale-95' : 'opacity-100'
                             } ${
                               isSelected
-                                ? 'bg-[#1b1b22]'
-                                : 'bg-[#17171c] hover:bg-[#1f1f26]'
+                                ? 'bg-[#171822] border-transparent ring-1 ring-[var(--accent)]/70 shadow-sm'
+                                : 'bg-[#13141a] hover:bg-[#181921] border-zinc-800/60'
                             }`}
-                            style={
-                              isSelected
-                                ? {
-                                    boxShadow: 'inset 0 0 0 1.5px var(--accent, #c59b27)'
-                                  }
-                                : undefined
-                            }
                           >
                             {/* Card Top: Checkbox, Title, Delete */}
                             <div className="flex items-start gap-2">
@@ -743,6 +950,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
                             {/* Card Badges Row */}
                             <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+                              {/* Subtasks Progress Badge */}
+                              {task.subtasks && task.subtasks.length > 0 && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-[#1a1b24] text-zinc-300 whitespace-nowrap">
+                                  <CheckSquare className="w-2.5 h-2.5 text-zinc-400 shrink-0" />
+                                  <span>
+                                    {task.subtasks.filter(st => st.completed).length}/{task.subtasks.length}
+                                  </span>
+                                </span>
+                              )}
+
                               {/* Priority */}
                               {task.priority !== 'none' && (
                                 <span
@@ -821,7 +1038,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               if (!newColumnTaskTitle.trim()) setAddingInColumnId(null)
                             }}
                             placeholder="Nome da tarefa... (Enter)"
-                            className="w-full px-3 py-2 bg-[#17171c] rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+                            className="w-full px-3 py-2 bg-[#13141a] border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
                           />
                         </form>
                       )}
@@ -834,7 +1051,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           setAddingInColumnId(statusCol.id)
                           setNewColumnTaskTitle('')
                         }}
-                        className="w-full mt-2 py-1.5 px-2 flex items-center justify-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60 rounded-xl transition-colors cursor-pointer"
+                        className="w-full mt-2 py-1.5 px-2 flex items-center justify-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-[#13141a] rounded-xl transition-colors cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
                         <span>Adicionar tarefa</span>
@@ -868,8 +1085,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       setDraggedTaskId(null)
                       setDragOverColumnId(null)
                     }}
-                    className={`w-72 shrink-0 flex flex-col max-h-full rounded-2xl p-3 transition-colors ${
-                      isDragTarget ? 'bg-zinc-850/50 ring-1 ring-zinc-700/60' : 'bg-[#121215]/60'
+                    className={`w-72 shrink-0 flex flex-col max-h-full rounded-2xl p-3 transition-colors border ${
+                      isDragTarget ? 'bg-[#14151e] border-zinc-750' : 'bg-[#0c0c0f]/90 border-zinc-850/60'
                     }`}
                   >
                     {/* Column Header - Clean, without divider line */}
@@ -882,7 +1099,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <span className="text-xs font-semibold text-zinc-200 truncate">
                           {priorityCol.label}
                         </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-zinc-900 text-zinc-400">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#14151b] text-zinc-400">
                           {colTasks.length}
                         </span>
                       </div>
@@ -891,7 +1108,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           setAddingInColumnId(priorityCol.id)
                           setNewColumnTaskTitle('')
                         }}
-                        className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-850/50 rounded-lg transition-colors cursor-pointer"
+                        className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-[#181921] rounded-lg transition-colors cursor-pointer"
                         title="Adicionar tarefa nesta coluna"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -927,20 +1144,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               setDragOverColumnId(null)
                             }}
                             onClick={() => onSelectTask(task)}
-                            className={`group relative rounded-xl p-3 transition-all cursor-grab active:cursor-grabbing select-none shadow-xs ${
+                            className={`group relative rounded-xl p-3 transition-all cursor-grab active:cursor-grabbing select-none border ${
                               isDragging ? 'opacity-40 scale-95' : 'opacity-100'
                             } ${
                               isSelected
-                                ? 'bg-[#1b1b22]'
-                                : 'bg-[#17171c] hover:bg-[#1f1f26]'
+                                ? 'bg-[#171822] border-transparent ring-1 ring-[var(--accent)]/70 shadow-sm'
+                                : 'bg-[#13141a] hover:bg-[#181921] border-zinc-800/60'
                             }`}
-                            style={
-                              isSelected
-                                ? {
-                                    boxShadow: 'inset 0 0 0 1.5px var(--accent, #c59b27)'
-                                  }
-                                : undefined
-                            }
                           >
                             {/* Card Top: Checkbox, Title, Delete */}
                             <div className="flex items-start gap-2">
@@ -977,6 +1187,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
                             {/* Card Badges Row */}
                             <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+                              {/* Subtasks Progress Badge */}
+                              {task.subtasks && task.subtasks.length > 0 && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-[#1a1b24] text-zinc-300 whitespace-nowrap">
+                                  <CheckSquare className="w-2.5 h-2.5 text-zinc-400 shrink-0" />
+                                  <span>
+                                    {task.subtasks.filter(st => st.completed).length}/{task.subtasks.length}
+                                  </span>
+                                </span>
+                              )}
+
                               {/* Status Pill */}
                               <span
                                 className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
@@ -1056,7 +1276,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               if (!newColumnTaskTitle.trim()) setAddingInColumnId(null)
                             }}
                             placeholder="Nome da tarefa... (Enter)"
-                            className="w-full px-3 py-2 bg-[#17171c] rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+                            className="w-full px-3 py-2 bg-[#13141a] border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
                           />
                         </form>
                       )}
@@ -1069,7 +1289,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           setAddingInColumnId(priorityCol.id)
                           setNewColumnTaskTitle('')
                         }}
-                        className="w-full mt-2 py-1.5 px-2 flex items-center justify-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60 rounded-xl transition-colors cursor-pointer"
+                        className="w-full mt-2 py-1.5 px-2 flex items-center justify-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-[#13141a] rounded-xl transition-colors cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
                         <span>Adicionar tarefa</span>
