@@ -339,17 +339,18 @@ export const App: React.FC = () => {
   }
 
   // Workspace Task Handlers
-  const handleCreateTask = (title?: string) => {
+  const handleCreateTask = (title?: string, initialData?: Partial<TaskItem>) => {
     const newTask: TaskItem = {
       id: `task_${Date.now()}`,
       title: title?.trim() || 'Nova Tarefa',
       completed: false,
-      statusId: taskSettings.statuses[0]?.id || 'todo',
-      priority: 'medium',
-      tags: [],
+      statusId: initialData?.statusId || taskSettings.statuses[0]?.id || 'todo',
+      priority: initialData?.priority || 'medium',
+      tags: initialData?.tags || [],
       description: '',
       createdAt: Date.now(),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      ...initialData
     }
     setTasks(prev => {
       const next = [newTask, ...prev]

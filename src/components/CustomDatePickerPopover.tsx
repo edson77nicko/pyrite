@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -15,6 +16,7 @@ interface CustomDatePickerPopoverProps {
   onChange: (value: string | undefined) => void
   onClose: () => void
   align?: 'left' | 'right'
+  anchorEl?: HTMLElement | null
 }
 
 const MONTH_NAMES = [
@@ -33,9 +35,46 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
   value,
   onChange,
   onClose,
-  align = 'right'
+  align = 'right',
+  anchorEl
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [coords, setCoords] = useState<{ top: number; left: number }>({ top: 100, left: 100 })
+
+  // Calculate coordinates to float outside sidebars/scroll containers
+  useEffect(() => {
+    const el = anchorEl || containerRef.current?.parentElement
+    if (!el) return
+
+    const updatePosition = () => {
+      const rect = el.getBoundingClientRect()
+      const popoverWidth = 460
+      const popoverHeight = 370
+
+      let left = align === 'right' ? rect.right - popoverWidth : rect.left
+      if (left + popoverWidth > window.innerWidth - 16) {
+        left = window.innerWidth - popoverWidth - 16
+      }
+      if (left < 16) {
+        left = 16
+      }
+
+      let top = rect.bottom + 6
+      if (top + popoverHeight > window.innerHeight - 16) {
+        top = Math.max(16, rect.top - popoverHeight - 6)
+      }
+
+      setCoords({ top, left })
+    }
+
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [anchorEl, align])
 
   // Parse initial date
   const parsed = useMemo(() => {
@@ -78,13 +117,22 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
   // Close when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (containerRef.current && !containerRef.current.contains(target) && (!anchorEl || !anchorEl.contains(target))) {
         onClose()
       }
     }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [onClose])
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose, anchorEl])
 
   // Calendar calculations (Monday as first day of week)
   const calendarDays = useMemo(() => {
@@ -222,17 +270,21 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
     return `${monthEn} ${selectedDay}, ${selectedYear}`
   }, [selectedYear, selectedMonth, selectedDay])
 
-  return (
+  const popoverContent = (
     <div
       ref={containerRef}
-      className={`absolute z-50 top-full mt-2 ${align === 'right' ? 'right-0' : 'left-0'} bg-[#121215] border border-zinc-800 rounded-2xl shadow-2xl p-4 text-xs select-none animate-in fade-in zoom-in-95 duration-150`}
-      style={{ width: '470px' }}
+      className="fixed z-[99999] bg-[#121215] border border-zinc-800 rounded-2xl shadow-2xl p-4 text-xs select-none animate-in fade-in zoom-in-95 duration-100"
+      style={{
+        top: coords.top,
+        left: coords.left,
+        width: '460px'
+      }}
     >
       <div className="flex gap-4">
         {/* Left Column: Calendar & Controls */}
         <div className="flex-1 flex flex-col space-y-3">
           {/* Top Date Display Pill */}
-          <div className="bg-[#1a1a20] border border-zinc-700/80 rounded-xl px-3 py-2 flex items-center justify-between text-zinc-100 shadow-inner">
+          <div className="bg-[#1a1a20] border border-zinc-800 rounded-xl px-3 py-2 flex items-center justify-between text-zinc-100 shadow-inner">
             <div className="flex items-center gap-2 font-medium">
               <CalendarIcon className="w-3.5 h-3.5 text-zinc-400" />
               <span>{formattedHeaderDate}</span>
@@ -262,7 +314,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
                   <ChevronDown className="w-3 h-3 text-zinc-400" />
                 </button>
                 {showMonthSelect && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#18181e] border border-zinc-700/80 rounded-xl shadow-xl p-1 z-30 grid grid-cols-3 gap-1 w-52 max-h-48 overflow-y-auto custom-chat-scrollbar">
+                  <div className="absolute top-full left-0 mt-1 bg-[#18181e] border border-zinc-800 rounded-xl shadow-xl p-1 z-30 grid grid-cols-3 gap-1 w-52 max-h-48 overflow-y-auto custom-chat-scrollbar">
                     {MONTH_NAMES.map((name, idx) => (
                       <button
                         type="button"
@@ -293,7 +345,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
                   <ChevronDown className="w-3 h-3 text-zinc-400" />
                 </button>
                 {showYearSelect && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#18181e] border border-zinc-700/80 rounded-xl shadow-xl p-1 z-30 w-24 max-h-48 overflow-y-auto custom-chat-scrollbar">
+                  <div className="absolute top-full left-0 mt-1 bg-[#18181e] border border-zinc-800 rounded-xl shadow-xl p-1 z-30 w-24 max-h-48 overflow-y-auto custom-chat-scrollbar">
                     {Array.from({ length: 20 }, (_, i) => viewYear - 10 + i).map(y => (
                       <button
                         type="button"
@@ -369,14 +421,14 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
           </div>
         </div>
 
-        {/* Right Column: Presets, Toggles, and Actions matching reference screenshot */}
-        <div className="w-44 flex flex-col justify-between border-l border-zinc-800/80 pl-4 space-y-3">
+        {/* Right Column: Presets, Toggles, and Actions */}
+        <div className="w-40 flex flex-col justify-between border-l border-zinc-850 pl-3.5 space-y-3">
           {/* Presets List */}
           <div className="space-y-1">
             <button
               type="button"
               onClick={handleSetToday}
-              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#1c1c22] hover:bg-zinc-800 text-zinc-200 font-medium transition-colors text-left cursor-pointer border border-zinc-800/70"
+              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#1c1c22] hover:bg-zinc-800 text-zinc-200 font-medium transition-colors text-left cursor-pointer border border-zinc-800/60"
             >
               <CalendarIcon className="w-3.5 h-3.5 text-zinc-400" />
               <span>Hoje</span>
@@ -408,7 +460,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
           </div>
 
           {/* Toggles (Include Time & Repeat) */}
-          <div className="space-y-2.5 pt-2 border-t border-zinc-800/80">
+          <div className="space-y-2 pt-2 border-t border-zinc-850">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-zinc-300 text-[11px]">
                 <Clock className="w-3.5 h-3.5 text-zinc-400" />
@@ -432,7 +484,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
                   type="time"
                   value={timeValue}
                   onChange={e => setTimeValue(e.target.value)}
-                  className="w-full bg-[#18181e] border border-zinc-700/80 rounded-lg px-2 py-1 text-zinc-200 text-xs focus:outline-none"
+                  className="w-full bg-[#18181e] border border-zinc-800 rounded-lg px-2 py-1 text-zinc-200 text-xs focus:outline-none"
                 />
               </div>
             )}
@@ -456,7 +508,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
           </div>
 
           {/* Remove / Clear Button */}
-          <div className="pt-2 border-t border-zinc-800/80">
+          <div className="pt-2 border-t border-zinc-850">
             <button
               type="button"
               onClick={handleRemove}
@@ -470,11 +522,11 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
       </div>
 
       {/* Footer Actions: Cancel & Confirm */}
-      <div className="flex items-center justify-end gap-2 pt-3 mt-3 border-t border-zinc-800/80">
+      <div className="flex items-center justify-end gap-2 pt-2.5 mt-2.5 border-t border-zinc-850">
         <button
           type="button"
           onClick={onClose}
-          className="px-4 py-1.5 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors cursor-pointer text-xs font-medium"
+          className="px-3.5 py-1.5 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors cursor-pointer text-xs font-medium"
         >
           Cancelar
         </button>
@@ -492,5 +544,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
       </div>
     </div>
   )
+
+  return typeof document !== 'undefined' ? createPortal(popoverContent, document.body) : null
 }
 export default CustomDatePickerPopover

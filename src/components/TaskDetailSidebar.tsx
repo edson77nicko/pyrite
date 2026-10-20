@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import type { TaskItem, TaskSettings, TaskPriority } from '../types/tasks'
 import type { Note } from '../types'
 import { TaskContextPicker } from './TaskContextPicker'
@@ -14,7 +14,9 @@ import {
   Compass,
   ExternalLink,
   Plus,
-  Trash2
+  Trash2,
+  ChevronDown,
+  Check
 } from 'lucide-react'
 
 interface TaskDetailSidebarProps {
@@ -27,13 +29,13 @@ interface TaskDetailSidebarProps {
   onClose: () => void
 }
 
-const PRIORITY_LABELS: Record<TaskPriority, { label: string; color: string }> = {
-  none: { label: 'Nenhuma', color: '#71717a' },
-  low: { label: 'Baixa', color: '#3b82f6' },
-  medium: { label: 'Média', color: '#f59e0b' },
-  high: { label: 'Alta', color: '#f97316' },
-  urgent: { label: 'Urgente', color: '#ef4444' }
-}
+const PRIORITY_OPTIONS: { id: TaskPriority; label: string; color: string }[] = [
+  { id: 'none', label: 'Nenhuma', color: '#71717a' },
+  { id: 'low', label: 'Baixa', color: '#3b82f6' },
+  { id: 'medium', label: 'Média', color: '#f59e0b' },
+  { id: 'high', label: 'Alta', color: '#f97316' },
+  { id: 'urgent', label: 'Urgente', color: '#ef4444' }
+]
 
 export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   task,
@@ -47,11 +49,17 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   const [isContextPickerOpen, setIsContextPickerOpen] = useState(false)
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [isDeadlinePickerOpen, setIsDeadlinePickerOpen] = useState(false)
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
+  const [isPriorityDropdownOpen, setIsPriorityDropdownOpen] = useState(false)
+
+  const dateBtnRef = useRef<HTMLButtonElement>(null)
+  const deadlineBtnRef = useRef<HTMLButtonElement>(null)
 
   const [newTagInput, setNewTagInput] = useState('')
   const [isAddingTag, setIsAddingTag] = useState(false)
 
   const activeStatus = settings.statuses.find(s => s.id === task.statusId) || settings.statuses[0]
+  const activePriority = PRIORITY_OPTIONS.find(p => p.id === task.priority) || PRIORITY_OPTIONS[0]
 
   const handleToggleComplete = () => {
     const nextCompleted = !task.completed
@@ -81,20 +89,22 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
     onUpdateTask({
       ...task,
       statusId,
-      completed: !!chosenStatus?.isCompleted,
+      completed: Boolean(chosenStatus?.isCompleted),
       updatedAt: Date.now()
     })
+    setIsStatusDropdownOpen(false)
   }
 
   const handlePriorityChange = (priority: TaskPriority) => {
     onUpdateTask({ ...task, priority, updatedAt: Date.now() })
+    setIsPriorityDropdownOpen(false)
   }
 
-  const handleDateChange = (date: string) => {
+  const handleDateChange = (date: string | undefined) => {
     onUpdateTask({ ...task, date, updatedAt: Date.now() })
   }
 
-  const handleDeadlineChange = (deadline: string) => {
+  const handleDeadlineChange = (deadline: string | undefined) => {
     onUpdateTask({ ...task, deadline, updatedAt: Date.now() })
   }
 
@@ -134,7 +144,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
     onUpdateTask({ ...task, description, updatedAt: Date.now() })
   }
 
-  // Virtual Note wrapper for LivePreviewEditor so the task content behaves 100% like a note document
+  // Virtual Note wrapper for LivePreviewEditor so the task content behaves 100% like a real note
   const virtualNote: Note = useMemo(() => ({
     id: task.id,
     title: task.title,
@@ -146,15 +156,14 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   }), [task.id, task.title, task.description, task.tags, task.createdAt, task.updatedAt])
 
   return (
-    <aside className="w-[420px] max-w-[460px] h-full bg-[#121215] border-l border-zinc-800/80 flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl animate-in slide-in-from-right-4 duration-200">
-      {/* 1. Header Toolbar */}
-      <div className="h-10 px-4 border-b border-zinc-800/60 bg-[#0f0f12] flex items-center justify-between shrink-0">
+    <aside className="w-[420px] max-w-[460px] h-full bg-[#111114] flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl animate-in slide-in-from-right-4 duration-150">
+      {/* 1. Header Toolbar - Sober without harsh white divider */}
+      <div className="h-10 px-4 bg-[#0e0e11] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <div
-            className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-medium text-[11px] border shadow-xs"
+            className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-medium text-[11px]"
             style={{
               backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
-              borderColor: 'var(--accent, #c59b27)',
               color: 'var(--accent, #c59b27)'
             }}
           >
@@ -171,14 +180,14 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                 onClose()
               }
             }}
-            className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
+            className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-zinc-850/60 rounded-md transition-colors cursor-pointer"
             title="Excluir tarefa"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
+            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-850/60 rounded-md transition-colors cursor-pointer"
             title="Fechar detalhes"
           >
             <X className="w-4 h-4" />
@@ -187,7 +196,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
       </div>
 
       {/* 2. Scrollable Task Details Body */}
-      <div className="flex-1 overflow-y-auto p-5 custom-chat-scrollbar space-y-5 flex flex-col">
+      <div className="flex-1 overflow-y-auto p-5 custom-chat-scrollbar space-y-4 flex flex-col">
         {/* Title & Completion checkbox */}
         <div className="flex items-start gap-3">
           <button
@@ -210,7 +219,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
             value={task.title}
             onChange={e => handleTitleChange(e.target.value)}
             placeholder="Nome da tarefa..."
-            className={`w-full bg-transparent font-bold text-lg text-zinc-100 placeholder-zinc-600 focus:outline-none border-b border-transparent focus:border-zinc-700/80 transition-colors ${
+            className={`w-full bg-transparent font-bold text-lg text-zinc-100 placeholder-zinc-600 focus:outline-none transition-colors ${
               task.completed ? 'line-through text-zinc-500' : ''
             }`}
           />
@@ -221,7 +230,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
           {task.tags.map(t => (
             <span
               key={t}
-              className="group flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-850/70 border border-zinc-750/50 text-[11px] text-zinc-300 font-mono"
+              className="group flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-850/60 text-[11px] text-zinc-300 font-mono"
             >
               #{t}
               <button
@@ -249,51 +258,78 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
           ) : (
             <button
               onClick={() => setIsAddingTag(true)}
-              className="text-[11px] text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded hover:bg-zinc-800/50 transition-colors cursor-pointer"
+              className="text-[11px] text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded hover:bg-zinc-850/40 transition-colors cursor-pointer"
             >
               + Tag
             </button>
           )}
         </div>
 
-        {/* Properties Grid - Sleek & fine rows */}
-        <div className="space-y-2.5 pt-2 border-t border-zinc-850/80">
-          {/* Status */}
-          <div className="grid grid-cols-[90px_1fr] items-center gap-2 text-xs">
+        {/* Properties Grid - Subtle tone separation, no white divider lines */}
+        <div className="space-y-2 pt-2 bg-zinc-950/25 p-3 rounded-xl">
+          {/* Status Custom Dropdown */}
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-xs relative">
             <div className="flex items-center gap-1.5 text-zinc-400">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: activeStatus.color }} />
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: activeStatus.color }} />
               <span>Status</span>
             </div>
-            <div>
-              <select
-                value={task.statusId}
-                onChange={e => handleStatusChange(e.target.value)}
-                className="w-full bg-zinc-900/90 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700 cursor-pointer"
-                style={{ borderLeftColor: activeStatus.color, borderLeftWidth: 3 }}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsStatusDropdownOpen(o => !o)
+                  setIsPriorityDropdownOpen(false)
+                }}
+                className="w-full flex items-center justify-between bg-zinc-900/80 hover:bg-zinc-850/90 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors cursor-pointer"
               >
-                {settings.statuses.map(st => (
-                  <option key={st.id} value={st.id}>
-                    {st.name}
-                  </option>
-                ))}
-              </select>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: activeStatus.color }} />
+                  <span className="truncate">{activeStatus.name}</span>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              </button>
+
+              {isStatusDropdownOpen && (
+                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#16161b] border border-zinc-800 rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-100">
+                  {settings.statuses.map(st => {
+                    const isSelected = st.id === activeStatus.id
+                    return (
+                      <button
+                        type="button"
+                        key={st.id}
+                        onClick={() => handleStatusChange(st.id)}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                          isSelected ? 'bg-zinc-800/80 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800/40'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: st.color }} />
+                          <span>{st.name}</span>
+                        </div>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-zinc-400" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Date with Custom Date Picker */}
-          <div className="grid grid-cols-[90px_1fr] items-center gap-2 text-xs relative">
+          {/* Date with Custom Date Picker floating via Portal */}
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-xs relative">
             <div className="flex items-center gap-1.5 text-zinc-400">
               <Calendar className="w-3.5 h-3.5 text-zinc-500" />
               <span>Data</span>
             </div>
             <div className="relative">
               <button
+                ref={dateBtnRef}
                 type="button"
                 onClick={() => {
                   setIsDatePickerOpen(o => !o)
                   setIsDeadlinePickerOpen(false)
                 }}
-                className="w-full flex items-center justify-between bg-zinc-900/90 hover:bg-zinc-850 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
+                className="w-full flex items-center justify-between bg-zinc-900/80 hover:bg-zinc-850/90 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
               >
                 <span>{task.date || 'Definir data...'}</span>
                 <Calendar className="w-3.5 h-3.5 text-zinc-500" />
@@ -301,35 +337,37 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               {isDatePickerOpen && (
                 <CustomDatePickerPopover
                   value={task.date}
-                  onChange={(newDate) => handleDateChange(newDate || '')}
+                  onChange={handleDateChange}
                   onClose={() => setIsDatePickerOpen(false)}
+                  anchorEl={dateBtnRef.current}
                   align="right"
                 />
               )}
             </div>
           </div>
 
-          {/* Deadline with Custom Date Picker */}
-          <div className="grid grid-cols-[90px_1fr] items-center gap-2 text-xs relative">
+          {/* Deadline with Custom Date Picker floating via Portal */}
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-xs relative">
             <div className="flex items-center gap-1.5 text-zinc-400">
               <Hourglass className="w-3.5 h-3.5 text-zinc-500" />
               <span>Prazo</span>
             </div>
             <div className="relative flex items-center gap-1.5">
               <button
+                ref={deadlineBtnRef}
                 type="button"
                 onClick={() => {
                   setIsDeadlinePickerOpen(o => !o)
                   setIsDatePickerOpen(false)
                 }}
-                className="flex-1 flex items-center justify-between bg-zinc-900/90 hover:bg-zinc-850 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
+                className="flex-1 flex items-center justify-between bg-zinc-900/80 hover:bg-zinc-850/90 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
               >
                 <span>{task.deadline || 'Definir prazo...'}</span>
                 <Hourglass className="w-3.5 h-3.5 text-zinc-500" />
               </button>
               {task.deadline && task.deadline.slice(0, 10) === new Date().toISOString().slice(0, 10) && (
                 <span
-                  className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                  className="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
                   style={{
                     backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
                     color: 'var(--accent, #c59b27)'
@@ -341,38 +379,65 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               {isDeadlinePickerOpen && (
                 <CustomDatePickerPopover
                   value={task.deadline}
-                  onChange={(newDeadline) => handleDeadlineChange(newDeadline || '')}
+                  onChange={handleDeadlineChange}
                   onClose={() => setIsDeadlinePickerOpen(false)}
+                  anchorEl={deadlineBtnRef.current}
                   align="right"
                 />
               )}
             </div>
           </div>
 
-          {/* Priority */}
-          <div className="grid grid-cols-[90px_1fr] items-center gap-2 text-xs">
+          {/* Priority Custom Dropdown */}
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-xs relative">
             <div className="flex items-center gap-1.5 text-zinc-400">
               <Flag className="w-3.5 h-3.5 text-zinc-500" />
               <span>Prioridade</span>
             </div>
-            <div>
-              <select
-                value={task.priority}
-                onChange={e => handlePriorityChange(e.target.value as TaskPriority)}
-                className="w-full bg-zinc-900/90 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700 cursor-pointer"
-                style={{ borderLeftColor: PRIORITY_LABELS[task.priority].color, borderLeftWidth: 3 }}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPriorityDropdownOpen(o => !o)
+                  setIsStatusDropdownOpen(false)
+                }}
+                className="w-full flex items-center justify-between bg-zinc-900/80 hover:bg-zinc-850/90 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors cursor-pointer"
               >
-                <option value="none">Nenhuma</option>
-                <option value="low">Baixa</option>
-                <option value="medium">Média</option>
-                <option value="high">Alta</option>
-                <option value="urgent">Urgente</option>
-              </select>
+                <div className="flex items-center gap-2">
+                  <Flag className="w-3 h-3" style={{ color: activePriority.color }} />
+                  <span>{activePriority.label}</span>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              </button>
+
+              {isPriorityDropdownOpen && (
+                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#16161b] border border-zinc-800 rounded-xl shadow-2xl p-1 space-y-0.5 animate-in fade-in duration-100">
+                  {PRIORITY_OPTIONS.map(opt => {
+                    const isSelected = opt.id === activePriority.id
+                    return (
+                      <button
+                        type="button"
+                        key={opt.id}
+                        onClick={() => handlePriorityChange(opt.id)}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                          isSelected ? 'bg-zinc-800/80 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800/40'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Flag className="w-3 h-3" style={{ color: opt.color }} />
+                          <span>{opt.label}</span>
+                        </div>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-zinc-400" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Context Note Picker */}
-          <div className="grid grid-cols-[90px_1fr] items-start gap-2 text-xs relative">
+          <div className="grid grid-cols-[80px_1fr] items-start gap-2 text-xs relative">
             <div className="flex items-center gap-1.5 text-zinc-400 pt-1.5">
               <Compass className="w-3.5 h-3.5 text-zinc-500" />
               <span>Contexto</span>
@@ -380,7 +445,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
 
             <div className="relative">
               {task.contextNoteId ? (
-                <div className="flex items-center justify-between p-1.5 bg-zinc-900/90 border border-zinc-800 rounded-lg">
+                <div className="flex items-center justify-between p-1.5 bg-zinc-900/80 rounded-lg">
                   <button
                     onClick={() => setIsContextPickerOpen(true)}
                     className="flex items-center gap-1.5 truncate text-left font-medium hover:underline max-w-[190px] cursor-pointer"
@@ -431,18 +496,8 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
           </div>
         </div>
 
-        {/* 3. Internal Content / Notes of the Task (Free-form area like a real note, with full note capabilities!) */}
-        <div className="pt-4 border-t border-zinc-850/80 flex-1 flex flex-col min-h-[350px]">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10.5px] font-medium text-zinc-400 uppercase tracking-wider block">
-              Anotações & Detalhes da Tarefa
-            </span>
-            <span className="text-[10px] text-zinc-600 font-mono">
-              (Use / para blocos, listas e tabelas)
-            </span>
-          </div>
-
-          {/* Open live note editor area - No black box container, totally free-form */}
+        {/* 3. Internal Content / Notes of the Task (100% clean note surface, no guidance labels, no divider lines) */}
+        <div className="flex-1 flex flex-col min-h-[300px] pt-1">
           <div className="flex-1 relative bg-transparent">
             <LivePreviewEditor
               key={task.id}
