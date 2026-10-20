@@ -12,7 +12,7 @@
     "build": "tsc -b && vite build",
     "build:win": "npm run build && electron-builder --win --x64",
     "publish:win": "npm run release",
-    "release": "node scripts/publish-update.cjs",
+    "release": "node --dns-result-order=ipv4first scripts/publish-update.cjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },
