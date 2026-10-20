@@ -92,6 +92,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   // Micro-burst animation state on task completion
   const [burstingTaskId, setBurstingTaskId] = useState<string | null>(null)
+  const [burstingSubtaskId, setBurstingSubtaskId] = useState<string | null>(null)
 
   const todayStr = new Date().toISOString().slice(0, 10)
 
@@ -127,6 +128,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   const handleToggleSubtask = (task: TaskItem, subtaskId: string, e?: React.MouseEvent) => {
     e?.stopPropagation()
+    const targetSt = (task.subtasks || []).find(st => st.id === subtaskId)
+    if (targetSt && !targetSt.completed) {
+      setBurstingSubtaskId(subtaskId)
+      setTimeout(() => setBurstingSubtaskId(null), 500)
+    }
     const updatedSubtasks = (task.subtasks || []).map(st =>
       st.id === subtaskId ? { ...st, completed: !st.completed } : st
     )
@@ -258,14 +264,6 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   return (
     <div className="w-full h-full flex flex-col bg-[#121215] text-zinc-100 select-none overflow-hidden">
-      <style>{`
-        @keyframes pyriteBurst1 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(-10px, -8px) scale(0); opacity: 0; } }
-        @keyframes pyriteBurst2 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(0px, -12px) scale(0); opacity: 0; } }
-        @keyframes pyriteBurst3 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(10px, -8px) scale(0); opacity: 0; } }
-        @keyframes pyriteBurst4 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(-10px, 8px) scale(0); opacity: 0; } }
-        @keyframes pyriteBurst5 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(0px, 12px) scale(0); opacity: 0; } }
-        @keyframes pyriteBurst6 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(10px, 8px) scale(0); opacity: 0; } }
-      `}</style>
       {/* 1. Header Toolbar - Seamless with Notes and Agent */}
       <div className="h-12 px-5 bg-[#0c0c0f] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
         {/* Left: Title & Counters */}
@@ -496,22 +494,20 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             <div
                               className={`w-4 h-4 rounded-[5px] flex items-center justify-center transition-all ${
                                 task.completed
-                                  ? 'bg-emerald-500 border border-emerald-500 text-zinc-950 shadow-xs'
+                                  ? 'bg-emerald-500 border border-emerald-500 text-zinc-950 shadow-xs affine-check-pop'
                                   : 'border border-zinc-700/80 hover:border-zinc-500 bg-transparent'
                               }`}
                             >
                               {task.completed && <Check className="w-3 h-3 stroke-[3]" />}
                             </div>
 
-                            {/* Subtle micro-burst particle effect on completion */}
+                            {/* Affine 4-Dot Cardinal Burst */}
                             {burstingTaskId === task.id && (
                               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 animate-[pyriteBurst1_0.45s_ease-out_forwards]" />
-                                <span className="absolute w-1 h-1 rounded-full bg-emerald-300 animate-[pyriteBurst2_0.45s_ease-out_forwards]" />
-                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 animate-[pyriteBurst3_0.45s_ease-out_forwards]" />
-                                <span className="absolute w-1 h-1 rounded-full bg-emerald-300 animate-[pyriteBurst4_0.45s_ease-out_forwards]" />
-                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 animate-[pyriteBurst5_0.45s_ease-out_forwards]" />
-                                <span className="absolute w-1 h-1 rounded-full bg-emerald-300 animate-[pyriteBurst6_0.45s_ease-out_forwards]" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-top" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-bottom" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-left" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
                               </div>
                             )}
                           </button>
@@ -779,17 +775,25 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                       <button
                                         type="button"
                                         onClick={e => handleToggleSubtask(task, sub.id, e)}
-                                        className="cursor-pointer transition-transform shrink-0 flex items-center justify-center"
+                                        className="cursor-pointer transition-transform shrink-0 relative flex items-center justify-center p-0.5"
                                       >
                                         <div
                                           className={`w-3.5 h-3.5 rounded-[4px] flex items-center justify-center transition-all ${
                                             sub.completed
-                                              ? 'bg-emerald-500 text-zinc-950 shadow-xs'
+                                              ? 'bg-emerald-500 text-zinc-950 shadow-xs affine-check-pop'
                                               : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
                                           }`}
                                         >
                                           {sub.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                                         </div>
+                                        {burstingSubtaskId === sub.id && (
+                                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                            <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-top" />
+                                            <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-bottom" />
+                                            <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-left" />
+                                            <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
+                                          </div>
+                                        )}
                                       </button>
                                       <span
                                         className={`text-xs truncate ${sub.completed ? 'line-through text-zinc-500' : 'text-zinc-200'}`}
@@ -955,17 +959,25 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               <button
                                 type="button"
                                 onClick={e => handleToggleComplete(task, e)}
-                                className="mt-0.5 cursor-pointer shrink-0 flex items-center justify-center"
+                                className="mt-0.5 cursor-pointer shrink-0 relative flex items-center justify-center p-0.5"
                               >
                                 <div
                                   className={`w-3.5 h-3.5 rounded-[4px] flex items-center justify-center transition-all ${
                                     task.completed
-                                      ? 'bg-emerald-500 text-zinc-950 shadow-xs'
+                                      ? 'bg-emerald-500 text-zinc-950 shadow-xs affine-check-pop'
                                       : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
                                   }`}
                                 >
                                   {task.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                                 </div>
+                                {burstingTaskId === task.id && (
+                                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-top" />
+                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-bottom" />
+                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-left" />
+                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
+                                  </div>
+                                )}
                               </button>
                               <span
                                 className={`text-xs font-medium text-zinc-200 flex-1 leading-snug ${
@@ -1199,17 +1211,25 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               <button
                                 type="button"
                                 onClick={e => handleToggleComplete(task, e)}
-                                className="mt-0.5 cursor-pointer shrink-0 flex items-center justify-center"
+                                className="mt-0.5 cursor-pointer shrink-0 relative flex items-center justify-center p-0.5"
                               >
                                 <div
                                   className={`w-3.5 h-3.5 rounded-[4px] flex items-center justify-center transition-all ${
                                     task.completed
-                                      ? 'bg-emerald-500 text-zinc-950 shadow-xs'
+                                      ? 'bg-emerald-500 text-zinc-950 shadow-xs affine-check-pop'
                                       : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
                                   }`}
                                 >
                                   {task.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                                 </div>
+                                {burstingTaskId === task.id && (
+                                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-top" />
+                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-bottom" />
+                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-left" />
+                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
+                                  </div>
+                                )}
                               </button>
                               <span
                                 className={`text-xs font-medium text-zinc-200 flex-1 leading-snug ${

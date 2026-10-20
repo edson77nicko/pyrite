@@ -125,7 +125,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   if (!isOpen) return null
 
   const toggleFolder = (folderPath: string) => {
-    setCollapsedFolders(prev => ({ ...prev, [folderPath]: !prev[folderPath] }))
+    setCollapsedFolders(prev => {
+      const current = prev[folderPath] ?? true
+      return { ...prev, [folderPath]: !current }
+    })
   }
 
   const handleStartCreateFolder = (parent?: string) => {
@@ -237,7 +240,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
     collect(rootFolderNodes)
 
-    const hasAnyOpen = allPaths.some(p => !collapsedFolders[p])
+    const hasAnyOpen = allPaths.some(p => (collapsedFolders[p] ?? true) === false)
     if (hasAnyOpen) {
       const next: Record<string, boolean> = {}
       for (const p of allPaths) {
@@ -245,7 +248,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }
       setCollapsedFolders(next)
     } else {
-      setCollapsedFolders({})
+      const next: Record<string, boolean> = {}
+      for (const p of allPaths) {
+        next[p] = false
+      }
+      setCollapsedFolders(next)
     }
   }
 
@@ -254,7 +261,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Recursive Tree Node Renderer - High Density & Compact Indentation
   const renderFolderNode = (node: TreeNode) => {
-    const isCollapsed = !!collapsedFolders[node.fullPath]
+    const isCollapsed = collapsedFolders[node.fullPath] ?? true
     const totalSubNotes = node.notes.length + node.children.reduce((acc, c) => acc + c.notes.length, 0)
     // Keep each nesting step small so deep folder trees remain readable.
     const indentPadding = 'ml-0.5 pl-0.5'
@@ -479,10 +486,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <ChevronsDownUp className="w-3.5 h-3.5" />
           </button>
         </div>
-
-        <span className="text-[10px] text-zinc-500 font-mono">
-          {notes.length} itens
-        </span>
       </div>
 
       {/* 3. Search Bar */}

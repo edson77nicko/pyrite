@@ -209,6 +209,133 @@ input[type="checkbox"]:focus-visible,
 .pyrita-editor-surface > .editor-gap { min-height: 22px; margin: 0; }
 .pyrita-editor-surface[contenteditable="false"] > .editor-gap { display: none; }
 
+/* Pyrita Rich Editor Typography (ensures H1-H4, lists, blockquotes render styled inside contenteditable) */
+.pyrita-editor-surface h1 {
+  font-size: 1.625rem;
+  line-height: 2rem;
+  font-weight: 700;
+  color: #f4f4f5;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(63, 63, 70, 0.4);
+  letter-spacing: -0.02em;
+}
+
+.pyrita-editor-surface h2 {
+  font-size: 1.35rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  color: #e4e4e7;
+  margin-top: 1rem;
+  margin-bottom: 0.375rem;
+  letter-spacing: -0.015em;
+}
+
+.pyrita-editor-surface h3 {
+  font-size: 1.15rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+  color: #d4d4d8;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+  letter-spacing: -0.01em;
+}
+
+.pyrita-editor-surface h4 {
+  font-size: 1rem;
+  line-height: 1.4rem;
+  font-weight: 600;
+  color: #a1a1aa;
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.pyrita-editor-surface ul {
+  list-style-type: disc !important;
+  margin-top: 0.375rem !important;
+  margin-bottom: 0.375rem !important;
+  padding-left: 1.5rem !important;
+  color: #d4d4d8;
+}
+
+.pyrita-editor-surface ol {
+  list-style-type: decimal !important;
+  margin-top: 0.375rem !important;
+  margin-bottom: 0.375rem !important;
+  padding-left: 1.5rem !important;
+  color: #d4d4d8;
+}
+
+.pyrita-editor-surface li {
+  margin-top: 0.125rem;
+  margin-bottom: 0.125rem;
+  line-height: 1.6;
+}
+
+.pyrita-editor-surface blockquote {
+  border-left: 3px solid rgba(161, 161, 170, 0.4);
+  padding-left: 0.875rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: #a1a1aa;
+  font-style: italic;
+}
+
+.pyrita-editor-surface hr {
+  border: 0;
+  border-top: 1px solid rgba(63, 63, 70, 0.5);
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+/* Affine-style 4-Dot Cardinal Burst & Spring Pop Checkbox */
+@keyframes affineCheckPop {
+  0% { transform: scale(0.8); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+@keyframes affineDotTop {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(-8px) scale(0); opacity: 0; }
+}
+
+@keyframes affineDotBottom {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(8px) scale(0); opacity: 0; }
+}
+
+@keyframes affineDotLeft {
+  0% { transform: translateX(0) scale(1); opacity: 1; }
+  100% { transform: translateX(-8px) scale(0); opacity: 0; }
+}
+
+@keyframes affineDotRight {
+  0% { transform: translateX(0) scale(1); opacity: 1; }
+  100% { transform: translateX(8px) scale(0); opacity: 0; }
+}
+
+.affine-check-pop {
+  animation: affineCheckPop 0.24s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.affine-dot-top {
+  animation: affineDotTop 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.affine-dot-bottom {
+  animation: affineDotBottom 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.affine-dot-left {
+  animation: affineDotLeft 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.affine-dot-right {
+  animation: affineDotRight 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
 .editor-code-block { overflow: hidden; border: 1px solid #303036; border-radius: 9px; background: #111114; color: #d4d4d8; font-size: 12px; cursor: default; }
 .editor-code-block:focus-visible, .editor-callout:focus-visible { outline: 1px solid #71717a; outline-offset: 2px; }
 .editor-code-header, .editor-callout > header { display: flex; align-items: center; gap: 9px; min-height: 37px; padding: 6px 11px; }

@@ -774,16 +774,44 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   }
   const insertTableBlock = () => insertBlock(tableShell(DEFAULT_TABLE))
 
+  const formatBlockSafe = (tag: string) => {
+    containerRef.current?.focus()
+    let ok = false
+    try {
+      ok = document.execCommand('formatBlock', false, `<${tag.toUpperCase()}>`)
+    } catch {
+      ok = false
+    }
+    if (!ok) {
+      try {
+        ok = document.execCommand('formatBlock', false, `<${tag.toLowerCase()}>`)
+      } catch {
+        ok = false
+      }
+    }
+    if (!ok) {
+      try {
+        document.execCommand('formatBlock', false, tag)
+      } catch {}
+    }
+  }
+
   // Expose formatting commands to top toolbar via ref
   useImperativeHandle(editorRef, () => ({
     setBlockType: (type: LiveBlock['type']) => {
       containerRef.current?.focus()
-      if (type === 'h1') document.execCommand('formatBlock', false, 'h1')
-      else if (type === 'h2') document.execCommand('formatBlock', false, 'h2')
-      else if (type === 'h3') document.execCommand('formatBlock', false, 'h3')
-      else if (type === 'bullet') document.execCommand('insertUnorderedList')
-      else if (type === 'number') document.execCommand('insertOrderedList')
-      else if (type === 'quote') document.execCommand('formatBlock', false, 'blockquote')
+      if (type === 'h1') formatBlockSafe('h1')
+      else if (type === 'h2') formatBlockSafe('h2')
+      else if (type === 'h3') formatBlockSafe('h3')
+      else if (type === 'bullet') {
+        containerRef.current?.focus()
+        document.execCommand('insertUnorderedList')
+      }
+      else if (type === 'number') {
+        containerRef.current?.focus()
+        document.execCommand('insertOrderedList')
+      }
+      else if (type === 'quote') formatBlockSafe('blockquote')
       else if (type === 'task') {
         const taskHtml = `
           <div class="task-item flex items-start gap-2.5 my-1.5 group" data-type="task">
@@ -793,7 +821,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         `
         insertBlock(taskHtml)
       } else {
-        document.execCommand('formatBlock', false, 'p')
+        formatBlockSafe('p')
       }
       handleSync()
     },
@@ -1171,21 +1199,21 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         if (text === '#' && offset === 1) {
           e.preventDefault()
           sel.anchorNode.textContent = ''
-          document.execCommand('formatBlock', false, 'h1')
+          formatBlockSafe('h1')
           handleSync()
           return
         }
         if (text === '##' && offset === 2) {
           e.preventDefault()
           sel.anchorNode.textContent = ''
-          document.execCommand('formatBlock', false, 'h2')
+          formatBlockSafe('h2')
           handleSync()
           return
         }
         if (text === '###' && offset === 3) {
           e.preventDefault()
           sel.anchorNode.textContent = ''
-          document.execCommand('formatBlock', false, 'h3')
+          formatBlockSafe('h3')
           handleSync()
           return
         }
@@ -1219,7 +1247,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         if (text === '>' && offset === 1) {
           e.preventDefault()
           sel.anchorNode.textContent = ''
-          document.execCommand('formatBlock', false, 'blockquote')
+          formatBlockSafe('blockquote')
           handleSync()
           return
         }
@@ -1264,12 +1292,18 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
     setSlashMenu(null)
 
-    if (cmdId === 'h1') document.execCommand('formatBlock', false, 'h1')
-    else if (cmdId === 'h2') document.execCommand('formatBlock', false, 'h2')
-    else if (cmdId === 'h3') document.execCommand('formatBlock', false, 'h3')
-    else if (cmdId === 'bullet') document.execCommand('insertUnorderedList')
-    else if (cmdId === 'number') document.execCommand('insertOrderedList')
-    else if (cmdId === 'quote') document.execCommand('formatBlock', false, 'blockquote')
+    if (cmdId === 'h1') formatBlockSafe('h1')
+    else if (cmdId === 'h2') formatBlockSafe('h2')
+    else if (cmdId === 'h3') formatBlockSafe('h3')
+    else if (cmdId === 'bullet') {
+      containerRef.current?.focus()
+      document.execCommand('insertUnorderedList')
+    }
+    else if (cmdId === 'number') {
+      containerRef.current?.focus()
+      document.execCommand('insertOrderedList')
+    }
+    else if (cmdId === 'quote') formatBlockSafe('blockquote')
     else if (cmdId === 'hr') insertBlock('<hr class="my-5 border-zinc-800" contenteditable="false" />')
     else if (cmdId === 'task') {
       const taskHtml = `
@@ -1508,7 +1542,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             zIndex: 9999
           }}
           onMouseDown={e => e.preventDefault()}
-          className="flex items-center gap-0.5 px-1.5 py-1 bg-[#141418]/95 border border-amber-500/40 rounded-xl shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
+          className="editor-selection-toolbar flex items-center gap-0.5 px-1.5 py-1 bg-[#141418]/95 border border-amber-500/40 rounded-xl shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
         >
           {/* Wikilink [[...]] Button */}
           <button
