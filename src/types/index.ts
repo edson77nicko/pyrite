@@ -77,8 +77,9 @@ export interface TabItem {
 }
 
 export * from './draw'
+export * from './tasks'
 
-export type ViewMode = 'editor' | 'graph' | 'canvas'
+export type ViewMode = 'editor' | 'graph' | 'canvas' | 'tasks'
 
 // Updated: Only Live Preview and Reading Mode (no split mode!)
 export type EditorDisplayMode = 'live' | 'reading'

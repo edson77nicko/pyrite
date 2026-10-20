@@ -1,7 +1,7 @@
 import { SidebarMenu } from './SidebarMenu'
 import type { SidebarAction } from './SidebarMenu'
 import React, { useState } from 'react'
-import type { Note, NoteType } from '../types'
+import type { Note, NoteType, ViewMode } from '../types'
 import {
   Folder,
   FolderOpen,
@@ -15,7 +15,8 @@ import {
   ChevronDown,
   ChevronsDownUp,
   FolderSync,
-  Palette
+  Palette,
+  CheckCircle2
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -23,6 +24,7 @@ interface SidebarProps {
   folders: string[]
   currentNoteId?: string
   vaultPath?: string | null
+  currentView?: ViewMode
   onSelectNote: (noteId: string) => void
   onCreateNote: (folder?: string, title?: string, type?: NoteType) => void
   onCreateFolder: (name: string, parentFolder?: string) => void
@@ -32,6 +34,8 @@ interface SidebarProps {
   onOpenLocalFolder: () => void
   onOpenInExplorer?: () => void
   onOpenVaultSwitcher?: () => void
+  onOpenTasks?: () => void
+  pendingTasksCount?: number
   onManage: (action: SidebarAction, target: { note?: Note; folder?: string }, value?: string) => Promise<void>
   isOpen: boolean
 }
@@ -48,6 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   folders,
   currentNoteId,
   vaultPath,
+  currentView,
   onSelectNote,
   onCreateNote,
   onCreateFolder,
@@ -57,6 +62,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenLocalFolder,
   onOpenInExplorer,
   onOpenVaultSwitcher,
+  onOpenTasks,
+  pendingTasksCount,
   isOpen,
   onManage
 }) => {
@@ -528,9 +535,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* 4. Hierarchical File Tree & Favorites - High Density & Horizontal Flexibility */}
-      <div className="flex-1 overflow-y-auto overflow-x-auto px-1.5 py-1 space-y-1 custom-chat-scrollbar min-w-0">
-        {/* Favoritos (Star section) */}
-        {favoriteNotes.length > 0 && (
+      <div className="flex-1 overflow-y-auto overflow-x-auto px-1.5 py-1 space-y-2 custom-chat-scrollbar min-w-0">
+        
+        {/* PARTE 1: WORKSPACE */}
+        <div className="space-y-0.5">
+          <div className="px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-zinc-500">
+            Workspace
+          </div>
+
+          <div
+            onClick={onOpenTasks}
+            className={`group flex items-center justify-between px-2 py-1 rounded-md text-[11.5px] cursor-pointer transition-colors border ${
+              currentView === 'tasks'
+                ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            }`}
+            style={currentView === 'tasks' ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
+          >
+            <div className="flex items-center gap-1.5 truncate min-w-0">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+              <span className="truncate">Tasks</span>
+            </div>
+            {pendingTasksCount !== undefined && pendingTasksCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-mono bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
+                {pendingTasksCount}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Divisor sutil */}
+        <div className="h-px bg-zinc-800/50 my-1 mx-1" />
+
+        {/* PARTE 2: DOCUMENTOS */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-zinc-500">
+            <span>Documentos</span>
+            <span className="text-[9px] font-mono text-zinc-600">{notes.length}</span>
+          </div>
+
+          {/* Favoritos (Star section) */}
+          {favoriteNotes.length > 0 && (
           <div className="space-y-[1px]">
             <div className="px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider flex items-center gap-1" style={{ color: 'var(--accent)' }}>
               <Star className="w-2.5 h-2.5" style={{ fill: 'var(--accent)', color: 'var(--accent)' }} />
@@ -627,6 +672,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* Resize Handle on Right Border */}

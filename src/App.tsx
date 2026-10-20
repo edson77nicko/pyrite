@@ -1,6 +1,6 @@
 import type { SidebarAction } from './components/SidebarMenu'
 import React, { useState, useEffect } from 'react'
-import type { Note, NoteType, ViewMode, EditorDisplayMode, TabItem, AppSettings } from './types'
+import type { Note, NoteType, ViewMode, EditorDisplayMode, TabItem, AppSettings, TaskItem, TaskSettings } from './types'
 import {
   loadNotes,
   saveNotes,
@@ -9,6 +9,7 @@ import {
   extractTags
 } from './utils/vault'
 import { createEmptyDrawDocument, isDrawContent, serializeDrawDocument } from './utils/drawUtils'
+import { loadTasks, saveTasks, loadTaskSettings, saveTaskSettings } from './utils/taskStorage'
 import { Ribbon } from './components/Ribbon'
 import { TabHeader } from './components/TabHeader'
 import { Sidebar } from './components/Sidebar'
@@ -17,6 +18,8 @@ import { Editor } from './components/Editor'
 import { DrawEditor } from './components/DrawEditor'
 import { GraphView } from './components/GraphView'
 import { CanvasView } from './components/CanvasView'
+import { TasksView } from './components/TasksView'
+import { TaskDetailSidebar } from './components/TaskDetailSidebar'
 import { CommandPalette } from './components/CommandPalette'
 import { AiAssistant } from './components/AiAssistant'
 import { StatusBar } from './components/StatusBar'
@@ -73,6 +76,8 @@ export const App: React.FC = () => {
           setFolders(loadedFolders)
           saveNotes(loadedNotes)
           saveFolders(loadedFolders)
+          setTasks(loadTasks(currentPath))
+          setTaskSettings(loadTaskSettings(currentPath))
           if (loadedNotes[0]) {
             setCurrentNoteId(loadedNotes[0].id)
             setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title, type: loadedNotes[0].type }])
@@ -121,6 +126,12 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const [isVaultSwitcherOpen, setIsVaultSwitcherOpen] = useState(false)
+
+  // Workspace Tasks State
+  const [tasks, setTasks] = useState<TaskItem[]>(() => loadTasks(vaultPath || 'default'))
+  const [taskSettings, setTaskSettings] = useState<TaskSettings>(() => loadTaskSettings(vaultPath || 'default'))
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const selectedTask = tasks.find(t => t.id === selectedTaskId) || null
 
   // Current active note object
   const currentNote = notes.find(n => n.id === currentNoteId) || notes[0]
@@ -188,7 +199,7 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [notes, currentView])
 
-  // Open view mode and create/activate a persistent tab for Graph or Canvas
+  // Open view mode and create/activate a persistent tab for Graph, Canvas or Tasks
   const handleChangeView = (view: ViewMode) => {
     setCurrentView(view)
 
@@ -228,6 +239,24 @@ export const App: React.FC = () => {
       return
     }
 
+    if (view === 'tasks') {
+      setTabs(prev => {
+        const existing = prev.find(t => t.noteId === '__tasks__')
+        if (existing) {
+          setActiveTabId(existing.id)
+          return prev
+        }
+        const tasksTab: TabItem = {
+          id: 'tab_tasks',
+          noteId: '__tasks__',
+          title: 'Tarefas'
+        }
+        setActiveTabId(tasksTab.id)
+        return [...prev, tasksTab]
+      })
+      return
+    }
+
     // Switching back to editor: activate current note's tab
     const noteTab = tabs.find(t => t.noteId === currentNoteId)
     if (noteTab) {
@@ -237,7 +266,7 @@ export const App: React.FC = () => {
     }
   }
 
-  // Select note and ensure tab exists (preserves Graph/Canvas tabs!)
+  // Select note and ensure tab exists (preserves Graph/Canvas/Tasks tabs!)
   const handleSelectNote = (noteId: string) => {
     setCurrentNoteId(noteId)
     setCurrentView('editor')
@@ -259,9 +288,9 @@ export const App: React.FC = () => {
       }
       setActiveTabId(newTab.id)
 
-      // If exceeding MAX_TABS, evict the oldest regular note tab (never evict Graph or Canvas tabs!)
+      // If exceeding MAX_TABS, evict the oldest regular note tab (never evict Graph, Canvas or Tasks tabs!)
       if (prev.length >= MAX_TABS) {
-        const firstNoteIdx = prev.findIndex(t => t.noteId !== '__graph__' && t.noteId !== '__canvas__')
+        const firstNoteIdx = prev.findIndex(t => t.noteId !== '__graph__' && t.noteId !== '__canvas__' && t.noteId !== '__tasks__')
         if (firstNoteIdx !== -1) {
           const next = [...prev]
           next.splice(firstNoteIdx, 1)
@@ -282,6 +311,8 @@ export const App: React.FC = () => {
       setCurrentView('graph')
     } else if (tab.noteId === '__canvas__') {
       setCurrentView('canvas')
+    } else if (tab.noteId === '__tasks__') {
+      setCurrentView('tasks')
     } else {
       setCurrentNoteId(tab.noteId)
       setCurrentView('editor')
@@ -298,11 +329,63 @@ export const App: React.FC = () => {
         setCurrentView('graph')
       } else if (nextTab.noteId === '__canvas__') {
         setCurrentView('canvas')
+      } else if (nextTab.noteId === '__tasks__') {
+        setCurrentView('tasks')
       } else {
         setCurrentNoteId(nextTab.noteId)
         setCurrentView('editor')
       }
     }
+  }
+
+  // Workspace Task Handlers
+  const handleCreateTask = (title?: string) => {
+    const newTask: TaskItem = {
+      id: `task_${Date.now()}`,
+      title: title?.trim() || 'Nova Tarefa',
+      completed: false,
+      statusId: taskSettings.statuses[0]?.id || 'todo',
+      priority: 'medium',
+      tags: [],
+      description: '',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }
+    setTasks(prev => {
+      const next = [newTask, ...prev]
+      saveTasks(next, vaultPath || 'default')
+      return next
+    })
+    setSelectedTaskId(newTask.id)
+    return newTask
+  }
+
+  const handleUpdateTask = (updatedTask: TaskItem) => {
+    setTasks(prev => {
+      const next = prev.map(t => (t.id === updatedTask.id ? { ...updatedTask, updatedAt: Date.now() } : t))
+      saveTasks(next, vaultPath || 'default')
+      return next
+    })
+  }
+
+  const handleDeleteTask = (taskId: string) => {
+    setTasks(prev => {
+      const next = prev.filter(t => t.id !== taskId)
+      saveTasks(next, vaultPath || 'default')
+      return next
+    })
+    if (selectedTaskId === taskId) {
+      setSelectedTaskId(null)
+    }
+  }
+
+  const handleUpdateTaskSettings = (newSettings: TaskSettings) => {
+    setTaskSettings(newSettings)
+    saveTaskSettings(newSettings, vaultPath || 'default')
+  }
+
+  const handleOpenTasks = () => {
+    handleChangeView('tasks')
   }
 
   const handleNavigate = (title: string) => {
@@ -705,6 +788,8 @@ export const App: React.FC = () => {
           setFolders(loadedFolders)
           saveNotes(loadedNotes)
           saveFolders(loadedFolders)
+          setTasks(loadTasks(targetPath))
+          setTaskSettings(loadTaskSettings(targetPath))
           if (loadedNotes[0]) {
             setCurrentNoteId(loadedNotes[0].id)
             setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title, type: loadedNotes[0].type }])
@@ -722,6 +807,8 @@ export const App: React.FC = () => {
       }
       localStorage.setItem('pyrite_electron_vault_path', targetPath)
       setVaultPath(targetPath)
+      setTasks(loadTasks(targetPath))
+      setTaskSettings(loadTaskSettings(targetPath))
       setCurrentView('editor')
     } catch (err) {
       console.error('Error switching vault in Electron:', err)
@@ -776,6 +863,7 @@ export const App: React.FC = () => {
           folders={folders}
           currentNoteId={currentNoteId}
           vaultPath={vaultPath}
+          currentView={currentView}
           onSelectNote={handleSelectNote}
           onManage={handleSidebarAction}
           onCreateNote={handleCreateNote}
@@ -786,6 +874,8 @@ export const App: React.FC = () => {
           onOpenLocalFolder={handleOpenLocalFolder}
           onOpenInExplorer={handleOpenInExplorer}
           onOpenVaultSwitcher={() => setIsVaultSwitcherOpen(true)}
+          onOpenTasks={handleOpenTasks}
+          pendingTasksCount={tasks.filter(t => !t.completed).length}
           isOpen={isLeftSidebarOpen}
         />
 
@@ -896,15 +986,45 @@ export const App: React.FC = () => {
                   onUpdateNote={handleUpdateNote}
                 />
               )}
+
+              {currentView === 'tasks' && (
+                <TasksView
+                  tasks={tasks}
+                  settings={taskSettings}
+                  allNotes={notes}
+                  selectedTaskId={selectedTaskId}
+                  onSelectTask={(task) => setSelectedTaskId(task ? task.id : null)}
+                  onCreateTask={handleCreateTask}
+                  onUpdateTask={handleUpdateTask}
+                  onDeleteTask={handleDeleteTask}
+                  onUpdateSettings={handleUpdateTaskSettings}
+                  onOpenNote={(noteId: string) => handleSelectNote(noteId)}
+                />
+              )}
             </div>
 
+            {/* Task Detail Drawer when in Tasks view */}
+            {currentView === 'tasks' && selectedTask && (
+              <TaskDetailSidebar
+                task={selectedTask}
+                settings={taskSettings}
+                allNotes={notes}
+                onUpdateTask={handleUpdateTask}
+                onDeleteTask={handleDeleteTask}
+                onClose={() => setSelectedTaskId(null)}
+                onOpenNote={(noteId: string) => handleSelectNote(noteId)}
+              />
+            )}
+
             {/* Right Sidebar (Backlinks, Outline, Tags) - Height limited to page below header */}
-            <RightSidebar
-              currentNote={currentNote}
-              allNotes={notes}
-              onSelectNote={handleSelectNote}
-              isOpen={isRightSidebarOpen}
-            />
+            {currentView !== 'tasks' && (
+              <RightSidebar
+                currentNote={currentNote}
+                allNotes={notes}
+                onSelectNote={handleSelectNote}
+                isOpen={isRightSidebarOpen}
+              />
+            )}
           </div>
         </main>
       </div>

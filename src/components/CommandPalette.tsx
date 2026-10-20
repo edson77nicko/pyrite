@@ -9,7 +9,8 @@ import {
   Sparkles,
   HardDrive,
   FolderSync,
-  Palette
+  Palette,
+  CheckCircle2
 } from 'lucide-react'
 
 interface CommandPaletteProps {
@@ -81,6 +82,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       subtitle: 'Visualizar todas as conexões em 2D',
       icon: <Share2 className="w-4 h-4 text-amber-400" />,
       action: () => onChangeViewMode('graph')
+    },
+    {
+      id: 'cmd-open-tasks',
+      title: 'Abrir Tarefas do Workspace',
+      subtitle: 'Gerenciar tarefas, propriedades e notas vinculadas',
+      icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" />,
+      action: () => onChangeViewMode('tasks')
     },
     {
       id: 'cmd-open-canvas',

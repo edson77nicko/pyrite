@@ -16,7 +16,8 @@ import {
   RefreshCw,
   ArrowDownToLine,
   Share2,
-  Palette
+  Palette,
+  CheckCircle2
 } from 'lucide-react'
 
 interface TabHeaderProps {
@@ -76,8 +77,9 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           const isActive = tab.id === activeTabId
           const isGraphTab = tab.noteId === '__graph__'
           const isCanvasTab = tab.noteId === '__canvas__'
+          const isTasksTab = tab.noteId === '__tasks__'
           const isDrawTab = tab.type === 'draw'
-          const TabIcon = isGraphTab ? Share2 : (isCanvasTab || isDrawTab) ? Palette : FileText
+          const TabIcon = isGraphTab ? Share2 : isTasksTab ? CheckCircle2 : (isCanvasTab || isDrawTab) ? Palette : FileText
           return (
             <div
               key={tab.id}
@@ -185,6 +187,16 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           >
             <ArrowDownToLine className="w-3 h-3 text-[#c59b27] animate-bounce" />
             <span>Baixando {updaterStatus.percent}%</span>
+          </div>
+        )}
+
+        {updaterStatus?.status === 'available' && (
+          <div
+            className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-[#1a1711] border border-[#c59b27]/30 text-[#d4af37] text-[11px] mr-0.5 animate-pulse"
+            title={`Nova versão ${updaterStatus.version} encontrada! Baixando...`}
+          >
+            <ArrowDownToLine className="w-3 h-3 text-[#c59b27]" />
+            <span>Baixando v{updaterStatus.version}...</span>
           </div>
         )}
 

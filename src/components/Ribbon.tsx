@@ -10,7 +10,8 @@ import {
   SlidersHorizontal,
   FolderSync,
   MessageSquare,
-  Palette
+  Palette,
+  CheckCircle2
 } from 'lucide-react'
 
 interface RibbonProps {
@@ -95,6 +96,18 @@ export const Ribbon: React.FC<RibbonProps> = ({
           title="Quadros de Desenho / Canvas (Excalidraw)"
         >
           <Palette className="w-4 h-4" />
+        </button>
+
+        <button
+          onClick={() => onChangeView('tasks')}
+          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
+            currentView === 'tasks'
+              ? 'bg-[#c59b27]/15 text-[#d4af37] border border-[#c59b27]/30'
+              : 'text-zinc-400 hover:text-[#d4af37] hover:bg-zinc-800/50'
+          }`}
+          title="Tarefas do Workspace"
+        >
+          <CheckCircle2 className="w-4 h-4" />
         </button>
 
         {/* AI Agent Icon right below Canvas */}
