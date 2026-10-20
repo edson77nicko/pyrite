@@ -1,6 +1,6 @@
 import type { SidebarAction } from './components/SidebarMenu'
 import React, { useState, useEffect } from 'react'
-import type { Note, NoteType, ViewMode, EditorDisplayMode, TabItem, AppSettings, TaskItem, TaskSettings } from './types'
+import type { Note, NoteType, ViewMode, EditorDisplayMode, TabItem, AppSettings, TaskItem, TaskSettings, TaskBoard } from './types'
 import {
   loadNotes,
   saveNotes,
@@ -9,7 +9,7 @@ import {
   extractTags
 } from './utils/vault'
 import { createEmptyDrawDocument, isDrawContent, serializeDrawDocument } from './utils/drawUtils'
-import { loadTasks, saveTasks, loadTaskSettings, saveTaskSettings } from './utils/taskStorage'
+import { loadTasks, saveTasks, loadTaskSettings, saveTaskSettings, DEFAULT_BOARDS } from './utils/taskStorage'
 import { Ribbon } from './components/Ribbon'
 import { TabHeader } from './components/TabHeader'
 import { Sidebar } from './components/Sidebar'
@@ -130,8 +130,11 @@ export const App: React.FC = () => {
   // Workspace Tasks State
   const [tasks, setTasks] = useState<TaskItem[]>(() => loadTasks(vaultPath || 'default'))
   const [taskSettings, setTaskSettings] = useState<TaskSettings>(() => loadTaskSettings(vaultPath || 'default'))
+  const [activeBoardId, setActiveBoardId] = useState<string>('default')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const selectedTask = tasks.find(t => t.id === selectedTaskId) || null
+
+  const taskBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
 
   // Current active note object
   const currentNote = notes.find(n => n.id === currentNoteId) || notes[0]
@@ -339,9 +342,65 @@ export const App: React.FC = () => {
   }
 
   // Workspace Task Handlers
+  const handleSelectTaskBoard = (boardId: string) => {
+    setActiveBoardId(boardId)
+    setCurrentView('tasks')
+  }
+
+  const handleCreateTaskBoard = (name: string, icon: string = 'CheckCircle2') => {
+    const newBoard: TaskBoard = {
+      id: `board_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: name.trim() || 'Nova Aba',
+      icon: icon || 'CheckCircle2',
+      createdAt: Date.now()
+    }
+    const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
+    const updatedBoards = [...currentBoards, newBoard]
+    const updatedSettings: TaskSettings = { ...taskSettings, boards: updatedBoards }
+    handleUpdateTaskSettings(updatedSettings)
+    setActiveBoardId(newBoard.id)
+    setCurrentView('tasks')
+  }
+
+  const handleRenameTaskBoard = (boardId: string, newName: string) => {
+    if (!newName.trim()) return
+    const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
+    const updatedBoards = currentBoards.map(b =>
+      b.id === boardId ? { ...b, name: newName.trim() } : b
+    )
+    handleUpdateTaskSettings({ ...taskSettings, boards: updatedBoards })
+  }
+
+  const handleChangeTaskBoardIcon = (boardId: string, icon: string) => {
+    const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
+    const updatedBoards = currentBoards.map(b =>
+      b.id === boardId ? { ...b, icon } : b
+    )
+    handleUpdateTaskSettings({ ...taskSettings, boards: updatedBoards })
+  }
+
+  const handleDeleteTaskBoard = (boardId: string) => {
+    if (boardId === 'default') return
+    const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
+    const updatedBoards = currentBoards.filter(b => b.id !== boardId)
+    handleUpdateTaskSettings({ ...taskSettings, boards: updatedBoards })
+    if (activeBoardId === boardId) {
+      setActiveBoardId('default')
+    }
+    const updatedTasks = tasks.map(t => (t.boardId === boardId ? { ...t, boardId: 'default' } : t))
+    setTasks(updatedTasks)
+    saveTasks(updatedTasks, vaultPath || 'default')
+  }
+
+  const handleTogglePinTab = (tabId: string) => {
+    setTabs(prev =>
+      prev.map(tab => (tab.id === tabId ? { ...tab, isPinned: !tab.isPinned } : tab))
+    )
+  }
+
   const handleCreateTask = (title?: string, initialData?: Partial<TaskItem>) => {
     const newTask: TaskItem = {
-      id: `task_${Date.now()}`,
+      id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       title: title?.trim() || 'Nova Tarefa',
       completed: false,
       statusId: initialData?.statusId || taskSettings.statuses[0]?.id || 'todo',
@@ -350,6 +409,7 @@ export const App: React.FC = () => {
       description: '',
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      boardId: initialData?.boardId || activeBoardId || 'default',
       ...initialData
     }
     setTasks(prev => {
@@ -865,6 +925,9 @@ export const App: React.FC = () => {
           currentNoteId={currentNoteId}
           vaultPath={vaultPath}
           currentView={currentView}
+          taskBoards={taskBoards}
+          activeBoardId={activeBoardId}
+          tasks={tasks}
           onSelectNote={handleSelectNote}
           onManage={handleSidebarAction}
           onCreateNote={handleCreateNote}
@@ -876,7 +939,11 @@ export const App: React.FC = () => {
           onOpenInExplorer={handleOpenInExplorer}
           onOpenVaultSwitcher={() => setIsVaultSwitcherOpen(true)}
           onOpenTasks={handleOpenTasks}
-          pendingTasksCount={tasks.filter(t => !t.completed).length}
+          onSelectTaskBoard={handleSelectTaskBoard}
+          onCreateTaskBoard={handleCreateTaskBoard}
+          onRenameTaskBoard={handleRenameTaskBoard}
+          onChangeTaskBoardIcon={handleChangeTaskBoardIcon}
+          onDeleteTaskBoard={handleDeleteTaskBoard}
           isOpen={isLeftSidebarOpen}
         />
 
@@ -922,6 +989,8 @@ export const App: React.FC = () => {
             onUpdateNote={handleUpdateNote}
             tasks={tasks}
             taskSettings={taskSettings}
+            activeBoardId={activeBoardId}
+            taskBoards={taskBoards}
             onCreateTask={handleCreateTask}
             onUpdateTask={handleUpdateTask}
             onDeleteTask={handleDeleteTask}
@@ -940,6 +1009,7 @@ export const App: React.FC = () => {
             activeTabId={activeTabId}
             onSelectTab={handleSelectTab}
             onCloseTab={handleCloseTab}
+            onTogglePinTab={handleTogglePinTab}
             onNewTab={() => handleCreateNote()}
             currentView={currentView}
             displayMode={editorDisplayMode}
@@ -1001,6 +1071,9 @@ export const App: React.FC = () => {
                   settings={taskSettings}
                   allNotes={notes}
                   selectedTaskId={selectedTaskId}
+                  activeBoardId={activeBoardId}
+                  taskBoards={taskBoards}
+                  onSelectTaskBoard={handleSelectTaskBoard}
                   onSelectTask={(task) => setSelectedTaskId(task ? task.id : null)}
                   onCreateTask={handleCreateTask}
                   onUpdateTask={handleUpdateTask}

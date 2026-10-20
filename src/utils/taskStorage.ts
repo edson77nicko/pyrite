@@ -1,7 +1,19 @@
-import type { TaskItem, TaskSettings } from '../types/tasks'
+import type { TaskItem, TaskSettings, TaskPriorityOption, TaskBoard } from '../types/tasks'
 
 const TASKS_STORAGE_KEY = 'pyrite_vault_tasks'
 const TASK_SETTINGS_STORAGE_KEY = 'pyrite_vault_task_settings'
+
+export const DEFAULT_PRIORITIES: TaskPriorityOption[] = [
+  { id: 'urgent', label: 'Urgente', color: '#ef4444', icon: 'Flame' },
+  { id: 'high', label: 'Alta', color: '#f97316', icon: 'AlertCircle' },
+  { id: 'medium', label: 'Média', color: '#eab308', icon: 'Flag' },
+  { id: 'low', label: 'Baixa', color: '#3b82f6', icon: 'Zap' },
+  { id: 'none', label: 'Sem prioridade', color: '#71717a', icon: 'Minus' }
+]
+
+export const DEFAULT_BOARDS: TaskBoard[] = [
+  { id: 'default', name: 'Geral', icon: 'CheckCircle2', createdAt: Date.now() }
+]
 
 export const DEFAULT_TASK_SETTINGS: TaskSettings = {
   statuses: [
@@ -11,13 +23,15 @@ export const DEFAULT_TASK_SETTINGS: TaskSettings = {
     { id: 'review', name: 'Revisão', color: '#f59e0b' },
     { id: 'completed', name: 'Concluído', color: '#10b981', isCompleted: true }
   ],
+  priorities: DEFAULT_PRIORITIES,
   properties: [
     { id: 'prop_status', name: 'Status', type: 'status' },
     { id: 'prop_priority', name: 'Prioridade', type: 'priority' },
     { id: 'prop_deadline', name: 'Prazo', type: 'date' },
     { id: 'prop_context', name: 'Contexto', type: 'context' },
     { id: 'prop_tags', name: 'Tags', type: 'text' }
-  ]
+  ],
+  boards: DEFAULT_BOARDS
 }
 
 const todayStr = new Date().toISOString().slice(0, 10)
@@ -122,7 +136,9 @@ export function loadTaskSettings(vaultKey = 'default'): TaskSettings {
       if (parsed) {
         return {
           statuses: Array.isArray(parsed.statuses) && parsed.statuses.length > 0 ? parsed.statuses : DEFAULT_TASK_SETTINGS.statuses,
-          properties: Array.isArray(parsed.properties) && parsed.properties.length > 0 ? parsed.properties : DEFAULT_TASK_SETTINGS.properties
+          priorities: Array.isArray(parsed.priorities) && parsed.priorities.length > 0 ? parsed.priorities : DEFAULT_TASK_SETTINGS.priorities,
+          properties: Array.isArray(parsed.properties) && parsed.properties.length > 0 ? parsed.properties : DEFAULT_TASK_SETTINGS.properties,
+          boards: Array.isArray(parsed.boards) && parsed.boards.length > 0 ? parsed.boards : DEFAULT_TASK_SETTINGS.boards
         }
       }
     }

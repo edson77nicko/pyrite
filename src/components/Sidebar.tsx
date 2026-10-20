@@ -2,6 +2,7 @@ import { SidebarMenu } from './SidebarMenu'
 import type { SidebarAction } from './SidebarMenu'
 import React, { useState } from 'react'
 import type { Note, NoteType, ViewMode } from '../types'
+import type { TaskBoard, TaskItem } from '../types/tasks'
 import {
   Folder,
   FolderOpen,
@@ -16,7 +17,18 @@ import {
   ChevronsDownUp,
   FolderSync,
   Palette,
-  CheckCircle2
+  CheckCircle2,
+  ListTodo,
+  Target,
+  FolderKanban,
+  Sparkles,
+  Bookmark,
+  Layers,
+  Flag,
+  Zap,
+  Briefcase,
+  MoreVertical,
+  Pencil
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -25,6 +37,9 @@ interface SidebarProps {
   currentNoteId?: string
   vaultPath?: string | null
   currentView?: ViewMode
+  taskBoards?: TaskBoard[]
+  activeBoardId?: string
+  tasks?: TaskItem[]
   onSelectNote: (noteId: string) => void
   onCreateNote: (folder?: string, title?: string, type?: NoteType) => void
   onCreateFolder: (name: string, parentFolder?: string) => void
@@ -35,6 +50,11 @@ interface SidebarProps {
   onOpenInExplorer?: () => void
   onOpenVaultSwitcher?: () => void
   onOpenTasks?: () => void
+  onSelectTaskBoard?: (boardId: string) => void
+  onCreateTaskBoard?: (name: string, icon?: string) => void
+  onRenameTaskBoard?: (boardId: string, newName: string) => void
+  onChangeTaskBoardIcon?: (boardId: string, newIcon: string) => void
+  onDeleteTaskBoard?: (boardId: string) => void
   pendingTasksCount?: number
   onManage: (action: SidebarAction, target: { note?: Note; folder?: string }, value?: string) => Promise<void>
   isOpen: boolean
@@ -47,12 +67,36 @@ interface TreeNode {
   notes: Note[]
 }
 
+const BOARD_ICON_OPTIONS = [
+  'CheckCircle2', 'ListTodo', 'Target', 'FolderKanban', 'Sparkles', 'Star', 'Calendar', 'Bookmark', 'Layers', 'Flag', 'Zap', 'Briefcase'
+]
+
+const renderBoardIcon = (iconName?: string, className = "w-3.5 h-3.5 shrink-0") => {
+  switch (iconName) {
+    case 'ListTodo': return <ListTodo className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+    case 'Target': return <Target className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+    case 'FolderKanban': return <FolderKanban className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+    case 'Sparkles': return <Sparkles className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+    case 'Star': return <Star className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+    case 'Calendar': return <Calendar className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+    case 'Bookmark': return <Bookmark className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+    case 'Layers': return <Layers className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+    case 'Flag': return <Flag className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+    case 'Zap': return <Zap className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+    case 'Briefcase': return <Briefcase className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+    default: return <CheckCircle2 className={className} style={{ color: 'var(--accent, #c59b27)' }} />
+  }
+}
+
 export const Sidebar: React.FC<SidebarProps> = ({
   notes,
   folders,
   currentNoteId,
   vaultPath,
   currentView,
+  taskBoards = [],
+  activeBoardId = 'default',
+  tasks = [],
   onSelectNote,
   onCreateNote,
   onCreateFolder,
@@ -63,7 +107,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenInExplorer,
   onOpenVaultSwitcher,
   onOpenTasks,
-  pendingTasksCount,
+  onSelectTaskBoard,
+  onCreateTaskBoard,
+  onRenameTaskBoard,
+  onChangeTaskBoardIcon,
+  onDeleteTaskBoard,
+  pendingTasksCount: _pendingTasksCount,
   isOpen,
   onManage
 }) => {
@@ -82,6 +131,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [newFolderName, setNewFolderName] = useState('')
   const [parentForNewFolder, setParentForNewFolder] = useState<string | null>(null)
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+
+  // Task Boards UI State
+  const [isCreatingBoard, setIsCreatingBoard] = useState(false)
+  const [newBoardName, setNewBoardName] = useState('')
+  const [newBoardIcon, setNewBoardIcon] = useState('CheckCircle2')
+  const [editingBoardId, setEditingBoardId] = useState<string | null>(null)
+  const [editingBoardName, setEditingBoardName] = useState('')
+  const [boardMenuId, setBoardMenuId] = useState<string | null>(null)
+  const [boardToDelete, setBoardToDelete] = useState<TaskBoard | null>(null)
+
+  const effectiveBoards: TaskBoard[] = taskBoards.length > 0
+    ? taskBoards
+    : [{ id: 'default', name: 'Tarefas', icon: 'CheckCircle2', createdAt: Date.now() }]
 
   // Resizable sidebar width with localStorage persistence
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -542,31 +604,217 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* 4. Hierarchical File Tree & Favorites - High Density & Horizontal Flexibility */}
       <div className="flex-1 overflow-y-auto overflow-x-auto px-1.5 py-1 space-y-2 custom-chat-scrollbar min-w-0">
         
-        {/* PARTE 1: WORKSPACE */}
-        <div className="space-y-1.5 pt-1 pb-1">
-          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            Workspace
-          </div>
-
-          <div
-            onClick={onOpenTasks}
-            className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors border ${
-              currentView === 'tasks'
-                ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'
-            }`}
-            style={currentView === 'tasks' ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
-          >
-            <div className="flex items-center gap-2 truncate min-w-0">
-              <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
-              <span className="truncate font-medium">Tarefas</span>
-            </div>
-            {pendingTasksCount !== undefined && pendingTasksCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full text-[9.5px] font-mono bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
-                {pendingTasksCount}
-              </span>
+        {/* PARTE 1: TAREFAS */}
+        <div className="space-y-1 pt-1 pb-1">
+          <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            <span>Tarefas</span>
+            {onCreateTaskBoard && (
+              <button
+                type="button"
+                onClick={() => setIsCreatingBoard(true)}
+                className="p-0.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+                title="Nova página de tarefas"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
             )}
           </div>
+
+          {/* Form to create new task board */}
+          {isCreatingBoard && (
+            <div className="p-2.5 bg-[#16161a] border border-zinc-700/60 rounded-xl space-y-2 mb-1.5 animate-in fade-in duration-100">
+              <input
+                type="text"
+                autoFocus
+                value={newBoardName}
+                onChange={e => setNewBoardName(e.target.value)}
+                placeholder="Nome da página..."
+                className="w-full bg-[#121215] border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    if (newBoardName.trim()) {
+                      onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon)
+                      setNewBoardName('')
+                      setIsCreatingBoard(false)
+                    }
+                  }
+                  if (e.key === 'Escape') setIsCreatingBoard(false)
+                }}
+              />
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-[10px] text-zinc-400 font-mono">Ícone:</span>
+                {BOARD_ICON_OPTIONS.map(ico => (
+                  <button
+                    type="button"
+                    key={ico}
+                    onClick={() => setNewBoardIcon(ico)}
+                    className={`p-1 rounded border transition-all cursor-pointer ${newBoardIcon === ico ? 'bg-zinc-700 border-zinc-500 text-white' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
+                  >
+                    {renderBoardIcon(ico, "w-3 h-3")}
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-end gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingBoard(false)}
+                  className="px-2 py-0.5 rounded text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (newBoardName.trim()) {
+                      onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon)
+                      setNewBoardName('')
+                      setIsCreatingBoard(false)
+                    }
+                  }}
+                  className="px-2.5 py-0.5 rounded text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium cursor-pointer"
+                >
+                  Criar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* List all task boards */}
+          {effectiveBoards.map((b) => {
+            const isBoardActive = currentView === 'tasks' && activeBoardId === b.id
+            const boardPendingCount = tasks.filter(t => (t.boardId || 'default') === b.id && !t.completed).length
+            const isEditing = editingBoardId === b.id
+
+            return (
+              <div
+                key={b.id}
+                className="group relative"
+              >
+                {isEditing ? (
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-[#16161a] border border-zinc-700/60 rounded-lg">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={editingBoardName}
+                      onChange={e => setEditingBoardName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          if (editingBoardName.trim()) {
+                            onRenameTaskBoard?.(b.id, editingBoardName.trim())
+                            setEditingBoardId(null)
+                          }
+                        }
+                        if (e.key === 'Escape') setEditingBoardId(null)
+                      }}
+                      className="flex-1 bg-transparent text-xs text-zinc-100 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editingBoardName.trim()) {
+                          onRenameTaskBoard?.(b.id, editingBoardName.trim())
+                          setEditingBoardId(null)
+                        }
+                      }}
+                      className="text-[10px] bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded hover:bg-zinc-700 cursor-pointer"
+                    >
+                      OK
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => {
+                      onSelectTaskBoard ? onSelectTaskBoard(b.id) : onOpenTasks?.()
+                    }}
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors border ${
+                      isBoardActive
+                        ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
+                        : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'
+                    }`}
+                    style={isBoardActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
+                  >
+                    <div className="flex items-center gap-2 truncate min-w-0">
+                      {renderBoardIcon(b.icon, "w-4 h-4 shrink-0")}
+                      <span className="truncate font-medium">{b.name}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {boardPendingCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9.5px] font-mono bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
+                          {boardPendingCount}
+                        </span>
+                      )}
+
+                      {/* Board Actions trigger */}
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation()
+                          setBoardMenuId(boardMenuId === b.id ? null : b.id)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-opacity cursor-pointer"
+                        title="Opções da página"
+                      >
+                        <MoreVertical className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {/* Popover Menu for Board */}
+                    {boardMenuId === b.id && (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        className="absolute right-0 top-full mt-1 z-30 w-36 bg-[#16161a] border border-zinc-700/80 rounded-xl shadow-xl p-1 text-xs space-y-0.5 animate-in fade-in duration-75"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingBoardId(b.id)
+                            setEditingBoardName(b.name)
+                            setBoardMenuId(null)
+                          }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white text-left cursor-pointer"
+                        >
+                          <Pencil className="w-3 h-3 text-zinc-400" />
+                          <span>Renomear</span>
+                        </button>
+
+                        <div className="px-2 py-1 text-[10px] text-zinc-500 font-mono">Ícone:</div>
+                        <div className="grid grid-cols-4 gap-1 p-1">
+                          {BOARD_ICON_OPTIONS.map(ico => (
+                            <button
+                              type="button"
+                              key={ico}
+                              onClick={() => {
+                                onChangeTaskBoardIcon?.(b.id, ico)
+                                setBoardMenuId(null)
+                              }}
+                              className={`p-1 rounded flex items-center justify-center hover:bg-zinc-800 cursor-pointer ${b.icon === ico ? 'bg-zinc-800 text-white' : 'text-zinc-400'}`}
+                            >
+                              {renderBoardIcon(ico, "w-3 h-3")}
+                            </button>
+                          ))}
+                        </div>
+
+                        {b.id !== 'default' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBoardToDelete(b)
+                              setBoardMenuId(null)
+                            }}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 text-left cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Excluir</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
 
         {/* Divisor sutil e espaçado */}
@@ -689,6 +937,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
         style={!isDragging ? { borderRight: '1px solid var(--accent-glow-subtle)' } : undefined}
         title="Arraste para ajustar a largura da barra lateral"
       />
+      {/* Custom Modal for deleting a Task Board */}
+      {boardToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-100">
+          <div className="bg-[#16161a] border border-zinc-800/80 rounded-xl p-5 max-w-sm w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 shrink-0">
+                <Trash2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-zinc-100 text-sm">Excluir página de tarefas?</h3>
+                <p className="text-xs text-zinc-400 mt-0.5">As tarefas desta página não poderão ser recuperadas.</p>
+              </div>
+            </div>
+            <p className="text-xs text-zinc-300 bg-[#121215] p-2.5 rounded-lg border border-zinc-800/60 truncate font-medium">
+              "{boardToDelete.name}"
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setBoardToDelete(null)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteTaskBoard?.(boardToDelete.id)
+                  setBoardToDelete(null)
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30 transition-colors cursor-pointer"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

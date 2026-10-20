@@ -1,7 +1,7 @@
-import React, { useState } from 'react'
-import type { TaskItem, TaskSettings, TaskPriority, SubTask } from '../types/tasks'
+import React, { useState, useMemo } from 'react'
+import type { TaskItem, TaskSettings, TaskPriority, SubTask, TaskBoard } from '../types/tasks'
 import type { Note } from '../types'
-import { DEFAULT_TASK_SETTINGS } from '../utils/taskStorage'
+import { DEFAULT_TASK_SETTINGS, DEFAULT_PRIORITIES } from '../utils/taskStorage'
 import { TaskSettingsModal } from './TaskSettingsModal'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import {
@@ -28,6 +28,9 @@ interface TasksViewProps {
   allNotes: Note[]
   settings: TaskSettings
   selectedTaskId?: string | null
+  activeBoardId?: string
+  taskBoards?: TaskBoard[]
+  onSelectTaskBoard?: (boardId: string) => void
   onSelectTask: (task: TaskItem | null) => void
   onCreateTask: (initialTitle?: string, initialData?: Partial<TaskItem>) => void
   onUpdateTask: (task: TaskItem) => void
@@ -39,27 +42,14 @@ interface TasksViewProps {
 type ViewMode = 'list' | 'kanban'
 type KanbanGroupBy = 'status' | 'priority'
 
-const PRIORITY_BADGES: Record<TaskPriority, { label: string; color: string; bg: string }> = {
-  none: { label: '-', color: '#71717a', bg: 'transparent' },
-  low: { label: 'Baixa', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.12)' },
-  medium: { label: 'Média', color: '#fbbf24', bg: 'rgba(245, 158, 11, 0.12)' },
-  high: { label: 'Alta', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.12)' },
-  urgent: { label: 'Urgente', color: '#f87171', bg: 'rgba(239, 68, 68, 0.15)' }
-}
-
-const KANBAN_PRIORITY_COLUMNS: { id: TaskPriority; label: string; color: string }[] = [
-  { id: 'urgent', label: 'Urgente', color: '#f87171' },
-  { id: 'high', label: 'Alta', color: '#fb923c' },
-  { id: 'medium', label: 'Média', color: '#fbbf24' },
-  { id: 'low', label: 'Baixa', color: '#60a5fa' },
-  { id: 'none', label: 'Sem Prioridade', color: '#71717a' }
-]
-
 export const TasksView: React.FC<TasksViewProps> = ({
   tasks,
   allNotes: _allNotes,
   settings,
   selectedTaskId,
+  activeBoardId = 'default',
+  taskBoards = [],
+  onSelectTaskBoard: _onSelectTaskBoard,
   onSelectTask,
   onCreateTask,
   onUpdateTask,
@@ -76,6 +66,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
   // Subtasks expanded state in list view
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set())
   const [newSubtaskTitle, setNewSubtaskTitle] = useState<Record<string, string>>({})
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null)
+  const [editingSubtaskTitle, setEditingSubtaskTitle] = useState('')
+
+  // Task deletion custom modal state
+  const [taskToDelete, setTaskToDelete] = useState<TaskItem | null>(null)
 
   // Drag and drop state
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
@@ -98,6 +93,46 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   const safeStatuses = Array.isArray(settings?.statuses) ? settings.statuses : DEFAULT_TASK_SETTINGS.statuses
   const safeProperties = Array.isArray(settings?.properties) ? settings.properties : DEFAULT_TASK_SETTINGS.properties
+
+  const safePriorities = useMemo(() => {
+    return Array.isArray(settings?.priorities) && settings.priorities.length > 0
+      ? settings.priorities
+      : DEFAULT_PRIORITIES
+  }, [settings?.priorities])
+
+  const getPriorityBadge = (priorityId: string) => {
+    const found = safePriorities.find(p => p.id === priorityId)
+    if (found) {
+      return {
+        label: found.label,
+        color: found.color,
+        bg: `${found.color}20`
+      }
+    }
+    return {
+      label: priorityId || 'Nenhuma',
+      color: '#71717a',
+      bg: '#27272a'
+    }
+  }
+
+  const kanbanPriorityColumns = useMemo(() => {
+    return safePriorities.map(p => ({
+      id: p.id,
+      label: p.label,
+      color: p.color
+    }))
+  }, [safePriorities])
+
+  // Board filtering
+  const currentBoardId = activeBoardId || 'default'
+  const boardTasks = useMemo(() => {
+    return tasks.filter(t => (t.boardId || 'default') === currentBoardId)
+  }, [tasks, currentBoardId])
+
+  const currentBoard = useMemo(() => {
+    return taskBoards.find(b => b.id === currentBoardId)
+  }, [taskBoards, currentBoardId])
 
   // Column visibility check (Olhinho feature)
   const isColumnHidden = (propId: string) => {
@@ -124,6 +159,24 @@ export const TasksView: React.FC<TasksViewProps> = ({
       }
       return next
     })
+  }
+
+  const handleStartEditSubtask = (sub: SubTask, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingSubtaskId(sub.id)
+    setEditingSubtaskTitle(sub.title)
+  }
+
+  const handleSaveSubtaskTitle = (task: TaskItem, subId: string) => {
+    if (!editingSubtaskTitle.trim()) {
+      setEditingSubtaskId(null)
+      return
+    }
+    const updated = (task.subtasks || []).map(st =>
+      st.id === subId ? { ...st, title: editingSubtaskTitle.trim() } : st
+    )
+    onUpdateTask({ ...task, subtasks: updated, updatedAt: Date.now() })
+    setEditingSubtaskId(null)
   }
 
   const handleToggleSubtask = (task: TaskItem, subtaskId: string, e?: React.MouseEvent) => {
@@ -173,14 +226,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
   }
 
   // Filter tasks based on search
-  const filteredTasks = tasks.filter(t => {
-    if (!searchQuery.trim()) return true
-    const q = searchQuery.toLowerCase()
-    const matchesTitle = t.title.toLowerCase().includes(q)
-    const matchesTag = t.tags.some(tag => tag.toLowerCase().includes(q))
-    const matchesContext = t.contextNoteTitle?.toLowerCase().includes(q)
-    return matchesTitle || matchesTag || matchesContext
-  })
+  const filteredTasks = useMemo(() => {
+    return boardTasks.filter(t => {
+      if (!searchQuery.trim()) return true
+      const q = searchQuery.toLowerCase()
+      const matchesTitle = t.title.toLowerCase().includes(q)
+      const matchesTag = t.tags.some(tag => tag.toLowerCase().includes(q))
+      const matchesContext = t.contextNoteTitle?.toLowerCase().includes(q)
+      return matchesTitle || matchesTag || matchesContext
+    })
+  }, [boardTasks, searchQuery])
 
   const handleToggleComplete = (task: TaskItem, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -235,7 +290,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const handleQuickAddInList = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTaskInput.trim()) return
-    onCreateTask(newTaskInput.trim())
+    onCreateTask(newTaskInput.trim(), { boardId: currentBoardId })
     setNewTaskInput('')
   }
 
@@ -250,11 +305,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
       const isCompletedStatus = safeStatuses.find(s => s.id === columnId)?.isCompleted || false
       onCreateTask(newColumnTaskTitle.trim(), {
         statusId: columnId,
-        completed: isCompletedStatus
+        completed: isCompletedStatus,
+        boardId: currentBoardId
       })
     } else {
       onCreateTask(newColumnTaskTitle.trim(), {
-        priority: columnId as TaskPriority
+        priority: columnId as TaskPriority,
+        boardId: currentBoardId
       })
     }
 
@@ -279,7 +336,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
             <CheckCircle2 className="w-3.5 h-3.5" />
           </div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">Tarefas</h1>
+            <h1 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">
+              {currentBoard?.name || 'Tarefas'}
+            </h1>
             <span
               className="text-[10px] px-2 py-0.5 rounded-full font-medium"
               style={{
@@ -287,7 +346,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 color: 'var(--accent, #c59b27)'
               }}
             >
-              {tasks.filter(t => !t.completed).length} pendentes
+              {boardTasks.filter(t => !t.completed).length} pendentes
             </span>
           </div>
         </div>
@@ -424,7 +483,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
           {/* New Task Button - ICON ONLY */}
           <button
-            onClick={() => onCreateTask()}
+            onClick={() => onCreateTask(undefined, { boardId: currentBoardId })}
             className="w-7 h-7 flex items-center justify-center font-semibold rounded-lg text-xs transition-opacity hover:opacity-90 shadow-sm cursor-pointer shrink-0"
             style={{
               backgroundColor: 'var(--accent, #c59b27)',
@@ -465,7 +524,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 filteredTasks.map(task => {
                   const isSelected = selectedTaskId === task.id
                   const statusObj = safeStatuses.find(s => s.id === task.statusId) || safeStatuses[0]
-                  const priorityInfo = PRIORITY_BADGES[task.priority]
+                  const priorityInfo = getPriorityBadge(task.priority)
                   const isExpanded = expandedTaskIds.has(task.id)
                   const subtasksCount = task.subtasks?.length || 0
                   const completedSubtasksCount = task.subtasks?.filter(s => s.completed).length || 0
@@ -745,9 +804,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             onClick={e => {
                               e.stopPropagation()
-                              if (confirm(`Excluir "${task.title}"?`)) {
-                                onDeleteTask(task.id)
-                              }
+                              setTaskToDelete(task)
                             }}
                             className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition-opacity cursor-pointer"
                             title="Excluir tarefa"
@@ -795,11 +852,31 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                           </div>
                                         )}
                                       </button>
-                                      <span
-                                        className={`text-xs truncate ${sub.completed ? 'line-through text-zinc-500' : 'text-zinc-200'}`}
-                                      >
-                                        {sub.title}
-                                      </span>
+                                      {editingSubtaskId === sub.id ? (
+                                        <input
+                                          autoFocus
+                                          type="text"
+                                          value={editingSubtaskTitle}
+                                          onChange={e => setEditingSubtaskTitle(e.target.value)}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Enter') handleSaveSubtaskTitle(task, sub.id)
+                                            if (e.key === 'Escape') setEditingSubtaskId(null)
+                                          }}
+                                          onBlur={() => handleSaveSubtaskTitle(task, sub.id)}
+                                          onClick={e => e.stopPropagation()}
+                                          className="text-xs bg-zinc-800/80 text-zinc-100 border border-zinc-700 rounded px-1.5 py-0.5 outline-none flex-1 min-w-0"
+                                        />
+                                      ) : (
+                                        <span
+                                          onClick={e => handleStartEditSubtask(sub, e)}
+                                          className={`text-xs truncate cursor-text hover:text-zinc-100 transition-colors ${
+                                            sub.completed ? 'line-through text-zinc-500' : 'text-zinc-200'
+                                          }`}
+                                          title="Clique para editar o texto da subtarefa"
+                                        >
+                                          {sub.title}
+                                        </span>
+                                      )}
                                     </div>
                                     <button
                                       type="button"
@@ -929,7 +1006,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
                       {colTasks.map(task => {
                         const isSelected = selectedTaskId === task.id
-                        const priorityInfo = PRIORITY_BADGES[task.priority]
+                        const priorityInfo = getPriorityBadge(task.priority)
                         const isDragging = draggedTaskId === task.id
 
                         return (
@@ -989,9 +1066,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               <button
                                 onClick={e => {
                                   e.stopPropagation()
-                                  if (confirm(`Excluir "${task.title}"?`)) {
-                                    onDeleteTask(task.id)
-                                  }
+                                  setTaskToDelete(task)
                                 }}
                                 className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-rose-400 transition-opacity cursor-pointer"
                                 title="Excluir tarefa"
@@ -1114,7 +1189,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   </div>
                 )
               })
-            : KANBAN_PRIORITY_COLUMNS.map(priorityCol => {
+            : kanbanPriorityColumns.map(priorityCol => {
                 const colTasks = filteredTasks.filter(t => t.priority === priorityCol.id)
                 const isAdding = addingInColumnId === priorityCol.id
                 const isDragTarget = dragOverColumnId === priorityCol.id
@@ -1241,9 +1316,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               <button
                                 onClick={e => {
                                   e.stopPropagation()
-                                  if (confirm(`Excluir "${task.title}"?`)) {
-                                    onDeleteTask(task.id)
-                                  }
+                                  setTaskToDelete(task)
                                 }}
                                 className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-rose-400 transition-opacity cursor-pointer"
                                 title="Excluir tarefa"
@@ -1367,6 +1440,51 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   </div>
                 )
               })}
+        </div>
+      )}
+
+      {/* Custom Task Deletion Confirmation Modal */}
+      {taskToDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in-50"
+          onClick={() => setTaskToDelete(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-[#16161a] border border-zinc-800/80 p-5 shadow-2xl space-y-4 animate-in zoom-in-95"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                <Trash2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-100">Excluir tarefa?</h3>
+                <p className="text-xs text-zinc-400">Esta ação não poderá ser desfeita.</p>
+              </div>
+            </div>
+            <p className="text-xs text-zinc-300 bg-[#0e0e11] px-3 py-2 rounded-xl border border-zinc-850 truncate">
+              &ldquo;{taskToDelete.title}&rdquo;
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setTaskToDelete(null)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteTask(taskToDelete.id)
+                  setTaskToDelete(null)
+                }}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white transition-colors cursor-pointer shadow-xs"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -17,7 +17,8 @@ import {
   ArrowDownToLine,
   Share2,
   Palette,
-  CheckCircle2
+  CheckCircle2,
+  Pin
 } from 'lucide-react'
 
 interface TabHeaderProps {
@@ -25,6 +26,7 @@ interface TabHeaderProps {
   activeTabId: string
   onSelectTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
+  onTogglePinTab?: (tabId: string) => void
   onNewTab: () => void
   currentView: ViewMode
   displayMode: EditorDisplayMode
@@ -39,6 +41,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
   activeTabId,
   onSelectTab,
   onCloseTab,
+  onTogglePinTab,
   onNewTab,
   currentView,
   displayMode,
@@ -84,7 +87,10 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
             <div
               key={tab.id}
               onClick={() => onSelectTab(tab.id)}
-              className={`group flex items-center gap-1.5 h-7 px-2.5 rounded-t-lg text-xs cursor-pointer border-t border-x transition-all max-w-[170px] ${
+              title={tab.isPinned ? `[Fixada] ${tab.title || 'Sem título'}` : (tab.title || 'Sem título')}
+              className={`group flex items-center gap-1.5 h-7 rounded-t-lg text-xs cursor-pointer border-t border-x transition-all ${
+                tab.isPinned ? 'px-2 max-w-[130px]' : 'px-2.5 max-w-[170px]'
+              } ${
                 isActive
                   ? 'bg-[#141418] border-zinc-700/80 border-t-2 text-zinc-200 font-medium shadow-sm'
                   : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40'
@@ -93,13 +99,34 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
             >
               <TabIcon className="w-3.5 h-3.5 shrink-0" style={isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
               <span className="truncate">{tab.title || 'Sem título'}</span>
-              {tabs.length > 1 && (
+
+              {/* Pin / Unpin Button */}
+              {onTogglePinTab && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onTogglePinTab(tab.id)
+                  }}
+                  className={`p-0.5 rounded hover:bg-zinc-800 transition-all cursor-pointer ${
+                    tab.isPinned
+                      ? 'text-[var(--accent)] opacity-90 hover:opacity-100'
+                      : 'text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-zinc-200'
+                  }`}
+                  title={tab.isPinned ? 'Desafixar aba' : 'Fixar aba'}
+                >
+                  <Pin className={`w-3 h-3 ${tab.isPinned ? 'rotate-45 fill-current' : ''}`} />
+                </button>
+              )}
+
+              {/* Close Button (only if not pinned and multiple tabs) */}
+              {!tab.isPinned && tabs.length > 1 && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
                     onCloseTab(tab.id)
                   }}
-                  className="p-0.5 rounded-full hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5"
+                  className="p-0.5 rounded-full hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 cursor-pointer"
                   title="Fechar aba"
                 >
                   <X className="w-3 h-3" />

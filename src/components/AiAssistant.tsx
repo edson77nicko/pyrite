@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import type { Note } from '../types'
-import type { TaskItem, TaskSettings, SubTask } from '../types/tasks'
+import type { TaskItem, TaskSettings, SubTask, TaskBoard } from '../types/tasks'
 import { extractWikiLinks } from '../utils/vault'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { AiSettingsModal } from './AiSettingsModal'
@@ -31,6 +31,7 @@ import {
   Search,
   FileText,
   Clock,
+  CheckCircle2,
   CheckSquare,
   Calendar,
   Flag,
@@ -94,6 +95,7 @@ export interface ParsedTaskAction {
   tags?: string[]
   subtasks?: string[]
   description?: string
+  boardId?: string
 }
 
 export function parseMessageTaskActions(text: string): { displayText: string; actions: ParsedTaskAction[] } {
@@ -115,7 +117,8 @@ export function parseMessageTaskActions(text: string): { displayText: string; ac
           deadline: parsed.deadline,
           tags: Array.isArray(parsed.tags) ? parsed.tags : [],
           subtasks: Array.isArray(parsed.subtasks) ? parsed.subtasks : [],
-          description: parsed.description || ''
+          description: parsed.description || '',
+          boardId: parsed.boardId || undefined
         })
       }
     } catch (e) {
@@ -256,6 +259,7 @@ export interface AgentConversation {
   specialtyId: string
   ruleMode: AgentRuleMode
   messages: ChatMessage[]
+  linkedBoardId?: string
 }
 
 interface AiAssistantProps {
@@ -269,6 +273,8 @@ interface AiAssistantProps {
   onUpdateNote?: (note: Note) => void
   tasks?: TaskItem[]
   taskSettings?: TaskSettings
+  activeBoardId?: string
+  taskBoards?: TaskBoard[]
   onCreateTask?: (initialTitle?: string, initialData?: Partial<TaskItem>) => void
   onUpdateTask?: (task: TaskItem) => void
   onDeleteTask?: (taskId: string) => void
@@ -288,6 +294,8 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   onUpdateNote,
   tasks,
   taskSettings,
+  activeBoardId,
+  taskBoards = [],
   onCreateTask,
   onUpdateTask,
   onDeleteTask,
@@ -398,12 +406,14 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       createdAt: Date.now()
     }))
 
+    const targetBoardId = act.boardId || activeConversation?.linkedBoardId || activeBoardId || 'default'
     onCreateTask(act.title, {
       priority: (act.priority as any) || 'medium',
       deadline: act.deadline,
       tags: act.tags || [],
       subtasks: subtasksList,
-      description: act.description || ''
+      description: act.description || '',
+      boardId: targetBoardId
     })
 
     setExecutedTaskActions(prev => ({ ...prev, [key]: true }))
@@ -436,6 +446,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const recordingTimerRef = useRef<any>(null)
 
   const ruleMenuRef = useRef<HTMLDivElement | null>(null)
+  const boardMenuRef = useRef<HTMLDivElement | null>(null)
   const folderPickerRef = useRef<HTMLDivElement | null>(null)
   const folderPopupRef = useRef<HTMLDivElement | null>(null)
   const [completionIndex, setCompletionIndex] = useState(0)
@@ -516,6 +527,19 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const activeConversation = useMemo(() => {
     return conversations.find(c => c.id === activeConversationId) || conversations[0]
   }, [conversations, activeConversationId])
+
+  const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false)
+
+  const handleSetLinkedBoardId = (boardId: string | undefined) => {
+    setConversations(prev =>
+      prev.map(c => (c.id === activeConversationId ? { ...c, linkedBoardId: boardId, updatedAt: Date.now() } : c))
+    )
+  }
+
+  const effectiveBoardId = activeConversation?.linkedBoardId || activeBoardId || 'default'
+  const currentLinkedBoard = useMemo(() => {
+    return taskBoards.find(b => b.id === effectiveBoardId)
+  }, [taskBoards, effectiveBoardId])
 
   const messages = activeConversation?.messages || []
 
@@ -632,6 +656,9 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     const handleClickOutside = (e: MouseEvent) => {
       if (ruleMenuRef.current && !ruleMenuRef.current.contains(e.target as Node)) {
         setIsRuleMenuOpen(false)
+      }
+      if (boardMenuRef.current && !boardMenuRef.current.contains(e.target as Node)) {
+        setIsBoardMenuOpen(false)
       }
       if (folderPickerRef.current && !folderPickerRef.current.contains(e.target as Node) && !folderPopupRef.current?.contains(e.target as Node)) {
         setIsFolderPickerOpen(false)
@@ -968,9 +995,21 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 - Quando a resposta for conceitual, analítica ou textual, responda com formatação Markdown normal limpa, sem blocos :::.
 - Quando utilizar artefatos e fizer referências a notas do cofre dentro deles, utilize sempre a sintaxe de link bidirecional [[Nome da Nota]].`
 
-        const tasksSummary = tasks && tasks.length > 0
-          ? `Tarefas cadastradas no cofre (${tasks.length} tarefas):\n${tasks.slice(0, 30).map(t => `- [${t.completed ? 'x' : ' '}] ${t.title} (Status: ${t.statusId}, Prioridade: ${t.priority}${t.deadline ? `, Prazo: ${t.deadline}` : ''}${t.subtasks && t.subtasks.length > 0 ? `, ${t.subtasks.filter(st => st.completed).length}/${t.subtasks.length} subtarefas` : ''})`).join('\n')}`
-          : `Nenhuma tarefa cadastrada no cofre no momento.`
+        const currentBoardObj = (taskBoards || []).find(b => b.id === effectiveBoardId)
+        const boardName = currentBoardObj?.name || 'Geral'
+
+        const relevantTasks = tasks && tasks.length > 0
+          ? tasks.filter(t => (t.boardId || 'default') === effectiveBoardId)
+          : []
+
+        const boardContextText = `Aba de tarefas ativa/vinculada a este chat: "${boardName}" (ID: "${effectiveBoardId}").`
+        const allBoardsText = taskBoards && taskBoards.length > 0
+          ? `Abas de tarefas cadastradas no cofre: ${taskBoards.map(b => `"${b.name}" (id: ${b.id})`).join(', ')}.`
+          : ''
+
+        const tasksSummary = relevantTasks.length > 0
+          ? `Tarefas na aba "${boardName}" (${relevantTasks.length} tarefas):\n${relevantTasks.slice(0, 30).map(t => `- [${t.completed ? 'x' : ' '}] ${t.title} (Status: ${t.statusId}, Prioridade: ${t.priority}${t.deadline ? `, Prazo: ${t.deadline}` : ''}${t.subtasks && t.subtasks.length > 0 ? `, ${t.subtasks.filter(st => st.completed).length}/${t.subtasks.length} subtarefas` : ''})`).join('\n')}`
+          : `Nenhuma tarefa cadastrada na aba "${boardName}" no momento.`
 
         const statusesList = taskSettings?.statuses?.length
           ? `Status disponíveis: ${taskSettings.statuses.map(s => s.name).join(', ')}.`
@@ -978,7 +1017,8 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
         const tasksDirective = `DIRETRIZ DE GESTÃO DE PROJETOS E TAREFAS:
 - Você é capaz de atuar como gestor de projetos do usuário: planejar entregas, analisar gargalos e decompor objetivos em tarefas acionáveis e subtarefas.
-${statusesList ? `- ${statusesList}\n` : ''}- Quando sugerir criar tarefas, forneça blocos executáveis formatados com a sintaxe especial:
+- ${boardContextText}
+${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList}\n` : ''}- Quando sugerir criar tarefas, forneça blocos executáveis formatados com a sintaxe especial:
 \`\`\`task-action
 {
   "action": "create",
@@ -987,7 +1027,8 @@ ${statusesList ? `- ${statusesList}\n` : ''}- Quando sugerir criar tarefas, forn
   "deadline": "2026-10-25",
   "tags": ["projeto", "foco"],
   "subtasks": ["Passo 1", "Passo 2", "Passo 3"],
-  "description": "Breve detalhamento..."
+  "description": "Breve detalhamento...",
+  "boardId": "${effectiveBoardId}"
 }
 \`\`\`
 O Pyrita renderiza esses blocos automaticamente como cards com botão de 1 clique para criação direta no cofre.`
@@ -1205,65 +1246,124 @@ Diretrizes gerais:
 
       {/* 1. TOP HEADER: AGENT RULE SELECTOR (ANALISTA vs CO-AUTOR) & ACTION ICONS */}
       <div className="h-10 px-3 border-b border-zinc-800/80 bg-[#0e0e12] flex items-center justify-between shrink-0 gap-1.5">
-        {/* Agent Rule Selector: Modo Analista (Leitura) vs Modo Co-Autor (Edita Notas) */}
-        <div ref={ruleMenuRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setIsRuleMenuOpen(o => !o)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs transition-all cursor-pointer shadow-sm ${
-              agentRule === 'editor'
-                ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-[var(--accent)]'
-                : 'bg-zinc-900 border-zinc-700/70 text-zinc-200 hover:border-zinc-500'
-            }`}
-            title="Permissão do Agente: Modo Analista (Leitura) ou Modo Co-Autor (Edita Notas)"
-          >
-            <span>{agentRule === 'editor' ? '✍️' : '👁️'}</span>
-            <span className="font-semibold text-[11px]">
-              {agentRule === 'editor' ? 'Modo Co-Autor' : 'Modo Analista'}
-            </span>
-            <ChevronDown className="w-3 h-3 text-zinc-500 ml-0.5" />
-          </button>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {/* Agent Rule Selector: Modo Analista (Leitura) vs Modo Co-Autor (Edita Notas) */}
+          <div ref={ruleMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setIsRuleMenuOpen(o => !o)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs transition-all cursor-pointer shadow-sm ${
+                agentRule === 'editor'
+                  ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-[var(--accent)]'
+                  : 'bg-zinc-900 border-zinc-700/70 text-zinc-200 hover:border-zinc-500'
+              }`}
+              title="Permissão do Agente: Modo Analista (Leitura) ou Modo Co-Autor (Edita Notas)"
+            >
+              <span>{agentRule === 'editor' ? '✍️' : '👁️'}</span>
+              <span className="font-semibold text-[11px]">
+                {agentRule === 'editor' ? 'Modo Co-Autor' : 'Modo Analista'}
+              </span>
+              <ChevronDown className="w-3 h-3 text-zinc-500 ml-0.5" />
+            </button>
 
-          {isRuleMenuOpen && (
-            <div className="absolute top-9 left-0 z-50 w-72 bg-[#101117] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl space-y-1 animate-in fade-in zoom-in-95 duration-100">
-              <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
-                <span>REGRA DE OPERAÇÃO DO AGENTE</span>
-                <span className="text-[9px] text-zinc-500">Permissão</span>
-              </div>
-              <div className="space-y-0.5 pt-0.5">
-                {AGENT_RULES.map(rule => {
-                  const isCur = agentRule === rule.id
-                  return (
-                    <button
-                      key={rule.id}
-                      type="button"
-                      onClick={() => {
-                        setAgentRule(rule.id)
-                        try {
-                          localStorage.setItem('pyrita_ai_agent_rule', rule.id)
-                        } catch {}
-                        setIsRuleMenuOpen(false)
-                      }}
-                      className={`w-full text-left px-2.5 py-2 rounded-lg flex items-start gap-2.5 transition-all cursor-pointer ${
-                        isCur
-                          ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white'
-                          : 'hover:bg-zinc-850 text-zinc-300'
-                      }`}
-                    >
-                      <span className="text-base leading-none mt-0.5">{rule.icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-xs flex items-center justify-between">
-                          <span className={isCur ? 'text-[var(--accent)]' : 'text-zinc-100'}>{rule.name}</span>
-                          {isCur && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
+            {isRuleMenuOpen && (
+              <div className="absolute top-9 left-0 z-50 w-72 bg-[#101117] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl space-y-1 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
+                  <span>REGRA DE OPERAÇÃO DO AGENTE</span>
+                  <span className="text-[9px] text-zinc-500">Permissão</span>
+                </div>
+                <div className="space-y-0.5 pt-0.5">
+                  {AGENT_RULES.map(rule => {
+                    const isCur = agentRule === rule.id
+                    return (
+                      <button
+                        key={rule.id}
+                        type="button"
+                        onClick={() => {
+                          setAgentRule(rule.id)
+                          try {
+                            localStorage.setItem('pyrita_ai_agent_rule', rule.id)
+                          } catch {}
+                          setIsRuleMenuOpen(false)
+                        }}
+                        className={`w-full text-left px-2.5 py-2 rounded-lg flex items-start gap-2.5 transition-all cursor-pointer ${
+                          isCur
+                            ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white'
+                            : 'hover:bg-zinc-850 text-zinc-300'
+                        }`}
+                      >
+                        <span className="text-base leading-none mt-0.5">{rule.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-xs flex items-center justify-between">
+                            <span className={isCur ? 'text-[var(--accent)]' : 'text-zinc-100'}>{rule.name}</span>
+                            {isCur && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
+                          </div>
+                          <p className="text-[10px] text-zinc-400 leading-tight mt-0.5">
+                            {rule.tagline}
+                          </p>
                         </div>
-                        <p className="text-[10px] text-zinc-400 leading-tight mt-0.5">
-                          {rule.tagline}
-                        </p>
-                      </div>
-                    </button>
-                  )
-                })}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
+            )}
+          </div>
+
+          {/* Linked Task Board Selector */}
+          {taskBoards && taskBoards.length > 0 && (
+            <div ref={boardMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setIsBoardMenuOpen(o => !o)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-700/70 hover:border-zinc-500 text-zinc-300 text-xs transition-all cursor-pointer shadow-sm"
+                title="Vincular aba de tarefas a este chat"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                <span className="max-w-[85px] truncate text-[11px] font-medium">
+                  {currentLinkedBoard?.name || 'Aba Atual'}
+                </span>
+                <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+              </button>
+              {isBoardMenuOpen && (
+                <div className="absolute top-9 left-0 z-50 w-52 bg-[#101117] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800">
+                    VINCULAR ABA DE TAREFAS
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSetLinkedBoardId(undefined)
+                      setIsBoardMenuOpen(false)
+                    }}
+                    className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                      !activeConversation?.linkedBoardId ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-850'
+                    }`}
+                  >
+                    <span className="truncate">Automático (Aba Ativa)</span>
+                    {!activeConversation?.linkedBoardId && <Check className="w-3.5 h-3.5 text-[var(--accent)]" />}
+                  </button>
+                  {taskBoards.map(b => {
+                    const isCur = activeConversation?.linkedBoardId === b.id
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => {
+                          handleSetLinkedBoardId(b.id)
+                          setIsBoardMenuOpen(false)
+                        }}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                          isCur ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-850'
+                        }`}
+                      >
+                        <span className="truncate">{b.name}</span>
+                        {isCur && <Check className="w-3.5 h-3.5 text-[var(--accent)]" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

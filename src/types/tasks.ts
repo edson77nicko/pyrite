@@ -1,4 +1,18 @@
-export type TaskPriority = 'none' | 'low' | 'medium' | 'high' | 'urgent'
+export type TaskPriority = string
+
+export interface TaskPriorityOption {
+  id: string
+  label: string
+  color: string
+  icon?: string
+}
+
+export interface TaskBoard {
+  id: string
+  name: string
+  icon?: string
+  createdAt: number
+}
 
 export interface TaskStatusOption {
   id: string
@@ -13,6 +27,7 @@ export interface TaskPropertyOption {
   id: string
   name: string
   color: string
+  icon?: string
 }
 
 export interface TaskPropertyConfig {
@@ -32,6 +47,7 @@ export interface SubTask {
 
 export interface TaskItem {
   id: string
+  boardId?: string
   title: string
   completed: boolean
   statusId: string
@@ -50,5 +66,7 @@ export interface TaskItem {
 
 export interface TaskSettings {
   statuses: TaskStatusOption[]
+  priorities?: TaskPriorityOption[]
   properties: TaskPropertyConfig[]
+  boards?: TaskBoard[]
 }

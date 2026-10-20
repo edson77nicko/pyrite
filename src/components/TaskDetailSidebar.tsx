@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import type { TaskItem, TaskSettings, TaskPriority, SubTask } from '../types/tasks'
 import type { Note } from '../types'
+import { DEFAULT_PRIORITIES } from '../utils/taskStorage'
 import { TaskContextPicker } from './TaskContextPicker'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import { LivePreviewEditor } from './LivePreviewEditor'
@@ -29,14 +30,6 @@ interface TaskDetailSidebarProps {
   onClose: () => void
 }
 
-const PRIORITY_OPTIONS: { id: TaskPriority; label: string; color: string }[] = [
-  { id: 'none', label: 'Nenhuma', color: '#71717a' },
-  { id: 'low', label: 'Baixa', color: '#3b82f6' },
-  { id: 'medium', label: 'Média', color: '#f59e0b' },
-  { id: 'high', label: 'Alta', color: '#f97316' },
-  { id: 'urgent', label: 'Urgente', color: '#ef4444' }
-]
-
 export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   task,
   allNotes,
@@ -51,6 +44,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   const [isDeadlinePickerOpen, setIsDeadlinePickerOpen] = useState(false)
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [isPriorityDropdownOpen, setIsPriorityDropdownOpen] = useState(false)
+  const [isDeletingTask, setIsDeletingTask] = useState(false)
 
   const sidebarRef = useRef<HTMLElement>(null)
   const dateBtnRef = useRef<HTMLButtonElement>(null)
@@ -114,9 +108,39 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   const [isAddingTag, setIsAddingTag] = useState(false)
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
   const [isAddingSubtask, setIsAddingSubtask] = useState(false)
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null)
+  const [editingSubtaskTitle, setEditingSubtaskTitle] = useState('')
+
+  const safePriorities = useMemo(() => {
+    return Array.isArray(settings?.priorities) && settings.priorities.length > 0
+      ? settings.priorities
+      : DEFAULT_PRIORITIES
+  }, [settings?.priorities])
 
   const activeStatus = settings.statuses.find(s => s.id === task.statusId) || settings.statuses[0]
-  const activePriority = PRIORITY_OPTIONS.find(p => p.id === task.priority) || PRIORITY_OPTIONS[0]
+  const activePriority = safePriorities.find(p => p.id === task.priority) || safePriorities[0] || {
+    id: 'none',
+    label: 'Nenhuma',
+    color: '#71717a'
+  }
+
+  const handleStartEditSubtask = (st: SubTask, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingSubtaskId(st.id)
+    setEditingSubtaskTitle(st.title)
+  }
+
+  const handleSaveSubtaskTitle = (subId: string) => {
+    if (!editingSubtaskTitle.trim()) {
+      setEditingSubtaskId(null)
+      return
+    }
+    const updated = (task.subtasks || []).map(st =>
+      st.id === subId ? { ...st, title: editingSubtaskTitle.trim() } : st
+    )
+    onUpdateTask({ ...task, subtasks: updated, updatedAt: Date.now() })
+    setEditingSubtaskId(null)
+  }
 
   const handleToggleComplete = () => {
     const nextCompleted = !task.completed
@@ -283,12 +307,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
 
         <div className="flex items-center gap-1">
           <button
-            onClick={() => {
-              if (confirm(`Excluir tarefa "${task.title}"?`)) {
-                onDeleteTask(task.id)
-                onClose()
-              }
-            }}
+            onClick={() => setIsDeletingTask(true)}
             className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-[#1b1b20] rounded-md transition-colors cursor-pointer"
             title="Excluir tarefa"
           >
@@ -533,13 +552,13 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
 
               {isPriorityDropdownOpen && (
                 <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#1a1a1f] border border-zinc-700/60 rounded-xl shadow-md p-1 space-y-0.5 animate-in fade-in duration-100">
-                  {PRIORITY_OPTIONS.map(opt => {
+                  {safePriorities.map(opt => {
                     const isSelected = opt.id === activePriority.id
                     return (
                       <button
                         type="button"
                         key={opt.id}
-                        onClick={() => handlePriorityChange(opt.id)}
+                        onClick={() => handlePriorityChange(opt.id as TaskPriority)}
                         className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
                           isSelected ? 'bg-zinc-800/80 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800/40'
                         }`}
@@ -650,12 +669,12 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                   key={st.id}
                   className="group flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-[#121215] hover:bg-[#1b1b20] transition-colors"
                 >
-                  <button
-                    type="button"
-                    onClick={() => handleToggleSubtask(st.id)}
-                    className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer"
-                  >
-                    <div className="relative flex items-center justify-center p-0.5 shrink-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSubtask(st.id)}
+                      className="cursor-pointer shrink-0 relative flex items-center justify-center p-0.5"
+                    >
                       <div
                         className={`w-3.5 h-3.5 rounded-[4px] flex items-center justify-center transition-all ${
                           st.completed
@@ -674,20 +693,39 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                           <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
                         </div>
                       )}
-                    </div>
-                    <span
-                      className={`text-xs truncate ${
-                        st.completed ? 'line-through text-zinc-500' : 'text-zinc-200'
-                      }`}
-                    >
-                      {st.title}
-                    </span>
-                  </button>
+                    </button>
+
+                    {editingSubtaskId === st.id ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editingSubtaskTitle}
+                        onChange={e => setEditingSubtaskTitle(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleSaveSubtaskTitle(st.id)
+                          if (e.key === 'Escape') setEditingSubtaskId(null)
+                        }}
+                        onBlur={() => handleSaveSubtaskTitle(st.id)}
+                        onClick={e => e.stopPropagation()}
+                        className="text-xs bg-zinc-800/80 text-zinc-100 border border-zinc-700 rounded px-1.5 py-0.5 outline-none flex-1 min-w-0"
+                      />
+                    ) : (
+                      <span
+                        onClick={e => handleStartEditSubtask(st, e)}
+                        className={`text-xs truncate cursor-text hover:text-zinc-100 transition-colors ${
+                          st.completed ? 'line-through text-zinc-500' : 'text-zinc-200'
+                        }`}
+                        title="Clique para editar o texto da subtarefa"
+                      >
+                        {st.title}
+                      </span>
+                    )}
+                  </div>
 
                   <button
                     type="button"
                     onClick={() => handleDeleteSubtask(st.id)}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-rose-400 transition-opacity cursor-pointer"
+                    className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-rose-400 transition-opacity cursor-pointer shrink-0"
                     title="Excluir subtarefa"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -739,6 +777,51 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
           </div>
         </div>
       </div>
+      {/* Custom Task Deletion Confirmation Modal */}
+      {isDeletingTask && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in-50"
+          onClick={() => setIsDeletingTask(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-[#16161a] border border-zinc-800/80 p-5 shadow-2xl space-y-4 animate-in zoom-in-95"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                <Trash2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-100">Excluir tarefa?</h3>
+                <p className="text-xs text-zinc-400">Esta ação não poderá ser desfeita.</p>
+              </div>
+            </div>
+            <p className="text-xs text-zinc-300 bg-[#0e0e11] px-3 py-2 rounded-xl border border-zinc-850 truncate">
+              &ldquo;{task.title}&rdquo;
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsDeletingTask(false)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteTask(task.id)
+                  setIsDeletingTask(false)
+                  onClose()
+                }}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white transition-colors cursor-pointer shadow-xs"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }
