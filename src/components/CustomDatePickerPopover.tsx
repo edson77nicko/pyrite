@@ -32,12 +32,8 @@ const MONTH_NAMES_EN = [
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
 
 function calculateCoords(el: HTMLElement | null, align: 'left' | 'right') {
-  if (!el) {
-    if (typeof window === 'undefined') return { top: 100, left: 100 }
-    return {
-      top: Math.max(20, Math.floor((window.innerHeight - 380) / 2)),
-      left: Math.max(20, Math.floor((window.innerWidth - 450) / 2))
-    }
+  if (!el || typeof window === 'undefined') {
+    return { top: 100, left: 100 }
   }
 
   const rect = el.getBoundingClientRect()
@@ -69,14 +65,13 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Calculate coordinates synchronously on mount to avoid flying from top-left
+  // Calculate coordinates synchronously on mount to immediately spawn in the exact position
   const [coords, setCoords] = useState(() => calculateCoords(anchorEl || null, align))
 
   useLayoutEffect(() => {
-    const el = anchorEl || containerRef.current?.parentElement
-    if (!el) return
-    const newCoords = calculateCoords(el, align)
-    setCoords(newCoords)
+    if (anchorEl) {
+      setCoords(calculateCoords(anchorEl, align))
+    }
   }, [anchorEl, align])
 
   useEffect(() => {
@@ -308,7 +303,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
     <div
       ref={containerRef}
       data-popover-portal="true"
-      className="fixed z-[99999] bg-[#121216] rounded-2xl shadow-xl border border-zinc-800 p-4 text-xs select-none animate-in fade-in zoom-in-95 duration-75"
+      className="fixed z-[99999] bg-[#121216] rounded-2xl shadow-md border border-zinc-800/80 p-4 text-xs select-none animate-in fade-in duration-75"
       style={{
         top: coords.top,
         left: coords.left,

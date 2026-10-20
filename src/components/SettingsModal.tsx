@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { AppSettings } from '../types'
 import { Palette, Type, Maximize2 } from 'lucide-react'
+import { CustomColorPickerPopover } from './CustomColorPickerPopover'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -16,7 +17,6 @@ const ACCENT_COLORS: string[] = [
   '#f97316', // Orange
   '#ea580c', // Dark Orange
   '#ef4444', // Red
-  '#e11d48', // Crimson
   '#f43f5e', // Rose
   '#ec4899', // Pink
   '#d946ef', // Fuchsia
@@ -26,11 +26,9 @@ const ACCENT_COLORS: string[] = [
   '#3b82f6', // Blue
   '#0ea5e9', // Sky
   '#06b6d4', // Cyan
-  '#14b8a6', // Teal
   '#10b981', // Emerald
   '#22c55e', // Green
   '#84cc16', // Lime
-  '#65a30d', // Olive
   '#78716c', // Stone
   '#94a3b8', // Slate
   '#e4e4e7', // Silver
@@ -42,6 +40,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onUpdateSettings
 }) => {
+  const [isCustomColorOpen, setIsCustomColorOpen] = useState(false)
+
   if (!isOpen) return null
 
   // Normalize current accent color (support legacy named keys if present)
@@ -53,6 +53,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     rose: '#ec4899'
   }
   const currentAccent = legacyMap[settings.accentColor] || settings.accentColor || '#c59b27'
+  const isCustomSelected = !ACCENT_COLORS.some(c => c.toLowerCase() === currentAccent.toLowerCase())
 
   return (
     <>
@@ -61,11 +62,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       {/* Popover Dropdown positioned directly under the settings icon */}
       <div
-        className="fixed right-2.5 top-9.5 z-50 w-60 bg-[#121215] border border-zinc-800 rounded-xl shadow-2xl p-3 space-y-3 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-100 select-none"
+        className="fixed right-2.5 top-9.5 z-50 w-60 bg-[#121215] border border-zinc-800 rounded-xl shadow-lg p-3 space-y-3 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-100 select-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Section 1: Color Palette (Icon only, small dots grid, no text) */}
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 relative">
           <div className="flex items-center text-zinc-400">
             <Palette className="w-3.5 h-3.5" />
           </div>
@@ -76,7 +77,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   key={color}
                   type="button"
-                  onClick={() => onUpdateSettings({ ...settings, accentColor: color })}
+                  onClick={() => {
+                    setIsCustomColorOpen(false)
+                    onUpdateSettings({ ...settings, accentColor: color })
+                  }}
                   className="flex items-center justify-center p-0.5 group cursor-pointer focus:outline-none"
                   title={color}
                 >
@@ -91,6 +95,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               )
             })}
+
+            {/* Custom Rainbow Dot */}
+            <div className="relative flex items-center justify-center p-0.5">
+              <button
+                type="button"
+                onClick={() => setIsCustomColorOpen(o => !o)}
+                className="flex items-center justify-center cursor-pointer focus:outline-none"
+                title="Personalizar cor..."
+              >
+                <div
+                  className={`w-4 h-4 rounded-full transition-all duration-150 ${
+                    isCustomSelected
+                      ? 'ring-2 ring-white ring-offset-1 ring-offset-[#121215] scale-110 shadow-sm'
+                      : 'opacity-85 hover:opacity-100 hover:scale-120'
+                  }`}
+                  style={{
+                    background: 'conic-gradient(from 0deg, #ef4444, #f97316, #f59e0b, #10b981, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)'
+                  }}
+                />
+              </button>
+
+              {isCustomColorOpen && (
+                <CustomColorPickerPopover
+                  currentColor={currentAccent}
+                  onChange={newColor => onUpdateSettings({ ...settings, accentColor: newColor })}
+                  onClose={() => setIsCustomColorOpen(false)}
+                  align="right"
+                />
+              )}
+            </div>
           </div>
         </div>
 

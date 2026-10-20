@@ -96,7 +96,7 @@ export const Editor: React.FC<EditorProps> = ({
       <div className="flex items-center justify-between px-6 py-2 bg-zinc-900/40 border-b border-zinc-800/60 text-xs text-zinc-400 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-zinc-300 font-medium">
-            <Folder className="w-3.5 h-3.5 text-amber-400" />
+            <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
             <span>{note.folder}</span>
           </div>
           <span className="text-zinc-700">/</span>

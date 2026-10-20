@@ -6,7 +6,6 @@ import { TaskSettingsModal } from './TaskSettingsModal'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import {
   CheckCircle2,
-  Circle,
   Plus,
   Settings,
   Search,
@@ -90,6 +89,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
   // Inline deadline datepicker
   const [editingDeadlineTaskId, setEditingDeadlineTaskId] = useState<string | null>(null)
   const [deadlineAnchorEl, setDeadlineAnchorEl] = useState<HTMLElement | null>(null)
+
+  // Micro-burst animation state on task completion
+  const [burstingTaskId, setBurstingTaskId] = useState<string | null>(null)
 
   const todayStr = new Date().toISOString().slice(0, 10)
 
@@ -177,6 +179,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const handleToggleComplete = (task: TaskItem, e: React.MouseEvent) => {
     e.stopPropagation()
     const nextCompleted = !task.completed
+    if (nextCompleted) {
+      setBurstingTaskId(task.id)
+      setTimeout(() => setBurstingTaskId(null), 500)
+    }
     let nextStatusId = task.statusId
     if (nextCompleted) {
       const comp = settings.statuses.find(s => s.isCompleted)
@@ -252,6 +258,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   return (
     <div className="w-full h-full flex flex-col bg-[#0f0f12] text-zinc-100 select-none overflow-hidden">
+      <style>{`
+        @keyframes pyriteBurst1 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(-10px, -8px) scale(0); opacity: 0; } }
+        @keyframes pyriteBurst2 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(0px, -12px) scale(0); opacity: 0; } }
+        @keyframes pyriteBurst3 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(10px, -8px) scale(0); opacity: 0; } }
+        @keyframes pyriteBurst4 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(-10px, 8px) scale(0); opacity: 0; } }
+        @keyframes pyriteBurst5 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(0px, 12px) scale(0); opacity: 0; } }
+        @keyframes pyriteBurst6 { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(10px, 8px) scale(0); opacity: 0; } }
+      `}</style>
       {/* 1. Header Toolbar - Seamless with Notes and Agent */}
       <div className="h-12 px-5 bg-[#0c0c0f] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
         {/* Left: Title & Counters */}
@@ -474,16 +488,31 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           }`}
                         >
                           <button
+                            type="button"
                             onClick={e => handleToggleComplete(task, e)}
-                            className="transition-transform hover:scale-110 cursor-pointer flex items-center justify-center"
+                            className="relative cursor-pointer flex items-center justify-center p-0.5"
+                            title={task.completed ? 'Marcar como pendente' : 'Marcar como concluída'}
                           >
-                            {task.completed ? (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                            ) : (
-                              <Circle
-                                className="w-4 h-4 text-zinc-600 transition-colors"
-                                style={{ color: isSelected ? 'var(--accent)' : undefined }}
-                              />
+                            <div
+                              className={`w-4 h-4 rounded-[5px] flex items-center justify-center transition-all ${
+                                task.completed
+                                  ? 'bg-emerald-500 border border-emerald-500 text-zinc-950 shadow-xs'
+                                  : 'border border-zinc-700/80 hover:border-zinc-500 bg-transparent'
+                              }`}
+                            >
+                              {task.completed && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
+
+                            {/* Subtle micro-burst particle effect on completion */}
+                            {burstingTaskId === task.id && (
+                              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 animate-[pyriteBurst1_0.45s_ease-out_forwards]" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-300 animate-[pyriteBurst2_0.45s_ease-out_forwards]" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 animate-[pyriteBurst3_0.45s_ease-out_forwards]" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-300 animate-[pyriteBurst4_0.45s_ease-out_forwards]" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 animate-[pyriteBurst5_0.45s_ease-out_forwards]" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-300 animate-[pyriteBurst6_0.45s_ease-out_forwards]" />
+                              </div>
                             )}
                           </button>
                         </td>
@@ -509,7 +538,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                   e.stopPropagation()
                                   toggleTaskExpand(task.id)
                                 }}
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#161722] hover:bg-zinc-800 text-[10px] text-zinc-400 font-mono transition-colors shrink-0 cursor-pointer border border-zinc-750/50"
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#161722] hover:bg-zinc-800 text-[10px] text-zinc-400 font-mono transition-colors shrink-0 cursor-pointer border-0"
                                 title={isExpanded ? 'Ocultar subtarefas' : 'Ver subtarefas'}
                               >
                                 <ChevronRight
@@ -732,31 +761,35 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         </td>
                       </tr>
 
-                      {/* Expandable Subtasks Row in List View */}
+                      {/* Expandable Subtasks Row in List View - Directly over background, zero card styling, minimal padding */}
                       {isExpanded && (
-                        <tr key={`${task.id}_subtasks_row`} className="transition-all animate-in fade-in duration-150">
+                        <tr key={`${task.id}_subtasks_row`} className="transition-all animate-in fade-in duration-150 bg-transparent border-0">
                           <td
                             colSpan={visibleColumnCount}
-                            className="px-4 py-2 first:rounded-l-xl last:rounded-r-xl bg-[#0e0f14] border border-zinc-800/50"
+                            className="px-3 py-0.5 bg-transparent border-0"
                           >
-                            <div className="ml-6 pl-4 border-l-2 border-zinc-800 space-y-1.5 my-1">
+                            <div className="ml-7 pl-3 border-l border-zinc-800/60 space-y-0.5 my-1">
                               {task.subtasks && task.subtasks.length > 0 ? (
                                 task.subtasks.map(sub => (
                                   <div
                                     key={sub.id}
-                                    className="flex items-center justify-between py-1 px-2.5 rounded-lg hover:bg-[#14151e] group/sub transition-colors"
+                                    className="flex items-center justify-between py-0.5 px-2 rounded hover:bg-zinc-800/20 group/sub transition-colors"
                                   >
-                                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
                                       <button
                                         type="button"
                                         onClick={e => handleToggleSubtask(task, sub.id, e)}
-                                        className="cursor-pointer transition-transform hover:scale-110 shrink-0"
+                                        className="cursor-pointer transition-transform shrink-0 flex items-center justify-center"
                                       >
-                                        {sub.completed ? (
-                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                        ) : (
-                                          <Circle className="w-3.5 h-3.5 text-zinc-600 hover:text-zinc-400" />
-                                        )}
+                                        <div
+                                          className={`w-3.5 h-3.5 rounded-[4px] flex items-center justify-center transition-all ${
+                                            sub.completed
+                                              ? 'bg-emerald-500 text-zinc-950 shadow-xs'
+                                              : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
+                                          }`}
+                                        >
+                                          {sub.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                        </div>
                                       </button>
                                       <span
                                         className={`text-xs truncate ${sub.completed ? 'line-through text-zinc-500' : 'text-zinc-200'}`}
@@ -775,30 +808,24 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                   </div>
                                 ))
                               ) : (
-                                <div className="text-[11px] text-zinc-500 py-0.5">Nenhuma subtarefa criada ainda.</div>
+                                <div className="text-[11px] text-zinc-600 py-0.5 px-1">Nenhuma subtarefa criada ainda.</div>
                               )}
 
-                              {/* Inline quick add for subtask */}
+                              {/* Inline quick add for subtask - bare on background, no active border, no button */}
                               <form
                                 onSubmit={e => handleAddSubtask(task, newSubtaskTitle[task.id] || '', e)}
-                                className="flex items-center gap-2 pt-1.5"
+                                className="flex items-center gap-2 py-0.5 px-1"
                               >
-                                <CornerDownRight className="w-3.5 h-3.5 text-zinc-500 shrink-0 ml-1" />
+                                <CornerDownRight className="w-3 h-3 text-zinc-600 shrink-0" />
                                 <input
                                   type="text"
                                   value={newSubtaskTitle[task.id] || ''}
                                   onChange={e =>
                                     setNewSubtaskTitle(prev => ({ ...prev, [task.id]: e.target.value }))
                                   }
-                                  placeholder="Nova subtarefa... (Pressione Enter)"
-                                  className="flex-1 bg-[#14151e] border border-zinc-750/50 rounded-lg px-2.5 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+                                  placeholder="+ Nova subtarefa... e pressione Enter"
+                                  className="flex-1 bg-transparent border-0 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none transition-colors py-0.5"
                                 />
-                                <button
-                                  type="submit"
-                                  className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
-                                >
-                                  Adicionar
-                                </button>
                               </form>
                             </div>
                           </td>
@@ -858,8 +885,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       setDraggedTaskId(null)
                       setDragOverColumnId(null)
                     }}
-                    className={`w-72 shrink-0 flex flex-col max-h-full rounded-2xl p-3 transition-colors border ${
-                      isDragTarget ? 'bg-[#14151e] border-zinc-750' : 'bg-[#0c0c0f]/90 border-zinc-850/60'
+                    className={`w-72 shrink-0 flex flex-col max-h-full rounded-2xl p-3 transition-colors border-0 ${
+                      isDragTarget ? 'bg-[#14151e]/90 ring-1 ring-zinc-700/50' : 'bg-[#0e0f14]/80'
                     }`}
                   >
                     {/* Column Header - Clean, subtle count badge */}
@@ -915,25 +942,30 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               setDragOverColumnId(null)
                             }}
                             onClick={() => onSelectTask(task)}
-                            className={`group relative rounded-xl p-3 transition-all cursor-grab active:cursor-grabbing select-none border ${
+                            className={`group relative rounded-xl p-3 transition-all cursor-grab active:cursor-grabbing select-none ${
                               isDragging ? 'opacity-40 scale-95' : 'opacity-100'
                             } ${
                               isSelected
-                                ? 'bg-[#171822] border-transparent ring-1 ring-[var(--accent)]/70 shadow-sm'
-                                : 'bg-[#13141a] hover:bg-[#181921] border-zinc-800/60'
+                                ? 'bg-[#171822] ring-1 ring-[var(--accent)]/70 shadow-sm border-0'
+                                : 'bg-[#13141a] hover:bg-[#181921] border border-zinc-800/50'
                             }`}
                           >
                             {/* Card Top: Checkbox, Title, Delete */}
                             <div className="flex items-start gap-2">
                               <button
+                                type="button"
                                 onClick={e => handleToggleComplete(task, e)}
-                                className="mt-0.5 transition-transform hover:scale-110 cursor-pointer shrink-0"
+                                className="mt-0.5 cursor-pointer shrink-0 flex items-center justify-center"
                               >
-                                {task.completed ? (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                ) : (
-                                  <Circle className="w-3.5 h-3.5 text-zinc-600" />
-                                )}
+                                <div
+                                  className={`w-3.5 h-3.5 rounded-[4px] flex items-center justify-center transition-all ${
+                                    task.completed
+                                      ? 'bg-emerald-500 text-zinc-950 shadow-xs'
+                                      : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
+                                  }`}
+                                >
+                                  {task.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                </div>
                               </button>
                               <span
                                 className={`text-xs font-medium text-zinc-200 flex-1 leading-snug ${
@@ -1093,8 +1125,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       setDraggedTaskId(null)
                       setDragOverColumnId(null)
                     }}
-                    className={`w-72 shrink-0 flex flex-col max-h-full rounded-2xl p-3 transition-colors border ${
-                      isDragTarget ? 'bg-[#14151e] border-zinc-750' : 'bg-[#0c0c0f]/90 border-zinc-850/60'
+                    className={`w-72 shrink-0 flex flex-col max-h-full rounded-2xl p-3 transition-colors border-0 ${
+                      isDragTarget ? 'bg-[#14151e]/90 ring-1 ring-zinc-700/50' : 'bg-[#0e0f14]/80'
                     }`}
                   >
                     {/* Column Header - Clean, without divider line */}
@@ -1152,25 +1184,30 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               setDragOverColumnId(null)
                             }}
                             onClick={() => onSelectTask(task)}
-                            className={`group relative rounded-xl p-3 transition-all cursor-grab active:cursor-grabbing select-none border ${
+                            className={`group relative rounded-xl p-3 transition-all cursor-grab active:cursor-grabbing select-none ${
                               isDragging ? 'opacity-40 scale-95' : 'opacity-100'
                             } ${
                               isSelected
-                                ? 'bg-[#171822] border-transparent ring-1 ring-[var(--accent)]/70 shadow-sm'
-                                : 'bg-[#13141a] hover:bg-[#181921] border-zinc-800/60'
+                                ? 'bg-[#171822] ring-1 ring-[var(--accent)]/70 shadow-sm border-0'
+                                : 'bg-[#13141a] hover:bg-[#181921] border border-zinc-800/50'
                             }`}
                           >
                             {/* Card Top: Checkbox, Title, Delete */}
                             <div className="flex items-start gap-2">
                               <button
+                                type="button"
                                 onClick={e => handleToggleComplete(task, e)}
-                                className="mt-0.5 transition-transform hover:scale-110 cursor-pointer shrink-0"
+                                className="mt-0.5 cursor-pointer shrink-0 flex items-center justify-center"
                               >
-                                {task.completed ? (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                ) : (
-                                  <Circle className="w-3.5 h-3.5 text-zinc-600" />
-                                )}
+                                <div
+                                  className={`w-3.5 h-3.5 rounded-[4px] flex items-center justify-center transition-all ${
+                                    task.completed
+                                      ? 'bg-emerald-500 text-zinc-950 shadow-xs'
+                                      : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
+                                  }`}
+                                >
+                                  {task.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                </div>
                               </button>
                               <span
                                 className={`text-xs font-medium text-zinc-200 flex-1 leading-snug ${

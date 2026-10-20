@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, Component, type ErrorInfo, type Re
 import type { TaskSettings, TaskStatusOption, TaskPropertyConfig } from '../types/tasks'
 import { DEFAULT_TASK_SETTINGS } from '../utils/taskStorage'
 import { X, Plus, Trash2, Sliders, Calendar, Compass, Flag, Type, ChevronDown, Check, Eye, EyeOff, Tag } from 'lucide-react'
+import { CustomColorPickerPopover } from './CustomColorPickerPopover'
 
 interface TaskSettingsModalProps {
   isOpen: boolean
@@ -81,6 +82,7 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
   const [newStatusName, setNewStatusName] = useState('')
   const [newStatusColor, setNewStatusColor] = useState(PRESET_COLORS[0])
   const [newStatusIsCompleted, setNewStatusIsCompleted] = useState(false)
+  const [isStatusColorPickerOpen, setIsStatusColorPickerOpen] = useState(false)
 
   // Form states for adding new property
   const [newPropName, setNewPropName] = useState('')
@@ -276,20 +278,46 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                     value={newStatusName}
                     onChange={e => setNewStatusName(e.target.value)}
                     placeholder="Nome do status..."
-                    className="flex-1 bg-[#161720] border border-zinc-750/60 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition-colors"
+                    className="flex-1 bg-[#14151b] border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors"
                   />
                   <div className="flex items-center gap-1">
                     {PRESET_COLORS.map(c => (
                       <button
                         type="button"
                         key={c}
-                        onClick={() => setNewStatusColor(c)}
+                        onClick={() => {
+                          setIsStatusColorPickerOpen(false)
+                          setNewStatusColor(c)
+                        }}
                         className={`w-4 h-4 rounded-full transition-transform cursor-pointer ${
                           newStatusColor === c ? 'scale-125 ring-2 ring-white/60 shadow-xs' : 'opacity-80 hover:opacity-100'
                         }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
+
+                    {/* Custom Color Dot */}
+                    <div className="relative flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => setIsStatusColorPickerOpen(o => !o)}
+                        className={`w-4 h-4 rounded-full transition-transform cursor-pointer ${
+                          !PRESET_COLORS.includes(newStatusColor) ? 'scale-125 ring-2 ring-white/60 shadow-xs' : 'opacity-80 hover:opacity-100'
+                        }`}
+                        style={{
+                          background: 'conic-gradient(from 0deg, #ef4444, #f97316, #f59e0b, #10b981, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)'
+                        }}
+                        title="Cor personalizada..."
+                      />
+                      {isStatusColorPickerOpen && (
+                        <CustomColorPickerPopover
+                          currentColor={newStatusColor}
+                          onChange={c => setNewStatusColor(c)}
+                          onClose={() => setIsStatusColorPickerOpen(false)}
+                          align="right"
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -381,14 +409,14 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
               </div>
 
               {/* Add New Property Form with Custom Dropdown opening UPWARDS */}
-              <form onSubmit={handleAddProperty} className="p-3 bg-[#13141a]/50 border border-zinc-800/30 rounded-xl space-y-2.5">
+              <form onSubmit={handleAddProperty} className="p-3 bg-[#13141a]/50 border border-zinc-800/40 rounded-xl space-y-2.5">
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     value={newPropName}
                     onChange={e => setNewPropName(e.target.value)}
                     placeholder="Nome da propriedade..."
-                    className="flex-1 bg-[#161720] border border-zinc-750/60 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition-colors"
+                    className="flex-1 bg-[#14151b] border border-zinc-800 focus:border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none transition-colors"
                   />
 
                   {/* Custom Property Type Dropdown floating UPWARDS */}
@@ -396,14 +424,14 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsPropTypeDropdownOpen(o => !o)}
-                      className="flex items-center gap-1.5 bg-[#161720] border border-zinc-750/60 hover:bg-zinc-800 px-2.5 py-1.5 rounded-lg text-xs text-zinc-200 transition-colors cursor-pointer"
+                      className="flex items-center gap-1.5 bg-[#14151b] border border-zinc-800 hover:bg-zinc-800/60 px-2.5 py-1.5 rounded-lg text-xs text-zinc-200 transition-colors cursor-pointer"
                     >
                       <span>{selectedPropTypeLabel}</span>
                       <ChevronDown className="w-3 h-3 text-zinc-400" />
                     </button>
 
                     {isPropTypeDropdownOpen && (
-                      <div className="absolute z-50 bottom-full right-0 mb-1.5 w-32 bg-[#13141a] border border-zinc-750 rounded-xl shadow-lg p-1 space-y-0.5 animate-in fade-in duration-75">
+                      <div className="absolute z-50 bottom-full right-0 mb-1.5 w-32 bg-[#14151b] border border-zinc-800 rounded-xl shadow-md p-1 space-y-0.5 animate-in fade-in duration-75">
                         {PROPERTY_TYPE_OPTIONS.map(opt => {
                           const isSelected = opt.id === newPropType
                           return (
@@ -415,7 +443,7 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                                 setIsPropTypeDropdownOpen(false)
                               }}
                               className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-xs text-left transition-colors cursor-pointer ${
-                                isSelected ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800/40'
+                                isSelected ? 'bg-zinc-800/70 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800/40'
                               }`}
                             >
                               <span>{opt.label}</span>

@@ -6,7 +6,6 @@ import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import { LivePreviewEditor } from './LivePreviewEditor'
 import {
   CheckCircle2,
-  Circle,
   X,
   Calendar,
   Hourglass,
@@ -228,7 +227,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   return (
     <aside
       ref={sidebarRef}
-      className="w-[420px] max-w-[460px] h-full bg-[#0c0c0f] border-l border-zinc-800/60 flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl animate-in slide-in-from-right-4 duration-150"
+      className="w-[420px] max-w-[460px] h-full bg-[#0c0c0f] border-l border-zinc-800/60 flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-lg animate-in slide-in-from-right-4 duration-150"
     >
       {/* 1. Header Toolbar - Sober without harsh white divider */}
       <div className="h-10 px-4 bg-[#0e0e12] border-b border-zinc-800/50 flex items-center justify-between shrink-0">
@@ -274,17 +273,18 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
         <div className="flex items-start gap-3">
           <button
             onClick={handleToggleComplete}
-            className="mt-1 transition-transform hover:scale-110 cursor-pointer shrink-0"
+            className="mt-1 transition-transform hover:scale-105 cursor-pointer shrink-0"
             title={task.completed ? "Marcar como pendente" : "Marcar como concluída"}
           >
-            {task.completed ? (
-              <CheckCircle2 className="w-6 h-6 text-emerald-400 fill-emerald-500/20" />
-            ) : (
-              <Circle
-                className="w-6 h-6 text-zinc-500 hover:opacity-100 transition-colors"
-                style={{ color: 'var(--accent, #71717a)' }}
-              />
-            )}
+            <div
+              className={`w-5 h-5 rounded-[6px] flex items-center justify-center transition-all ${
+                task.completed
+                  ? 'bg-emerald-500 text-zinc-950 shadow-xs'
+                  : 'border-2 border-zinc-650 hover:border-zinc-400 bg-transparent'
+              }`}
+            >
+              {task.completed && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+            </div>
           </button>
 
           <input
@@ -607,11 +607,15 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                     onClick={() => handleToggleSubtask(st.id)}
                     className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer"
                   >
-                    {st.completed ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    ) : (
-                      <Circle className="w-3.5 h-3.5 text-zinc-500 shrink-0 hover:text-zinc-300" />
-                    )}
+                    <div
+                      className={`w-3.5 h-3.5 rounded-[4px] flex items-center justify-center shrink-0 transition-all ${
+                        st.completed
+                          ? 'bg-emerald-500 text-zinc-950 shadow-xs'
+                          : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
+                      }`}
+                    >
+                      {st.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                    </div>
                     <span
                       className={`text-xs truncate ${
                         st.completed ? 'line-through text-zinc-500' : 'text-zinc-200'
