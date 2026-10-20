@@ -499,7 +499,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {folderFilter && <button className="px-3 py-1 text-left text-amber-400" onClick={() => setFolderFilter(null)}>Pesquisa em {folderFilter} · Limpar ×</button>}
+      {folderFilter && <button className="px-3 py-1 text-left" style={{ color: 'var(--accent)' }} onClick={() => setFolderFilter(null)}>Pesquisa em {folderFilter} · Limpar ×</button>}
       {context && <SidebarMenu key={context.x + ':' + context.y + (context.note?.id || context.folder)} context={context} folders={folders} isVaultRoot={!!vaultPath && context.folder === 'Início'} onClose={() => setContext(null)} onAction={async (action, value) => {
         if (action === 'new-note') onCreateNote(context.folder, undefined, 'note')
         else if (action === 'new-draw') onCreateNote(context.folder, undefined, 'draw')
@@ -516,11 +516,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
             placeholder={parentForNewFolder ? `Subpasta em ${parentForNewFolder}...` : "Nome da pasta..."}
-            className="flex-1 px-2 py-1 bg-zinc-950 border border-[#c59b27]/60 rounded-md text-xs text-zinc-200 focus:outline-none"
+            className="flex-1 px-2 py-1 bg-zinc-950 border rounded-md text-xs text-zinc-200 focus:outline-none"
+            style={{ borderColor: 'var(--accent-glow)' }}
           />
           <button
             type="submit"
-            className="px-2 py-1 bg-[#c59b27] hover:bg-[#d8b150] text-zinc-950 rounded-md text-xs font-semibold cursor-pointer"
+            className="px-2 py-1 rounded-md text-xs font-semibold cursor-pointer transition-opacity hover:opacity-90"
+            style={{ backgroundColor: 'var(--accent)', color: '#09090b' }}
           >
             Criar
           </button>
@@ -553,8 +555,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             style={currentView === 'tasks' ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
           >
             <div className="flex items-center gap-1.5 truncate min-w-0">
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-              <span className="truncate">Tasks</span>
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
+              <span className="truncate">Tarefas</span>
             </div>
             {pendingTasksCount !== undefined && pendingTasksCount > 0 && (
               <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-mono bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
