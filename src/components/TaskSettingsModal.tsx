@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, Component, type ErrorInfo, type ReactNode } from 'react'
+import React, { useState, useEffect, useMemo, useRef, Component, type ErrorInfo, type ReactNode } from 'react'
 import type { TaskSettings, TaskStatusOption, TaskPropertyConfig } from '../types/tasks'
 import { DEFAULT_TASK_SETTINGS } from '../utils/taskStorage'
 import { X, Plus, Trash2, Sliders, Calendar, Compass, Flag, Type, ChevronDown, Check, Eye, EyeOff, Tag } from 'lucide-react'
@@ -83,6 +83,7 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
   const [newStatusColor, setNewStatusColor] = useState(PRESET_COLORS[0])
   const [newStatusIsCompleted, setNewStatusIsCompleted] = useState(false)
   const [isStatusColorPickerOpen, setIsStatusColorPickerOpen] = useState(false)
+  const statusColorBtnRef = useRef<HTMLButtonElement>(null)
 
   // Form states for adding new property
   const [newPropName, setNewPropName] = useState('')
@@ -299,6 +300,7 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                     {/* Custom Color Dot */}
                     <div className="relative flex items-center">
                       <button
+                        ref={statusColorBtnRef}
                         type="button"
                         onClick={() => setIsStatusColorPickerOpen(o => !o)}
                         className={`w-4 h-4 rounded-full transition-transform cursor-pointer ${
@@ -314,6 +316,7 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                           currentColor={newStatusColor}
                           onChange={c => setNewStatusColor(c)}
                           onClose={() => setIsStatusColorPickerOpen(false)}
+                          anchorEl={statusColorBtnRef.current}
                           align="right"
                         />
                       )}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import type { AppSettings } from '../types'
 import { Palette, Type, Maximize2 } from 'lucide-react'
 import { CustomColorPickerPopover } from './CustomColorPickerPopover'
@@ -41,6 +41,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateSettings
 }) => {
   const [isCustomColorOpen, setIsCustomColorOpen] = useState(false)
+  const customColorBtnRef = useRef<HTMLButtonElement>(null)
 
   if (!isOpen) return null
 
@@ -99,6 +100,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Custom Rainbow Dot */}
             <div className="relative flex items-center justify-center p-0.5">
               <button
+                ref={customColorBtnRef}
                 type="button"
                 onClick={() => setIsCustomColorOpen(o => !o)}
                 className="flex items-center justify-center cursor-pointer focus:outline-none"
@@ -121,6 +123,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   currentColor={currentAccent}
                   onChange={newColor => onUpdateSettings({ ...settings, accentColor: newColor })}
                   onClose={() => setIsCustomColorOpen(false)}
+                  anchorEl={customColorBtnRef.current}
                   align="right"
                 />
               )}
