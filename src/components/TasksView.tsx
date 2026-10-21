@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react'
-import type { TaskItem, TaskSettings, TaskPriority, SubTask, TaskBoard } from '../types/tasks'
+import type { TaskItem, TaskSettings, TaskPriority, SubTask, TaskBoard, TaskPropertyConfig } from '../types/tasks'
 import type { Note } from '../types'
 import { DEFAULT_TASK_SETTINGS, DEFAULT_PRIORITIES } from '../utils/taskStorage'
+import { getPropertyItems, isBuiltinProperty, isOptionProperty, type PropertyItem } from '../utils/taskProperties'
+import { Pill } from './TaskCustomPropertyField'
 import { TaskSettingsModal } from './TaskSettingsModal'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import {
@@ -40,7 +42,7 @@ interface TasksViewProps {
 }
 
 type ViewMode = 'list' | 'kanban'
-type KanbanGroupBy = 'status' | 'priority'
+type KanbanGroupBy = string
 
 export const TasksView: React.FC<TasksViewProps> = ({
   tasks,
@@ -58,7 +60,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   onOpenNote
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [kanbanGroupBy, setKanbanGroupBy] = useState<KanbanGroupBy>('status')
+  const [kanbanGroupBy, setKanbanGroupBy] = useState<KanbanGroupBy>('prop_status')
   const [isGroupingMenuOpen, setIsGroupingMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -116,13 +118,80 @@ export const TasksView: React.FC<TasksViewProps> = ({
     }
   }
 
-  const kanbanPriorityColumns = useMemo(() => {
-    return safePriorities.map(p => ({
-      id: p.id,
-      label: p.label,
-      color: p.color
-    }))
-  }, [safePriorities])
+  // Properties that can organize the Kanban columns (status / priority / custom select & status)
+  const groupableProps = useMemo(() => safeProperties.filter(isOptionProperty), [safeProperties])
+  const groupProp: TaskPropertyConfig =
+    groupableProps.find(p => p.id === kanbanGroupBy) ||
+    groupableProps[0] || { id: 'prop_status', name: 'Status', type: 'status' }
+
+  const kanbanColumns = useMemo<PropertyItem[]>(() => {
+    const items = getPropertyItems(settings, groupProp)
+    return isBuiltinProperty(groupProp.id)
+      ? items
+      : [{ id: '__none', name: 'Sem valor', color: '#52525b' }, ...items]
+  }, [settings, groupProp])
+
+  const getTaskColumnId = (t: TaskItem): string => {
+    const ids = kanbanColumns.map(c => c.id)
+    let raw: string | undefined
+    if (groupProp.id === 'prop_status') raw = t.statusId
+    else if (groupProp.id === 'prop_priority') raw = t.priority
+    else raw = t.customValues?.[groupProp.id]
+    if (raw && ids.includes(raw)) return raw
+    return isBuiltinProperty(groupProp.id) ? ids[0] : '__none'
+  }
+
+  const columnPatch = (colId: string): Partial<TaskItem> => {
+    if (groupProp.id === 'prop_status') {
+      const st = safeStatuses.find(s => s.id === colId)
+      return { statusId: colId, completed: Boolean(st?.isCompleted) }
+    }
+    if (groupProp.id === 'prop_priority') return { priority: colId as TaskPriority }
+    return {}
+  }
+
+  const mergeCustom = (t: TaskItem | undefined, colId: string) => {
+    if (isBuiltinProperty(groupProp.id)) return t?.customValues
+    const next = { ...(t?.customValues || {}) }
+    if (colId === '__none') delete next[groupProp.id]
+    else next[groupProp.id] = colId
+    return next
+  }
+
+  const customListProps = useMemo(
+    () => safeProperties.filter(p => !isBuiltinProperty(p.id) && !p.hidden),
+    [safeProperties]
+  )
+
+  const renderCustomCell = (task: TaskItem, prop: TaskPropertyConfig) => {
+    const v = task.customValues?.[prop.id]
+    if (v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) {
+      return <span className="text-zinc-600">-</span>
+    }
+    const items = getPropertyItems(settings, prop)
+    switch (prop.type) {
+      case 'select':
+      case 'status': {
+        const it = items.find(i => i.id === v)
+        return it ? <Pill item={it} /> : <span className="text-zinc-600">-</span>
+      }
+      case 'multiselect':
+        return (
+          <div className="flex flex-wrap gap-1">
+            {(v as string[]).map(id => {
+              const it = items.find(i => i.id === id)
+              return it ? <Pill key={id} item={it} /> : null
+            })}
+          </div>
+        )
+      case 'checkbox':
+        return v ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <span className="text-zinc-600">-</span>
+      case 'url':
+        return <span className="text-[11px] text-sky-400 truncate block max-w-[160px]">{String(v)}</span>
+      default:
+        return <span className="text-[11px] text-zinc-300 truncate block max-w-[160px]">{String(v)}</span>
+    }
+  }
 
   // Board filtering
   const currentBoardId = activeBoardId || 'default'
@@ -146,7 +215,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
     (!isColumnHidden('prop_priority') ? 1 : 0) +
     (!isColumnHidden('prop_deadline') ? 1 : 0) +
     (!isColumnHidden('prop_context') ? 1 : 0) +
-    (!isColumnHidden('prop_tags') ? 1 : 0)
+    (!isColumnHidden('prop_tags') ? 1 : 0) +
+    customListProps.length
 
   // Subtasks helpers
   const toggleTaskExpand = (taskId: string) => {
@@ -261,30 +331,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
     })
   }
 
-  // Handle Drag & Drop to change column/status/priority
+  // Handle Drag & Drop to change column (value of the property organizing the board)
   const handleDropTask = (taskId: string, targetColumnId: string) => {
     const taskToMove = tasks.find(t => t.id === taskId)
     if (!taskToMove) return
-
-    if (kanbanGroupBy === 'status') {
-      if (taskToMove.statusId === targetColumnId) return
-      const targetStatus = settings.statuses.find(s => s.id === targetColumnId)
-      const isCompleted = Boolean(targetStatus?.isCompleted)
-      onUpdateTask({
-        ...taskToMove,
-        statusId: targetColumnId,
-        completed: isCompleted,
-        updatedAt: Date.now()
-      })
-    } else {
-      // Group by priority
-      if (taskToMove.priority === targetColumnId) return
-      onUpdateTask({
-        ...taskToMove,
-        priority: targetColumnId as TaskPriority,
-        updatedAt: Date.now()
-      })
-    }
+    if (getTaskColumnId(taskToMove) === targetColumnId) return
+    onUpdateTask({ ...taskToMove, ...columnPatch(targetColumnId), customValues: mergeCustom(taskToMove, targetColumnId), updatedAt: Date.now() })
   }
 
   const handleQuickAddInList = (e: React.FormEvent) => {
@@ -301,19 +353,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
       return
     }
 
-    if (kanbanGroupBy === 'status') {
-      const isCompletedStatus = safeStatuses.find(s => s.id === columnId)?.isCompleted || false
-      onCreateTask(newColumnTaskTitle.trim(), {
-        statusId: columnId,
-        completed: isCompletedStatus,
-        boardId: currentBoardId
-      })
-    } else {
-      onCreateTask(newColumnTaskTitle.trim(), {
-        priority: columnId as TaskPriority,
-        boardId: currentBoardId
-      })
-    }
+    onCreateTask(newColumnTaskTitle.trim(), {
+      boardId: currentBoardId,
+      ...columnPatch(columnId),
+      customValues: mergeCustom(undefined, columnId)
+    })
 
     setNewColumnTaskTitle('')
     setAddingInColumnId(null)
@@ -409,7 +453,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 <SlidersHorizontal className="w-3 h-3 text-zinc-400" />
                 <span className="text-zinc-400">Colunas:</span>
                 <span className="font-semibold text-zinc-200">
-                  {kanbanGroupBy === 'status' ? 'Status' : 'Prioridade'}
+                  {groupProp.name}
                 </span>
                 <ChevronDown className="w-3 h-3 text-zinc-500" />
               </button>
@@ -422,36 +466,25 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   <div className="text-[10px] font-semibold text-zinc-500 px-2 py-1 uppercase tracking-wider">
                     Agrupar Colunas Por
                   </div>
-                  <button
-                    onClick={() => {
-                      setKanbanGroupBy('status')
-                      setIsGroupingMenuOpen(false)
-                    }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                      kanbanGroupBy === 'status'
-                        ? 'bg-zinc-800 text-white font-medium'
-                        : 'hover:bg-zinc-800/40 text-zinc-300'
-                    }`}
-                    style={kanbanGroupBy === 'status' ? { color: 'var(--accent, #c59b27)' } : undefined}
-                  >
-                    <span>Status</span>
-                    {kanbanGroupBy === 'status' && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setKanbanGroupBy('priority')
-                      setIsGroupingMenuOpen(false)
-                    }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                      kanbanGroupBy === 'priority'
-                        ? 'bg-zinc-800 text-white font-medium'
-                        : 'hover:bg-zinc-800/40 text-zinc-300'
-                    }`}
-                    style={kanbanGroupBy === 'priority' ? { color: 'var(--accent, #c59b27)' } : undefined}
-                  >
-                    <span>Prioridade</span>
-                    {kanbanGroupBy === 'priority' && <Check className="w-3.5 h-3.5" />}
-                  </button>
+                  {groupableProps.map(gp => {
+                    const active = groupProp.id === gp.id
+                    return (
+                      <button
+                        key={gp.id}
+                        onClick={() => {
+                          setKanbanGroupBy(gp.id)
+                          setIsGroupingMenuOpen(false)
+                        }}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                          active ? 'bg-zinc-800 text-white font-medium' : 'hover:bg-zinc-800/40 text-zinc-300'
+                        }`}
+                        style={active ? { color: 'var(--accent, #c59b27)' } : undefined}
+                      >
+                        <span className="truncate">{gp.name}</span>
+                        {active && <Check className="w-3.5 h-3.5 shrink-0" />}
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -510,6 +543,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 {!isColumnHidden('prop_deadline') && <th className="px-3 py-2 w-48 min-w-[180px]">Prazo</th>}
                 {!isColumnHidden('prop_context') && <th className="px-3 py-2 w-48">Contexto (Nota)</th>}
                 {!isColumnHidden('prop_tags') && <th className="px-3 py-2">Tags</th>}
+                {customListProps.map(cp => (
+                  <th key={cp.id} className="px-3 py-2">{cp.name}</th>
+                ))}
                 <th className="w-10 px-3 py-2 text-right"></th>
               </tr>
             </thead>
@@ -793,6 +829,20 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           </td>
                         )}
 
+                        {/* Custom property cells */}
+                        {customListProps.map(cp => (
+                          <td
+                            key={cp.id}
+                            className={`px-3 py-2.5 transition-all ${
+                              isSelected
+                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
+                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                            }`}
+                          >
+                            {renderCustomCell(task, cp)}
+                          </td>
+                        ))}
+
                         {/* Row Action */}
                         <td
                           className={`px-3 py-2.5 text-right last:rounded-r-xl transition-all ${
@@ -940,9 +990,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
       ) : (
         /* KANBAN BOARD VIEW - Distinct Contrast, Refined Header & Cards */
         <div className="flex-1 overflow-x-auto overflow-y-hidden custom-chat-scrollbar p-5 flex gap-4 items-start bg-[#121215]">
-          {kanbanGroupBy === 'status'
-            ? settings.statuses.map(statusCol => {
-                const colTasks = filteredTasks.filter(t => t.statusId === statusCol.id)
+          {kanbanColumns.map(statusCol => {
+                const colTasks = filteredTasks.filter(t => getTaskColumnId(t) === statusCol.id)
                 const isAdding = addingInColumnId === statusCol.id
                 const isDragTarget = dragOverColumnId === statusCol.id
 
@@ -1087,6 +1136,20 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 </span>
                               )}
 
+                              {/* Status pill when columns are not organized by status */}
+                              {groupProp.id !== 'prop_status' && (() => {
+                                const st = safeStatuses.find(s => s.id === task.statusId) || safeStatuses[0]
+                                return st ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                    style={{ backgroundColor: `${st.color}20`, color: st.color }}
+                                  >
+                                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: st.color }} />
+                                    <span>{st.name}</span>
+                                  </span>
+                                ) : null
+                              })()}
+
                               {/* Priority */}
                               {task.priority !== 'none' && (
                                 <span
@@ -1188,257 +1251,6 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     )}
                   </div>
                 )
-              })
-            : kanbanPriorityColumns.map(priorityCol => {
-                const colTasks = filteredTasks.filter(t => t.priority === priorityCol.id)
-                const isAdding = addingInColumnId === priorityCol.id
-                const isDragTarget = dragOverColumnId === priorityCol.id
-
-                return (
-                  <div
-                    key={priorityCol.id}
-                    onDragOver={e => {
-                      e.preventDefault()
-                      e.dataTransfer.dropEffect = 'move'
-                      if (dragOverColumnId !== priorityCol.id) setDragOverColumnId(priorityCol.id)
-                    }}
-                    onDragLeave={e => {
-                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                        setDragOverColumnId(null)
-                      }
-                    }}
-                    onDrop={e => {
-                      e.preventDefault()
-                      const taskId = e.dataTransfer.getData('text/plain') || draggedTaskId
-                      if (taskId) handleDropTask(taskId, priorityCol.id)
-                      setDraggedTaskId(null)
-                      setDragOverColumnId(null)
-                    }}
-                    className={`w-76 shrink-0 flex flex-col max-h-full rounded-2xl bg-[#0e0e11] border-0 overflow-hidden transition-all ${
-                      isDragTarget ? 'ring-1 ring-[var(--accent)]/50 bg-[#111114]' : ''
-                    }`}
-                  >
-                    {/* Differentiated Column Header */}
-                    <div className="flex items-center justify-between mx-1.5 mt-1.5 px-3 py-2 rounded-xl bg-[#1b1b1f] shadow-[0_2px_6px_rgba(0,0,0,0.45)] shrink-0">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Flag
-                          className="w-3.5 h-3.5 shrink-0"
-                          style={{ color: priorityCol.color }}
-                        />
-                        <span className="text-xs font-semibold text-zinc-100 truncate tracking-wide">
-                          {priorityCol.label}
-                        </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-medium bg-[#0e0e11] text-zinc-400 shrink-0">
-                          {colTasks.length}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setAddingInColumnId(priorityCol.id)
-                          setNewColumnTaskTitle('')
-                        }}
-                        className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/40 rounded-lg transition-colors cursor-pointer shrink-0"
-                        title="Adicionar tarefa nesta coluna"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    {/* Column Cards Container */}
-                    <div className="flex-1 overflow-y-auto space-y-2.5 custom-chat-scrollbar p-3">
-                      {colTasks.length === 0 && !isAdding && (
-                        <div className="py-8 text-center text-xs text-zinc-600 font-medium">
-                          Nenhuma tarefa
-                        </div>
-                      )}
-
-                      {colTasks.map(task => {
-                        const isSelected = selectedTaskId === task.id
-                        const statusObj =
-                          settings.statuses.find(s => s.id === task.statusId) ||
-                          settings.statuses[0]
-                        const isDragging = draggedTaskId === task.id
-
-                        return (
-                          <div
-                            key={task.id}
-                            data-task-item="true"
-                            draggable={true}
-                            onDragStart={e => {
-                              e.dataTransfer.setData('text/plain', task.id)
-                              setDraggedTaskId(task.id)
-                            }}
-                            onDragEnd={() => {
-                              setDraggedTaskId(null)
-                              setDragOverColumnId(null)
-                            }}
-                            onClick={() => onSelectTask(task)}
-                            className={`group relative rounded-xl p-3 transition-all cursor-grab active:cursor-grabbing select-none ${
-                              isDragging ? 'opacity-40 scale-95' : 'opacity-100'
-                            } ${
-                              isSelected
-                                ? 'bg-[#1a1a1e] ring-1 ring-[var(--accent)]/70 border-0'
-                                : 'bg-[#161619] hover:bg-[#1a1a1e] border-0'
-                            }`}
-                          >
-                            {/* Card Top: Checkbox, Title, Delete */}
-                            <div className="flex items-start gap-2">
-                              <button
-                                type="button"
-                                onClick={e => handleToggleComplete(task, e)}
-                                className="mt-0.5 cursor-pointer shrink-0 relative flex items-center justify-center p-0.5"
-                              >
-                                <div
-                                  className={`w-3.5 h-3.5 rounded-[4px] flex items-center justify-center transition-all ${
-                                    task.completed
-                                      ? 'bg-emerald-500 text-zinc-950 shadow-xs affine-check-pop'
-                                      : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
-                                  }`}
-                                >
-                                  {task.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                                </div>
-                                {burstingTaskId === task.id && (
-                                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-top" />
-                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-bottom" />
-                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-left" />
-                                    <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
-                                  </div>
-                                )}
-                              </button>
-                              <span
-                                className={`text-xs font-medium text-zinc-200 flex-1 leading-snug ${
-                                  task.completed ? 'line-through text-zinc-500' : ''
-                                }`}
-                              >
-                                {task.title}
-                              </span>
-                              <button
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  setTaskToDelete(task)
-                                }}
-                                className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-rose-400 transition-opacity cursor-pointer"
-                                title="Excluir tarefa"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-
-                            {/* Card Badges Row */}
-                            <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
-                              {/* Subtasks Progress Badge */}
-                              {task.subtasks && task.subtasks.length > 0 && (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-800/50 text-zinc-300 whitespace-nowrap">
-                                  <CheckSquare className="w-2.5 h-2.5 text-zinc-400 shrink-0" />
-                                  <span>
-                                    {task.subtasks.filter(st => st.completed).length}/{task.subtasks.length}
-                                  </span>
-                                </span>
-                              )}
-
-                              {/* Status Pill */}
-                              <span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                style={{
-                                  backgroundColor: `${statusObj.color}20`,
-                                  color: statusObj.color
-                                }}
-                              >
-                                <span
-                                  className="w-1.5 h-1.5 rounded-full shrink-0"
-                                  style={{ backgroundColor: statusColColor(statusObj.color) }}
-                                />
-                                <span>{statusObj.name}</span>
-                              </span>
-
-                              {/* Deadline - Never wraps */}
-                              {task.deadline && (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-800/80 text-zinc-300 whitespace-nowrap">
-                                  <Hourglass className="w-2.5 h-2.5 text-zinc-500 shrink-0" />
-                                  <span className="font-mono shrink-0 whitespace-nowrap">{task.deadline}</span>
-                                  {task.deadline.slice(0, 10) === todayStr && (
-                                    <span
-                                      className="font-medium shrink-0 whitespace-nowrap"
-                                      style={{ color: 'var(--accent, #c59b27)' }}
-                                    >
-                                      Hoje
-                                    </span>
-                                  )}
-                                </span>
-                              )}
-
-                              {/* Context Note */}
-                              {task.contextNoteId && (
-                                <span
-                                  onClick={e => {
-                                    e.stopPropagation()
-                                    onOpenNote(task.contextNoteId!)
-                                  }}
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-800/80 hover:bg-zinc-750 transition-colors max-w-[130px] truncate"
-                                  style={{ color: 'var(--accent, #c59b27)' }}
-                                  title="Abrir nota vinculada"
-                                >
-                                  <Compass className="w-2.5 h-2.5 shrink-0" />
-                                  <span className="truncate">{task.contextNoteTitle || 'Nota'}</span>
-                                </span>
-                              )}
-
-                              {/* Tags */}
-                              {task.tags.map(t => (
-                                <span
-                                  key={t}
-                                  className="px-1.5 py-0.5 rounded bg-zinc-850/90 text-[9.5px] text-zinc-400 font-mono"
-                                >
-                                  #{t}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
-
-                      {/* Quick Add Form in Column */}
-                      {isAdding && (
-                        <form
-                          onSubmit={e => handleQuickAddInColumn(priorityCol.id, e)}
-                          className="pt-1"
-                        >
-                          <input
-                            autoFocus
-                            type="text"
-                            value={newColumnTaskTitle}
-                            onChange={e => setNewColumnTaskTitle(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === 'Escape') setAddingInColumnId(null)
-                            }}
-                            onBlur={() => {
-                              if (!newColumnTaskTitle.trim()) setAddingInColumnId(null)
-                            }}
-                            placeholder="Nome da tarefa... (Enter)"
-                            className="w-full px-3 py-2 bg-[#161619] border-0 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none"
-                          />
-                        </form>
-                      )}
-                    </div>
-
-                    {/* Column Bottom Add Button */}
-                    {!isAdding && (
-                      <div className="p-2.5 pt-0 shrink-0">
-                        <button
-                          onClick={() => {
-                            setAddingInColumnId(priorityCol.id)
-                            setNewColumnTaskTitle('')
-                          }}
-                          className="w-full py-1.5 px-3 flex items-center justify-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-[#161619] rounded-xl transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3 h-3" />
-                          <span>Adicionar tarefa</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )
               })}
         </div>
       )}
@@ -1497,10 +1309,6 @@ export const TasksView: React.FC<TasksViewProps> = ({
       />
     </div>
   )
-}
-
-function statusColColor(color: string) {
-  return color || '#71717a'
 }
 
 export default TasksView

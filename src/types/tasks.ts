@@ -14,20 +14,24 @@ export interface TaskBoard {
   createdAt: number
 }
 
+export type TaskStatusGroup = 'todo' | 'in_progress' | 'done'
+
 export interface TaskStatusOption {
   id: string
   name: string
   color: string
   isCompleted?: boolean
+  group?: TaskStatusGroup
 }
 
-export type TaskPropertyType = 'text' | 'select' | 'date' | 'number' | 'context' | 'priority' | 'status'
+export type TaskPropertyType = 'text' | 'select' | 'date' | 'number' | 'context' | 'priority' | 'status' | 'multiselect' | 'checkbox' | 'url'
 
 export interface TaskPropertyOption {
   id: string
   name: string
   color: string
   icon?: string
+  group?: TaskStatusGroup
 }
 
 export interface TaskPropertyConfig {

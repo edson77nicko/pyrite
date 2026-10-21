@@ -2,6 +2,8 @@ import React, { useState, useMemo, useRef, useEffect } from 'react'
 import type { TaskItem, TaskSettings, TaskPriority, SubTask } from '../types/tasks'
 import type { Note } from '../types'
 import { DEFAULT_PRIORITIES } from '../utils/taskStorage'
+import { getPropertyItems, isBuiltinProperty } from '../utils/taskProperties'
+import { TaskCustomPropertyField } from './TaskCustomPropertyField'
 import { TaskContextPicker } from './TaskContextPicker'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import { LivePreviewEditor } from './LivePreviewEditor'
@@ -17,8 +19,25 @@ import {
   Trash2,
   ChevronDown,
   Check,
-  CheckSquare
+  CheckSquare,
+  Type,
+  Hash,
+  ChevronDownCircle,
+  List,
+  Loader,
+  Link2
 } from 'lucide-react'
+
+const CUSTOM_PROP_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  text: Type,
+  number: Hash,
+  select: ChevronDownCircle,
+  multiselect: List,
+  status: Loader,
+  date: Calendar,
+  checkbox: CheckSquare,
+  url: Link2
+}
 
 interface TaskDetailSidebarProps {
   task: TaskItem
@@ -122,6 +141,18 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
     id: 'none',
     label: 'Nenhuma',
     color: '#71717a'
+  }
+
+  const customProps = useMemo(
+    () => (settings.properties || []).filter(p => !isBuiltinProperty(p.id)),
+    [settings.properties]
+  )
+
+  const handleCustomValueChange = (propId: string, value: any) => {
+    const next = { ...(task.customValues || {}) }
+    if (value === undefined || value === '') delete next[propId]
+    else next[propId] = value
+    onUpdateTask({ ...task, customValues: next, updatedAt: Date.now() })
   }
 
   const handleStartEditSubtask = (st: SubTask, e: React.MouseEvent) => {
@@ -634,6 +665,25 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               )}
             </div>
           </div>
+
+          {/* Custom properties created in settings */}
+          {customProps.map(prop => {
+            const Icon = CUSTOM_PROP_ICONS[prop.type] || Type
+            return (
+              <div key={prop.id} className="grid grid-cols-[80px_1fr] items-start gap-2 text-xs relative">
+                <div className="flex items-center gap-1.5 text-zinc-400 pt-1.5 min-w-0">
+                  <Icon className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                  <span className="truncate">{prop.name}</span>
+                </div>
+                <TaskCustomPropertyField
+                  prop={prop}
+                  task={task}
+                  items={getPropertyItems(settings, prop)}
+                  onChange={val => handleCustomValueChange(prop.id, val)}
+                />
+              </div>
+            )
+          })}
         </div>
 
         {/* Subtarefas Section */}

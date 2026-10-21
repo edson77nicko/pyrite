@@ -17,11 +17,11 @@ export const DEFAULT_BOARDS: TaskBoard[] = [
 
 export const DEFAULT_TASK_SETTINGS: TaskSettings = {
   statuses: [
-    { id: 'inbox', name: 'Inbox', color: '#71717a' },
-    { id: 'in_progress', name: 'Em Andamento', color: '#3b82f6' },
-    { id: 'scheduled', name: 'Agendado', color: '#8b5cf6' },
-    { id: 'review', name: 'Revisão', color: '#f59e0b' },
-    { id: 'completed', name: 'Concluído', color: '#10b981', isCompleted: true }
+    { id: 'inbox', name: 'Inbox', color: '#71717a', group: 'todo' },
+    { id: 'in_progress', name: 'Em Andamento', color: '#3b82f6', group: 'in_progress' },
+    { id: 'scheduled', name: 'Agendado', color: '#8b5cf6', group: 'todo' },
+    { id: 'review', name: 'Revisão', color: '#f59e0b', group: 'in_progress' },
+    { id: 'completed', name: 'Concluído', color: '#10b981', isCompleted: true, group: 'done' }
   ],
   priorities: DEFAULT_PRIORITIES,
   properties: [
