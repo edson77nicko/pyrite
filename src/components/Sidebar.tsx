@@ -538,7 +538,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={() => onCreateNote(undefined, undefined, 'mindmap')}
             className="flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 rounded-md text-[11px] font-medium transition-colors border border-zinc-700/60 cursor-pointer"
-            title="Criar Novo Mapa Mental (estilo Mindomo)"
+            title="Criar Novo Mapa Mental"
           >
             <Brain className="w-3 h-3" style={{ color: 'var(--accent)' }} />
             <span>Mapa</span>

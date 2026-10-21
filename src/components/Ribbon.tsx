@@ -11,7 +11,8 @@ import {
   FolderSync,
   MessageSquare,
   Palette,
-  CheckCircle2
+  CheckCircle2,
+  Brain
 } from 'lucide-react'
 
 interface RibbonProps {
@@ -27,6 +28,8 @@ interface RibbonProps {
   onOpenVaultSwitcher?: () => void
   isConversationsOpen?: boolean
   onToggleConversations?: () => void
+  isMindMapActive?: boolean
+  onOpenMindMap?: () => void
 }
 
 export const Ribbon: React.FC<RibbonProps> = ({
@@ -41,7 +44,9 @@ export const Ribbon: React.FC<RibbonProps> = ({
   onOpenSettings,
   onOpenVaultSwitcher,
   isConversationsOpen,
-  onToggleConversations
+  onToggleConversations,
+  isMindMapActive,
+  onOpenMindMap
 }) => {
   return (
     <aside className="w-11 h-full bg-[#09090b] border-r border-zinc-800/80 flex flex-col items-center py-2 select-none shrink-0 text-zinc-400 z-10">
@@ -112,6 +117,20 @@ export const Ribbon: React.FC<RibbonProps> = ({
           title="Tarefas do Workspace"
         >
           <CheckCircle2 className="w-4 h-4" />
+        </button>
+
+        {/* Mapas Mentais */}
+        <button
+          onClick={onOpenMindMap}
+          style={isMindMapActive ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))', borderColor: 'var(--accent, #d4af37)', color: 'var(--accent, #d4af37)' } : undefined}
+          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
+            isMindMapActive
+              ? 'border'
+              : 'text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/50'
+          }`}
+          title="Mapas Mentais"
+        >
+          <Brain className="w-4 h-4" />
         </button>
 
         {/* AI Agent Icon right below Canvas */}

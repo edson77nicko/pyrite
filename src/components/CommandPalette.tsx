@@ -80,7 +80,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     {
       id: 'cmd-new-mindmap',
       title: 'Criar Novo Mapa Mental',
-      subtitle: 'Novo mapa mental com recursos e visual estilo Mindomo',
+      subtitle: 'Criar novo mapa mental com conexões visuais e ramos',
       icon: <Brain className="w-4 h-4 text-[var(--accent,#c59b27)]" />,
       action: () => onCreateNote(undefined, undefined, 'mindmap')
     },

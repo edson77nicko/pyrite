@@ -9,14 +9,32 @@ export type MindMapShape =
   | 'underline'
 
 export type MindMapLayout =
-  | 'radial'      // Standard Mindomo balanced (left & right)
-  | 'right'       // Mindomo Right-sided logic chart
-  | 'left'        // Mindomo Left-sided tree
+  | 'radial'      // Standard balanced (left & right)
+  | 'right'       // Right-sided logic chart
+  | 'left'        // Left-sided tree
   | 'org-chart'   // Top-down organizational chart
   | 'tree-bottom' // Bottom-up hierarchy
 
+export type MindMapLineStyle = 'curved' | 'straight' | 'rounded-elbow'
+
+export type MindMapStylePreset =
+  | 'organic-branch' // Reference: Thick organic branches, underline subtopics
+  | 'modern-cards'   // Rounded card boxes
+  | 'pills'          // Pill/capsule topics
+  | 'technical'      // Rectangles with orthogonal lines
+  | 'minimal-lines'  // Clean lines without background boxes
+
+export type MindMapPaletteId =
+  | 'rainbow'    // Vibrant multi-color (Blue, Orange, Green, Purple, Magenta)
+  | 'gold'       // Pyrita Amber Gold
+  | 'ocean'      // Cyan, Blue, Teal
+  | 'emerald'    // Forest, Emerald, Mint
+  | 'sunset'     // Coral, Orange, Rose, Amber
+  | 'monochrome' // Clean Black, Zinc, White
+
 export type MindMapThemeId =
-  | 'mindomo-classic'
+  | 'pyrita-classic'
+  | 'mindomo-classic' // Backward compatibility alias
   | 'pyrita-gold'
   | 'synthwave-neon'
   | 'cyber-emerald'
@@ -49,7 +67,7 @@ export interface MindMapNode {
   fontStrike?: boolean
   branchColor?: string
   branchWidth?: number
-  branchStyle?: 'curved' | 'straight' | 'rounded-elbow'
+  branchStyle?: MindMapLineStyle
   icons?: string[]
   note?: string
   link?: string
@@ -98,6 +116,10 @@ export interface MindMapDocument {
   theme: MindMapThemeId
   layout: MindMapLayout
   viewport: MindMapViewport
+  canvasBg?: string
+  lineStyle?: MindMapLineStyle
+  mapStyle?: MindMapStylePreset
+  paletteId?: MindMapPaletteId
 }
 
 export interface ComputedNode {
@@ -120,6 +142,7 @@ export interface ComputedEdge {
   color: string
   width: number
   style: 'solid' | 'dashed' | 'dotted'
+  isTapered?: boolean
 }
 
 export interface ComputedBoundary {

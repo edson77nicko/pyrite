@@ -4,7 +4,10 @@ import type {
   ComputedLayout,
   ComputedNode,
   MindMapDocument,
+  MindMapLineStyle,
   MindMapNode,
+  MindMapPaletteId,
+  MindMapStylePreset,
   MindMapThemeId
 } from '../types/mindmap'
 
@@ -19,18 +22,58 @@ export interface ThemeConfig {
   subtopicBg: string
   subtopicBorder: string
   subtopicText: string
-  lineStyle: 'curved' | 'straight' | 'rounded-elbow'
+  lineStyle: MindMapLineStyle
 }
 
-export const MINDMAP_THEMES: Record<MindMapThemeId, ThemeConfig> = {
-  'mindomo-classic': {
-    id: 'mindomo-classic',
-    name: 'Mindomo Classic',
+export const MINDMAP_PALETTES: Record<MindMapPaletteId, { name: string; colors: string[] }> = {
+  rainbow: {
+    name: 'Vibrante Orgânico',
+    colors: ['#2563eb', '#ea580c', '#10b981', '#9333ea', '#db2777', '#06b6d4', '#eab308']
+  },
+  gold: {
+    name: 'Pyrita Âmbar Gold',
+    colors: ['#c59b27', '#eab308', '#f59e0b', '#d97706', '#ca8a04', '#b45309']
+  },
+  ocean: {
+    name: 'Oceano & Ciano',
+    colors: ['#0284c7', '#06b6d4', '#0d9488', '#3b82f6', '#6366f1', '#0ea5e9']
+  },
+  emerald: {
+    name: 'Floresta & Esmeralda',
+    colors: ['#059669', '#10b981', '#14b8a6', '#84cc16', '#22c55e', '#16a34a']
+  },
+  sunset: {
+    name: 'Pôr do Sol',
+    colors: ['#f97316', '#fb7185', '#ec4899', '#f43f5e', '#e11d48', '#fb923c']
+  },
+  monochrome: {
+    name: 'Monocromático',
+    colors: ['#e4e4e7', '#cbd5e1', '#94a3b8', '#64748b', '#71717a', '#a1a1aa']
+  }
+}
+
+export const MINDMAP_THEMES: Record<string, ThemeConfig> = {
+  'pyrita-classic': {
+    id: 'pyrita-classic',
+    name: 'Pyrita Clássico',
     bg: '#0f172a',
     rootBg: '#2563eb',
     rootBorder: '#3b82f6',
     rootText: '#ffffff',
-    branchColors: ['#38bdf8', '#34d399', '#fbbf24', '#f472b6', '#a78bfa', '#fb923c', '#2dd4bf'],
+    branchColors: MINDMAP_PALETTES.rainbow.colors,
+    subtopicBg: '#1e293b',
+    subtopicBorder: '#334155',
+    subtopicText: '#f1f5f9',
+    lineStyle: 'curved'
+  },
+  'mindomo-classic': {
+    id: 'pyrita-classic',
+    name: 'Pyrita Clássico',
+    bg: '#0f172a',
+    rootBg: '#2563eb',
+    rootBorder: '#3b82f6',
+    rootText: '#ffffff',
+    branchColors: MINDMAP_PALETTES.rainbow.colors,
     subtopicBg: '#1e293b',
     subtopicBorder: '#334155',
     subtopicText: '#f1f5f9',
@@ -38,12 +81,12 @@ export const MINDMAP_THEMES: Record<MindMapThemeId, ThemeConfig> = {
   },
   'pyrita-gold': {
     id: 'pyrita-gold',
-    name: 'Pyrita Âmbar Gold',
+    name: 'Pyrita Ouro',
     bg: '#09090b',
     rootBg: '#c59b27',
     rootBorder: '#eab308',
     rootText: '#000000',
-    branchColors: ['#c59b27', '#eab308', '#f59e0b', '#d97706', '#fbbf24', '#ca8a04', '#e2b342'],
+    branchColors: MINDMAP_PALETTES.gold.colors,
     subtopicBg: '#18181b',
     subtopicBorder: '#27272a',
     subtopicText: '#fafafa',
@@ -56,7 +99,7 @@ export const MINDMAP_THEMES: Record<MindMapThemeId, ThemeConfig> = {
     rootBg: '#9333ea',
     rootBorder: '#c084fc',
     rootText: '#ffffff',
-    branchColors: ['#ec4899', '#06b6d4', '#a855f7', '#3b82f6', '#10b981', '#f43f5e', '#f59e0b'],
+    branchColors: ['#ec4899', '#06b6d4', '#a855f7', '#3b82f6', '#10b981', '#f43f5e'],
     subtopicBg: '#130d24',
     subtopicBorder: '#2e1d4d',
     subtopicText: '#f5f3ff',
@@ -69,7 +112,7 @@ export const MINDMAP_THEMES: Record<MindMapThemeId, ThemeConfig> = {
     rootBg: '#059669',
     rootBorder: '#34d399',
     rootText: '#ffffff',
-    branchColors: ['#10b981', '#14b8a6', '#06b6d4', '#84cc16', '#22c55e', '#3b82f6', '#10b981'],
+    branchColors: MINDMAP_PALETTES.emerald.colors,
     subtopicBg: '#064e3b',
     subtopicBorder: '#0f766e',
     subtopicText: '#ecfdf5',
@@ -77,12 +120,12 @@ export const MINDMAP_THEMES: Record<MindMapThemeId, ThemeConfig> = {
   },
   'pastel-dream': {
     id: 'pastel-dream',
-    name: 'Pastel Dream',
+    name: 'Pastel Elegance',
     bg: '#18151f',
     rootBg: '#e0a96d',
     rootBorder: '#f3c68f',
     rootText: '#201a15',
-    branchColors: ['#f472b6', '#38bdf8', '#fbbf24', '#a78bfa', '#4ade80', '#fb923c', '#e879f9'],
+    branchColors: ['#f472b6', '#38bdf8', '#fbbf24', '#a78bfa', '#4ade80', '#fb923c'],
     subtopicBg: '#272332',
     subtopicBorder: '#3c354d',
     subtopicText: '#f8fafc',
@@ -95,7 +138,7 @@ export const MINDMAP_THEMES: Record<MindMapThemeId, ThemeConfig> = {
     rootBg: '#ffffff',
     rootBorder: '#e4e4e7',
     rootText: '#09090b',
-    branchColors: ['#e4e4e7', '#d4d4d8', '#a1a1aa', '#71717a', '#e4e4e7', '#a1a1aa', '#d4d4d8'],
+    branchColors: MINDMAP_PALETTES.monochrome.colors,
     subtopicBg: '#18181b',
     subtopicBorder: '#27272a',
     subtopicText: '#f4f4f5',
@@ -125,7 +168,7 @@ export function createEmptyMindMapDocument(initialTitle?: string): MindMapDocume
       id: rootId,
       parentId: null,
       children: [child1Id, child2Id, child3Id],
-      title: initialTitle || 'Mapa Mental',
+      title: initialTitle || 'Meu Mapa Mental',
       shape: 'rounded',
       fontSize: 18,
       fontWeight: 'bold'
@@ -152,7 +195,7 @@ export function createEmptyMindMapDocument(initialTitle?: string): MindMapDocume
       id: child3Id,
       parentId: rootId,
       children: [],
-      title: 'Tarefas & Ações',
+      title: 'Ações & Execução',
       shape: 'rounded',
       side: 'right',
       icons: ['check']
@@ -166,8 +209,12 @@ export function createEmptyMindMapDocument(initialTitle?: string): MindMapDocume
     nodes,
     relations: [],
     boundaries: [],
-    theme: 'mindomo-classic',
+    theme: 'pyrita-classic',
     layout: 'radial',
+    canvasBg: '#0f172a',
+    lineStyle: 'curved',
+    mapStyle: 'organic-branch',
+    paletteId: 'rainbow',
     viewport: {
       panX: 0,
       panY: 0,
@@ -185,6 +232,7 @@ export function parseMindMapDocument(content?: string, fallbackTitle?: string): 
     const parsed = JSON.parse(content)
     if (parsed && (parsed.type === 'pyrita-mindmap' || parsed.rootId)) {
       const rootId = parsed.rootId || Object.keys(parsed.nodes || {})[0] || 'root'
+      const theme = parsed.theme === 'mindomo-classic' ? 'pyrita-classic' : (parsed.theme || 'pyrita-classic')
       return {
         type: 'pyrita-mindmap',
         version: parsed.version || 1,
@@ -192,8 +240,12 @@ export function parseMindMapDocument(content?: string, fallbackTitle?: string): 
         nodes: parsed.nodes || {},
         relations: Array.isArray(parsed.relations) ? parsed.relations : [],
         boundaries: Array.isArray(parsed.boundaries) ? parsed.boundaries : [],
-        theme: parsed.theme || 'mindomo-classic',
+        theme,
         layout: parsed.layout || 'radial',
+        canvasBg: parsed.canvasBg || '#0f172a',
+        lineStyle: parsed.lineStyle || 'curved',
+        mapStyle: parsed.mapStyle || 'organic-branch',
+        paletteId: parsed.paletteId || 'rainbow',
         viewport: parsed.viewport || { panX: 0, panY: 0, zoom: 1 }
       }
     }
@@ -211,16 +263,17 @@ export function serializeMindMapDocument(doc: MindMapDocument): string {
 // Node dimensions calculation based on content
 export function estimateNodeDimensions(node: MindMapNode, isRoot: boolean): { width: number; height: number } {
   const text = node.title || 'Tópico'
+  const isUnderline = node.shape === 'underline'
   const charWidth = isRoot ? 9.5 : 8
-  const basePaddingX = isRoot ? 36 : 28
+  const basePaddingX = isUnderline ? 16 : isRoot ? 36 : 28
   const iconsWidth = (node.icons && node.icons.length > 0) ? node.icons.length * 20 + 8 : 0
   const taskWidth = node.task ? 24 : 0
   const noteIndicatorWidth = node.note ? 20 : 0
   const linkIndicatorWidth = node.link ? 20 : 0
 
   const contentWidth = text.length * charWidth + basePaddingX + iconsWidth + taskWidth + noteIndicatorWidth + linkIndicatorWidth
-  const width = Math.max(isRoot ? 140 : 110, Math.min(340, Math.round(contentWidth)))
-  const height = isRoot ? 48 : (node.note || (node.icons && node.icons.length > 2) ? 42 : 36)
+  const width = Math.max(isRoot ? 140 : isUnderline ? 80 : 110, Math.min(360, Math.round(contentWidth)))
+  const height = isUnderline ? 28 : isRoot ? 48 : (node.note || (node.icons && node.icons.length > 2) ? 42 : 36)
 
   return { width, height }
 }
@@ -268,9 +321,48 @@ function computeSubtreeMetrics(
   }
 }
 
+// Generate path based on lineStyle
+export function createEdgePath(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  lineStyle: MindMapLineStyle = 'curved',
+  side: 'left' | 'right' | 'bottom' = 'right'
+): string {
+  if (lineStyle === 'straight') {
+    return `M ${x1} ${y1} L ${x2} ${y2}`
+  }
+
+  if (lineStyle === 'rounded-elbow') {
+    if (side === 'bottom') {
+      const midY = (y1 + y2) / 2
+      return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`
+    }
+    const midX = (x1 + x2) / 2
+    return `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`
+  }
+
+  // Default 'curved' (cubic bezier)
+  if (side === 'bottom') {
+    const deltaY = Math.abs(y2 - y1)
+    const ctrlDist = Math.max(20, deltaY * 0.5)
+    return `M ${x1} ${y1} C ${x1} ${y1 + ctrlDist}, ${x2} ${y2 - ctrlDist}, ${x2} ${y2}`
+  }
+
+  const deltaX = Math.abs(x2 - x1)
+  const ctrlDistance = Math.max(24, deltaX * 0.55)
+  const ctrl1X = side === 'right' ? x1 + ctrlDistance : x1 - ctrlDistance
+  const ctrl2X = side === 'right' ? x2 - ctrlDistance : x2 + ctrlDistance
+
+  return `M ${x1} ${y1} C ${ctrl1X} ${y1}, ${ctrl2X} ${y2}, ${x2} ${y2}`
+}
+
 export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
-  const { rootId, nodes, layout, theme: themeId, boundaries = [] } = doc
-  const theme = MINDMAP_THEMES[themeId] || MINDMAP_THEMES['mindomo-classic']
+  const { rootId, nodes, layout, theme: themeId, boundaries = [], paletteId = 'rainbow', lineStyle = 'curved' } = doc
+  const theme = MINDMAP_THEMES[themeId] || MINDMAP_THEMES['pyrita-classic']
+  const palette = MINDMAP_PALETTES[paletteId] || MINDMAP_PALETTES.rainbow
+  const activeBranchColors = palette.colors
 
   const computedNodes: ComputedNode[] = []
   const computedEdges: ComputedEdge[] = []
@@ -286,7 +378,7 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
     }
   }
 
-  const gapX = 54
+  const gapX = 52
   const gapY = 16
   const rootDim = estimateNodeDimensions(rootNode, true)
 
@@ -301,6 +393,21 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
     node: rootNode,
     branchColor: theme.rootBorder
   })
+
+  // Check if root is collapsed: if collapsed, don't layout any children!
+  if (rootNode.collapsed) {
+    return {
+      nodes: computedNodes,
+      edges: [],
+      boundaries: [],
+      bounds: {
+        minX: -rootDim.width / 2 - 80,
+        maxX: rootDim.width / 2 + 80,
+        minY: -rootDim.height / 2 - 60,
+        maxY: rootDim.height / 2 + 60
+      }
+    }
+  }
 
   // Separate root children based on layout & side
   const rootChildren = (rootNode.children || []).filter(cid => !!nodes[cid])
@@ -341,35 +448,38 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
     let currentY = -totalSideHeight / 2
 
     metrics.forEach((metric, branchIndex) => {
-      const branchColor = theme.branchColors[branchIndex % theme.branchColors.length]
+      const branchColor = activeBranchColors[branchIndex % activeBranchColors.length]
       const branchCenterY = currentY + metric.totalHeight / 2
 
-      // Position branch root
-      const nodeX = side === 'right'
-        ? startX + metric.width / 2
-        : startX - metric.width / 2
+      // Position branch root - check if node has custom position
+      const nodeObj = nodes[metric.id]
+      const nodeX = (nodeObj.customX != null)
+        ? nodeObj.customX
+        : (side === 'right' ? startX + metric.width / 2 : startX - metric.width / 2)
 
-      positionSubtree(metric, nodeX, branchCenterY, side, 1, branchColor)
+      const nodeY = (nodeObj.customY != null)
+        ? nodeObj.customY
+        : branchCenterY
+
+      positionSubtree(metric, nodeX, nodeY, side, 1, branchColor)
 
       // Connect Root to this main branch
       const rootAnchorX = side === 'right' ? rootDim.width / 2 : -rootDim.width / 2
       const rootAnchorY = 0
       const targetAnchorX = side === 'right' ? nodeX - metric.width / 2 : nodeX + metric.width / 2
-      const targetAnchorY = branchCenterY
+      const targetAnchorY = nodeY
 
-      const deltaX = Math.abs(targetAnchorX - rootAnchorX)
-      const ctrlDistance = Math.max(30, deltaX * 0.55)
-      const ctrl1X = side === 'right' ? rootAnchorX + ctrlDistance : rootAnchorX - ctrlDistance
-      const ctrl2X = side === 'right' ? targetAnchorX - ctrlDistance : targetAnchorX + ctrlDistance
+      const effectiveLineStyle = nodeObj.branchStyle || lineStyle
 
       computedEdges.push({
         id: `edge_${rootId}_${metric.id}`,
         fromId: rootId,
         toId: metric.id,
-        path: `M ${rootAnchorX} ${rootAnchorY} C ${ctrl1X} ${rootAnchorY}, ${ctrl2X} ${targetAnchorY}, ${targetAnchorX} ${targetAnchorY}`,
-        color: nodes[metric.id]?.branchColor || branchColor,
-        width: 3,
-        style: 'solid'
+        path: createEdgePath(rootAnchorX, rootAnchorY, targetAnchorX, targetAnchorY, effectiveLineStyle, side),
+        color: nodeObj.branchColor || branchColor,
+        width: 3.5,
+        style: 'solid',
+        isTapered: true
       })
 
       currentY += metric.totalHeight + gapY
@@ -407,30 +517,33 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
 
     metric.children.forEach(childMetric => {
       const childCenterY = childY + childMetric.totalHeight / 2
-      const childNodeX = side === 'right'
-        ? x + metric.width / 2 + gapX + childMetric.width / 2
-        : x - metric.width / 2 - gapX - childMetric.width / 2
+      const childObj = nodes[childMetric.id]
 
-      positionSubtree(childMetric, childNodeX, childCenterY, side, level + 1, effectiveColor)
+      const childNodeX = (childObj.customX != null)
+        ? childObj.customX
+        : (side === 'right' ? x + metric.width / 2 + gapX + childMetric.width / 2 : x - metric.width / 2 - gapX - childMetric.width / 2)
+
+      const childNodeY = (childObj.customY != null)
+        ? childObj.customY
+        : childCenterY
+
+      positionSubtree(childMetric, childNodeX, childNodeY, side, level + 1, effectiveColor)
 
       // Edge from parent to child
       const fromAnchorX = side === 'right' ? x + metric.width / 2 : x - metric.width / 2
-      const fromAnchorY = y
+      const fromAnchorY = node.shape === 'underline' ? y + metric.height / 2 - 2 : y
       const toAnchorX = side === 'right' ? childNodeX - childMetric.width / 2 : childNodeX + childMetric.width / 2
-      const toAnchorY = childCenterY
+      const toAnchorY = childObj.shape === 'underline' ? childNodeY + childMetric.height / 2 - 2 : childNodeY
 
-      const deltaX = Math.abs(toAnchorX - fromAnchorX)
-      const ctrlDistance = Math.max(24, deltaX * 0.5)
-      const ctrl1X = side === 'right' ? fromAnchorX + ctrlDistance : fromAnchorX - ctrlDistance
-      const ctrl2X = side === 'right' ? toAnchorX - ctrlDistance : toAnchorX + ctrlDistance
+      const effectiveLineStyle = childObj.branchStyle || lineStyle
 
       computedEdges.push({
         id: `edge_${metric.id}_${childMetric.id}`,
         fromId: metric.id,
         toId: childMetric.id,
-        path: `M ${fromAnchorX} ${fromAnchorY} C ${ctrl1X} ${fromAnchorY}, ${ctrl2X} ${toAnchorY}, ${toAnchorX} ${toAnchorY}`,
-        color: nodes[childMetric.id]?.branchColor || effectiveColor,
-        width: Math.max(1.5, 2.5 - level * 0.3),
+        path: createEdgePath(fromAnchorX, fromAnchorY, toAnchorX, toAnchorY, effectiveLineStyle, side),
+        color: childObj.branchColor || effectiveColor,
+        width: Math.max(1.5, 2.8 - level * 0.4),
         style: 'solid'
       })
 
@@ -447,15 +560,18 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
     const startY = rootDim.height / 2 + 60
 
     metrics.forEach((metric, branchIndex) => {
-      const branchColor = theme.branchColors[branchIndex % theme.branchColors.length]
+      const branchColor = activeBranchColors[branchIndex % activeBranchColors.length]
       const centerX = currentX + metric.width / 2
 
       const positionVerticalSubtree = (m: SubtreeMetric, posX: number, posY: number, lvl: number) => {
         const nd = nodes[m.id]
+        const actualX = nd.customX != null ? nd.customX : posX
+        const actualY = nd.customY != null ? nd.customY : posY
+
         computedNodes.push({
           id: m.id,
-          x: posX,
-          y: posY,
+          x: actualX,
+          y: actualY,
           width: m.width,
           height: m.height,
           side: 'bottom',
@@ -467,19 +583,23 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
         if (nd.collapsed || m.children.length === 0) return
 
         const chWidth = m.children.reduce((sum, c) => sum + c.width, 0) + Math.max(0, m.children.length - 1) * 24
-        let chX = posX - chWidth / 2
-        const nextY = posY + m.height / 2 + 50
+        let chX = actualX - chWidth / 2
+        const nextY = actualY + m.height / 2 + 50
 
         m.children.forEach(cm => {
           const cmX = chX + cm.width / 2
-          positionVerticalSubtree(cm, cmX, nextY, lvl + 1)
+          const childNd = nodes[cm.id]
+          const actualChildX = childNd.customX != null ? childNd.customX : cmX
+          const actualChildY = childNd.customY != null ? childNd.customY : nextY
+
+          positionVerticalSubtree(cm, actualChildX, actualChildY, lvl + 1)
 
           // Edge
           computedEdges.push({
             id: `edge_${m.id}_${cm.id}`,
             fromId: m.id,
             toId: cm.id,
-            path: `M ${posX} ${posY + m.height / 2} C ${posX} ${posY + m.height / 2 + 25}, ${cmX} ${nextY - cm.height / 2 - 25}, ${cmX} ${nextY - cm.height / 2}`,
+            path: createEdgePath(actualX, actualY + m.height / 2, actualChildX, actualChildY - cm.height / 2, lineStyle, 'bottom'),
             color: branchColor,
             width: 2,
             style: 'solid'
@@ -489,13 +609,17 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
         })
       }
 
-      positionVerticalSubtree(metric, centerX, startY, 1)
+      const branchObj = nodes[metric.id]
+      const actualBranchX = branchObj.customX != null ? branchObj.customX : centerX
+      const actualBranchY = branchObj.customY != null ? branchObj.customY : startY
+
+      positionVerticalSubtree(metric, actualBranchX, actualBranchY, 1)
 
       computedEdges.push({
         id: `edge_${rootId}_${metric.id}`,
         fromId: rootId,
         toId: metric.id,
-        path: `M 0 ${rootDim.height / 2} C 0 ${rootDim.height / 2 + 30}, ${centerX} ${startY - metric.height / 2 - 30}, ${centerX} ${startY - metric.height / 2}`,
+        path: createEdgePath(0, rootDim.height / 2, actualBranchX, actualBranchY - metric.height / 2, lineStyle, 'bottom'),
         color: branchColor,
         width: 3,
         style: 'solid'
@@ -514,7 +638,6 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
   computedNodes.forEach(cn => nodePositionMap.set(cn.id, cn))
 
   boundaries.forEach(b => {
-    // Find all descendants of b.rootNodeId that are in computedNodes
     const targetNodes: ComputedNode[] = []
     const collectDescendants = (id: string) => {
       const cn = nodePositionMap.get(id)
@@ -579,6 +702,18 @@ export function addNode(
   if (!parent) return { updatedDoc: doc, newId: '' }
 
   const effectiveSide = side || parent.side || (parent.id === doc.rootId ? 'right' : undefined)
+  const isParentRoot = parent.id === doc.rootId
+
+  // Inherit style preset
+  const defaultShape = doc.mapStyle === 'organic-branch'
+    ? (isParentRoot ? 'rounded' : 'underline')
+    : doc.mapStyle === 'pills'
+    ? 'capsule'
+    : doc.mapStyle === 'technical'
+    ? 'rectangle'
+    : doc.mapStyle === 'minimal-lines'
+    ? 'underline'
+    : 'rounded'
 
   const newNode: MindMapNode = {
     id: newId,
@@ -586,7 +721,7 @@ export function addNode(
     children: [],
     title,
     side: effectiveSide,
-    shape: 'rounded'
+    shape: defaultShape
   }
 
   const updatedNodes = {
@@ -660,7 +795,6 @@ export function deleteNode(doc: MindMapDocument, nodeId: string): MindMapDocumen
   const nodeToDelete = doc.nodes[nodeId]
   if (!nodeToDelete) return doc
 
-  // Collect all descendants recursively
   const toDelete = new Set<string>()
   const collect = (id: string) => {
     toDelete.add(id)
@@ -671,7 +805,6 @@ export function deleteNode(doc: MindMapDocument, nodeId: string): MindMapDocumen
   }
   collect(nodeId)
 
-  // Remove from parent's children
   const nextNodes = { ...doc.nodes }
   if (nodeToDelete.parentId && nextNodes[nodeToDelete.parentId]) {
     const p = nextNodes[nodeToDelete.parentId]
@@ -681,12 +814,10 @@ export function deleteNode(doc: MindMapDocument, nodeId: string): MindMapDocumen
     }
   }
 
-  // Delete all collected
   toDelete.forEach(id => {
     delete nextNodes[id]
   })
 
-  // Clean relations and boundaries
   const nextRelations = (doc.relations || []).filter(
     r => !toDelete.has(r.fromId) && !toDelete.has(r.toId)
   )
@@ -735,6 +866,57 @@ export function toggleCollapse(doc: MindMapDocument, nodeId: string): MindMapDoc
         collapsed: !current.collapsed
       }
     }
+  }
+}
+
+// Reset custom manual dragging to return to neat automatic layout
+export function resetNodePositions(doc: MindMapDocument): MindMapDocument {
+  const nextNodes: Record<string, MindMapNode> = {}
+  for (const [id, node] of Object.entries(doc.nodes)) {
+    const { customX, customY, ...cleanNode } = node
+    nextNodes[id] = cleanNode
+  }
+  return {
+    ...doc,
+    nodes: nextNodes
+  }
+}
+
+// Apply Map Style Preset (Organic Branch, Modern Cards, Pills, Technical, Minimal Lines)
+export function applyMapStylePreset(doc: MindMapDocument, preset: MindMapStylePreset): MindMapDocument {
+  const nextNodes: Record<string, MindMapNode> = {}
+
+  let targetLineStyle: MindMapLineStyle = 'curved'
+  if (preset === 'technical') targetLineStyle = 'rounded-elbow'
+
+  for (const [id, node] of Object.entries(doc.nodes)) {
+    const isRoot = id === doc.rootId
+    const isMainTopic = node.parentId === doc.rootId
+
+    let newShape = node.shape
+    if (preset === 'organic-branch') {
+      newShape = isRoot ? 'rounded' : isMainTopic ? 'rounded' : 'underline'
+    } else if (preset === 'modern-cards') {
+      newShape = 'rounded'
+    } else if (preset === 'pills') {
+      newShape = 'capsule'
+    } else if (preset === 'technical') {
+      newShape = 'rectangle'
+    } else if (preset === 'minimal-lines') {
+      newShape = isRoot ? 'rounded' : 'underline'
+    }
+
+    nextNodes[id] = {
+      ...node,
+      shape: newShape
+    }
+  }
+
+  return {
+    ...doc,
+    mapStyle: preset,
+    lineStyle: targetLineStyle,
+    nodes: nextNodes
   }
 }
 

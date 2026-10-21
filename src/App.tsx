@@ -276,11 +276,11 @@ export const App: React.FC = () => {
   }
 
   // Select note and ensure tab exists (preserves Graph/Canvas/Tasks tabs!)
-  const handleSelectNote = (noteId: string) => {
+  const handleSelectNote = (noteId: string, directNote?: Note) => {
     setCurrentNoteId(noteId)
     setCurrentView('editor')
 
-    const targetNote = notes.find(n => n.id === noteId)
+    const targetNote = directNote || notes.find(n => n.id === noteId)
     if (!targetNote) return
 
     setTabs(prev => {
@@ -509,7 +509,7 @@ export const App: React.FC = () => {
     const updated = [newNote, ...notes]
     setNotes(updated)
     saveNotes(updated)
-    handleSelectNote(newNote.id)
+    handleSelectNote(newNote.id, newNote)
 
     // Electron disk persistence
     if (window.electronAPI?.isElectron && vaultPath) {
@@ -918,6 +918,15 @@ export const App: React.FC = () => {
     downloadAnchor.remove()
   }
 
+  const handleOpenMindMap = () => {
+    const existingMindMap = notes.find(n => n.type === 'mindmap')
+    if (existingMindMap) {
+      handleSelectNote(existingMindMap.id, existingMindMap)
+    } else {
+      handleCreateNote(undefined, 'Novo Mapa Mental', 'mindmap')
+    }
+  }
+
   return (
     <div className="flex flex-col w-screen h-screen bg-[#0f0f12] text-zinc-100 overflow-hidden font-sans">
       {/* 1. Main Workspace Layout */}
@@ -939,6 +948,8 @@ export const App: React.FC = () => {
             setIsAiOpen(true)
             setIsAiConversationsOpen(o => !o)
           }}
+          isMindMapActive={currentView === 'editor' && currentNote?.type === 'mindmap'}
+          onOpenMindMap={handleOpenMindMap}
         />
 
         {/* Left Sidebar (Hierarchical Subfolders & Notes Tree) */}
@@ -1051,7 +1062,6 @@ export const App: React.FC = () => {
                     key={currentNote.id}
                     note={currentNote}
                     onUpdateNote={handleUpdateNote}
-                    onCreatePageInFolder={(folder, title) => handleCreateNote(folder, title, 'mindmap')}
                   />
                 ) : currentNote.type === 'draw' ? (
                   <DrawEditor
