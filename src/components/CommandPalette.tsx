@@ -10,7 +10,8 @@ import {
   HardDrive,
   FolderSync,
   Palette,
-  CheckCircle2
+  CheckCircle2,
+  Brain
 } from 'lucide-react'
 
 interface CommandPaletteProps {
@@ -77,6 +78,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       action: () => onCreateDraw ? onCreateDraw() : onCreateNote(undefined, undefined, 'draw')
     },
     {
+      id: 'cmd-new-mindmap',
+      title: 'Criar Novo Mapa Mental',
+      subtitle: 'Novo mapa mental com recursos e visual estilo Mindomo',
+      icon: <Brain className="w-4 h-4 text-[var(--accent,#c59b27)]" />,
+      action: () => onCreateNote(undefined, undefined, 'mindmap')
+    },
+    {
       id: 'cmd-open-graph',
       title: 'Abrir Grafo de Conhecimento',
       subtitle: 'Visualizar todas as conexões em 2D',
@@ -128,11 +136,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     .filter(n => n.title.toLowerCase().includes(query.toLowerCase()) || n.tags.some(t => t.toLowerCase().includes(query.toLowerCase())))
     .map(n => {
       const isDraw = n.type === 'draw'
+      const isMindMap = n.type === 'mindmap'
       return {
         id: `note-${n.id}`,
         title: n.title,
-        subtitle: `${isDraw ? 'Desenho / Draw' : 'Nota'} • Pasta: ${n.folder} • ${n.tags.map(t => `#${t}`).join(' ')}`,
-        icon: isDraw ? <Palette className="w-4 h-4 text-[#c59b27]" /> : <FileText className="w-4 h-4 text-zinc-400" />,
+        subtitle: `${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : 'Nota'} • Pasta: ${n.folder} • ${n.tags.map(t => `#${t}`).join(' ')}`,
+        icon: isMindMap ? <Brain className="w-4 h-4 text-[#c59b27]" /> : isDraw ? <Palette className="w-4 h-4 text-[#c59b27]" /> : <FileText className="w-4 h-4 text-zinc-400" />,
         action: () => onSelectNote(n.id)
       }
     })

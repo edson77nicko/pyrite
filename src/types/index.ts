@@ -1,4 +1,4 @@
-export type NoteType = 'note' | 'draw'
+export type NoteType = 'note' | 'draw' | 'mindmap'
 
 export interface Note {
   id: string
@@ -77,6 +77,7 @@ export interface TabItem {
 }
 
 export * from './draw'
+export * from './mindmap'
 export * from './tasks'
 
 export type ViewMode = 'editor' | 'graph' | 'canvas' | 'tasks'

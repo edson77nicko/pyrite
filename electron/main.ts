@@ -238,13 +238,13 @@ function scanVaultDirectory(dir: string, baseDir: string): VaultFileResult[] {
 
     if (entry.isDirectory()) {
       results.push(...scanVaultDirectory(fullPath, baseDir))
-    } else if (entry.isFile() && (entry.name.endsWith('.md') || entry.name.endsWith('.markdown') || entry.name.endsWith('.txt') || entry.name.endsWith('.draw.json') || entry.name.endsWith('.draw.md'))) {
+    } else if (entry.isFile() && (entry.name.endsWith('.md') || entry.name.endsWith('.markdown') || entry.name.endsWith('.txt') || entry.name.endsWith('.draw.json') || entry.name.endsWith('.draw.md') || entry.name.endsWith('.mindmap.json') || entry.name.endsWith('.mindmap.md'))) {
       try {
         const stats = fs.statSync(fullPath)
         const content = fs.readFileSync(fullPath, 'utf-8')
         const relDir = path.relative(baseDir, dir)
         const folder = relDir && relDir !== '.' ? relDir.replace(/\\/g, '/') : 'Início'
-        const title = entry.name.replace(/\.(draw\.json|draw\.md|md|markdown|txt)$/i, '')
+        const title = entry.name.replace(/\.(mindmap\.json|mindmap\.md|draw\.json|draw\.md|md|markdown|txt)$/i, '')
 
         results.push({
           title,

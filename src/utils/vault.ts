@@ -1,5 +1,6 @@
 import type { Note, LinkEdge } from '../types'
 import { isDrawContent } from './drawUtils'
+import { isMindMapContent } from './mindMapUtils'
 
 const STORAGE_KEY = 'pyrite_vault_notes'
 const FOLDERS_KEY = 'pyrite_vault_folders'
@@ -267,6 +268,9 @@ export function loadNotes(): Note[] {
       const parsed: Note[] = JSON.parse(saved)
       let modified = false
       const cleaned = parsed.map(n => {
+        if (n.type === 'mindmap' || isMindMapContent(n.content)) {
+          return { ...n, type: 'mindmap' as const }
+        }
         if (n.type === 'draw' || isDrawContent(n.content)) {
           return { ...n, type: 'draw' as const }
         }

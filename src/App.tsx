@@ -9,6 +9,7 @@ import {
   extractTags
 } from './utils/vault'
 import { createEmptyDrawDocument, isDrawContent, serializeDrawDocument } from './utils/drawUtils'
+import { createEmptyMindMapDocument, isMindMapContent, serializeMindMapDocument } from './utils/mindMapUtils'
 import { loadTasks, saveTasks, loadTaskSettings, saveTaskSettings, DEFAULT_BOARDS } from './utils/taskStorage'
 import { Ribbon } from './components/Ribbon'
 import { TabHeader } from './components/TabHeader'
@@ -16,6 +17,7 @@ import { Sidebar } from './components/Sidebar'
 import { RightSidebar } from './components/RightSidebar'
 import { Editor } from './components/Editor'
 import { DrawEditor } from './components/DrawEditor'
+import { MindMapEditor } from './components/MindMapEditor'
 import { GraphView } from './components/GraphView'
 import { CanvasView } from './components/CanvasView'
 import { TasksView } from './components/TasksView'
@@ -67,7 +69,11 @@ export const App: React.FC = () => {
             content: f.content,
             filePath: f.filePath,
             tags: extractTags(f.content),
-            type: (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md')) ? 'draw' : 'note',
+            type: (isMindMapContent(f.content) || f.filePath?.endsWith('.mindmap.json') || f.filePath?.endsWith('.mindmap.md'))
+              ? 'mindmap'
+              : (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md'))
+              ? 'draw'
+              : 'note',
             createdAt: f.createdAt,
             updatedAt: f.updatedAt
           }))
@@ -473,11 +479,20 @@ export const App: React.FC = () => {
 
   const handleCreateNote = (folder?: string, initialTitle?: string, type: NoteType = 'note') => {
     const targetFolder = folder || currentNote?.folder || 'Início'
+    const mindMapCount = notes.filter(n => n.type === 'mindmap').length
     const drawCount = notes.filter(n => n.type === 'draw').length
-    const noteCount = notes.filter(n => n.type !== 'draw').length
-    const title = initialTitle || (type === 'draw' ? `Desenho ${drawCount + 1}` : `Nota ${noteCount + 1}`)
+    const noteCount = notes.filter(n => n.type !== 'draw' && n.type !== 'mindmap').length
+    const title = initialTitle || (
+      type === 'mindmap'
+        ? `Mapa Mental ${mindMapCount + 1}`
+        : type === 'draw'
+        ? `Desenho ${drawCount + 1}`
+        : `Nota ${noteCount + 1}`
+    )
 
-    const content = type === 'draw'
+    const content = type === 'mindmap'
+      ? serializeMindMapDocument(createEmptyMindMapDocument(title))
+      : type === 'draw'
       ? serializeDrawDocument(createEmptyDrawDocument(title))
       : `Escreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`
 
@@ -486,7 +501,7 @@ export const App: React.FC = () => {
       title,
       content,
       folder: targetFolder,
-      tags: type === 'draw' ? ['draw', 'desenho'] : [],
+      tags: type === 'mindmap' ? ['mindmap', 'mapa-mental'] : type === 'draw' ? ['draw', 'desenho'] : [],
       type,
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -773,7 +788,11 @@ export const App: React.FC = () => {
               content: f.content,
               filePath: f.filePath,
               tags: extractTags(f.content),
-              type: (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md')) ? 'draw' : 'note',
+              type: (isMindMapContent(f.content) || f.filePath?.endsWith('.mindmap.json') || f.filePath?.endsWith('.mindmap.md'))
+              ? 'mindmap'
+              : (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md'))
+              ? 'draw'
+              : 'note',
               createdAt: f.createdAt,
               updatedAt: f.updatedAt
             }))
@@ -840,7 +859,11 @@ export const App: React.FC = () => {
             content: f.content,
             filePath: f.filePath,
             tags: extractTags(f.content),
-            type: (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md')) ? 'draw' : 'note',
+            type: (isMindMapContent(f.content) || f.filePath?.endsWith('.mindmap.json') || f.filePath?.endsWith('.mindmap.md'))
+              ? 'mindmap'
+              : (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md'))
+              ? 'draw'
+              : 'note',
             createdAt: f.createdAt,
             updatedAt: f.updatedAt
           }))
@@ -1023,7 +1046,14 @@ export const App: React.FC = () => {
           <div className="flex-1 flex overflow-hidden relative">
             <div className="flex-1 overflow-hidden relative">
               {currentView === 'editor' && currentNote && (
-                currentNote.type === 'draw' ? (
+                currentNote.type === 'mindmap' ? (
+                  <MindMapEditor
+                    key={currentNote.id}
+                    note={currentNote}
+                    onUpdateNote={handleUpdateNote}
+                    onCreatePageInFolder={(folder, title) => handleCreateNote(folder, title, 'mindmap')}
+                  />
+                ) : currentNote.type === 'draw' ? (
                   <DrawEditor
                     key={currentNote.id}
                     note={currentNote}

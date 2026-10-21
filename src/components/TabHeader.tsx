@@ -18,7 +18,8 @@ import {
   Share2,
   Palette,
   CheckCircle2,
-  Pin
+  Pin,
+  Brain
 } from 'lucide-react'
 
 interface TabHeaderProps {
@@ -82,7 +83,8 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           const isCanvasTab = tab.noteId === '__canvas__'
           const isTasksTab = tab.noteId === '__tasks__'
           const isDrawTab = tab.type === 'draw'
-          const TabIcon = isGraphTab ? Share2 : isTasksTab ? CheckCircle2 : (isCanvasTab || isDrawTab) ? Palette : FileText
+          const isMindMapTab = tab.type === 'mindmap'
+          const TabIcon = isGraphTab ? Share2 : isTasksTab ? CheckCircle2 : isMindMapTab ? Brain : (isCanvasTab || isDrawTab) ? Palette : FileText
           return (
             <div
               key={tab.id}
