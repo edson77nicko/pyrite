@@ -66,19 +66,6 @@ export const MINDMAP_THEMES: Record<string, ThemeConfig> = {
     subtopicText: '#f1f5f9',
     lineStyle: 'curved'
   },
-  'mindomo-classic': {
-    id: 'pyrita-classic',
-    name: 'Pyrita Clássico',
-    bg: '#0f172a',
-    rootBg: '#2563eb',
-    rootBorder: '#3b82f6',
-    rootText: '#ffffff',
-    branchColors: MINDMAP_PALETTES.rainbow.colors,
-    subtopicBg: '#1e293b',
-    subtopicBorder: '#334155',
-    subtopicText: '#f1f5f9',
-    lineStyle: 'curved'
-  },
   'pyrita-gold': {
     id: 'pyrita-gold',
     name: 'Pyrita Ouro',
@@ -232,7 +219,7 @@ export function parseMindMapDocument(content?: string, fallbackTitle?: string): 
     const parsed = JSON.parse(content)
     if (parsed && (parsed.type === 'pyrita-mindmap' || parsed.rootId)) {
       const rootId = parsed.rootId || Object.keys(parsed.nodes || {})[0] || 'root'
-      const theme = parsed.theme === 'mindomo-classic' ? 'pyrita-classic' : (parsed.theme || 'pyrita-classic')
+      const theme = parsed.theme && MINDMAP_THEMES[parsed.theme as MindMapThemeId] ? parsed.theme : 'pyrita-classic'
       return {
         type: 'pyrita-mindmap',
         version: parsed.version || 1,
@@ -888,6 +875,7 @@ export function applyMapStylePreset(doc: MindMapDocument, preset: MindMapStylePr
 
   let targetLineStyle: MindMapLineStyle = 'curved'
   if (preset === 'technical') targetLineStyle = 'rounded-elbow'
+  else if (preset === 'minimal-lines') targetLineStyle = 'straight'
 
   for (const [id, node] of Object.entries(doc.nodes)) {
     const isRoot = id === doc.rootId
@@ -908,7 +896,8 @@ export function applyMapStylePreset(doc: MindMapDocument, preset: MindMapStylePr
 
     nextNodes[id] = {
       ...node,
-      shape: newShape
+      shape: newShape,
+      branchStyle: undefined
     }
   }
 

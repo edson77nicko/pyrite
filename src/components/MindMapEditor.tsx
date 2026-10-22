@@ -148,6 +148,26 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   >(null)
   const [activeSideDrawer, setActiveSideDrawer] = useState<'note' | null>(null)
 
+  // Close active popover on outside click or Escape
+  useEffect(() => {
+    if (!activePopover) return
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.mindmap-popover-anchor')) {
+        setActivePopover(null)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActivePopover(null)
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [activePopover])
+
   // Search filter
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearchOpen, setIsSearchOpen] = useState(false)
@@ -437,6 +457,8 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
     // If clicking on node or controls, do not pan
     if ((e.target as HTMLElement).closest('.mindmap-interactive-node')) return
     if ((e.target as HTMLElement).closest('.mindmap-interactive-control')) return
+    if ((e.target as HTMLElement).closest('.mindmap-popover-anchor')) return
+    if ((e.target as HTMLElement).closest('header, footer, button, input, textarea')) return
 
     // Dismiss active selections & popovers when clicking empty canvas
     setSelectedNodeId(null)
@@ -641,15 +663,16 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   return (
     <div
       ref={containerRef}
-      onMouseDown={handleMouseDownCanvas}
       onMouseMove={handleMouseMoveCanvas}
       onMouseUp={handleMouseUpCanvas}
-      onWheel={handleWheel}
       style={{ backgroundColor: currentCanvasBg }}
       className="relative w-full h-full overflow-hidden select-none font-sans text-zinc-100 flex flex-col"
     >
       {/* 1. TOP HEADER TOOLBAR (Styled in Pyrita Dark/Gold Design System) */}
-      <header className="z-20 h-10 px-3 bg-[#0c0c0e]/95 backdrop-blur-md border-b border-zinc-800/80 flex items-center justify-between shrink-0 text-xs shadow-xs">
+      <header
+        onMouseDown={e => e.stopPropagation()}
+        className="mindmap-interactive-control z-40 h-10 px-3 bg-[#0c0c0e]/95 backdrop-blur-md border-b border-zinc-800/80 flex items-center justify-between shrink-0 text-xs shadow-xs"
+      >
         {/* Left: Folder & Title */}
         <div className="flex items-center gap-2 min-w-0">
           <div className="flex items-center gap-1.5 text-zinc-400 font-medium truncate">
@@ -667,7 +690,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
         {/* Center: Style Presets, Line Styles, Palettes, Layout & Canvas Background */}
         <div className="flex items-center gap-1">
           {/* Estilos Visuais do Mapa (Presets como na referência) */}
-          <div className="relative">
+          <div className="relative mindmap-popover-anchor">
             <button
               onClick={() => setActivePopover(prev => (prev === 'style' ? null : 'style'))}
               className="flex items-center gap-1 px-2 py-1 rounded bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
@@ -689,7 +712,10 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             </button>
 
             {activePopover === 'style' && (
-              <div className="absolute top-8 left-0 w-52 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-30 space-y-0.5">
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                className="absolute top-8 left-0 w-52 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-0.5"
+              >
                 {[
                   { id: 'organic-branch', label: 'Orgânico (Galhos & Linhas)' },
                   { id: 'modern-cards', label: 'Cartões Modernos' },
@@ -716,7 +742,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           </div>
 
           {/* Seletor de Tipo de Conexão / Ramos */}
-          <div className="relative">
+          <div className="relative mindmap-popover-anchor">
             <button
               onClick={() => setActivePopover(prev => (prev === 'lines' ? null : 'lines'))}
               className="flex items-center gap-1 px-2 py-1 rounded bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
@@ -730,7 +756,10 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             </button>
 
             {activePopover === 'lines' && (
-              <div className="absolute top-8 left-0 w-44 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-30 space-y-0.5">
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                className="absolute top-8 left-0 w-44 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-0.5"
+              >
                 {[
                   { id: 'curved', label: 'Curva Suave (Bézier)' },
                   { id: 'straight', label: 'Linha Reta Direta' },
@@ -739,7 +768,13 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                   <button
                     key={line.id}
                     onClick={() => {
-                      commitDoc({ ...doc, lineStyle: line.id as MindMapLineStyle })
+                      const nextNodes = { ...doc.nodes }
+                      for (const id in nextNodes) {
+                        if (nextNodes[id].branchStyle) {
+                          nextNodes[id] = { ...nextNodes[id], branchStyle: undefined }
+                        }
+                      }
+                      commitDoc({ ...doc, lineStyle: line.id as MindMapLineStyle, nodes: nextNodes })
                       setActivePopover(null)
                     }}
                     className={`w-full text-left px-2.5 py-1.5 rounded flex items-center justify-between text-xs cursor-pointer ${
@@ -755,7 +790,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           </div>
 
           {/* Seletor de Paleta / Cores dos Ramos */}
-          <div className="relative">
+          <div className="relative mindmap-popover-anchor">
             <button
               onClick={() => setActivePopover(prev => (prev === 'palette' ? null : 'palette'))}
               className="flex items-center gap-1.5 px-2 py-1 rounded bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
@@ -771,12 +806,21 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             </button>
 
             {activePopover === 'palette' && (
-              <div className="absolute top-8 left-0 w-52 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-30 space-y-1">
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                className="absolute top-8 left-0 w-52 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-1"
+              >
                 {Object.entries(MINDMAP_PALETTES).map(([pId, p]) => (
                   <button
                     key={pId}
                     onClick={() => {
-                      commitDoc({ ...doc, paletteId: pId as MindMapPaletteId })
+                      const nextNodes = { ...doc.nodes }
+                      for (const id in nextNodes) {
+                        if (id !== doc.rootId && nextNodes[id].branchColor) {
+                          nextNodes[id] = { ...nextNodes[id], branchColor: undefined }
+                        }
+                      }
+                      commitDoc({ ...doc, paletteId: pId as MindMapPaletteId, nodes: nextNodes })
                       setActivePopover(null)
                     }}
                     className={`w-full text-left px-2.5 py-1.5 rounded flex items-center justify-between text-xs cursor-pointer ${
@@ -799,7 +843,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           </div>
 
           {/* Layout Estrutural */}
-          <div className="relative">
+          <div className="relative mindmap-popover-anchor">
             <button
               onClick={() => setActivePopover(prev => (prev === 'layout' ? null : 'layout'))}
               className="flex items-center gap-1 px-2 py-1 rounded bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
@@ -818,7 +862,10 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             </button>
 
             {activePopover === 'layout' && (
-              <div className="absolute top-8 left-0 w-44 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-30 space-y-0.5">
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                className="absolute top-8 left-0 w-44 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-0.5"
+              >
                 {[
                   { id: 'radial', label: 'Mind Map (Radial)' },
                   { id: 'right', label: 'Árvore à Direita' },
@@ -828,7 +875,8 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                   <button
                     key={l.id}
                     onClick={() => {
-                      commitDoc({ ...doc, layout: l.id as MindMapLayout })
+                      const cleaned = resetNodePositions(doc)
+                      commitDoc({ ...cleaned, layout: l.id as MindMapLayout })
                       setActivePopover(null)
                     }}
                     className={`w-full text-left px-2.5 py-1.5 rounded flex items-center justify-between text-xs cursor-pointer ${
@@ -844,7 +892,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           </div>
 
           {/* Fundo da Malha (Canvas Background) */}
-          <div className="relative">
+          <div className="relative mindmap-popover-anchor">
             <button
               onClick={() => setActivePopover(prev => (prev === 'canvasBg' ? null : 'canvasBg'))}
               className="p-1 rounded bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
@@ -857,7 +905,10 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             </button>
 
             {activePopover === 'canvasBg' && (
-              <div className="absolute top-8 left-0 w-40 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-30 space-y-0.5">
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                className="absolute top-8 left-0 w-40 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-0.5"
+              >
                 {CANVAS_BG_OPTIONS.map(opt => (
                   <button
                     key={opt.id}
@@ -966,7 +1017,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           </button>
 
           {/* Export Dropdown */}
-          <div className="relative">
+          <div className="relative mindmap-popover-anchor">
             <button
               onClick={() => setActivePopover(prev => (prev === 'export' ? null : 'export'))}
               className="p-1.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 cursor-pointer"
@@ -976,7 +1027,10 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             </button>
 
             {activePopover === 'export' && (
-              <div className="absolute top-8 right-0 w-48 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-30 space-y-0.5">
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                className="absolute top-8 right-0 w-48 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-0.5"
+              >
                 <button
                   onClick={() => {
                     handleExportMarkdown()
@@ -1027,6 +1081,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       {/* 2. FLOATING NODE TOOLBAR (Only renders if a node is selected!) */}
       {selectedComputed && (
         <div
+          onMouseDown={e => e.stopPropagation()}
           style={{
             position: 'absolute',
             left: `${viewport.panX + selectedComputed.x * viewport.zoom}px`,
@@ -1036,7 +1091,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           className="mindmap-interactive-control z-30 flex items-center gap-1 p-1 bg-[#121216]/95 backdrop-blur-md border border-zinc-700/80 rounded-lg shadow-2xl text-xs select-none"
         >
           {/* Cor do Tópico */}
-          <div className="relative">
+          <div className="relative mindmap-popover-anchor">
             <button
               onClick={() => setActivePopover(prev => (prev === 'color' ? null : 'color'))}
               className="p-1 rounded hover:bg-zinc-800 text-zinc-300 hover:text-white"
@@ -1046,7 +1101,10 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             </button>
 
             {activePopover === 'color' && (
-              <div className="absolute top-8 left-0 bg-[#141418] border border-zinc-700 rounded-lg p-2 shadow-2xl z-40 grid grid-cols-4 gap-1.5 w-36">
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                className="absolute top-8 left-0 bg-[#141418] border border-zinc-700 rounded-lg p-2 shadow-2xl z-50 grid grid-cols-4 gap-1.5 w-36"
+              >
                 {PALETTE_COLORS.map(c => (
                   <button
                     key={c}
@@ -1068,7 +1126,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           </div>
 
           {/* Formato do Tópico */}
-          <div className="relative">
+          <div className="relative mindmap-popover-anchor">
             <button
               onClick={() => setActivePopover(prev => (prev === 'shape' ? null : 'shape'))}
               className="p-1 rounded hover:bg-zinc-800 text-zinc-300 hover:text-white"
@@ -1078,7 +1136,10 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             </button>
 
             {activePopover === 'shape' && (
-              <div className="absolute top-8 left-0 bg-[#141418] border border-zinc-700 rounded-lg p-1 shadow-2xl z-40 w-44 space-y-0.5">
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                className="absolute top-8 left-0 bg-[#141418] border border-zinc-700 rounded-lg p-1 shadow-2xl z-50 w-44 space-y-0.5"
+              >
                 {SHAPES.map(s => (
                   <button
                     key={s.id}
@@ -1153,7 +1214,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           <div className="w-px h-3.5 bg-zinc-800 mx-0.5" />
 
           {/* Ícones & Badges */}
-          <div className="relative">
+          <div className="relative mindmap-popover-anchor">
             <button
               onClick={() => setActivePopover(prev => (prev === 'icons' ? null : 'icons'))}
               className="p-1 rounded hover:bg-zinc-800 text-zinc-300 hover:text-white"
@@ -1163,7 +1224,10 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             </button>
 
             {activePopover === 'icons' && (
-              <div className="absolute top-8 left-0 bg-[#141418] border border-zinc-700 rounded-lg p-1.5 shadow-2xl z-40 w-44 space-y-1">
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                className="absolute top-8 left-0 bg-[#141418] border border-zinc-700 rounded-lg p-1.5 shadow-2xl z-50 w-44 space-y-1"
+              >
                 <span className="text-[10px] uppercase font-bold text-zinc-500 px-1">Ícones de Status</span>
                 <div className="grid grid-cols-4 gap-1">
                   {ICON_PRESETS.map(p => {
@@ -1246,7 +1310,11 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       )}
 
       {/* 4. MAIN INTERACTIVE SVG & DOM CANVAS (With Grid/Malha Pattern) */}
-      <div className="relative flex-1 w-full h-full cursor-grab active:cursor-grabbing">
+      <div
+        onMouseDown={handleMouseDownCanvas}
+        onWheel={handleWheel}
+        className="relative flex-1 w-full h-full cursor-grab active:cursor-grabbing"
+      >
         {/* SVG LAYER: Infinite Grid/Malha, Edges, Boundaries, Relations */}
         <svg
           className="mindmap-svg-canvas absolute inset-0 w-full h-full pointer-events-none"
@@ -1543,7 +1611,10 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
 
       {/* 5. SIDE DRAWER: TOPIC NOTES (Styled in Pyrita Design System) */}
       {activeSideDrawer === 'note' && selectedComputed && (
-        <div className="absolute top-10 right-0 bottom-0 w-80 bg-[#0c0c0e]/95 backdrop-blur-md border-l border-zinc-800/80 z-40 p-4 flex flex-col shadow-2xl">
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          className="mindmap-interactive-control absolute top-10 right-0 bottom-0 w-80 bg-[#0c0c0e]/95 backdrop-blur-md border-l border-zinc-800/80 z-40 p-4 flex flex-col shadow-2xl"
+        >
           <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-amber-400" />
@@ -1592,9 +1663,10 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       {/* 6. MINIMAP RADAR (Interactive: Click to center map!) */}
       {showMinimap && (
         <div
+          onMouseDown={e => e.stopPropagation()}
           onClick={fitView}
           title="Clique para centralizar o mapa na tela"
-          className="absolute bottom-3 right-3 w-40 h-28 bg-[#0c0c0e]/90 backdrop-blur-md border border-zinc-800 hover:border-[var(--accent,#c59b27)] rounded-lg overflow-hidden shadow-xl z-20 cursor-pointer transition-all pointer-events-auto group"
+          className="mindmap-interactive-control absolute bottom-3 right-3 w-40 h-28 bg-[#0c0c0e]/90 backdrop-blur-md border border-zinc-800 hover:border-[var(--accent,#c59b27)] rounded-lg overflow-hidden shadow-xl z-20 cursor-pointer transition-all pointer-events-auto group"
         >
           <svg className="w-full h-full">
             {layoutResult.nodes.map(cn => (
@@ -1614,7 +1686,10 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       )}
 
       {/* 7. BOTTOM STATUS BAR */}
-      <footer className="h-6 bg-[#0c0c0e]/95 border-t border-zinc-800/80 px-3 flex items-center justify-between text-[10px] text-zinc-500 shrink-0 select-none">
+      <footer
+        onMouseDown={e => e.stopPropagation()}
+        className="mindmap-interactive-control h-6 bg-[#0c0c0e]/95 border-t border-zinc-800/80 px-3 flex items-center justify-between text-[10px] text-zinc-500 shrink-0 select-none"
+      >
         <div className="flex items-center gap-3">
           <span>
             <kbd className="font-mono text-zinc-400">Tab</kbd> Subtópico

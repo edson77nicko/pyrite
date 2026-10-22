@@ -34,7 +34,6 @@ export type MindMapPaletteId =
 
 export type MindMapThemeId =
   | 'pyrita-classic'
-  | 'mindomo-classic' // Backward compatibility alias
   | 'pyrita-gold'
   | 'synthwave-neon'
   | 'cyber-emerald'
