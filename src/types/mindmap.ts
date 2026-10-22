@@ -31,6 +31,7 @@ export type MindMapPaletteId =
   | 'emerald'    // Forest, Emerald, Mint
   | 'sunset'     // Coral, Orange, Rose, Amber
   | 'monochrome' // Clean Black, Zinc, White
+  | (string & {}) // Custom palette IDs
 
 export type MindMapThemeId =
   | 'pyrita-classic'
@@ -119,6 +120,8 @@ export interface MindMapDocument {
   lineStyle?: MindMapLineStyle
   mapStyle?: MindMapStylePreset
   paletteId?: MindMapPaletteId
+  colorizeNodeBg?: boolean
+  customPalettes?: Record<string, { name: string; colors: string[] }>
 }
 
 export interface ComputedNode {

@@ -233,6 +233,8 @@ export function parseMindMapDocument(content?: string, fallbackTitle?: string): 
         lineStyle: parsed.lineStyle || 'curved',
         mapStyle: parsed.mapStyle || 'organic-branch',
         paletteId: parsed.paletteId || 'rainbow',
+        colorizeNodeBg: parsed.colorizeNodeBg ?? false,
+        customPalettes: parsed.customPalettes || {},
         viewport: parsed.viewport || { panX: 0, panY: 0, zoom: 1 }
       }
     }
@@ -348,8 +350,12 @@ export function createEdgePath(
 export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
   const { rootId, nodes, layout, theme: themeId, boundaries = [], paletteId = 'rainbow', lineStyle = 'curved' } = doc
   const theme = MINDMAP_THEMES[themeId] || MINDMAP_THEMES['pyrita-classic']
-  const palette = MINDMAP_PALETTES[paletteId] || MINDMAP_PALETTES.rainbow
-  const activeBranchColors = palette.colors
+  const allPalettes: Record<string, { name: string; colors: string[] }> = {
+    ...MINDMAP_PALETTES,
+    ...(doc.customPalettes || {})
+  }
+  const palette = allPalettes[paletteId] || MINDMAP_PALETTES.rainbow
+  const activeBranchColors = palette.colors && palette.colors.length > 0 ? palette.colors : MINDMAP_PALETTES.rainbow.colors
 
   const computedNodes: ComputedNode[] = []
   const computedEdges: ComputedEdge[] = []

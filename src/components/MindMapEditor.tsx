@@ -26,6 +26,7 @@ import {
   toggleCollapse,
   updateNode
 } from '../utils/mindMapUtils'
+import { CustomColorPickerPopover } from './CustomColorPickerPopover'
 import {
   AlertCircle,
   Bold,
@@ -58,6 +59,17 @@ import {
   ZoomOut
 } from 'lucide-react'
 
+function isColorLight(hex?: string): boolean {
+  if (!hex || hex === 'transparent') return false
+  const clean = hex.replace('#', '')
+  if (clean.length < 6) return false
+  const r = parseInt(clean.slice(0, 2), 16)
+  const g = parseInt(clean.slice(2, 4), 16)
+  const b = parseInt(clean.slice(4, 6), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.65
+}
+
 interface MindMapEditorProps {
   note: Note
   onUpdateNote: (updatedNote: Note) => void
@@ -80,25 +92,6 @@ const CANVAS_BG_OPTIONS = [
   { id: '#1e293b', label: 'Cinza Escuro', isLight: false },
   { id: '#f4f4f5', label: 'Cinza Claro', isLight: true },
   { id: '#ffffff', label: 'Branco Puro', isLight: true }
-]
-
-const PALETTE_COLORS = [
-  '#ffffff',
-  '#f4f4f5',
-  '#a1a1aa',
-  '#3b82f6',
-  '#06b6d4',
-  '#10b981',
-  '#84cc16',
-  '#eab308',
-  '#c59b27',
-  '#f97316',
-  '#ef4444',
-  '#ec4899',
-  '#a855f7',
-  '#18181b',
-  '#27272a',
-  '#0f172a'
 ]
 
 const ICON_PRESETS: { id: string; label: string; icon: React.ReactNode; color: string }[] = [
@@ -147,18 +140,69 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
     'color' | 'shape' | 'icons' | 'style' | 'palette' | 'lines' | 'canvasBg' | 'layout' | 'export' | null
   >(null)
   const [activeSideDrawer, setActiveSideDrawer] = useState<'note' | null>(null)
+  const colorBtnRef = useRef<HTMLButtonElement>(null)
+
+  // Recent Colors queue (max 4 colors)
+  const [recentColors, setRecentColors] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('pyrita_mindmap_recent_colors')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(0, 4)
+      }
+    } catch {}
+    return ['#c59b27', '#2563eb', '#10b981', '#ea580c']
+  })
+
+  const pushRecentColor = useCallback((color: string) => {
+    if (!color || color === 'transparent') return
+    setRecentColors(prev => {
+      const next = [color, ...prev.filter(c => c.toLowerCase() !== color.toLowerCase())].slice(0, 4)
+      try {
+        localStorage.setItem('pyrita_mindmap_recent_colors', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }, [])
+
+  // Custom Palette creation state
+  const [isCreatingPalette, setIsCreatingPalette] = useState(false)
+  const [newPaletteName, setNewPaletteName] = useState('')
+  const [newPaletteColors, setNewPaletteColors] = useState<string[]>([
+    '#f43f5e',
+    '#8b5cf6',
+    '#06b6d4',
+    '#10b981',
+    '#f59e0b'
+  ])
+
+  // Combined built-in + custom palettes
+  const allPalettes = useMemo<Record<string, { name: string; colors: string[] }>>(() => {
+    const combined: Record<string, { name: string; colors: string[] }> = { ...MINDMAP_PALETTES }
+    if (doc.customPalettes) {
+      Object.assign(combined, doc.customPalettes)
+    }
+    return combined
+  }, [doc.customPalettes])
+
+  const currentPalette = allPalettes[doc.paletteId || 'rainbow'] || MINDMAP_PALETTES.rainbow
 
   // Close active popover on outside click or Escape
   useEffect(() => {
     if (!activePopover) return
     const handleOutsideClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      if (!target.closest('.mindmap-popover-anchor')) {
+      if (target.closest && target.closest('[data-color-picker-portal="true"]')) return
+      if (!target.closest || !target.closest('.mindmap-popover-anchor')) {
         setActivePopover(null)
+        setIsCreatingPalette(false)
       }
     }
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setActivePopover(null)
+      if (e.key === 'Escape') {
+        setActivePopover(null)
+        setIsCreatingPalette(false)
+      }
     }
     document.addEventListener('mousedown', handleOutsideClick)
     window.addEventListener('keydown', handleKeyDown)
@@ -340,6 +384,21 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
     const cleaned = resetNodePositions(doc)
     commitDoc(cleaned)
   }, [doc, commitDoc])
+
+  // Delete custom palette
+  const handleDeleteCustomPalette = useCallback(
+    (paletteId: string) => {
+      const nextPalettes = { ...(doc.customPalettes || {}) }
+      delete nextPalettes[paletteId]
+      const fallbackPalette = doc.paletteId === paletteId ? 'rainbow' : doc.paletteId
+      commitDoc({
+        ...doc,
+        paletteId: fallbackPalette,
+        customPalettes: nextPalettes
+      })
+    },
+    [doc, commitDoc]
+  )
 
   // Keyboard navigation & shortcuts
   useEffect(() => {
@@ -792,52 +851,234 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           {/* Seletor de Paleta / Cores dos Ramos */}
           <div className="relative mindmap-popover-anchor">
             <button
-              onClick={() => setActivePopover(prev => (prev === 'palette' ? null : 'palette'))}
+              onClick={() => {
+                setIsCreatingPalette(false)
+                setActivePopover(prev => (prev === 'palette' ? null : 'palette'))
+              }}
               className="flex items-center gap-1.5 px-2 py-1 rounded bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
-              title="Cores dos Ramos"
+              title="Cores dos Ramos e Tópicos"
             >
               <div className="flex gap-0.5">
-                {(MINDMAP_PALETTES[doc.paletteId || 'rainbow']?.colors || []).slice(0, 3).map((c, i) => (
+                {(currentPalette?.colors || []).slice(0, 3).map((c: string, i: number) => (
                   <span key={i} className="w-2 h-2 rounded-full" style={{ backgroundColor: c }} />
                 ))}
               </div>
-              <span>{MINDMAP_PALETTES[doc.paletteId || 'rainbow']?.name || 'Cores'}</span>
+              <span>{currentPalette?.name || 'Cores'}</span>
               <ChevronDown className="w-3 h-3 text-zinc-500" />
             </button>
 
             {activePopover === 'palette' && (
               <div
                 onMouseDown={e => e.stopPropagation()}
-                className="absolute top-8 left-0 w-52 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-1"
+                className={`absolute top-8 left-0 ${isCreatingPalette ? 'w-64' : 'w-56'} bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1.5 z-50`}
               >
-                {Object.entries(MINDMAP_PALETTES).map(([pId, p]) => (
-                  <button
-                    key={pId}
-                    onClick={() => {
-                      const nextNodes = { ...doc.nodes }
-                      for (const id in nextNodes) {
-                        if (id !== doc.rootId && nextNodes[id].branchColor) {
-                          nextNodes[id] = { ...nextNodes[id], branchColor: undefined }
-                        }
-                      }
-                      commitDoc({ ...doc, paletteId: pId as MindMapPaletteId, nodes: nextNodes })
-                      setActivePopover(null)
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded flex items-center justify-between text-xs cursor-pointer ${
-                      (doc.paletteId || 'rainbow') === pId ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-medium' : 'text-zinc-300 hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="flex gap-0.5">
-                        {p.colors.slice(0, 4).map((c, i) => (
-                          <span key={i} className="w-2 h-2 rounded-full" style={{ backgroundColor: c }} />
+                {isCreatingPalette ? (
+                  <div className="space-y-2 p-1">
+                    <div className="flex items-center justify-between pb-1 border-b border-zinc-800">
+                      <span className="text-xs font-semibold text-zinc-100">Criar Grupo de Cores</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingPalette(false)}
+                        className="text-zinc-500 hover:text-zinc-300 p-0.5 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-zinc-400 block mb-1">Nome da Paleta</label>
+                      <input
+                        type="text"
+                        value={newPaletteName}
+                        onChange={e => setNewPaletteName(e.target.value)}
+                        placeholder="Ex: Minha Marca"
+                        className="w-full bg-[#18181e] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-hidden focus:border-[var(--accent,#c59b27)]"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-zinc-400 block mb-1">Cores dos Ramos (5 cores)</label>
+                      <div className="flex items-center justify-between gap-1">
+                        {newPaletteColors.map((color, idx) => (
+                          <div key={idx} className="relative">
+                            <input
+                              type="color"
+                              value={color}
+                              onChange={e => {
+                                const next = [...newPaletteColors]
+                                next[idx] = e.target.value
+                                setNewPaletteColors(next)
+                              }}
+                              className="w-8 h-8 rounded-lg border border-zinc-700 bg-transparent cursor-pointer p-0 block hover:scale-105 transition-transform"
+                              title={`Cor ${idx + 1}: ${color}`}
+                            />
+                          </div>
                         ))}
                       </div>
-                      <span>{p.name}</span>
                     </div>
-                    {(doc.paletteId || 'rainbow') === pId && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
+
+                    <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-zinc-800">
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingPalette(false)}
+                        className="px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer rounded"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const id = 'custom_' + Date.now()
+                          const customPalettes = {
+                            ...(doc.customPalettes || {}),
+                            [id]: {
+                              name: newPaletteName.trim() || 'Grupo Personalizado',
+                              colors: newPaletteColors
+                            }
+                          }
+                          const nextNodes = { ...doc.nodes }
+                          for (const nid in nextNodes) {
+                            if (nid !== doc.rootId && nextNodes[nid].branchColor) {
+                              nextNodes[nid] = { ...nextNodes[nid], branchColor: undefined }
+                            }
+                          }
+                          commitDoc({
+                            ...doc,
+                            paletteId: id,
+                            customPalettes,
+                            nodes: nextNodes
+                          })
+                          setIsCreatingPalette(false)
+                          setActivePopover(null)
+                        }}
+                        className="px-2.5 py-1 text-xs bg-[var(--accent,#c59b27)] text-black font-semibold rounded hover:brightness-110 cursor-pointer shadow-xs"
+                      >
+                        Salvar Grupo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {/* Toggle: Colorir fundo dos nós com a cor do ramo */}
+                    <div className="flex items-center justify-between px-2 py-1.5 rounded bg-[#18181e] border border-zinc-800 mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <Palette className="w-3.5 h-3.5 text-[var(--accent,#c59b27)]" />
+                        <span className="text-[11px] font-medium text-zinc-200">Colorir fundo dos nós</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => commitDoc({ ...doc, colorizeNodeBg: !doc.colorizeNodeBg })}
+                        className={`w-7 h-4 rounded-full transition-colors relative cursor-pointer ${
+                          doc.colorizeNodeBg ? 'bg-[var(--accent,#c59b27)]' : 'bg-zinc-700'
+                        }`}
+                        title={doc.colorizeNodeBg ? 'Desativar preenchimento dos nós' : 'Ativar preenchimento dos nós'}
+                      >
+                        <span
+                          className={`w-3 h-3 rounded-full bg-white absolute top-0.5 transition-transform ${
+                            doc.colorizeNodeBg ? 'right-0.5' : 'left-0.5'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="text-[10px] uppercase font-bold text-zinc-500 px-2 pt-0.5">Paletas Padrão</div>
+                    {Object.entries(MINDMAP_PALETTES).map(([pId, p]) => (
+                      <button
+                        key={pId}
+                        onClick={() => {
+                          const nextNodes = { ...doc.nodes }
+                          for (const id in nextNodes) {
+                            if (id !== doc.rootId && nextNodes[id].branchColor) {
+                              nextNodes[id] = { ...nextNodes[id], branchColor: undefined }
+                            }
+                          }
+                          commitDoc({ ...doc, paletteId: pId as MindMapPaletteId, nodes: nextNodes })
+                          setActivePopover(null)
+                        }}
+                        className={`w-full text-left px-2 py-1.5 rounded flex items-center justify-between text-xs cursor-pointer ${
+                          (doc.paletteId || 'rainbow') === pId ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-medium' : 'text-zinc-300 hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="flex gap-0.5">
+                            {p.colors.slice(0, 4).map((c, i) => (
+                              <span key={i} className="w-2 h-2 rounded-full" style={{ backgroundColor: c }} />
+                            ))}
+                          </div>
+                          <span>{p.name}</span>
+                        </div>
+                        {(doc.paletteId || 'rainbow') === pId && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    ))}
+
+                    {/* Custom Palettes (if any) */}
+                    {doc.customPalettes && Object.keys(doc.customPalettes).length > 0 && (
+                      <>
+                        <div className="text-[10px] uppercase font-bold text-zinc-500 px-2 pt-1.5 border-t border-zinc-800/80">
+                          Grupos Personalizados
+                        </div>
+                        {Object.entries(doc.customPalettes).map(([pId, p]) => (
+                          <div
+                            key={pId}
+                            className={`w-full px-2 py-1 rounded flex items-center justify-between text-xs ${
+                              doc.paletteId === pId ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-medium' : 'text-zinc-300 hover:bg-zinc-800/60'
+                            }`}
+                          >
+                            <button
+                              onClick={() => {
+                                const nextNodes = { ...doc.nodes }
+                                for (const id in nextNodes) {
+                                  if (id !== doc.rootId && nextNodes[id].branchColor) {
+                                    nextNodes[id] = { ...nextNodes[id], branchColor: undefined }
+                                  }
+                                }
+                                commitDoc({ ...doc, paletteId: pId as MindMapPaletteId, nodes: nextNodes })
+                                setActivePopover(null)
+                              }}
+                              className="flex items-center gap-2 flex-1 text-left cursor-pointer min-w-0"
+                            >
+                              <div className="flex gap-0.5 shrink-0">
+                                {p.colors.slice(0, 4).map((c, i) => (
+                                  <span key={i} className="w-2 h-2 rounded-full" style={{ backgroundColor: c }} />
+                                ))}
+                              </div>
+                              <span className="truncate">{p.name}</span>
+                            </button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {doc.paletteId === pId && <Check className="w-3.5 h-3.5 mr-1" />}
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  handleDeleteCustomPalette(pId)
+                                }}
+                                className="p-0.5 text-zinc-500 hover:text-red-400 cursor-pointer"
+                                title="Excluir Grupo"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Criar Grupo de Cores button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewPaletteName(`Paleta ${(Object.keys(doc.customPalettes || {}).length || 0) + 1}`)
+                        setNewPaletteColors(['#f43f5e', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b'])
+                        setIsCreatingPalette(true)
+                      }}
+                      className="w-full mt-1.5 px-2 py-1.5 rounded border border-dashed border-zinc-700 hover:border-[var(--accent,#c59b27)] text-zinc-300 hover:text-[var(--accent,#c59b27)] flex items-center justify-center gap-1.5 text-xs transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Criar Grupo de Cores</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1093,35 +1334,41 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           {/* Cor do Tópico */}
           <div className="relative mindmap-popover-anchor">
             <button
+              ref={colorBtnRef}
               onClick={() => setActivePopover(prev => (prev === 'color' ? null : 'color'))}
-              className="p-1 rounded hover:bg-zinc-800 text-zinc-300 hover:text-white"
+              className={`p-1 rounded hover:bg-zinc-800 cursor-pointer ${
+                activePopover === 'color' ? 'bg-zinc-800 text-[var(--accent,#c59b27)]' : 'text-zinc-300 hover:text-white'
+              }`}
               title="Cor de Preenchimento"
             >
               <Palette className="w-3.5 h-3.5 text-[var(--accent,#c59b27)]" />
             </button>
 
             {activePopover === 'color' && (
-              <div
-                onMouseDown={e => e.stopPropagation()}
-                className="absolute top-8 left-0 bg-[#141418] border border-zinc-700 rounded-lg p-2 shadow-2xl z-50 grid grid-cols-4 gap-1.5 w-36"
-              >
-                {PALETTE_COLORS.map(c => (
-                  <button
-                    key={c}
-                    onClick={() => {
-                      commitDoc(
-                        updateNode(doc, selectedComputed.id, {
-                          fillColor: c,
-                          textColor: c === '#ffffff' || c === '#f4f4f5' ? '#09090b' : '#ffffff'
-                        })
-                      )
-                      setActivePopover(null)
-                    }}
-                    className="w-6 h-6 rounded-md border border-zinc-700 hover:scale-110 transition-transform cursor-pointer"
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
-              </div>
+              <CustomColorPickerPopover
+                currentColor={selectedComputed.node.fillColor || (doc.colorizeNodeBg ? selectedComputed.branchColor : '#1e293b')}
+                onChange={c => {
+                  pushRecentColor(c)
+                  commitDoc(
+                    updateNode(doc, selectedComputed.id, {
+                      fillColor: c,
+                      textColor: isColorLight(c) ? '#09090b' : '#ffffff'
+                    })
+                  )
+                }}
+                onClearColor={() => {
+                  commitDoc(
+                    updateNode(doc, selectedComputed.id, {
+                      fillColor: undefined,
+                      textColor: undefined
+                    })
+                  )
+                }}
+                onClose={() => setActivePopover(null)}
+                anchorEl={colorBtnRef.current}
+                align="center"
+                recentColors={recentColors}
+              />
             )}
           </div>
 
@@ -1453,9 +1700,11 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             const hasChildren = cn.node.children && cn.node.children.length > 0
             const isCollapsed = !!cn.node.collapsed
 
-            // Color resolution based on light/dark canvas
+            // Color resolution based on light/dark canvas & colorizeNodeBg
             const effectiveBg = cn.node.fillColor
               ? cn.node.fillColor
+              : doc.colorizeNodeBg
+              ? (isRoot ? (cn.branchColor || currentTheme.rootBg) : cn.branchColor)
               : isRoot
               ? currentTheme.rootBg
               : isCanvasLight
@@ -1466,10 +1715,14 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
               ? cn.node.strokeColor
               : isRoot
               ? currentTheme.rootBorder
+              : doc.colorizeNodeBg && !cn.node.fillColor
+              ? 'rgba(255, 255, 255, 0.25)'
               : cn.branchColor
 
             const effectiveText = cn.node.textColor
               ? cn.node.textColor
+              : doc.colorizeNodeBg && !cn.node.fillColor
+              ? (isColorLight(effectiveBg) ? '#09090b' : '#ffffff')
               : isRoot
               ? currentTheme.rootText
               : isCanvasLight
@@ -1511,16 +1764,16 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                   backgroundColor: isUnderline ? 'transparent' : effectiveBg,
                   borderColor: isSelected ? 'var(--accent,#c59b27)' : effectiveBorder,
                   color: effectiveText,
-                  borderWidth: isUnderline ? '0 0 2px 0' : isSelected ? '2.5px' : '1.5px',
+                  borderWidth: isUnderline ? '0 0 1.5px 0' : isSelected ? '1.5px' : '1px',
                   boxShadow: isUnderline
                     ? 'none'
                     : isSelected
-                    ? '0 0 0 3px rgba(197, 155, 39, 0.25), 0 8px 20px rgba(0,0,0,0.3)'
+                    ? '0 0 0 2px rgba(197, 155, 39, 0.3), 0 4px 14px rgba(0,0,0,0.25)'
                     : isHighlighted
-                    ? '0 0 0 3px rgba(245, 158, 11, 0.5)'
+                    ? '0 0 0 2.5px rgba(245, 158, 11, 0.5)'
                     : isCanvasLight
-                    ? '0 2px 8px rgba(0,0,0,0.06)'
-                    : '0 4px 12px rgba(0,0,0,0.2)'
+                    ? '0 1px 4px rgba(0,0,0,0.06)'
+                    : '0 2px 8px rgba(0,0,0,0.2)'
                 }}
                 className={`mindmap-interactive-node group pointer-events-auto cursor-grab active:cursor-grabbing transition-shadow flex items-center justify-between px-2.5 py-1 ${borderRadiusClass} border select-none`}
               >
@@ -1684,35 +1937,6 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           </div>
         </div>
       )}
-
-      {/* 7. BOTTOM STATUS BAR */}
-      <footer
-        onMouseDown={e => e.stopPropagation()}
-        className="mindmap-interactive-control h-6 bg-[#0c0c0e]/95 border-t border-zinc-800/80 px-3 flex items-center justify-between text-[10px] text-zinc-500 shrink-0 select-none"
-      >
-        <div className="flex items-center gap-3">
-          <span>
-            <kbd className="font-mono text-zinc-400">Tab</kbd> Subtópico
-          </span>
-          <span>
-            <kbd className="font-mono text-zinc-400">Enter</kbd> Irmão
-          </span>
-          <span>
-            <kbd className="font-mono text-zinc-400">Del</kbd> Excluir
-          </span>
-          <span>
-            <kbd className="font-mono text-zinc-400">Espaço</kbd> Editar
-          </span>
-          <span>
-            <kbd className="font-mono text-zinc-400">Arraste</kbd> Mover Nó
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span>{layoutResult.nodes.length} tópicos</span>
-          <span>•</span>
-          <span>Pyrita Mind Engine</span>
-        </div>
-      </footer>
     </div>
   )
 }

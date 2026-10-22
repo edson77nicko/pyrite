@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 
-interface CustomColorPickerPopoverProps {
+export interface CustomColorPickerPopoverProps {
   currentColor: string
   onChange: (color: string) => void
   onClose: () => void
   anchorEl: HTMLElement | null
   align?: 'left' | 'right' | 'center'
+  recentColors?: string[]
+  onClearColor?: () => void
 }
 
 // Convert Hex to HSV
@@ -108,7 +110,9 @@ export const CustomColorPickerPopover: React.FC<CustomColorPickerPopoverProps> =
   onChange,
   onClose,
   anchorEl,
-  align = 'right'
+  align = 'right',
+  recentColors,
+  onClearColor
 }) => {
   const popoverRef = useRef<HTMLDivElement>(null)
   const satValAreaRef = useRef<HTMLDivElement>(null)
@@ -328,6 +332,43 @@ export const CustomColorPickerPopover: React.FC<CustomColorPickerPopoverProps> =
           className="flex-1 bg-[#161722] border border-zinc-800 focus:border-zinc-700 rounded-lg px-2.5 py-1 text-xs font-mono text-zinc-100 placeholder-zinc-500 focus:outline-none transition-colors uppercase text-center"
         />
       </div>
+
+      {/* 4. Recent Colors Queue (Up to 4 colors) */}
+      {recentColors && recentColors.length > 0 && (
+        <div className="flex items-center justify-between pt-1.5 border-t border-zinc-800/80">
+          <span className="text-[10px] text-zinc-400 font-medium">Recentes</span>
+          <div className="flex items-center gap-1.5">
+            {recentColors.slice(0, 4).map((rc, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  setHexInput(rc.toUpperCase())
+                  setHsv(hexToHsv(rc))
+                  onChange(rc)
+                }}
+                style={{ backgroundColor: rc }}
+                className="w-5 h-5 rounded-full border border-zinc-700 hover:scale-110 active:scale-95 transition-transform cursor-pointer shadow-xs"
+                title={rc}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5. Optional Clear Color (Reset to default) */}
+      {onClearColor && (
+        <button
+          type="button"
+          onClick={() => {
+            onClearColor()
+            onClose()
+          }}
+          className="w-full py-1 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 rounded border border-zinc-800 transition-colors text-center cursor-pointer"
+        >
+          Remover Cor (Padrão)
+        </button>
+      )}
     </div>
   )
 
