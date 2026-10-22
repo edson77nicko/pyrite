@@ -1,6 +1,6 @@
 import { SidebarMenu } from './SidebarMenu'
 import type { SidebarAction } from './SidebarMenu'
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import type { Note, NoteType, ViewMode } from '../types'
 import type { TaskBoard, TaskItem } from '../types/tasks'
 import {
@@ -15,7 +15,6 @@ import {
   Star,
   ChevronDown,
   ChevronsDownUp,
-  FolderSync,
   Palette,
   CheckCircle2,
   ListTodo,
@@ -105,7 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleFavorite,
   onOpenDailyNote,
   onOpenLocalFolder,
-  onOpenInExplorer,
+  onOpenInExplorer: _onOpenInExplorer,
   onOpenVaultSwitcher,
   onOpenTasks,
   onSelectTaskBoard,
@@ -132,6 +131,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [newFolderName, setNewFolderName] = useState('')
   const [parentForNewFolder, setParentForNewFolder] = useState<string | null>(null)
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+  const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
+  const createMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isCreateMenuOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (createMenuRef.current && !createMenuRef.current.contains(e.target as Node)) {
+        setIsCreateMenuOpen(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsCreateMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isCreateMenuOpen])
 
   // Task Boards UI State
   const [isCreatingBoard, setIsCreatingBoard] = useState(false)
@@ -466,19 +485,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <div
       style={{ width: `${sidebarWidth}px` }}
-      className="relative h-full bg-[#121215] border-r border-zinc-800 flex flex-col select-none shrink-0 text-xs"
+      className="relative my-2 bg-[#121215] rounded-r-2xl border-y border-r border-zinc-800 flex flex-col select-none shrink-0 text-xs overflow-hidden shadow-lg"
     >
       {/* 1. Vault Header */}
-      <div className="p-2.5 border-b border-zinc-800 bg-[#0f0f12] flex items-center justify-between">
+      <div className="p-2 border-b border-zinc-800/60 bg-[#0f0f12] flex items-center justify-between gap-1">
         <div
-          onClick={onOpenVaultSwitcher}
-          className="flex items-center gap-2 truncate flex-1 mr-1 p-1 -ml-1 rounded-lg hover:bg-zinc-800/60 cursor-pointer transition-colors group"
+          onClick={onOpenVaultSwitcher || onOpenLocalFolder}
+          className="flex items-center gap-2 truncate flex-1 min-w-0 p-1 -ml-0.5 rounded-lg hover:bg-zinc-800/60 cursor-pointer transition-colors group"
           title="Clique para alternar ou gerenciar cofres (Vault Switcher)"
         >
           <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs text-zinc-950 shadow-sm shrink-0" style={{ backgroundColor: 'var(--accent)' }}>
             Py
           </div>
-          <div className="truncate flex-1">
+          <div className="truncate flex-1 min-w-0">
             <div className="flex items-center gap-1">
               <span className="font-semibold text-zinc-100 text-xs tracking-wide truncate block group-hover:text-white transition-colors">
                 {vaultPath ? vaultPath.split(/[/\\]/).filter(Boolean).pop() : 'Pyrita Vault'}
@@ -491,88 +510,132 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
+        {/* Header Actions: Collapse All & Create New Dropdown */}
         <div className="flex items-center gap-1 shrink-0">
-          {onOpenInExplorer && vaultPath && (
-            <button
-              onClick={onOpenInExplorer}
-              className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 rounded-md transition-colors border border-zinc-800/80 cursor-pointer"
-              title="Abrir pasta do cofre no Explorador de Arquivos do Windows"
-            >
-              <FolderOpen className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
-            </button>
-          )}
-
           <button
-            onClick={onOpenVaultSwitcher || onOpenLocalFolder}
-            className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-800/80 px-2 py-1 rounded-md transition-colors border border-zinc-800 cursor-pointer"
-            title="Alternar ou Gerenciar Cofres (Vault Switcher)"
-          >
-            <FolderSync className="w-3 h-3" style={{ color: 'var(--accent)' }} />
-            <span>Cofres</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. Top Quick Actions: Daily Note, New Note & Collapse All */}
-      <div className="px-2.5 py-1.5 flex items-center justify-between border-b border-zinc-800/60 bg-zinc-950/30 text-zinc-400">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => onCreateNote(undefined, undefined, 'note')}
-            className="flex items-center gap-1 px-2 py-1 text-zinc-950 rounded-md text-[11px] font-semibold transition-all shadow-sm cursor-pointer hover:opacity-90"
-            style={{ backgroundColor: 'var(--accent)' }}
-            title="Criar Nova Nota de Texto"
-          >
-            <Plus className="w-3 h-3 stroke-[2.5]" />
-            <span>Nota</span>
-          </button>
-
-          <button
-            onClick={() => onCreateNote(undefined, undefined, 'draw')}
-            className="flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 rounded-md text-[11px] font-medium transition-colors border border-zinc-700/60 cursor-pointer"
-            title="Criar Novo Quadro de Desenho (Draw estilo Excalidraw)"
-          >
-            <Palette className="w-3 h-3" style={{ color: 'var(--accent)' }} />
-            <span>Draw</span>
-          </button>
-
-          <button
-            onClick={() => onCreateNote(undefined, undefined, 'mindmap')}
-            className="flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 rounded-md text-[11px] font-medium transition-colors border border-zinc-700/60 cursor-pointer"
-            title="Criar Novo Mapa Mental"
-          >
-            <Brain className="w-3 h-3" style={{ color: 'var(--accent)' }} />
-            <span>Mapa</span>
-          </button>
-
-          <button
-            onClick={onOpenDailyNote}
-            className="flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 rounded-md text-[11px] font-medium transition-colors border border-zinc-700/60 cursor-pointer"
-            title="Abrir ou Criar Nota Diária de Hoje"
-          >
-            <Calendar className="w-3 h-3" style={{ color: 'var(--accent)' }} />
-            <span>Diário</span>
-          </button>
-
-          <button
-            onClick={() => handleStartCreateFolder()}
-            className="p-1 hover:text-white hover:bg-zinc-800 rounded-md transition-colors cursor-pointer"
-            title="Nova Pasta Raiz"
-          >
-            <FolderPlus className="w-3.5 h-3.5" />
-          </button>
-
-          <button
+            type="button"
             onClick={handleToggleCollapseAll}
-            className="p-1 hover:text-white hover:bg-zinc-800 rounded-md transition-colors cursor-pointer"
+            className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800/70 rounded-md transition-colors cursor-pointer"
             title="Recolher / Expandir todas as pastas"
           >
             <ChevronsDownUp className="w-3.5 h-3.5" />
           </button>
+
+          {/* New Item Dropdown Menu */}
+          <div className="relative" ref={createMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsCreateMenuOpen(v => !v)}
+              className="flex items-center justify-center w-6 h-6 rounded-md text-zinc-950 font-bold transition-all shadow-sm cursor-pointer hover:opacity-90 hover:scale-105 active:scale-95"
+              style={{ backgroundColor: 'var(--accent)' }}
+              title="Criar nova nota, draw, mapa mental ou pasta"
+            >
+              <Plus className={`w-3.5 h-3.5 stroke-[2.5] transition-transform duration-200 ${isCreateMenuOpen ? 'rotate-45' : ''}`} />
+            </button>
+
+            {isCreateMenuOpen && (
+              <div
+                className="absolute right-0 top-full mt-1.5 z-50 w-52 bg-[#16161c] border border-zinc-700/80 rounded-xl shadow-2xl p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  Criar Novo
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateMenuOpen(false)
+                    onCreateNote(undefined, undefined, 'note')
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                >
+                  <div className="w-5 h-5 rounded-md bg-zinc-800/80 group-hover:bg-[var(--accent)]/20 flex items-center justify-center shrink-0">
+                    <FileText className="w-3.5 h-3.5 text-zinc-400 group-hover:text-[var(--accent)]" />
+                  </div>
+                  <div className="truncate flex-1">
+                    <div className="font-medium text-xs">Nova Nota</div>
+                    <div className="text-[10px] text-zinc-500">Documento Markdown</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateMenuOpen(false)
+                    onCreateNote(undefined, undefined, 'draw')
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                >
+                  <div className="w-5 h-5 rounded-md bg-zinc-800/80 group-hover:bg-[var(--accent)]/20 flex items-center justify-center shrink-0">
+                    <Palette className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                  </div>
+                  <div className="truncate flex-1">
+                    <div className="font-medium text-xs">Novo Draw</div>
+                    <div className="text-[10px] text-zinc-500">Quadro de desenho livre</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateMenuOpen(false)
+                    onCreateNote(undefined, undefined, 'mindmap')
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                >
+                  <div className="w-5 h-5 rounded-md bg-zinc-800/80 group-hover:bg-[var(--accent)]/20 flex items-center justify-center shrink-0">
+                    <Brain className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                  </div>
+                  <div className="truncate flex-1">
+                    <div className="font-medium text-xs">Novo Mapa Mental</div>
+                    <div className="text-[10px] text-zinc-500">Ideias visuais e nós</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateMenuOpen(false)
+                    onOpenDailyNote()
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                >
+                  <div className="w-5 h-5 rounded-md bg-zinc-800/80 group-hover:bg-[var(--accent)]/20 flex items-center justify-center shrink-0">
+                    <Calendar className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                  </div>
+                  <div className="truncate flex-1">
+                    <div className="font-medium text-xs">Nota Diária</div>
+                    <div className="text-[10px] text-zinc-500">Registro de hoje</div>
+                  </div>
+                </button>
+
+                <div className="h-px bg-zinc-800/60 my-1 mx-1" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateMenuOpen(false)
+                    handleStartCreateFolder()
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                >
+                  <div className="w-5 h-5 rounded-md bg-zinc-800/80 group-hover:bg-zinc-700 flex items-center justify-center shrink-0">
+                    <FolderPlus className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-200" />
+                  </div>
+                  <div className="truncate flex-1">
+                    <div className="font-medium text-xs">Nova Pasta</div>
+                    <div className="text-[10px] text-zinc-500">Criar pasta na raiz</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* 3. Search Bar */}
-      <div className="p-2 border-b border-zinc-800/40">
+      {/* 2. Search Bar - Clean, without extra border-b */}
+      <div className="p-2">
         <div className="relative flex items-center">
           <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2" />
           <input
@@ -580,7 +643,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filtrar notas..."
-            className="w-full pl-7 pr-2 py-1 bg-zinc-900/90 border border-zinc-800 rounded-md text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[#c59b27]/60 transition-colors"
+            className="w-full pl-7 pr-2 py-1 bg-zinc-900/90 border border-zinc-800/80 rounded-md text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[#c59b27]/60 transition-colors"
           />
         </div>
       </div>
@@ -839,11 +902,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </div>
 
-        {/* Divisor sutil e espaçado */}
-        <div className="h-px bg-zinc-800/30 my-3 mx-2" />
-
         {/* PARTE 2: DOCUMENTOS */}
-        <div className="space-y-1.5 pt-1">
+        <div className="space-y-1.5 pt-2">
           <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
             <span>Documentos</span>
             <span className="text-[9.5px] font-mono text-zinc-600">{notes.length}</span>
@@ -890,7 +950,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Unassigned notes (without folder) */}
         {unassignedNotes.length > 0 && (
-          <div className="pt-1.5 mt-1 border-t border-zinc-800/60">
+          <div className="pt-2 mt-1">
             <div className="px-1.5 py-0.5 text-[9.5px] font-semibold uppercase text-zinc-500 tracking-wider">
               Avulsas ({unassignedNotes.length})
             </div>

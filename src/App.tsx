@@ -934,7 +934,7 @@ export const App: React.FC = () => {
   return (
     <div className="flex flex-col w-screen h-screen bg-[#0f0f12] text-zinc-100 overflow-hidden font-sans">
       {/* 1. Main Workspace Layout */}
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="flex flex-1 overflow-hidden relative bg-[#09090b]">
         {/* Leftmost Ribbon Bar (Icon-only navigation like Obsidian) */}
         <Ribbon
           currentView={currentView}
@@ -1049,7 +1049,11 @@ export const App: React.FC = () => {
         )}
 
         {/* Central View Area with Workspace Tab Header */}
-        <main className="flex-1 h-full overflow-hidden relative bg-[#0f0f12] flex flex-col">
+        <main
+          className={`flex-1 my-2 overflow-hidden relative bg-[#0f0f12] flex flex-col rounded-l-2xl border-y border-l border-zinc-800/80 shadow-lg ${
+            isAiOpen ? '' : 'ml-1.5'
+          }`}
+        >
           {/* Obsidian Tab Header - Stays across full top of central section */}
           <TabHeader
             tabs={tabs}
