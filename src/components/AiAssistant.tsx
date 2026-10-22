@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import type { Note } from '../types'
 import type { TaskItem, TaskSettings, SubTask, TaskBoard } from '../types/tasks'
 import { extractWikiLinks } from '../utils/vault'
-import { mindMapToMarkdownOutline, parseMindMapDocument, serializeMindMapDocument, isMindMapContent } from '../utils/mindMapUtils'
+import { mindMapToMarkdownOutline, parseMindMapDocument, serializeMindMapDocument, isMindMapContent, cleanNodeTitle } from '../utils/mindMapUtils'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { AiSettingsModal } from './AiSettingsModal'
 import { FolderTreePicker } from './FolderTreePicker'
@@ -919,7 +919,34 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           if (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content)) {
             const mindMapDoc = parseMindMapDocument(effectiveNote.content, effectiveNote.title)
             const outline = mindMapToMarkdownOutline(mindMapDoc)
-            contextBlock += `\n### NOTA ATIVA PRINCIPAL EM CONTEXTO (MAPA MENTAL INTERATIVO):\nTítulo: "${effectiveNote.title}"\nPasta: ${effectiveNote.folder || 'Início'}\nTags: ${effectiveNote.tags?.join(', ') || 'mindmap'}\nTipo: Mapa Mental (Mind Map)\nEstrutura Atual do Mapa em Formato Hierárquico:\n---\n${outline}\n---\n`
+            contextBlock += `\n### NOTA ATIVA PRINCIPAL EM CONTEXTO (MAPA MENTAL INTERATIVO):
+Título: "${effectiveNote.title}"
+Pasta: ${effectiveNote.folder || 'Início'}
+Tags: ${effectiveNote.tags?.join(', ') || 'mindmap'}
+Tipo: Mapa Mental (Mind Map)
+Estrutura Atual do Mapa em Formato Hierárquico:
+---
+${outline}
+---
+🚨 INSTRUÇÃO OBRIGATÓRIA PARA EDIÇÃO DESTE MAPA MENTAL:
+- O usuário está com este mapa mental aberto na tela.
+- Quando ele solicitar para adicionar tópicos, criar etapas, novos ramos, organizar ou expandir este mapa, você DEVE gerar a versão completa atualizada dentro do bloco:
+  <<<REPLACE_NOTE>>>
+  # ${cleanNodeTitle(effectiveNote.title)}
+  ## 1ª Etapa (Ramo Principal)
+    - 2ª Etapa (Subtópico)
+      - 3ª Etapa (Detalhe/Ação)
+  <<<END_REPLACE_NOTE>>>
+- TABELA DE CORRESPONDÊNCIA DE ETAPAS:
+  * NÓ INICIAL (Centro do Mapa)  -> 1 hashtag: # Tópico Central
+  * 1ª ETAPA após o centro        -> 2 hashtags: ## Ramo Principal (OU traço sem recuo: - Ramo Principal)
+  * 2ª ETAPA (Subtópicos)         -> 2 espaços de recuo:   - Subtópico (OU 3 hashtags: ### Subtópico)
+  * 3ª ETAPA (Detalhes/Ações)     -> 4 espaços de recuo:     - Detalhe (OU 4 hashtags: #### Detalhe)
+- REGRAS VITAIS DE SINTAXE:
+  * NUNCA use 3 hashtags ('###') na 1ª etapa após o centro! O nó central já é '#'. A 1ª etapa após o centro é '##' (2 hashtags) ou '-'.
+  * NUNCA misture traço com hashtag (ex: NUNCA faça '- ### Título' ou '* ### Título'). Se usar traço, escreva texto limpo: '- Título'.
+  * NUNCA use asteriscos para definir etapas (ex: NUNCA faça '** Etapa' ou '*** Detalhe') e NUNCA use negrito ('**Título**').
+  * Mantenha o '# Tópico Central' e a estrutura que o usuário já tinha, anexando as novas etapas nos ramos corretos.\n`
           } else {
             contextBlock += `\n### NOTA ATIVA PRINCIPAL EM CONTEXTO:\nTítulo: "${effectiveNote.title}"\nPasta: ${effectiveNote.folder || 'Início'}\nTags: ${effectiveNote.tags?.join(', ') || 'nenhuma'}\nConteúdo da nota:\n---\n${effectiveNote.content || '(nota vazia)'}\n---\n`
           }
@@ -986,7 +1013,36 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   (todo o conteúdo revisado aqui)
   <<<END_REPLACE_NOTE>>>
   O Pyrita irá detectar esse bloco e atualizar a nota ou mapa mental do usuário automaticamente no editor!
-- PARA NOTAS DO TIPO MAPA MENTAL (mindmap): Dentro do bloco <<<REPLACE_NOTE>>>, forneça uma estrutura hierárquica clara em Markdown (# Tópico Central, ## Ramos Principais e listas com marcadores - e subtópicos aninhados por indentação de 2 espaços). Opcionalmente pode usar tarefas - [ ] ou - [x]. O Pyrita transformará instantaneamente essa estrutura em nós, ramos orgânicos e conexões visuais no mapa mental!
+- PARA NOTAS DO TIPO MAPA MENTAL (mindmap) - GUIA DE CRIAÇÃO E EDIÇÃO CORRETA:
+  Dentro do bloco <<<REPLACE_NOTE>>>, forneça SEMPRE uma estrutura hierárquica em Markdown Outline rigorosamente formatada:
+  1. TABELA DE CORRESPONDÊNCIA DE ETAPAS (SIGA ESTRITAMENTE):
+     * NÓ INICIAL (Centro do Mapa)  -> 1 hashtag: # Tópico Central
+     * 1ª ETAPA após o centro        -> 2 hashtags: ## Ramo Principal (OU traço sem recuo: - Ramo Principal)
+     * 2ª ETAPA (Subtópicos)         -> 2 espaços de recuo:   - Subtópico (OU 3 hashtags: ### Subtópico)
+     * 3ª ETAPA (Detalhes/Ações)     -> 4 espaços de recuo:     - Detalhe (OU 4 hashtags: #### Detalhe)
+     * 4ª ETAPA (Sub-ações)          -> 6 espaços de recuo:       - Ação Detalhada
+  2. REGRAS CRÍTICAS E PROIBIÇÕES VITAIS:
+     * A 1ª ETAPA logo após o nó inicial DEVE SER '##' (2 hashtags) ou traço '-', NUNCA '###' (3 hashtags)! Usar 3 hashtags na 1ª etapa quebra a hierarquia da árvore.
+     * NUNCA misture traço com hashtag (ex: PROIBIDO escrever '- ### Título' ou '* ### Título'). Se usar traço, escreva direto o texto: '- Título'.
+     * NUNCA use asteriscos para definir etapas (ex: PROIBIDO '** Subtópico' ou '*** Detalhe'). Isso NÃO cria a etapa e faz os asteriscos ficarem colados no título do nó.
+     * NUNCA use negrito com asteriscos nos títulos (ex: PROIBIDO '**Título**' ou '- **Etapa 1:**'). O editor gráfico já estiliza e formata os nós visualmente. Use sempre texto limpo: '- Etapa 1: Descrição'.
+     * Use SEMPRE o hífen '-' como marcador de subtópicos, NUNCA o asterisco '*'.
+  3. Checkboxes: use '- [ ] ' ou '- [x] ' para transformar qualquer nó em tarefa interativa.
+  4. Exemplo correto de mapa mental:
+     # Planejamento Estratégico
+     ## Pesquisa de Mercado
+       - Análise de Concorrentes
+         - Mapeamento de Preços
+         - Funcionalidades Principais
+       - Entrevistas com Clientes
+     ## Execução do Produto
+       - [x] Especificação do MVP
+       - [ ] Desenvolvimento Frontend
+         - Tela de Login
+         - Painel de Controle
+       - [ ] Testes e Validação
+         - Testes de Usabilidade
+         - Homologação em Produção
 - QUANDO O USUÁRIO PEDIR PARA CRIAR UMA NOVA NOTA OU NOVO MAPA MENTAL SEPARADO (ex: "crie um novo mapa sobre...", "crie uma nova nota sobre..."):
   Você pode fornecer o bloco executável:
   <<<CREATE_NOTE>>>
@@ -996,7 +1052,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   Conteúdo:
   # Tópico Central
   ## Ramo 1
-  - Subtópico 1
+    - Subtópico 1.1
+      - Detalhe 1.1.1
+  ## Ramo 2
+    - Subtópico 2.1
   <<<END_CREATE_NOTE>>>
 - Fora dos blocos delimitadores, explique resumidamente no chat o que foi gerado/aprimorado.`
           : `REGRA DE OPERAÇÃO: MODO ANALISTA (SOMENTE LEITURA).
@@ -1053,10 +1112,23 @@ ${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList
 \`\`\`
 O Pyrita renderiza esses blocos automaticamente como cards com botão de 1 clique para criação direta no cofre.`
 
+        const mindMapDirective = `DIRETRIZ DE OURO PARA MAPAS MENTAIS (MINDMAP):
+- O Pyrita possui um motor gráfico próprio de mapas mentais interativos.
+- A estrutura de um mapa mental é SEMPRE em Markdown Outline:
+  # Tópico Central (Nó Inicial - 1 hashtag)
+  ## 1ª Etapa (Ramos Principais - 2 hashtags OU traço '-' sem recuo)
+    - 2ª Etapa (Subtópicos - 2 espaços de recuo com traço '-' OU 3 hashtags '###')
+      - 3ª Etapa (Detalhes/Ações - 4 espaços de recuo com traço '-' OU 4 hashtags '####')
+- REGRAS CRÍTICAS DE SINTAXE:
+  * A 1ª ETAPA após o nó inicial DEVE SER '##' (2 hashtags) ou traço '-', NUNCA '###' (3 hashtags)!
+  * NUNCA misture traço com hashtag (ex: NUNCA escreva '- ### Título').
+  * NUNCA use asteriscos ('**', '***') para indicar etapas ou níveis de profundidade, e NUNCA envolva títulos em negrito ('**Título**'). Use apenas texto limpo precedido de traço '-' e indentação correta. O motor gráfico cuida de todo o design e peso visual dos nós.`
+
         const systemPrompt = `Você é o Agente de IA do Pyrita, assistente de alto nível para gestão de conhecimento e pensamento (estilo Obsidian) com foco em produtividade e pensamento em rede.
 
 ${specialtyBlock}
 ${ruleDirective}
+${mindMapDirective}
 ${artifactsDirective}
 ${tasksDirective}
 ${skillsDirectiveBlock}
@@ -1127,8 +1199,11 @@ Diretrizes gerais:
             if (replaceMatch && replaceMatch[1]) {
               const revisedContent = replaceMatch[1].trim()
               const isMind = effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content) || isMindMapContent(revisedContent)
+              const baseDoc = (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content))
+                ? parseMindMapDocument(effectiveNote.content, effectiveNote.title)
+                : undefined
               const finalContent = isMind
-                ? serializeMindMapDocument(parseMindMapDocument(revisedContent, effectiveNote.title))
+                ? serializeMindMapDocument(parseMindMapDocument(revisedContent, effectiveNote.title, baseDoc))
                 : revisedContent
 
               onUpdateNote({

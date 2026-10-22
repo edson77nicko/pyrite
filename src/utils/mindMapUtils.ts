@@ -211,11 +211,40 @@ export function createEmptyMindMapDocument(initialTitle?: string): MindMapDocume
 }
 
 /**
- * Converts a structured Markdown outline into a full interactive MindMapDocument.
- * Handles headings (#, ##, ###), bullet lists (- , * , 1. ), task checkboxes ([ ] / [x]),
- * and indented subtopics, distributing Level 1 children symmetrically.
+ * Strips markdown bold/italic asterisks, underscores, and bullet artifacts from node titles,
+ * ensuring clean, readable titles in visual mindmap nodes without stray asterisks.
  */
-export function parseMarkdownToMindMap(content: string, fallbackTitle?: string): MindMapDocument {
+export function cleanNodeTitle(rawTitle: string): string {
+  if (!rawTitle) return ''
+  let title = rawTitle.trim()
+
+  // 1. Remove wrapping bold/italic markdown: **Title** or ***Title*** or *Title* or __Title__
+  title = title.replace(/^(\*{1,3}|_{1,3})(.+?)\1$/, '$2').trim()
+
+  // 2. Remove inline bold/italic wrappers at start/middle, e.g. **Etapa 1:** Detalhe -> Etapa 1: Detalhe
+  title = title.replace(/\*{2,3}([^*]+)\*{2,3}/g, '$1')
+  title = title.replace(/_{2,3}([^_]+)_{2,3}/g, '$1')
+  title = title.replace(/(^|\s)\*([^*]+)\*(\s|$)/g, '$1$2$3')
+
+  // 3. Remove leading bullets, colons or dashes left over, e.g. "- Title"
+  title = title.replace(/^[\s*_:\u2013\u2014-]+/, '')
+
+  // 4. Remove leading hashes, e.g. "### Title" -> "Title"
+  title = title.replace(/^#{1,6}\s*/, '')
+
+  // 5. Final cleanup of trailing and leading leftovers
+  title = title.replace(/^[\s*_:\u2013\u2014-]+/, '')
+  title = title.replace(/[\s*_-]+$/, '')
+
+  return title.trim()
+}
+
+/**
+ * Converts a structured Markdown outline into a full interactive MindMapDocument.
+ * Handles headings (#, ##, ###), bullet lists (- , * , 1. ), multi-asterisk levels (*, **, ***),
+ * task checkboxes ([ ] / [x]), and indented subtopics, distributing Level 1 children symmetrically.
+ */
+export function parseMarkdownToMindMap(content: string, fallbackTitle?: string, baseDoc?: MindMapDocument): MindMapDocument {
   const rootId = 'node_root_' + Math.random().toString(36).substring(2, 9)
   const nodes: Record<string, MindMapNode> = {}
 
@@ -230,7 +259,7 @@ export function parseMarkdownToMindMap(content: string, fallbackTitle?: string):
   // If first non-empty line is H1 (e.g. # Title), treat as root title
   const h1Match = rawLines[0]?.match(/^#\s+(.+)$/)
   if (h1Match) {
-    rootTitle = h1Match[1].trim()
+    rootTitle = cleanNodeTitle(h1Match[1])
     linesToProcess = rawLines.slice(1)
   }
 
@@ -238,7 +267,7 @@ export function parseMarkdownToMindMap(content: string, fallbackTitle?: string):
     id: rootId,
     parentId: null,
     children: [],
-    title: rootTitle,
+    title: rootTitle || 'Meu Mapa Mental',
     shape: 'rounded',
     fontSize: 18,
     fontWeight: 'bold'
@@ -246,38 +275,88 @@ export function parseMarkdownToMindMap(content: string, fallbackTitle?: string):
 
   const stack: { level: number; id: string }[] = [{ level: 0, id: rootId }]
   let l1Counter = 0
+  let currentHeadingDepth = 0
+  let currentHeadingBaseIndent: number | null = null
 
   for (const line of linesToProcess) {
     const trimmed = line.trim()
     if (!trimmed) continue
 
+    // Check if line combined bullet with heading (e.g. "- ### Pricing Low-Ticket" or "* ### Canal")
+    const bulletHeadingMatch = line.match(/^(\s*)(?:[-*+]|\d+[.)]|[a-zA-Z][.)])\s+(#{1,6})\s+(.+)$/)
     const headingMatch = line.match(/^(#{2,6})\s+(.+)$/)
-    const bulletMatch = line.match(/^(\s*)(?:[-*+]|\d+\.)\s+(.+)$/)
+    const multiAsteriskMatch = line.match(/^(\s*)(\*{1,6})\s+(.+)$/)
+    const bulletMatch = line.match(/^(\s*)(?:[-+]|\d+[.)]|[a-zA-Z][.)])\s+(.+)$/)
 
     let depth = 1
     let title = ''
 
-    if (headingMatch) {
-      depth = headingMatch[1].length - 1
-      title = headingMatch[2].trim()
+    if (bulletHeadingMatch) {
+      const headingLevel = bulletHeadingMatch[2].length
+      // If author/AI used 3 hashes directly on a list item, normalize to level 1 if at top level
+      depth = currentHeadingDepth === 0 ? (headingLevel === 3 ? 1 : Math.max(1, headingLevel - 1)) : currentHeadingDepth + 1
+      title = bulletHeadingMatch[3]
+    } else if (headingMatch) {
+      const headingLevel = headingMatch[1].length
+      // If author jumped straight from # Root to ### Section, normalize to level 1 for first branch
+      depth = currentHeadingDepth === 0 && headingLevel === 3 ? 1 : Math.max(1, headingLevel - 1)
+      currentHeadingDepth = depth
+      currentHeadingBaseIndent = null
+      title = headingMatch[2]
+    } else if (multiAsteriskMatch) {
+      const leadingSpaces = multiAsteriskMatch[1].replace(/\t/g, '  ').length
+      const asteriskCount = multiAsteriskMatch[2].length
+      if (asteriskCount > 1) {
+        // When author/AI uses ** or ***, each asterisk explicitly denotes depth level!
+        depth = asteriskCount
+      } else {
+        // Single asterisk: treat like a bullet
+        if (currentHeadingDepth > 0) {
+          if (currentHeadingBaseIndent === null) currentHeadingBaseIndent = leadingSpaces
+          const relativeIndent = Math.max(0, leadingSpaces - currentHeadingBaseIndent)
+          depth = currentHeadingDepth + 1 + Math.floor(relativeIndent / 2)
+        } else {
+          depth = 1 + Math.floor(leadingSpaces / 2)
+        }
+      }
+      title = multiAsteriskMatch[3]
     } else if (bulletMatch) {
       const leadingSpaces = bulletMatch[1].replace(/\t/g, '  ').length
-      depth = 1 + Math.floor(leadingSpaces / 2)
-      title = bulletMatch[2].trim()
+      if (currentHeadingDepth > 0) {
+        if (currentHeadingBaseIndent === null) currentHeadingBaseIndent = leadingSpaces
+        const relativeIndent = Math.max(0, leadingSpaces - currentHeadingBaseIndent)
+        depth = currentHeadingDepth + 1 + Math.floor(relativeIndent / 2)
+      } else {
+        depth = 1 + Math.floor(leadingSpaces / 2)
+      }
+      title = bulletMatch[2]
     } else {
-      depth = 1
-      title = trimmed
+      // Bold heading line like **Etapa 1**
+      const boldHeadingMatch = trimmed.match(/^(\*{2,6})\s*([^*]+?)\s*\1$/)
+      if (boldHeadingMatch) {
+        depth = boldHeadingMatch[1].length === 2 ? 1 : boldHeadingMatch[1].length - 1
+        currentHeadingDepth = depth
+        currentHeadingBaseIndent = null
+        title = boldHeadingMatch[2]
+      } else {
+        depth = currentHeadingDepth > 0 ? currentHeadingDepth + 1 : 1
+        title = trimmed
+      }
     }
 
     if (!title) continue
 
     // Checkbox support: [ ] or [x]
     let task: { completed?: boolean } | undefined = undefined
-    const checkboxMatch = title.match(/^\[([ xX])\]\s*(.*)$/)
+    const checkboxMatch = title.trim().match(/^\[([ xX])\]\s*(.*)$/)
     if (checkboxMatch) {
       task = { completed: checkboxMatch[1].toLowerCase() === 'x' }
-      title = checkboxMatch[2].trim()
+      title = checkboxMatch[2]
     }
+
+    // Clean any markdown asterisks/formatting from title
+    title = cleanNodeTitle(title)
+    if (!title) continue
 
     // Stack unwinding to find immediate parent
     while (stack.length > 1 && stack[stack.length - 1].level >= depth) {
@@ -325,15 +404,17 @@ export function parseMarkdownToMindMap(content: string, fallbackTitle?: string):
     version: 1,
     rootId,
     nodes,
-    relations: [],
-    boundaries: [],
-    theme: 'pyrita-classic',
-    layout: 'radial',
-    canvasBg: '#0f172a',
-    lineStyle: 'tapered',
-    mapStyle: 'organic-branch',
-    paletteId: 'rainbow',
-    viewport: { panX: 0, panY: 0, zoom: 1 }
+    relations: baseDoc?.relations || [],
+    boundaries: baseDoc?.boundaries || [],
+    theme: baseDoc?.theme || 'pyrita-classic',
+    layout: baseDoc?.layout || 'radial',
+    canvasBg: baseDoc?.canvasBg || '#0f172a',
+    lineStyle: baseDoc?.lineStyle || 'tapered',
+    mapStyle: baseDoc?.mapStyle || 'organic-branch',
+    paletteId: baseDoc?.paletteId || 'rainbow',
+    colorizeNodeBg: baseDoc?.colorizeNodeBg ?? false,
+    customPalettes: baseDoc?.customPalettes || {},
+    viewport: baseDoc?.viewport || { panX: 0, panY: 0, zoom: 1 }
   }
 }
 
@@ -346,7 +427,7 @@ export function mindMapToMarkdownOutline(doc: MindMapDocument): string {
   if (!root) return '# Meu Mapa Mental\n'
 
   const lines: string[] = []
-  lines.push(`# ${root.title}`)
+  lines.push(`# ${cleanNodeTitle(root.title)}`)
 
   const appendChildren = (nodeId: string, depth: number) => {
     const node = doc.nodes[nodeId]
@@ -356,13 +437,14 @@ export function mindMapToMarkdownOutline(doc: MindMapDocument): string {
       const child = doc.nodes[childId]
       if (!child) continue
 
-      const indent = '  '.repeat(Math.max(0, depth - 2))
+      const cleanTitle = cleanNodeTitle(child.title)
       const taskPrefix = child.task ? `[${child.task.completed ? 'x' : ' '}] ` : ''
 
       if (depth === 1) {
-        lines.push(`\n## ${taskPrefix}${child.title}`)
+        lines.push(`\n## ${taskPrefix}${cleanTitle}`)
       } else {
-        lines.push(`${indent}- ${taskPrefix}${child.title}`)
+        const indent = '  '.repeat(depth - 1)
+        lines.push(`${indent}- ${taskPrefix}${cleanTitle}`)
       }
 
       appendChildren(childId, depth + 1)
@@ -373,7 +455,7 @@ export function mindMapToMarkdownOutline(doc: MindMapDocument): string {
   return lines.join('\n')
 }
 
-export function parseMindMapDocument(content?: string, fallbackTitle?: string): MindMapDocument {
+export function parseMindMapDocument(content?: string, fallbackTitle?: string, baseDoc?: MindMapDocument): MindMapDocument {
   if (!content || !content.trim()) {
     return createEmptyMindMapDocument(fallbackTitle)
   }
@@ -393,23 +475,23 @@ export function parseMindMapDocument(content?: string, fallbackTitle?: string): 
       const parsed = JSON.parse(jsonCandidate)
       if (parsed && (parsed.type === 'pyrita-mindmap' || parsed.rootId || parsed.nodes)) {
         const rootId = parsed.rootId || Object.keys(parsed.nodes || {})[0] || 'root'
-        const theme = parsed.theme && MINDMAP_THEMES[parsed.theme as MindMapThemeId] ? parsed.theme : 'pyrita-classic'
+        const theme = parsed.theme && MINDMAP_THEMES[parsed.theme as MindMapThemeId] ? parsed.theme : (baseDoc?.theme || 'pyrita-classic')
         return {
           type: 'pyrita-mindmap',
           version: parsed.version || 1,
           rootId,
           nodes: parsed.nodes || {},
-          relations: Array.isArray(parsed.relations) ? parsed.relations : [],
-          boundaries: Array.isArray(parsed.boundaries) ? parsed.boundaries : [],
+          relations: Array.isArray(parsed.relations) ? parsed.relations : (baseDoc?.relations || []),
+          boundaries: Array.isArray(parsed.boundaries) ? parsed.boundaries : (baseDoc?.boundaries || []),
           theme,
-          layout: parsed.layout || 'radial',
-          canvasBg: parsed.canvasBg || '#0f172a',
-          lineStyle: parsed.lineStyle || 'tapered',
-          mapStyle: parsed.mapStyle || 'organic-branch',
-          paletteId: parsed.paletteId || 'rainbow',
-          colorizeNodeBg: parsed.colorizeNodeBg ?? false,
-          customPalettes: parsed.customPalettes || {},
-          viewport: parsed.viewport || { panX: 0, panY: 0, zoom: 1 }
+          layout: parsed.layout || baseDoc?.layout || 'radial',
+          canvasBg: parsed.canvasBg || baseDoc?.canvasBg || '#0f172a',
+          lineStyle: parsed.lineStyle || baseDoc?.lineStyle || 'tapered',
+          mapStyle: parsed.mapStyle || baseDoc?.mapStyle || 'organic-branch',
+          paletteId: parsed.paletteId || baseDoc?.paletteId || 'rainbow',
+          colorizeNodeBg: parsed.colorizeNodeBg ?? baseDoc?.colorizeNodeBg ?? false,
+          customPalettes: parsed.customPalettes || baseDoc?.customPalettes || {},
+          viewport: parsed.viewport || baseDoc?.viewport || { panX: 0, panY: 0, zoom: 1 }
         }
       }
     }
@@ -418,7 +500,7 @@ export function parseMindMapDocument(content?: string, fallbackTitle?: string): 
   }
 
   // 3. Fallback: Parse as Markdown outline (supports AI-generated lists/outlines)
-  return parseMarkdownToMindMap(raw, fallbackTitle)
+  return parseMarkdownToMindMap(raw, fallbackTitle, baseDoc)
 }
 
 export function serializeMindMapDocument(doc: MindMapDocument): string {
