@@ -155,8 +155,8 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
                 tab.isPinned ? 'px-2 max-w-[130px]' : 'px-2.5 max-w-[170px]'
               } ${
                 isActive
-                  ? 'bg-[#141418] border-zinc-700/80 border-t-2 text-zinc-200 font-medium shadow-sm'
-                  : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40'
+                  ? 'bg-[#141418] border-zinc-700/80 border-t-2 text-zinc-200 font-medium shadow-sm tab-item-active'
+                  : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40 tab-item-inactive'
               } ${
                 isBeingDragged ? 'opacity-30 scale-95' : ''
               } ${

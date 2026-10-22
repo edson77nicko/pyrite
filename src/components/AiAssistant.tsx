@@ -2074,7 +2074,7 @@ Diretrizes gerais:
             <div className="flex items-center gap-1.5 flex-wrap">
               {/* Primary Active Note Context Pill */}
               <div
-                className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                className={`ai-context-pill flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-all ${
                   isNoteContextActive
                     ? 'bg-zinc-900 border-[var(--accent)]/40 text-zinc-200'
                     : 'bg-zinc-950/60 border-zinc-800 text-zinc-500 line-through opacity-60'
@@ -2103,7 +2103,7 @@ Diretrizes gerais:
               {extraContextNotes.map(en => (
                 <div
                   key={en.id}
-                  className="flex items-center gap-1 text-[10px] bg-purple-500/15 border border-purple-500/30 text-purple-200 px-2 py-0.5 rounded-full max-w-[140px] truncate shadow-sm"
+                  className="ai-extra-note-pill flex items-center gap-1 text-[10px] bg-purple-500/15 border border-purple-500/30 text-purple-200 px-2 py-0.5 rounded-full max-w-[140px] truncate shadow-sm"
                 >
                   <span className="font-bold text-purple-400">@</span>
                   <span className="truncate">{en.title}</span>
@@ -2121,7 +2121,7 @@ Diretrizes gerais:
               {/* Hierarchical Folder Context Picker */}
               <div ref={folderPickerRef} className="relative">
                 {selectedFolderContext ? (
-                  <div className="flex items-center gap-1 text-[10px] bg-amber-500/10 border border-amber-500/30 text-amber-200 px-2 py-0.5 rounded-full max-w-[170px] truncate shadow-sm">
+                  <div className="ai-folder-active-pill flex items-center gap-1 text-[10px] bg-amber-500/10 border border-amber-500/30 text-amber-200 px-2 py-0.5 rounded-full max-w-[170px] truncate shadow-sm">
                     <Folder className="w-3 h-3 text-amber-400 shrink-0" />
                     <button
                       type="button"
@@ -2144,7 +2144,7 @@ Diretrizes gerais:
                   <button
                     type="button"
                     onClick={() => setIsFolderPickerOpen(o => !o)}
-                    className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-zinc-200 bg-zinc-900/70 hover:bg-zinc-800/90 border border-dashed border-zinc-700/80 hover:border-zinc-500 px-2 py-0.5 rounded-full transition-all cursor-pointer"
+                    className="ai-folder-context-btn flex items-center gap-1 text-[10px] text-zinc-400 hover:text-zinc-200 bg-zinc-900/70 hover:bg-zinc-800/90 border border-dashed border-zinc-700/80 hover:border-zinc-500 px-2 py-0.5 rounded-full transition-all cursor-pointer"
                     title="Adicionar uma pasta inteira do cofre com hierarquia como contexto para a IA"
                   >
                     <FolderPlus className="w-3 h-3 text-zinc-400" />

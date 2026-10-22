@@ -499,7 +499,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           {/* Settings Gear Button */}
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-[#14151b] border border-transparent hover:border-zinc-800/60 rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-[#14151b] light:hover:bg-zinc-200 light:hover:text-zinc-950 border border-transparent hover:border-zinc-800/60 light:hover:border-zinc-300 rounded-lg transition-colors cursor-pointer"
             title="Configurações das Tarefas (Propriedades e Status)"
           >
             <Settings className="w-3.5 h-3.5" />
@@ -567,8 +567,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <td
                           className={`px-3 py-2.5 first:rounded-l-xl transition-all ${
                             isSelected
-                              ? 'bg-[#1a1b24] border-l-[3px] border-l-[var(--accent,#c59b27)] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
-                              : 'bg-[#13141a] group-hover:bg-[#181921] border-l-[3px] border-l-transparent border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                              ? 'bg-[#1a1b24] border-l-[3px] border-l-[var(--accent,#c59b27)] border-y-0'
+                              : 'bg-[#13141a] group-hover:bg-[#181921] border-l-[3px] border-l-transparent border-y-0'
                           }`}
                         >
                           <button
@@ -603,8 +603,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <td
                           className={`px-3 py-2.5 font-medium text-zinc-100 max-w-xs text-[12.5px] transition-all ${
                             isSelected
-                              ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
-                              : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                              ? 'bg-[#1a1b24]'
+                              : 'bg-[#13141a] group-hover:bg-[#181921]'
                           }`}
                         >
                           <div className="flex items-center gap-2">
@@ -652,8 +652,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <td
                             className={`px-3 py-2.5 transition-all ${
                               isSelected
-                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
-                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                                ? 'bg-[#1a1b24]'
+                                : 'bg-[#13141a] group-hover:bg-[#181921]'
                             }`}
                           >
                             <span
@@ -677,8 +677,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <td
                             className={`px-3 py-2.5 transition-all ${
                               isSelected
-                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
-                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                                ? 'bg-[#1a1b24]'
+                                : 'bg-[#13141a] group-hover:bg-[#181921]'
                             }`}
                           >
                             {task.priority !== 'none' ? (
@@ -703,8 +703,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <td
                             className={`px-3 py-2.5 text-zinc-300 relative whitespace-nowrap transition-all ${
                               isSelected
-                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
-                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                                ? 'bg-[#1a1b24]'
+                                : 'bg-[#13141a] group-hover:bg-[#181921]'
                             }`}
                           >
                             <div className="inline-block">
@@ -775,8 +775,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <td
                             className={`px-3 py-2.5 transition-all ${
                               isSelected
-                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
-                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                                ? 'bg-[#1a1b24]'
+                                : 'bg-[#13141a] group-hover:bg-[#181921]'
                             }`}
                           >
                             {task.contextNoteId ? (
@@ -803,8 +803,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <td
                             className={`px-3 py-2.5 transition-all ${
                               isSelected
-                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
-                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                                ? 'bg-[#1a1b24]'
+                                : 'bg-[#13141a] group-hover:bg-[#181921]'
                             }`}
                           >
                             <div className="flex items-center gap-1 flex-wrap">
@@ -826,8 +826,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             key={cp.id}
                             className={`px-3 py-2.5 transition-all ${
                               isSelected
-                                ? 'bg-[#1a1b24] border-t border-b border-t-zinc-800/60 border-b-zinc-800/60'
-                                : 'bg-[#13141a] group-hover:bg-[#181921] border-t border-b border-t-zinc-800/40 border-b-zinc-800/40'
+                                ? 'bg-[#1a1b24]'
+                                : 'bg-[#13141a] group-hover:bg-[#181921]'
                             }`}
                           >
                             {renderCustomCell(task, cp)}
@@ -838,8 +838,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <td
                           className={`px-3 py-2.5 text-right last:rounded-r-xl transition-all ${
                             isSelected
-                              ? 'bg-[#1a1b24] border-r border-t border-b border-r-zinc-800/60 border-t-zinc-800/60 border-b-zinc-800/60'
-                              : 'bg-[#13141a] group-hover:bg-[#181921] border-r border-t border-b border-r-zinc-800/40 border-t-zinc-800/40 border-b-zinc-800/40'
+                              ? 'bg-[#1a1b24]'
+                              : 'bg-[#13141a] group-hover:bg-[#181921]'
                           }`}
                         >
                           <button
@@ -959,7 +959,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               )}
 
               {/* Inline Quick Add Row */}
-              <tr className="bg-[#101117]/80 hover:bg-[#13141a] border border-dashed border-zinc-800/50 transition-colors rounded-xl">
+              <tr className="bg-[#14151b] light:bg-white hover:bg-[#181921] light:hover:bg-[#f9f9fb] border border-dashed border-zinc-800/50 light:border-zinc-300 transition-colors rounded-xl task-quick-add-row">
                 <td className="px-3 py-2.5 text-center first:rounded-l-xl">
                   <Plus className="w-3.5 h-3.5 text-zinc-500" />
                 </td>

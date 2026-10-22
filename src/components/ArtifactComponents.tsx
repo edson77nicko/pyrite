@@ -42,10 +42,10 @@ export function renderWikilinks(text?: string, onNavigate?: (title: string) => v
           e.stopPropagation()
           if (onNavigate) onNavigate(destination)
         }}
-        className="inline-flex items-center text-amber-300 hover:text-amber-100 bg-amber-950/30 hover:bg-amber-900/50 border border-amber-800/40 hover:border-amber-500/70 rounded px-1.5 py-0.5 mx-0.5 font-medium transition-all text-[11px] cursor-pointer shadow-xs"
+        className="inline-flex items-center text-[var(--accent)] hover:opacity-85 bg-transparent border border-[var(--accent)]/50 hover:border-[var(--accent)] rounded px-1.5 py-0.5 mx-0.5 font-medium transition-all text-[11px] cursor-pointer"
         title={`Abrir nota: ${destination}`}
       >
-        <span className="underline decoration-amber-500/40 hover:decoration-amber-300 underline-offset-2">
+        <span className="underline decoration-[var(--accent)]/50 hover:decoration-[var(--accent)] underline-offset-2">
           {displayName}
         </span>
       </button>

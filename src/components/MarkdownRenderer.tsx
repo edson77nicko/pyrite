@@ -56,10 +56,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             e.stopPropagation()
             onNavigate(destination)
           }}
-          className="inline-flex items-center text-amber-300 hover:text-amber-100 bg-amber-950/30 hover:bg-amber-900/50 border border-amber-800/40 hover:border-amber-500/70 rounded-md px-1.5 py-0.5 mx-0.5 font-medium transition-all text-xs group shadow-sm cursor-pointer"
+          className="inline-flex items-center text-[var(--accent)] hover:opacity-85 bg-transparent border border-[var(--accent)]/50 hover:border-[var(--accent)] rounded-md px-1.5 py-0.5 mx-0.5 font-medium transition-all text-xs group cursor-pointer"
           title={`Navegar para nota: ${destination}`}
         >
-          <span className="underline decoration-amber-500/40 group-hover:decoration-amber-300 underline-offset-2">{displayName}</span>
+          <span className="underline decoration-[var(--accent)]/50 group-hover:decoration-[var(--accent)] underline-offset-2">{displayName}</span>
         </button>
       )
       cursor = match.index + match[0].length
@@ -194,8 +194,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       const codeString = codeLines.join('\n')
 
       blocks.push(
-        <div key={`code-${i}`} className="my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/90 text-xs font-mono shadow-lg">
-          <div className="flex items-center justify-between px-3.5 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400">
+        <div key={`code-${i}`} className="chat-code-block my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/90 text-xs font-mono shadow-lg">
+          <div className="chat-code-header flex items-center justify-between px-3.5 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400">
             <span className="uppercase font-semibold tracking-wider text-[11px] text-zinc-300 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-amber-400" />
               {lang || 'código'}
@@ -217,7 +217,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               )}
             </button>
           </div>
-          <pre className="p-4 overflow-x-auto text-zinc-300 leading-relaxed selectable-text">
+          <pre className="chat-code-pre p-4 overflow-x-auto text-zinc-300 leading-relaxed selectable-text">
             <code>{codeString}</code>
           </pre>
         </div>

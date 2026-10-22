@@ -422,7 +422,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
 
       {/* Main Settings Modal with Left Sidebar */}
       <div
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[840px] max-w-[95vw] h-[600px] max-h-[90vh] bg-[#0c0d11] border border-zinc-800/90 rounded-2xl shadow-2xl flex overflow-hidden text-xs text-zinc-300 select-none animate-in fade-in zoom-in-95 duration-150"
+        className="ai-settings-modal fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[840px] max-w-[95vw] h-[600px] max-h-[90vh] bg-[#0c0d11] border border-zinc-800/90 rounded-2xl shadow-2xl flex overflow-hidden text-xs text-zinc-300 select-none animate-in fade-in zoom-in-95 duration-150"
         onClick={e => e.stopPropagation()}
       >
         {/* ========================================================================= */}

@@ -490,8 +490,13 @@ html.light #root {
 .light .bg-\[\#0e0e12\] { background-color: #f0f0f3 !important; }
 .light .bg-\[\#0e0f14\] { background-color: #f0f0f3 !important; }
 .light .bg-\[\#0e0f14\]\/95 { background-color: #f0f0f3 !important; }
+.light .bg-\[\#0f0f12\] { background-color: #f0f0f3 !important; }
+.light .bg-\[\#0f0f12\]\/95 { background-color: #f0f0f3 !important; }
+.light .bg-\[\#0f0f12\]\/80 { background-color: #f0f0f3 !important; }
 .light .bg-\[\#101013\] { background-color: #f0f0f3 !important; }
 .light .bg-\[\#101117\] { background-color: #ffffff !important; }
+.light .bg-\[\#101117\]\/80 { background-color: #ffffff !important; }
+.light .bg-\[\#101117\]\/60 { background-color: #ffffff !important; }
 .light .bg-\[\#111114\] { background-color: #f4f4f6 !important; }
 .light .bg-\[\#121214\] { background-color: #f0f0f3 !important; }
 .light .bg-\[\#121215\] { background-color: #e8e8ea !important; }
@@ -616,6 +621,33 @@ html.light #root {
 .light input::placeholder,
 .light textarea::placeholder {
   color: #71717a !important;
+}
+
+/* Inputs transparentes devem permanecer transparentes sem quadrados brancos artificiais */
+.light input.bg-transparent,
+.light textarea.bg-transparent,
+.light .bg-transparent input,
+.light .bg-transparent textarea {
+  background-color: transparent !important;
+  border-color: transparent !important;
+}
+
+/* Abas de Conteúdo: Hover branco idêntico ao ativo */
+.light .tab-item-inactive:hover {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+}
+.light .tab-item-inactive:hover svg {
+  color: #18181b !important;
+}
+
+/* Sombras suaves sem halo preto */
+.light .shadow-black\/50,
+.light .shadow-black\/60,
+.light .shadow-black\/40 {
+  --tw-shadow-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.04) !important;
 }
 
 /* Checkboxes */
@@ -908,6 +940,131 @@ html.light #root {
 .light [data-task-item="true"] .task-tag-badge {
   background-color: #e4e4e7 !important;
   color: #27272a !important;
+}
+
+.light .task-quick-add-row {
+  background-color: #ffffff !important;
+  border-color: #dcdde0 !important;
+}
+.light .task-quick-add-row:hover {
+  background-color: #f9f9fb !important;
+}
+
+/* =========================================================================
+   CHATBOT: CÓDIGO, CONTEXTO & POPUP DE CONFIGURAÇÕES EM MODO CLARO
+   ========================================================================= */
+/* Context Pills & Empty State */
+.light .ai-context-pill {
+  background-color: #f4f4f6 !important;
+  border-color: #dcdde0 !important;
+  color: #52525b !important;
+}
+.light .ai-context-pill button {
+  color: #52525b !important;
+}
+.light .ai-context-pill:hover,
+.light .ai-context-pill button:hover {
+  color: #18181b !important;
+}
+.light .ai-folder-context-btn {
+  background-color: #f4f4f6 !important;
+  border-color: #dcdde0 !important;
+  color: #52525b !important;
+}
+.light .ai-folder-context-btn:hover {
+  background-color: #ffffff !important;
+  border-color: #a1a1aa !important;
+  color: #18181b !important;
+}
+.light .ai-folder-active-pill {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.4) !important;
+  color: #b45309 !important;
+}
+.light .ai-extra-note-pill {
+  background-color: rgba(168, 85, 247, 0.12) !important;
+  border-color: rgba(168, 85, 247, 0.4) !important;
+  color: #7e22ce !important;
+}
+
+/* Code Blocks in AI Chat */
+.light .chat-code-block {
+  border-color: #dcdde0 !important;
+  background-color: #f7f7fa !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+.light .chat-code-header {
+  background-color: #ebebed !important;
+  border-bottom-color: #dcdde0 !important;
+  color: #18181b !important;
+}
+.light .chat-code-header span {
+  color: #18181b !important;
+}
+.light .chat-code-header button {
+  color: #52525b !important;
+}
+.light .chat-code-header button:hover {
+  background-color: #dedee2 !important;
+  color: #18181b !important;
+}
+.light .chat-code-pre {
+  background-color: #f7f7fa !important;
+  color: #27272a !important;
+}
+
+/* AiSettingsModal Popup */
+.light .ai-settings-modal {
+  background-color: #ffffff !important;
+  border-color: #dcdde0 !important;
+  color: #18181b !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.18) !important;
+}
+.light .ai-settings-modal .bg-\[\#090a0d\],
+.light .ai-settings-modal .w-56 {
+  background-color: #f7f7f9 !important;
+  border-color: #e4e4e7 !important;
+}
+.light .ai-settings-modal .bg-\[\#0c0d11\] {
+  background-color: #ffffff !important;
+}
+.light .ai-settings-modal .bg-\[\#111216\],
+.light .ai-settings-modal .bg-\[\#121319\],
+.light .ai-settings-modal .bg-\[\#15161f\],
+.light .ai-settings-modal .bg-\[\#15171e\] {
+  background-color: #f7f7fa !important;
+  border-color: #e4e4e7 !important;
+}
+.light .ai-settings-modal input[type="text"],
+.light .ai-settings-modal input[type="password"] {
+  background-color: #ffffff !important;
+  border-color: #dcdde0 !important;
+  color: #18181b !important;
+}
+.light .ai-settings-modal .text-zinc-100,
+.light .ai-settings-modal .text-zinc-200,
+.light .ai-settings-modal .text-zinc-300 {
+  color: #18181b !important;
+}
+.light .ai-settings-modal .text-zinc-400 {
+  color: #52525b !important;
+}
+.light .ai-settings-modal .text-zinc-500 {
+  color: #71717a !important;
+}
+.light .ai-settings-modal .border-zinc-800,
+.light .ai-settings-modal .border-zinc-800\/60,
+.light .ai-settings-modal .border-zinc-800\/80,
+.light .ai-settings-modal .border-zinc-800\/90 {
+  border-color: #e4e4e7 !important;
+}
+.light .ai-settings-modal .bg-zinc-900\/60,
+.light .ai-settings-modal .bg-zinc-800 {
+  background-color: #f0f0f3 !important;
+  border-color: #e4e4e7 !important;
+}
+.light .ai-settings-modal button:hover:not([disabled]) {
+  background-color: #ebebed !important;
 }
 
 
