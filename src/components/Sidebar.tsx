@@ -535,10 +535,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {isCreateMenuOpen && (
               <div
-                className="absolute right-0 top-full mt-1.5 z-50 w-52 bg-[#16161c] border border-zinc-700/80 rounded-xl shadow-2xl p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100"
+                className="absolute right-0 top-full mt-1.5 z-50 w-48 bg-[#16161c] border border-zinc-700/80 rounded-xl shadow-2xl p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100"
                 onClick={e => e.stopPropagation()}
               >
-                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                <div className="px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-zinc-500">
                   Criar Novo
                 </div>
 
@@ -548,15 +548,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     setIsCreateMenuOpen(false)
                     onCreateNote(undefined, undefined, 'note')
                   }}
-                  className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
                 >
-                  <div className="w-5 h-5 rounded-md bg-zinc-800/80 group-hover:bg-[var(--accent)]/20 flex items-center justify-center shrink-0">
-                    <FileText className="w-3.5 h-3.5 text-zinc-400 group-hover:text-[var(--accent)]" />
-                  </div>
-                  <div className="truncate flex-1">
-                    <div className="font-medium text-xs">Nova Nota</div>
-                    <div className="text-[10px] text-zinc-500">Documento Markdown</div>
-                  </div>
+                  <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <span className="font-medium text-xs">Nova Nota</span>
                 </button>
 
                 <button
@@ -565,15 +560,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     setIsCreateMenuOpen(false)
                     onCreateNote(undefined, undefined, 'draw')
                   }}
-                  className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
                 >
-                  <div className="w-5 h-5 rounded-md bg-zinc-800/80 group-hover:bg-[var(--accent)]/20 flex items-center justify-center shrink-0">
-                    <Palette className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
-                  </div>
-                  <div className="truncate flex-1">
-                    <div className="font-medium text-xs">Novo Draw</div>
-                    <div className="text-[10px] text-zinc-500">Quadro de desenho livre</div>
-                  </div>
+                  <Palette className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
+                  <span className="font-medium text-xs">Novo Draw</span>
                 </button>
 
                 <button
@@ -582,15 +572,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     setIsCreateMenuOpen(false)
                     onCreateNote(undefined, undefined, 'mindmap')
                   }}
-                  className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
                 >
-                  <div className="w-5 h-5 rounded-md bg-zinc-800/80 group-hover:bg-[var(--accent)]/20 flex items-center justify-center shrink-0">
-                    <Brain className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
-                  </div>
-                  <div className="truncate flex-1">
-                    <div className="font-medium text-xs">Novo Mapa Mental</div>
-                    <div className="text-[10px] text-zinc-500">Ideias visuais e nós</div>
-                  </div>
+                  <Brain className="w-3.5 h-3.5 text-purple-400 shrink-0" style={{ color: 'var(--accent)' }} />
+                  <span className="font-medium text-xs">Novo Mapa Mental</span>
                 </button>
 
                 <button
@@ -599,15 +584,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     setIsCreateMenuOpen(false)
                     onOpenDailyNote()
                   }}
-                  className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
                 >
-                  <div className="w-5 h-5 rounded-md bg-zinc-800/80 group-hover:bg-[var(--accent)]/20 flex items-center justify-center shrink-0">
-                    <Calendar className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
-                  </div>
-                  <div className="truncate flex-1">
-                    <div className="font-medium text-xs">Nota Diária</div>
-                    <div className="text-[10px] text-zinc-500">Registro de hoje</div>
-                  </div>
+                  <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" style={{ color: 'var(--accent)' }} />
+                  <span className="font-medium text-xs">Nota Diária</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateMenuOpen(false)
+                    setIsCreatingBoard(true)
+                  }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" style={{ color: 'var(--accent)' }} />
+                  <span className="font-medium text-xs">Novo Grupo de Tarefas</span>
                 </button>
 
                 <div className="h-px bg-zinc-800/60 my-1 mx-1" />
@@ -618,15 +610,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     setIsCreateMenuOpen(false)
                     handleStartCreateFolder()
                   }}
-                  className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
                 >
-                  <div className="w-5 h-5 rounded-md bg-zinc-800/80 group-hover:bg-zinc-700 flex items-center justify-center shrink-0">
-                    <FolderPlus className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-200" />
-                  </div>
-                  <div className="truncate flex-1">
-                    <div className="font-medium text-xs">Nova Pasta</div>
-                    <div className="text-[10px] text-zinc-500">Criar pasta na raiz</div>
-                  </div>
+                  <FolderPlus className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-200 shrink-0" />
+                  <span className="font-medium text-xs">Nova Pasta</span>
                 </button>
               </div>
             )}

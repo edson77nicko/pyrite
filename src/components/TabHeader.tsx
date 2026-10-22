@@ -35,6 +35,7 @@ interface TabHeaderProps {
   onOpenCommandPalette: () => void
   onOpenSettings: () => void
   onExportVault: () => void
+  onReorderTabs?: (sourceTabId: string, targetTabId: string) => void
 }
 
 export const TabHeader: React.FC<TabHeaderProps> = ({
@@ -49,11 +50,14 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
   onChangeDisplayMode,
   onOpenCommandPalette,
   onOpenSettings,
-  onExportVault
+  onExportVault,
+  onReorderTabs
 }) => {
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
   const [isMaximized, setIsMaximized] = useState(false)
   const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatusData | null>(null)
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null)
+  const [dragOverTabId, setDragOverTabId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{
     x: number
     y: number
@@ -105,21 +109,58 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           const isDrawTab = tab.type === 'draw'
           const isMindMapTab = tab.type === 'mindmap'
           const TabIcon = isGraphTab ? Share2 : isTasksTab ? CheckCircle2 : isMindMapTab ? Brain : (isCanvasTab || isDrawTab) ? Palette : FileText
+          const isBeingDragged = draggedTabId === tab.id
+          const isDragTarget = dragOverTabId === tab.id && draggedTabId !== tab.id
+
           return (
             <div
               key={tab.id}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', tab.id)
+                e.dataTransfer.effectAllowed = 'move'
+                setDraggedTabId(tab.id)
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                if (draggedTabId && draggedTabId !== tab.id && dragOverTabId !== tab.id) {
+                  setDragOverTabId(tab.id)
+                }
+              }}
+              onDragLeave={(e) => {
+                if (dragOverTabId === tab.id && !e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setDragOverTabId(null)
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                if (draggedTabId && draggedTabId !== tab.id && onReorderTabs) {
+                  onReorderTabs(draggedTabId, tab.id)
+                }
+                setDraggedTabId(null)
+                setDragOverTabId(null)
+              }}
+              onDragEnd={() => {
+                setDraggedTabId(null)
+                setDragOverTabId(null)
+              }}
               onClick={() => onSelectTab(tab.id)}
               onContextMenu={(e) => {
                 e.preventDefault()
                 setContextMenu({ x: e.clientX, y: e.clientY, tab })
               }}
               title={tab.isPinned ? `[Fixada] ${tab.title || 'Sem título'}` : (tab.title || 'Sem título')}
-              className={`group flex items-center gap-1.5 h-7 rounded-t-lg text-xs cursor-pointer border-t border-x transition-all ${
+              className={`group flex items-center gap-1.5 h-7 rounded-t-lg text-xs cursor-pointer select-none border-t border-x transition-all ${
                 tab.isPinned ? 'px-2 max-w-[130px]' : 'px-2.5 max-w-[170px]'
               } ${
                 isActive
                   ? 'bg-[#141418] border-zinc-700/80 border-t-2 text-zinc-200 font-medium shadow-sm'
                   : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40'
+              } ${
+                isBeingDragged ? 'opacity-30 scale-95' : ''
+              } ${
+                isDragTarget ? 'border-l-2 !border-l-[var(--accent)] ring-1 ring-[var(--accent)]/40 bg-zinc-800/60' : ''
               }`}
               style={isActive ? { borderTopColor: 'var(--accent)' } : undefined}
             >

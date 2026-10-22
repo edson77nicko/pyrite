@@ -408,6 +408,18 @@ export const App: React.FC = () => {
     )
   }
 
+  const handleReorderTabs = (sourceId: string, targetId: string) => {
+    setTabs(prev => {
+      const sourceIndex = prev.findIndex(t => t.id === sourceId)
+      const targetIndex = prev.findIndex(t => t.id === targetId)
+      if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) return prev
+      const updated = [...prev]
+      const [moved] = updated.splice(sourceIndex, 1)
+      updated.splice(targetIndex, 0, moved)
+      return updated
+    })
+  }
+
   const handleCreateTask = (title?: string, initialData?: Partial<TaskItem>) => {
     const newTask: TaskItem = {
       id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -1068,6 +1080,7 @@ export const App: React.FC = () => {
             onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onExportVault={handleExportVault}
+            onReorderTabs={handleReorderTabs}
           />
 
           {/* Page area below Header: Contains Editor/Graph/Canvas and the RightSidebar (Sumário) */}

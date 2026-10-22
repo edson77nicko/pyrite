@@ -368,17 +368,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {/* 1. Header Toolbar - Seamless with Notes and Agent */}
       <div className="h-12 px-5 bg-[#0c0c0f] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
         {/* Left: Title & Counters */}
-        <div className="flex items-center gap-3">
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center border shadow-xs"
-            style={{
-              backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
-              borderColor: 'var(--accent, #c59b27)',
-              color: 'var(--accent, #c59b27)'
-            }}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-          </div>
+        <div className="flex items-center gap-2.5">
+          <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
           <div className="flex items-center gap-2">
             <h1 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">
               {currentBoard?.name || 'Tarefas'}
