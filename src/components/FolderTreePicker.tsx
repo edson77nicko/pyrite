@@ -222,7 +222,7 @@ export const FolderTreePicker: React.FC<FolderTreePickerProps> = ({
       style={position}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); anchorRef.current?.querySelector<HTMLButtonElement>('button')?.focus() } }}
       onClick={e => e.stopPropagation()}
-      className="fixed z-[200] bg-[#18181b] border border-white/10 rounded-lg p-2 shadow-2xl space-y-2 flex flex-col overflow-hidden select-none text-xs text-zinc-300"
+      className="folder-tree-picker-popup fixed z-[200] bg-[#18181b] border border-zinc-700/80 rounded-xl p-2.5 shadow-2xl space-y-2 flex flex-col overflow-hidden select-none text-xs text-zinc-300"
     >
       {/* Header */}
       <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800">
@@ -249,7 +249,7 @@ export const FolderTreePicker: React.FC<FolderTreePickerProps> = ({
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Filtrar pastas e subpastas..."
-          className="w-full bg-[#14151b] border border-zinc-800 focus:border-zinc-600 rounded-lg pl-7 pr-7 py-1 text-xs text-zinc-100 placeholder-zinc-500 outline-none transition-all"
+          className="folder-search-input w-full bg-[#14151b] border border-zinc-800 focus:border-zinc-600 rounded-lg pl-7 pr-7 py-1 text-xs text-zinc-100 placeholder-zinc-500 outline-none transition-all"
         />
         {search && (
           <button

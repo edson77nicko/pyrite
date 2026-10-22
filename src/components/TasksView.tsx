@@ -1191,7 +1191,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               {task.tags.map(t => (
                                 <span
                                   key={t}
-                                  className="px-1.5 py-0.5 rounded bg-zinc-850/90 text-[9.5px] text-zinc-400 font-mono"
+                                  className="task-tag-badge px-1.5 py-0.5 rounded bg-zinc-850/90 text-[9.5px] text-zinc-400 font-mono"
                                 >
                                   #{t}
                                 </span>

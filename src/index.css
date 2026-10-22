@@ -482,20 +482,40 @@ html.light #root {
 /* Base Canvas & Background Mappings */
 .light .bg-\[\#09090b\] { background-color: #dedee2 !important; }
 .light .bg-\[\#0a0a0c\] { background-color: #e2e2e5 !important; }
+.light .bg-\[\#0a0a0d\] { background-color: #e2e2e5 !important; }
 .light .bg-\[\#0c0c0e\] { background-color: #ebebed !important; }
+.light .bg-\[\#0c0c0e\]\/95 { background-color: #ebebed !important; }
 .light .bg-\[\#0c0c0f\] { background-color: #ebebed !important; }
+.light .bg-\[\#0e0e11\] { background-color: #f0f0f3 !important; }
 .light .bg-\[\#0e0e12\] { background-color: #f0f0f3 !important; }
-.light .bg-\[\#0f0f12\] { background-color: #f4f4f6 !important; }
+.light .bg-\[\#0e0f14\] { background-color: #f0f0f3 !important; }
+.light .bg-\[\#0e0f14\]\/95 { background-color: #f0f0f3 !important; }
+.light .bg-\[\#101013\] { background-color: #f0f0f3 !important; }
+.light .bg-\[\#101117\] { background-color: #ffffff !important; }
+.light .bg-\[\#111114\] { background-color: #f4f4f6 !important; }
 .light .bg-\[\#121214\] { background-color: #f0f0f3 !important; }
-.light .bg-\[\#121215\] { background-color: #f0f0f3 !important; }
+.light .bg-\[\#121215\] { background-color: #e8e8ea !important; }
+.light .bg-\[\#121216\] { background-color: #ffffff !important; }
+.light .bg-\[\#121216\]\/95 { background-color: #ffffff !important; }
+.light .bg-\[\#121216\]\/98 { background-color: #ffffff !important; }
 .light .bg-\[\#13141a\] { background-color: #ffffff !important; }
 .light .bg-\[\#141418\] { background-color: #ffffff !important; }
 .light .bg-\[\#14151b\] { background-color: #ffffff !important; }
-.light .bg-\[\#151519\] { background-color: #ffffff !important; }
-.light .bg-\[\#16161a\] { background-color: #f7f7fa !important; }
+.light .bg-\[\#151519\] { background-color: #ebebed !important; }
+.light .bg-\[\#16161a\] { background-color: #ffffff !important; }
 .light .bg-\[\#16161c\] { background-color: #ffffff !important; }
-.light .bg-\[\#18181b\] { background-color: #f7f7fa !important; }
+.light .bg-\[\#161722\] { background-color: #e4e4e7 !important; }
+.light .bg-\[\#18181b\] { background-color: #ffffff !important; }
+.light .bg-\[\#18181e\] { background-color: #f4f4f6 !important; }
+.light .bg-\[\#181921\] { background-color: #ffffff !important; }
+.light .bg-\[\#181922\] { background-color: #f4f4f6 !important; }
+.light .bg-\[\#1a1a1e\] { background-color: #ffffff !important; }
+.light .bg-\[\#1a1a1f\] { background-color: #ffffff !important; }
+.light .bg-\[\#1a1b24\] { background-color: #ffffff !important; }
 .light .bg-\[\#1b1b1f\] { background-color: #ffffff !important; }
+.light .bg-\[\#1b1b20\] { background-color: #ffffff !important; }
+.light .bg-\[\#1b1b20\]\/40 { background-color: rgba(255, 255, 255, 0.6) !important; }
+.light .bg-\[\#1e1e26\] { background-color: #e8e8ea !important; }
 .light .bg-\[\#1f1f24\] { background-color: #e8e8ea !important; }
 .light .bg-\[\#202024\] { background-color: #e8e8ea !important; }
 .light .bg-\[\#242427\] { background-color: #f0f0f3 !important; }
@@ -505,68 +525,97 @@ html.light #root {
 .light .bg-zinc-900\/40 { background-color: rgba(240, 240, 243, 0.6) !important; }
 .light .bg-zinc-900\/80 { background-color: rgba(240, 240, 243, 0.9) !important; }
 .light .bg-zinc-900\/90 { background-color: #ffffff !important; }
-.light .bg-zinc-850 { background-color: #e8e8eb !important; }
-.light .bg-zinc-850\/50 { background-color: rgba(232, 232, 235, 0.6) !important; }
+.light .bg-zinc-850 { background-color: #e4e4e7 !important; }
+.light .bg-zinc-850\/50 { background-color: rgba(228, 228, 231, 0.6) !important; }
+.light .bg-zinc-850\/80 { background-color: #e4e4e7 !important; }
+.light .bg-zinc-850\/90 { background-color: #e4e4e7 !important; }
 .light .bg-zinc-800 { background-color: #ffffff !important; }
 .light .bg-zinc-800\/40 { background-color: rgba(255, 255, 255, 0.5) !important; }
 .light .bg-zinc-800\/50 { background-color: rgba(255, 255, 255, 0.6) !important; }
 .light .bg-zinc-800\/60 { background-color: rgba(255, 255, 255, 0.7) !important; }
 .light .bg-zinc-800\/70 { background-color: rgba(255, 255, 255, 0.8) !important; }
 .light .bg-zinc-800\/80 { background-color: #ffffff !important; }
+.light .bg-zinc-800\/90 { background-color: #ffffff !important; }
 .light .bg-zinc-750 { background-color: #f7f7fa !important; }
 .light .bg-zinc-700 { background-color: #e4e4e7 !important; }
 
-/* Cards em Destaque: Branco Puro com Sombra Suave (Estilo Referência) */
+/* Cards em Destaque: Branco Puro com Sombra Suave (Sem bordas brancas irritantes) */
 .light .bg-\[\#161619\] {
   background-color: #ffffff !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03) !important;
-  border: 1px solid rgba(0, 0, 0, 0.07) !important;
 }
 .light .bg-\[\#1a1a1e\] {
   background-color: #ffffff !important;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05) !important;
-  border: 1px solid rgba(0, 0, 0, 0.09) !important;
 }
 
 /* Text Colors */
 .light .text-zinc-100 { color: #18181b !important; }
 .light .text-zinc-200 { color: #27272a !important; }
 .light .text-zinc-300 { color: #3f3f46 !important; }
-.light .text-zinc-400 { color: #71717a !important; }
+.light .text-zinc-400 { color: #52525b !important; }
 .light .text-zinc-500 { color: #71717a !important; }
+.light .text-zinc-600 { color: #a1a1aa !important; }
 .light .text-white { color: #09090b !important; }
 
-/* Borders */
-.light .border-zinc-800 { border-color: #dcdde0 !important; }
-.light .border-zinc-800\/40 { border-color: rgba(220, 221, 224, 0.5) !important; }
-.light .border-zinc-800\/60 { border-color: rgba(220, 221, 224, 0.7) !important; }
-.light .border-zinc-800\/80 { border-color: #dcdde0 !important; }
-.light .border-zinc-800\/90 { border-color: #dcdde0 !important; }
-.light .border-zinc-700 { border-color: #d4d4d8 !important; }
-.light .border-zinc-700\/60 { border-color: rgba(212, 212, 216, 0.7) !important; }
-.light .border-zinc-700\/80 { border-color: #d4d4d8 !important; }
-.light .border-zinc-600 { border-color: #cbd5e1 !important; }
+/* Borders - Suaves e discretas, sem nenhum contraste branco abrasivo */
+.light .border-zinc-800,
+.light .border-zinc-800\/40,
+.light .border-zinc-800\/50,
+.light .border-zinc-800\/60,
+.light .border-zinc-800\/70,
+.light .border-zinc-800\/80,
+.light .border-zinc-800\/90 {
+  border-color: #dcdde0 !important;
+}
+.light .border-zinc-750,
+.light .border-zinc-700,
+.light .border-zinc-700\/60,
+.light .border-zinc-700\/70,
+.light .border-zinc-700\/80 {
+  border-color: #dcdde0 !important;
+}
+.light .border-zinc-650,
+.light .border-zinc-600 {
+  border-color: #cbd5e1 !important;
+}
+.light [class*="border-white"] {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
 
 /* Hovers tornam-se cartões brancos com contraste limpo */
-.light .hover\:bg-zinc-800:hover { background-color: #ffffff !important; }
-.light .hover\:bg-zinc-800\/50:hover { background-color: #ffffff !important; }
-.light .hover\:bg-zinc-800\/60:hover { background-color: #ffffff !important; }
-.light .hover\:bg-zinc-800\/70:hover { background-color: #ffffff !important; }
-.light .hover\:bg-zinc-800\/80:hover { background-color: #ffffff !important; }
-.light .hover\:bg-zinc-700:hover { background-color: #ffffff !important; }
-.light .hover\:bg-\[\#1a1a1e\]:hover { background-color: #ffffff !important; }
+.light .hover\:bg-zinc-800:hover,
+.light .hover\:bg-zinc-800\/40:hover,
+.light .hover\:bg-zinc-800\/50:hover,
+.light .hover\:bg-zinc-800\/60:hover,
+.light .hover\:bg-zinc-800\/70:hover,
+.light .hover\:bg-zinc-800\/80:hover,
+.light .hover\:bg-zinc-700:hover,
+.light .hover\:bg-\[\#1a1a1e\]:hover,
+.light .hover\:bg-\[\#181921\]:hover,
+.light .hover\:bg-\[\#181922\]:hover,
+.light .hover\:bg-\[\#1b1b20\]:hover,
+.light .hover\:bg-\[\#222228\]:hover {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+}
 .light .hover\:text-white:hover { color: #09090b !important; }
 .light .hover\:text-zinc-200:hover { color: #18181b !important; }
 .light .hover\:text-zinc-100:hover { color: #09090b !important; }
 
 /* Inputs & Forms */
 .light input[type="text"],
-.light textarea {
+.light input[type="search"],
+.light input:not([type]),
+.light textarea,
+.light select {
+  background-color: #ffffff !important;
   color: #18181b !important;
+  border-color: #dcdde0 !important;
 }
 .light input::placeholder,
 .light textarea::placeholder {
-  color: #a1a1aa !important;
+  color: #71717a !important;
 }
 
 /* Checkboxes */
@@ -596,4 +645,269 @@ html.light #root {
 .light .custom-chat-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* =========================================================================
+   PROTEÇÃO DO MODO DESIGN (Draw / Canvas)
+   Permanece no ambiente escuro criativo nativo sem bordas brancas
+   ========================================================================= */
+.light .dark-theme-zone,
+.light .dark-theme-zone * {
+  color-scheme: dark;
+}
+.light .dark-theme-zone .bg-\[\#18181d\]\/90 {
+  background-color: rgba(24, 24, 29, 0.9) !important;
+}
+.light .dark-theme-zone .bg-\[\#111114\] {
+  background-color: #111114 !important;
+}
+.light .dark-theme-zone .bg-zinc-900\/60 {
+  background-color: rgba(24, 24, 27, 0.6) !important;
+}
+.light .dark-theme-zone .border-zinc-700\/80,
+.light .dark-theme-zone .border-zinc-700,
+.light .dark-theme-zone .border-zinc-800 {
+  border-color: rgba(63, 63, 70, 0.6) !important;
+}
+.light .dark-theme-zone .text-zinc-100 { color: #f4f4f5 !important; }
+.light .dark-theme-zone .text-zinc-200 { color: #e4e4e7 !important; }
+.light .dark-theme-zone .text-zinc-300 { color: #d4d4d8 !important; }
+.light .dark-theme-zone .text-zinc-400 { color: #a1a1aa !important; }
+.light .dark-theme-zone .text-zinc-500 { color: #71717a !important; }
+
+/* =========================================================================
+   GRAFO EM MODO CLARO (HUD Panels & Popups)
+   ========================================================================= */
+.light .graph-view-container .bg-\[\#0c0c0e\]\/95,
+.light .graph-view-container .bg-\[\#121216\]\/95,
+.light .graph-view-container .bg-\[\#121216\]\/98 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  color: #18181b !important;
+  border-color: #dcdde0 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05) !important;
+}
+.light .graph-view-container .bg-\[\#18181e\] {
+  background-color: #f4f4f6 !important;
+  border-color: #dcdde0 !important;
+  color: #18181b !important;
+}
+.light .graph-view-container input {
+  background-color: #f4f4f6 !important;
+  color: #18181b !important;
+  border-color: #dcdde0 !important;
+}
+.light .graph-view-container input::placeholder {
+  color: #71717a !important;
+}
+.light .graph-view-container .text-zinc-100,
+.light .graph-view-container .text-zinc-200,
+.light .graph-view-container .text-zinc-300 {
+  color: #18181b !important;
+}
+.light .graph-view-container .text-zinc-400,
+.light .graph-view-container .text-zinc-500 {
+  color: #52525b !important;
+}
+.light .graph-view-container .hover\:bg-zinc-800:hover {
+  background-color: #e4e4e7 !important;
+}
+
+/* =========================================================================
+   MAPA MENTAL EM MODO CLARO (Header & Dropdown)
+   ========================================================================= */
+.light .mindmap-interactive-control {
+  background-color: #f0f0f3 !important;
+  border-bottom-color: #dcdde0 !important;
+  color: #18181b !important;
+}
+.light .mindmap-interactive-control .text-zinc-100 { color: #18181b !important; }
+.light .mindmap-interactive-control .text-zinc-400 { color: #52525b !important; }
+.light .mindmap-interactive-control .bg-\[\#18181e\] {
+  background-color: #ffffff !important;
+  border-color: #dcdde0 !important;
+  color: #18181b !important;
+}
+.light .mindmap-settings-popup {
+  background-color: #ffffff !important;
+  border-color: #dcdde0 !important;
+  color: #18181b !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12) !important;
+}
+.light .mindmap-settings-popup .bg-\[\#0a0a0d\] {
+  background-color: #f0f0f3 !important;
+  border-color: #dcdde0 !important;
+}
+.light .mindmap-settings-popup .bg-\[\#141418\] {
+  background-color: #ffffff !important;
+  border-color: #dcdde0 !important;
+  color: #18181b !important;
+}
+.light .mindmap-settings-popup .bg-\[\#18181e\] {
+  background-color: #f4f4f6 !important;
+  border-color: #dcdde0 !important;
+  color: #18181b !important;
+}
+.light .mindmap-settings-popup .text-zinc-100,
+.light .mindmap-settings-popup .text-zinc-200,
+.light .mindmap-settings-popup .text-zinc-300 {
+  color: #18181b !important;
+}
+.light .mindmap-settings-popup .text-zinc-400,
+.light .mindmap-settings-popup .text-zinc-500 {
+  color: #52525b !important;
+}
+
+/* =========================================================================
+   CHATBOT & AI ASSISTANT EM MODO CLARO
+   ========================================================================= */
+.light .chat-user-bubble {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid #dcdde0 !important;
+}
+.light .chat-user-bubble * {
+  color: #18181b !important;
+}
+.light .chat-conversations-drawer {
+  background-color: #f0f0f3 !important;
+  border-right-color: #dcdde0 !important;
+}
+.light .chat-conversations-drawer input {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+  border-color: #dcdde0 !important;
+}
+.light .chat-conversations-drawer .text-zinc-200,
+.light .chat-conversations-drawer .text-zinc-300 {
+  color: #18181b !important;
+}
+.light .folder-tree-picker-popup {
+  background-color: #ffffff !important;
+  border-color: #dcdde0 !important;
+  color: #18181b !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12) !important;
+}
+.light .folder-tree-picker-popup .folder-search-input {
+  background-color: #f4f4f6 !important;
+  color: #18181b !important;
+  border-color: #dcdde0 !important;
+}
+.light .folder-tree-picker-popup .text-zinc-100,
+.light .folder-tree-picker-popup .text-zinc-200,
+.light .folder-tree-picker-popup .text-zinc-300 {
+  color: #18181b !important;
+}
+.light .folder-tree-picker-popup .text-zinc-400,
+.light .folder-tree-picker-popup .text-zinc-500 {
+  color: #52525b !important;
+}
+.light .folder-tree-picker-popup .border-zinc-800 {
+  border-color: #e4e4e7 !important;
+}
+.light .folder-tree-picker-popup button:hover {
+  background-color: #f0f0f3 !important;
+}
+
+/* =========================================================================
+   TABELAS & BLOCOS MARKDOWN EM MODO CLARO
+   ========================================================================= */
+.light .markdown-table-wrapper {
+  border-color: #dcdde0 !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+}
+.light .markdown-table-wrapper table thead tr {
+  background-color: #f0f0f3 !important;
+  border-bottom-color: #dcdde0 !important;
+}
+.light .markdown-table-wrapper table th {
+  color: #18181b !important;
+}
+.light .markdown-table-wrapper table tr.odd\:bg-zinc-950,
+.light .markdown-table-wrapper table tr:nth-child(odd) {
+  background-color: #f9f9fb !important;
+}
+.light .markdown-table-wrapper table tr.even\:bg-zinc-900\/30,
+.light .markdown-table-wrapper table tr:nth-child(even) {
+  background-color: #ffffff !important;
+}
+.light .markdown-table-wrapper table tr:hover {
+  background-color: #eef0f4 !important;
+}
+.light .markdown-table-wrapper table td {
+  color: #27272a !important;
+}
+.light .markdown-table-wrapper table .divide-zinc-800\/60 > * + * {
+  border-color: #e4e4e7 !important;
+}
+
+/* Tabela Editável Pyrita (.pyrita-table) */
+.light .pyrita-table {
+  border: 1px solid #dcdde0 !important;
+  background: #ffffff !important;
+  color: #18181b !important;
+}
+.light .pyrita-table-toolbar {
+  border-bottom: 1px solid #dcdde0 !important;
+  background: #f4f4f6 !important;
+  color: #52525b !important;
+}
+.light .pyrita-table-label {
+  color: #18181b !important;
+}
+.light .pyrita-table th,
+.light .pyrita-table td {
+  border-right: 1px solid #dcdde0 !important;
+  border-bottom: 1px solid #dcdde0 !important;
+}
+.light .pyrita-table th {
+  background: #f0f0f3 !important;
+  color: #18181b !important;
+}
+.light .pyrita-table tr:hover td {
+  background: #f4f4f6 !important;
+}
+.light .pyrita-table .pyrita-table-gutter {
+  background: #f4f4f6 !important;
+  color: #71717a !important;
+}
+.light .pyrita-table-footer {
+  border-top: 1px solid #dcdde0 !important;
+  color: #71717a !important;
+}
+.light .pyrita-table-menu {
+  background: #ffffff !important;
+  border: 1px solid #dcdde0 !important;
+  color: #18181b !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+}
+.light .pyrita-table-menu button:hover {
+  background: #f4f4f6 !important;
+}
+
+/* Blocos de Código Markdown */
+.light .editor-code-block {
+  border-color: #dcdde0 !important;
+  background: #f7f7fa !important;
+  color: #18181b !important;
+}
+.light .editor-code-header {
+  background: #ebebed !important;
+  border-bottom-color: #dcdde0 !important;
+  color: #18181b !important;
+}
+.light .editor-code-content,
+.light .editor-code-block > pre {
+  color: #27272a !important;
+}
+
+/* =========================================================================
+   TAREFAS & KANBAN EM MODO CLARO
+   ========================================================================= */
+.light .task-tag-badge,
+.light [data-task-item="true"] .task-tag-badge {
+  background-color: #e4e4e7 !important;
+  color: #27272a !important;
+}
+
 

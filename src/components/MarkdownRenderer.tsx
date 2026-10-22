@@ -426,7 +426,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         const dataRows = tableLines.slice(2).map(row => row.split('|').slice(1, -1).map(c => c.trim()))
 
         blocks.push(
-          <div key={`table-${i}`} className="my-5 overflow-x-auto rounded-xl border border-zinc-800 shadow-md">
+          <div key={`table-${i}`} className="markdown-table-wrapper my-5 overflow-x-auto rounded-xl border border-zinc-800 shadow-md">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-zinc-900 border-b border-zinc-800 text-zinc-200">

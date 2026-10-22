@@ -653,8 +653,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
             placeholder={parentForNewFolder ? `Subpasta em ${parentForNewFolder}...` : "Nome da pasta..."}
-            className="flex-1 px-2 py-1 bg-zinc-950 border rounded-md text-xs text-zinc-200 focus:outline-none"
-            style={{ borderColor: 'var(--accent-glow)' }}
+            className="flex-1 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 rounded-md text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[var(--accent)] transition-colors"
           />
           <button
             type="submit"

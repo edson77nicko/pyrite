@@ -1014,7 +1014,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full bg-[#111114] overflow-hidden select-none touch-none"
+      className="relative w-full h-full bg-[#111114] overflow-hidden select-none touch-none dark-theme-zone"
     >
       {/* 1. Main Canvas */}
       <canvas

@@ -1489,7 +1489,7 @@ Diretrizes gerais:
 
       {/* 2. CONVERSATIONS DRAWER OVERLAY (ChatGPT / Gemini Style with Edit Title) */}
       {showConversationsSidebar && (
-        <div className="absolute inset-0 top-10 z-40 bg-[#0e0f14]/95 backdrop-blur-md flex flex-col p-3 border-r border-zinc-800/90 animate-in fade-in slide-in-from-left duration-200">
+        <div className="chat-conversations-drawer absolute inset-0 top-10 z-40 bg-[#0e0f14]/95 backdrop-blur-md flex flex-col p-3 border-r border-zinc-800/90 animate-in fade-in slide-in-from-left duration-200">
           <div className="flex items-center justify-between pb-2 border-b border-zinc-800/70 mb-2">
             <div className="flex items-center gap-1.5">
               <MessageSquare className="w-4 h-4 text-[var(--accent)]" />
@@ -1719,7 +1719,7 @@ Diretrizes gerais:
 
               {/* Seamless Typography: Transparent container for AI, Speech bubble for User */}
               {m.sender === 'user' ? (
-                <div className="p-2.5 rounded-2xl bg-zinc-800/90 text-zinc-100 rounded-br-xs max-w-[90%] shadow-sm">
+                <div className="chat-user-bubble p-2.5 rounded-2xl bg-zinc-800/90 text-zinc-100 rounded-br-xs max-w-[90%] shadow-sm">
                   {m.text}
                 </div>
               ) : (

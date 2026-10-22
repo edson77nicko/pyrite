@@ -1127,7 +1127,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     <div
       ref={containerRef}
       onContextMenu={e => e.preventDefault()}
-      className="relative w-full h-full bg-[#010103] overflow-hidden flex flex-col select-none"
+      className="relative w-full h-full bg-[#010103] overflow-hidden flex flex-col select-none graph-view-container"
     >
       {/* 1. TOP HUD CONTROL BAR */}
       <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-[#0c0c0e]/95 backdrop-blur-2xl border border-zinc-800 rounded-2xl p-1.5 shadow-2xl">

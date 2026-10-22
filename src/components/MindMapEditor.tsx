@@ -813,7 +813,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           {showSettingsMenu && (
             <div
               onMouseDown={e => e.stopPropagation()}
-              className="absolute top-9 left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 w-80 max-h-[82vh] overflow-y-auto bg-[#121216]/98 backdrop-blur-2xl border border-zinc-700/80 rounded-2xl shadow-2xl p-3 text-xs text-zinc-300 space-y-3 z-50 animate-in fade-in zoom-in-95 duration-150"
+              className="mindmap-settings-popup absolute top-9 left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 w-80 max-h-[82vh] overflow-y-auto bg-[#121216]/98 backdrop-blur-2xl border border-zinc-700/80 rounded-2xl shadow-2xl p-3 text-xs text-zinc-300 space-y-3 z-50 animate-in fade-in zoom-in-95 duration-150"
             >
               {/* Header with Title and Close Button */}
               <div className="flex items-center justify-between border-b border-zinc-800/90 pb-2">
