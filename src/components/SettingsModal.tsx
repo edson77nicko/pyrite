@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import type { AppSettings } from '../types'
-import { Palette, Type, Maximize2 } from 'lucide-react'
+import { Palette, Type, Maximize2, Sun, Moon } from 'lucide-react'
 import { CustomColorPickerPopover } from './CustomColorPickerPopover'
 
 interface SettingsModalProps {
@@ -190,6 +190,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               )
             })}
+          </div>
+        </div>
+
+        {/* Section 4: Theme Mode (Dark / Light) */}
+        <div className="space-y-1.5 border-t border-zinc-800/80 pt-2.5">
+          <div className="flex items-center justify-between text-zinc-400">
+            <div className="flex items-center gap-1.5">
+              {settings.themeMode === 'light' ? (
+                <Sun className="w-3.5 h-3.5 text-amber-500" />
+              ) : (
+                <Moon className="w-3.5 h-3.5 text-zinc-400" />
+              )}
+              <span className="text-[11px] font-medium">Tema</span>
+            </div>
+            <span className="text-[10px] text-zinc-500 font-mono">
+              {settings.themeMode === 'light' ? 'Modo Claro' : 'Modo Escuro'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => onUpdateSettings({ ...settings, themeMode: 'dark' })}
+              className={`py-1.5 px-2 rounded-lg border flex items-center justify-center gap-1.5 text-xs transition-all cursor-pointer ${
+                settings.themeMode !== 'light'
+                  ? 'border-zinc-600 bg-zinc-800/80 text-white font-semibold shadow-sm'
+                  : 'border-zinc-800/80 bg-zinc-900/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+              }`}
+              style={settings.themeMode !== 'light' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+            >
+              <Moon className="w-3.5 h-3.5" />
+              <span>Escuro</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdateSettings({ ...settings, themeMode: 'light' })}
+              className={`py-1.5 px-2 rounded-lg border flex items-center justify-center gap-1.5 text-xs transition-all cursor-pointer ${
+                settings.themeMode === 'light'
+                  ? 'border-zinc-600 bg-zinc-800/80 text-white font-semibold shadow-sm'
+                  : 'border-zinc-800/80 bg-zinc-900/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+              }`}
+              style={settings.themeMode === 'light' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+            >
+              <Sun className="w-3.5 h-3.5" />
+              <span>Claro</span>
+            </button>
           </div>
         </div>
       </div>

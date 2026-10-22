@@ -432,3 +432,168 @@ input[type="checkbox"]:focus-visible,
 .canvas-edge-editor input { display: block; margin-top: 4px; width: 230px; }
 .canvas-error { top: 104px; left: 18px; right: 18px; padding: 10px; background: #271f20; border: 1px solid #674448; border-radius: 8px; font-size: 11px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 @media (max-width: 1150px) { .canvas-hint { display: none; } }
+
+/* =========================================================================
+   TACTILE NOISE TEXTURE LAYER (Active by default in both Dark and Light modes)
+   ========================================================================= */
+.pyrita-noise-layer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 160px 160px;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+}
+
+.light .pyrita-noise-layer,
+html.light .pyrita-noise-layer {
+  opacity: 0.048;
+  mix-blend-mode: multiply;
+}
+
+/* =========================================================================
+   MODO CLARO (LIGHT THEME) - Inspirado em Design Editorial Suíço e Referências
+   Fundos em tons de cinza suaves, branco puro reservado para cards de destaque e hovers
+   ========================================================================= */
+.light,
+html.light {
+  color-scheme: light;
+  --bg-main: #f4f4f6;
+  --bg-sidebar: #f0f0f3;
+  --bg-header: #ebebed;
+  --border-color: #dcdde0;
+  --text-primary: #18181b;
+  --text-muted: #71717a;
+}
+
+.light body,
+.light #root,
+html.light body,
+html.light #root {
+  background-color: #e8e8ea !important;
+  color: #18181b !important;
+}
+
+/* Base Canvas & Background Mappings */
+.light .bg-\[\#09090b\] { background-color: #dedee2 !important; }
+.light .bg-\[\#0a0a0c\] { background-color: #e2e2e5 !important; }
+.light .bg-\[\#0c0c0e\] { background-color: #ebebed !important; }
+.light .bg-\[\#0c0c0f\] { background-color: #ebebed !important; }
+.light .bg-\[\#0e0e12\] { background-color: #f0f0f3 !important; }
+.light .bg-\[\#0f0f12\] { background-color: #f4f4f6 !important; }
+.light .bg-\[\#121214\] { background-color: #f0f0f3 !important; }
+.light .bg-\[\#121215\] { background-color: #f0f0f3 !important; }
+.light .bg-\[\#13141a\] { background-color: #ffffff !important; }
+.light .bg-\[\#141418\] { background-color: #ffffff !important; }
+.light .bg-\[\#14151b\] { background-color: #ffffff !important; }
+.light .bg-\[\#151519\] { background-color: #ffffff !important; }
+.light .bg-\[\#16161a\] { background-color: #f7f7fa !important; }
+.light .bg-\[\#16161c\] { background-color: #ffffff !important; }
+.light .bg-\[\#18181b\] { background-color: #f7f7fa !important; }
+.light .bg-\[\#1b1b1f\] { background-color: #ffffff !important; }
+.light .bg-\[\#1f1f24\] { background-color: #e8e8ea !important; }
+.light .bg-\[\#202024\] { background-color: #e8e8ea !important; }
+.light .bg-\[\#242427\] { background-color: #f0f0f3 !important; }
+.light .bg-zinc-950 { background-color: #dedee2 !important; }
+.light .bg-zinc-950\/30 { background-color: rgba(220, 221, 224, 0.4) !important; }
+.light .bg-zinc-900 { background-color: #f0f0f3 !important; }
+.light .bg-zinc-900\/40 { background-color: rgba(240, 240, 243, 0.6) !important; }
+.light .bg-zinc-900\/80 { background-color: rgba(240, 240, 243, 0.9) !important; }
+.light .bg-zinc-900\/90 { background-color: #ffffff !important; }
+.light .bg-zinc-850 { background-color: #e8e8eb !important; }
+.light .bg-zinc-850\/50 { background-color: rgba(232, 232, 235, 0.6) !important; }
+.light .bg-zinc-800 { background-color: #ffffff !important; }
+.light .bg-zinc-800\/40 { background-color: rgba(255, 255, 255, 0.5) !important; }
+.light .bg-zinc-800\/50 { background-color: rgba(255, 255, 255, 0.6) !important; }
+.light .bg-zinc-800\/60 { background-color: rgba(255, 255, 255, 0.7) !important; }
+.light .bg-zinc-800\/70 { background-color: rgba(255, 255, 255, 0.8) !important; }
+.light .bg-zinc-800\/80 { background-color: #ffffff !important; }
+.light .bg-zinc-750 { background-color: #f7f7fa !important; }
+.light .bg-zinc-700 { background-color: #e4e4e7 !important; }
+
+/* Cards em Destaque: Branco Puro com Sombra Suave (Estilo Referência) */
+.light .bg-\[\#161619\] {
+  background-color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+  border: 1px solid rgba(0, 0, 0, 0.07) !important;
+}
+.light .bg-\[\#1a1a1e\] {
+  background-color: #ffffff !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05) !important;
+  border: 1px solid rgba(0, 0, 0, 0.09) !important;
+}
+
+/* Text Colors */
+.light .text-zinc-100 { color: #18181b !important; }
+.light .text-zinc-200 { color: #27272a !important; }
+.light .text-zinc-300 { color: #3f3f46 !important; }
+.light .text-zinc-400 { color: #71717a !important; }
+.light .text-zinc-500 { color: #71717a !important; }
+.light .text-white { color: #09090b !important; }
+
+/* Borders */
+.light .border-zinc-800 { border-color: #dcdde0 !important; }
+.light .border-zinc-800\/40 { border-color: rgba(220, 221, 224, 0.5) !important; }
+.light .border-zinc-800\/60 { border-color: rgba(220, 221, 224, 0.7) !important; }
+.light .border-zinc-800\/80 { border-color: #dcdde0 !important; }
+.light .border-zinc-800\/90 { border-color: #dcdde0 !important; }
+.light .border-zinc-700 { border-color: #d4d4d8 !important; }
+.light .border-zinc-700\/60 { border-color: rgba(212, 212, 216, 0.7) !important; }
+.light .border-zinc-700\/80 { border-color: #d4d4d8 !important; }
+.light .border-zinc-600 { border-color: #cbd5e1 !important; }
+
+/* Hovers tornam-se cartões brancos com contraste limpo */
+.light .hover\:bg-zinc-800:hover { background-color: #ffffff !important; }
+.light .hover\:bg-zinc-800\/50:hover { background-color: #ffffff !important; }
+.light .hover\:bg-zinc-800\/60:hover { background-color: #ffffff !important; }
+.light .hover\:bg-zinc-800\/70:hover { background-color: #ffffff !important; }
+.light .hover\:bg-zinc-800\/80:hover { background-color: #ffffff !important; }
+.light .hover\:bg-zinc-700:hover { background-color: #ffffff !important; }
+.light .hover\:bg-\[\#1a1a1e\]:hover { background-color: #ffffff !important; }
+.light .hover\:text-white:hover { color: #09090b !important; }
+.light .hover\:text-zinc-200:hover { color: #18181b !important; }
+.light .hover\:text-zinc-100:hover { color: #09090b !important; }
+
+/* Inputs & Forms */
+.light input[type="text"],
+.light textarea {
+  color: #18181b !important;
+}
+.light input::placeholder,
+.light textarea::placeholder {
+  color: #a1a1aa !important;
+}
+
+/* Checkboxes */
+.light input[type="checkbox"],
+.light .task-checkbox {
+  border-color: #a1a1aa !important;
+}
+.light input[type="checkbox"]:hover,
+.light .task-checkbox:hover {
+  border-color: #71717a !important;
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Scrollbars */
+.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+.light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+.light .custom-chat-scrollbar {
+  scrollbar-color: #cbd5e1 transparent;
+}
+.light .custom-chat-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+.light .custom-chat-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+

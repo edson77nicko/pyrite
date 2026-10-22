@@ -33,7 +33,8 @@ const MAX_TABS = 8
 const DEFAULT_SETTINGS: AppSettings = {
   accentColor: '#c59b27', // Pyrita: Ouro Queimado
   fontSize: 'medium',
-  editorWidth: 'standard'
+  editorWidth: 'standard',
+  themeMode: 'dark'
 }
 
 export const App: React.FC = () => {
@@ -173,10 +174,17 @@ export const App: React.FC = () => {
     applyAccentColor(newSettings.accentColor)
   }
 
-  // Ensure accent is applied on initial mount
+  // Ensure accent and theme mode are applied on mount and update
   useEffect(() => {
     applyAccentColor(settings.accentColor)
-  }, [settings.accentColor])
+    if (settings.themeMode === 'light') {
+      document.documentElement.classList.add('light')
+      document.documentElement.classList.remove('dark')
+    } else {
+      document.documentElement.classList.remove('light')
+      document.documentElement.classList.add('dark')
+    }
+  }, [settings.accentColor, settings.themeMode])
 
   // Global Keyboard Shortcuts (Ctrl+P, Ctrl+O, Ctrl+G, Ctrl+N)
   useEffect(() => {
@@ -944,7 +952,10 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col w-screen h-screen bg-[#0f0f12] text-zinc-100 overflow-hidden font-sans">
+    <div className={`flex flex-col w-screen h-screen ${settings.themeMode === 'light' ? 'light' : ''} bg-[#0f0f12] text-zinc-100 overflow-hidden font-sans relative`}>
+      {/* Global Tactile Noise Texture Layer (Present by default in both Dark and Light modes) */}
+      <div className="pyrita-noise-layer pointer-events-none" />
+
       {/* 1. Main Workspace Layout */}
       <div className="flex flex-1 overflow-hidden relative bg-[#09090b]">
         {/* Leftmost Ribbon Bar (Icon-only navigation like Obsidian) */}
@@ -966,6 +977,8 @@ export const App: React.FC = () => {
           }}
           isMindMapActive={currentView === 'editor' && currentNote?.type === 'mindmap'}
           onOpenMindMap={handleOpenMindMap}
+          themeMode={settings.themeMode}
+          onToggleTheme={() => handleUpdateSettings({ ...settings, themeMode: settings.themeMode === 'light' ? 'dark' : 'light' })}
         />
 
         {/* Left Sidebar (Hierarchical Subfolders & Notes Tree) */}
@@ -1208,6 +1221,7 @@ export const App: React.FC = () => {
         onOpenAi={() => setIsAiOpen(true)}
         onOpenLocalFolder={handleOpenLocalFolder}
         onOpenVaultSwitcher={() => setIsVaultSwitcherOpen(true)}
+        onToggleTheme={() => handleUpdateSettings({ ...settings, themeMode: settings.themeMode === 'light' ? 'dark' : 'light' })}
       />
 
       {/* 6. Vault Switcher Modal (Obsidian-Style) */}

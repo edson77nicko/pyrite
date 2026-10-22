@@ -91,6 +91,7 @@ export interface AppSettings {
   accentColor: AccentColor
   fontSize: 'small' | 'medium' | 'large'
   editorWidth: 'compact' | 'standard' | 'wide'
+  themeMode?: 'dark' | 'light'
 }
 
 export interface SavedVault {

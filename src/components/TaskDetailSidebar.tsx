@@ -319,7 +319,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   return (
     <aside
       ref={sidebarRef}
-      className="w-[420px] max-w-[460px] h-full bg-[#121215] border-l border-zinc-800/60 flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-lg animate-in slide-in-from-right-4 duration-150"
+      className="w-[420px] max-w-[460px] my-2 mr-2 ml-1.5 bg-[#121215] border border-zinc-800/80 rounded-2xl flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl shadow-black/50 overflow-hidden animate-in slide-in-from-right-4 duration-150"
     >
       {/* 1. Header Toolbar - Sober without harsh white divider */}
       <div className="h-10 px-4 bg-[#151519] border-b border-zinc-800/50 flex items-center justify-between shrink-0">

@@ -12,7 +12,9 @@ import {
   MessageSquare,
   Palette,
   CheckCircle2,
-  Brain
+  Brain,
+  Sun,
+  Moon
 } from 'lucide-react'
 
 interface RibbonProps {
@@ -30,6 +32,8 @@ interface RibbonProps {
   onToggleConversations?: () => void
   isMindMapActive?: boolean
   onOpenMindMap?: () => void
+  themeMode?: 'dark' | 'light'
+  onToggleTheme?: () => void
 }
 
 export const Ribbon: React.FC<RibbonProps> = ({
@@ -46,7 +50,9 @@ export const Ribbon: React.FC<RibbonProps> = ({
   isConversationsOpen,
   onToggleConversations,
   isMindMapActive,
-  onOpenMindMap
+  onOpenMindMap,
+  themeMode,
+  onToggleTheme
 }) => {
   return (
     <aside className="w-11 h-full bg-[#09090b] border-r border-zinc-800/80 flex flex-col items-center py-2 select-none shrink-0 text-zinc-400 z-10">
@@ -196,6 +202,16 @@ export const Ribbon: React.FC<RibbonProps> = ({
             title="Alternar / Gerenciar Cofres (Ctrl + Shift + O)"
           >
             <FolderSync className="w-4 h-4" />
+          </button>
+        )}
+
+        {onToggleTheme && (
+          <button
+            onClick={onToggleTheme}
+            className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
+            title={themeMode === 'light' ? 'Mudar para Modo Escuro' : 'Mudar para Modo Claro'}
+          >
+            {themeMode === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
           </button>
         )}
 

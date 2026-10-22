@@ -11,7 +11,8 @@ import {
   FolderSync,
   Palette,
   CheckCircle2,
-  Brain
+  Brain,
+  Sun
 } from 'lucide-react'
 
 interface CommandPaletteProps {
@@ -25,6 +26,7 @@ interface CommandPaletteProps {
   onOpenAi: () => void
   onOpenLocalFolder: () => void
   onOpenVaultSwitcher?: () => void
+  onToggleTheme?: () => void
 }
 
 interface PaletteItem {
@@ -45,7 +47,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onChangeViewMode,
   onOpenAi,
   onOpenLocalFolder,
-  onOpenVaultSwitcher
+  onOpenVaultSwitcher,
+  onToggleTheme
 }) => {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -127,6 +130,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       action: () => {
         onClose()
         onOpenVaultSwitcher()
+      }
+    }] : []),
+    ...(onToggleTheme ? [{
+      id: 'cmd-toggle-theme',
+      title: 'Alternar Modo Claro / Escuro',
+      subtitle: 'Alternar entre o tema escuro padrão e o tema claro com fundos em cinza e ruído',
+      icon: <Sun className="w-4 h-4 text-amber-400" />,
+      action: () => {
+        onClose()
+        onToggleTheme()
       }
     }] : [])
   ]
