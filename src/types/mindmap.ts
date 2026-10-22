@@ -121,6 +121,7 @@ export interface MindMapDocument {
   mapStyle?: MindMapStylePreset
   paletteId?: MindMapPaletteId
   colorizeNodeBg?: boolean
+  colorDistribution?: 'hierarchy' | 'branch'
   customPalettes?: Record<string, { name: string; colors: string[] }>
 }
 

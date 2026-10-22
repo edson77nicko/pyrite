@@ -31,12 +31,10 @@ import {
   AlertCircle,
   Bold,
   Check,
-  ChevronDown,
   Download,
   FileText,
   Flag,
   Folder,
-  GitFork,
   HelpCircle,
   Hexagon,
   Italic,
@@ -49,6 +47,7 @@ import {
   Rocket,
   Search,
   Share2,
+  Sliders,
   Sparkles,
   Star,
   Trash2,
@@ -121,8 +120,12 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   const historyRef = useRef<MindMapDocument[]>([doc])
   const historyIndexRef = useRef(0)
 
-  // Selection & Editing
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  // Selection & Editing (Supports Ctrl/Cmd Multi-selection)
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
+  const selectedNodeId = selectedNodeIds[selectedNodeIds.length - 1] || null
+  const setSelectedNodeId = useCallback((id: string | null) => {
+    setSelectedNodeIds(id ? [id] : [])
+  }, [])
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
 
@@ -137,10 +140,16 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
 
   // Active Popovers
   const [activePopover, setActivePopover] = useState<
-    'color' | 'shape' | 'icons' | 'style' | 'palette' | 'lines' | 'canvasBg' | 'layout' | 'export' | null
+    'color' | 'shape' | 'icons' | 'canvasBgPicker' | 'export' | null
   >(null)
   const [activeSideDrawer, setActiveSideDrawer] = useState<'note' | null>(null)
   const colorBtnRef = useRef<HTMLButtonElement>(null)
+  const canvasBgBtnRef = useRef<HTMLButtonElement>(null)
+
+  // Floating Settings Dropdown Menu (Consolidates Layout, Style, Lines, Palette, Canvas Bg)
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'layout' | 'colors' | 'canvas'>('layout')
+  const settingsBtnRef = useRef<HTMLButtonElement>(null)
 
   // Recent Colors queue (max 4 colors)
   const [recentColors, setRecentColors] = useState<string[]>(() => {
@@ -176,31 +185,22 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
     '#f59e0b'
   ])
 
-  // Combined built-in + custom palettes
-  const allPalettes = useMemo<Record<string, { name: string; colors: string[] }>>(() => {
-    const combined: Record<string, { name: string; colors: string[] }> = { ...MINDMAP_PALETTES }
-    if (doc.customPalettes) {
-      Object.assign(combined, doc.customPalettes)
-    }
-    return combined
-  }, [doc.customPalettes])
-
-  const currentPalette = allPalettes[doc.paletteId || 'rainbow'] || MINDMAP_PALETTES.rainbow
-
-  // Close active popover on outside click or Escape
+  // Close active popover / settings menu on outside click or Escape
   useEffect(() => {
-    if (!activePopover) return
+    if (!activePopover && !showSettingsMenu) return
     const handleOutsideClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
       if (target.closest && target.closest('[data-color-picker-portal="true"]')) return
-      if (!target.closest || !target.closest('.mindmap-popover-anchor')) {
+      if (!target.closest || (!target.closest('.mindmap-popover-anchor') && !target.closest('.mindmap-settings-anchor'))) {
         setActivePopover(null)
+        setShowSettingsMenu(false)
         setIsCreatingPalette(false)
       }
     }
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setActivePopover(null)
+        setShowSettingsMenu(false)
         setIsCreatingPalette(false)
       }
     }
@@ -210,7 +210,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       document.removeEventListener('mousedown', handleOutsideClick)
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [activePopover])
+  }, [activePopover, showSettingsMenu])
 
   // Search filter
   const [searchQuery, setSearchQuery] = useState('')
@@ -342,6 +342,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       setEditingNodeId(nodeId)
       setEditingText(target.title)
       setActivePopover(null)
+      setShowSettingsMenu(false)
     },
     [doc.nodes]
   )
@@ -384,15 +385,30 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
     [doc, selectedNodeId, handleAddChild, commitDoc, startEditing]
   )
 
-  // Delete node
+  // Delete node(s) - Supports mass deletion with multiple selected nodes
   const handleDeleteSelected = useCallback(() => {
+    if (selectedNodeIds.length > 1) {
+      let nextDoc = doc
+      const toDelete = selectedNodeIds.filter(id => id !== doc.rootId)
+      if (toDelete.length === 0) return
+      toDelete.forEach(id => {
+        if (nextDoc.nodes[id]) {
+          nextDoc = deleteNode(nextDoc, id)
+        }
+      })
+      commitDoc(nextDoc)
+      setSelectedNodeIds([])
+      setActivePopover(null)
+      return
+    }
+
     if (!selectedNodeId || selectedNodeId === doc.rootId) return
     const parentId = doc.nodes[selectedNodeId]?.parentId
     const nextDoc = deleteNode(doc, selectedNodeId)
     commitDoc(nextDoc)
     setSelectedNodeId(parentId || doc.rootId)
     setActivePopover(null)
-  }, [doc, selectedNodeId, commitDoc])
+  }, [doc, selectedNodeIds, selectedNodeId, commitDoc, setSelectedNodeId])
 
   // Reset all custom positions (Reorganizar)
   const handleResetPositions = useCallback(() => {
@@ -458,6 +474,8 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       } else if (e.key === 'Escape') {
         e.preventDefault()
         setActivePopover(null)
+        setShowSettingsMenu(false)
+        setIsCreatingPalette(false)
         setConnectingFromId(null)
         setEditingNodeId(null)
         setSelectedNodeId(null)
@@ -532,11 +550,14 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
     if ((e.target as HTMLElement).closest('.mindmap-interactive-node')) return
     if ((e.target as HTMLElement).closest('.mindmap-interactive-control')) return
     if ((e.target as HTMLElement).closest('.mindmap-popover-anchor')) return
+    if ((e.target as HTMLElement).closest('.mindmap-settings-anchor')) return
     if ((e.target as HTMLElement).closest('header, footer, button, input, textarea')) return
 
     // Dismiss active selections & popovers when clicking empty canvas
     setSelectedNodeId(null)
     setActivePopover(null)
+    setShowSettingsMenu(false)
+    setIsCreatingPalette(false)
     setActiveSideDrawer(null)
     setEditingNodeId(null)
     setConnectingFromId(null)
@@ -616,6 +637,8 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
 
   // Start dragging node (only for non-root nodes!)
   const handleNodeMouseDown = (cn: ComputedNode, e: React.MouseEvent) => {
+    // If holding Ctrl or Cmd, do not start drag so multi-selection click works cleanly
+    if (e.ctrlKey || e.metaKey) return
     // Do not initiate drag if root node (root is fixed!)
     if (cn.id === doc.rootId) return
     if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('input')) return
@@ -627,7 +650,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
     nodeDragStartNodePos.current = { x: cn.x, y: cn.y }
   }
 
-  // Node click handler
+  // Node click handler (Supports Ctrl/Cmd Multi-Selection)
   const handleNodeClick = (nodeId: string, e: React.MouseEvent) => {
     e.stopPropagation()
     if (hasDraggedNode.current) return
@@ -651,7 +674,13 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       return
     }
 
-    setSelectedNodeId(nodeId)
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedNodeIds(prev =>
+        prev.includes(nodeId) ? prev.filter(id => id !== nodeId) : [...prev, nodeId]
+      )
+    } else {
+      setSelectedNodeIds([nodeId])
+    }
     setActivePopover(null)
   }
 
@@ -761,431 +790,501 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           </div>
         </div>
 
-        {/* Center: Style Presets, Line Styles, Palettes, Layout & Canvas Background */}
-        <div className="flex items-center gap-1">
-          {/* Estilos Visuais do Mapa (Presets como na referência) */}
-          <div className="relative mindmap-popover-anchor">
-            <button
-              onClick={() => setActivePopover(prev => (prev === 'style' ? null : 'style'))}
-              className="flex items-center gap-1 px-2 py-1 rounded bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
-              title="Estilo Visual do Mapa"
+        {/* Center / Action: Aparência & Configurações do Mapa (Menu estilo Grafo, sem escurecer a tela) */}
+        <div className="relative mindmap-settings-anchor">
+          <button
+            ref={settingsBtnRef}
+            onClick={() => {
+              setActivePopover(null)
+              setShowSettingsMenu(prev => !prev)
+            }}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all cursor-pointer font-medium text-xs ${
+              showSettingsMenu
+                ? 'bg-[var(--accent,#c59b27)] text-zinc-950 font-bold shadow-xs'
+                : 'bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800'
+            }`}
+            title="Aparência e Layout do Mapa"
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Aparência</span>
+          </button>
+
+          {/* Floating Settings Dropdown Menu (Anchored below button, NO black backdrop) */}
+          {showSettingsMenu && (
+            <div
+              onMouseDown={e => e.stopPropagation()}
+              className="absolute top-9 left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 w-80 max-h-[82vh] overflow-y-auto bg-[#121216]/98 backdrop-blur-2xl border border-zinc-700/80 rounded-2xl shadow-2xl p-3 text-xs text-zinc-300 space-y-3 z-50 animate-in fade-in zoom-in-95 duration-150"
             >
-              <Sparkles className="w-3.5 h-3.5 text-[var(--accent,#c59b27)]" />
-              <span>
-                {doc.mapStyle === 'organic-branch'
-                  ? 'Orgânico (Ramos)'
-                  : doc.mapStyle === 'modern-cards'
-                  ? 'Cartões Modernos'
-                  : doc.mapStyle === 'pills'
-                  ? 'Cápsulas'
-                  : doc.mapStyle === 'technical'
-                  ? 'Técnico'
-                  : 'Minimalista'}
-              </span>
-              <ChevronDown className="w-3 h-3 text-zinc-500" />
-            </button>
-
-            {activePopover === 'style' && (
-              <div
-                onMouseDown={e => e.stopPropagation()}
-                className="absolute top-8 left-0 w-52 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-0.5"
-              >
-                {[
-                  { id: 'organic-branch', label: 'Orgânico (Galhos & Linhas)' },
-                  { id: 'modern-cards', label: 'Cartões Modernos' },
-                  { id: 'pills', label: 'Pílulas & Cápsulas' },
-                  { id: 'technical', label: 'Técnico / Ortogonal' },
-                  { id: 'minimal-lines', label: 'Minimalista (Linhas)' }
-                ].map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      commitDoc(applyMapStylePreset(doc, s.id as MindMapStylePreset))
-                      setActivePopover(null)
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded flex items-center justify-between text-xs cursor-pointer ${
-                      doc.mapStyle === s.id ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-medium' : 'text-zinc-300 hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    <span>{s.label}</span>
-                    {doc.mapStyle === s.id && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
+              {/* Header with Title and Close Button */}
+              <div className="flex items-center justify-between border-b border-zinc-800/90 pb-2">
+                <span className="font-bold text-zinc-100 flex items-center gap-1.5 font-mono text-[11px] tracking-wide uppercase">
+                  <Sliders className="w-3.5 h-3.5 text-[var(--accent,#c59b27)]" />
+                  Aparência do Mapa
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSettingsMenu(false)
+                    setIsCreatingPalette(false)
+                  }}
+                  className="p-1 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/80 cursor-pointer transition-colors"
+                  title="Fechar"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
-            )}
-          </div>
 
-          {/* Seletor de Tipo de Conexão / Ramos */}
-          <div className="relative mindmap-popover-anchor">
-            <button
-              onClick={() => setActivePopover(prev => (prev === 'lines' ? null : 'lines'))}
-              className="flex items-center gap-1 px-2 py-1 rounded bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
-              title="Tipo de Linha / Conexão"
-            >
-              <GitFork className="w-3.5 h-3.5 text-zinc-400" />
-              <span>
-                {doc.lineStyle === 'tapered' ? 'Ramo Orgânico' : doc.lineStyle === 'curved' ? 'Curva Suave' : 'Ortogonal'}
-              </span>
-              <ChevronDown className="w-3 h-3 text-zinc-500" />
-            </button>
-
-            {activePopover === 'lines' && (
-              <div
-                onMouseDown={e => e.stopPropagation()}
-                className="absolute top-8 left-0 w-48 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-0.5"
-              >
-                {[
-                  { id: 'tapered', label: 'Ramo Orgânico (Afunilado)' },
-                  { id: 'curved', label: 'Curva Suave (Bézier)' },
-                  { id: 'rounded-elbow', label: 'Cotovelo / Ortogonal' }
-                ].map(line => (
-                  <button
-                    key={line.id}
-                    onClick={() => {
-                      const nextNodes = { ...doc.nodes }
-                      for (const id in nextNodes) {
-                        if (nextNodes[id].branchStyle) {
-                          nextNodes[id] = { ...nextNodes[id], branchStyle: undefined }
-                        }
-                      }
-                      commitDoc({ ...doc, lineStyle: line.id as MindMapLineStyle, nodes: nextNodes })
-                      setActivePopover(null)
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded flex items-center justify-between text-xs cursor-pointer ${
-                      doc.lineStyle === line.id ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-medium' : 'text-zinc-300 hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    <span>{line.label}</span>
-                    {doc.lineStyle === line.id && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
+              {/* Segmented Tab Switcher */}
+              <div className="grid grid-cols-3 gap-1 p-0.5 bg-[#0a0a0d] border border-zinc-800/80 rounded-xl text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('layout')}
+                  className={`py-1 rounded-lg font-medium transition-all cursor-pointer text-center ${
+                    settingsTab === 'layout'
+                      ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-semibold shadow-xs'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  Estrutura
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('colors')}
+                  className={`py-1 rounded-lg font-medium transition-all cursor-pointer text-center ${
+                    settingsTab === 'colors'
+                      ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-semibold shadow-xs'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  Cores
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('canvas')}
+                  className={`py-1 rounded-lg font-medium transition-all cursor-pointer text-center ${
+                    settingsTab === 'canvas'
+                      ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-semibold shadow-xs'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  Fundo
+                </button>
               </div>
-            )}
-          </div>
 
-          {/* Seletor de Paleta / Cores dos Ramos */}
-          <div className="relative mindmap-popover-anchor">
-            <button
-              onClick={() => {
-                setIsCreatingPalette(false)
-                setActivePopover(prev => (prev === 'palette' ? null : 'palette'))
-              }}
-              className="flex items-center gap-1.5 px-2 py-1 rounded bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
-              title="Cores dos Ramos e Tópicos"
-            >
-              <div className="flex gap-0.5">
-                {(currentPalette?.colors || []).slice(0, 3).map((c: string, i: number) => (
-                  <span key={i} className="w-2 h-2 rounded-full" style={{ backgroundColor: c }} />
-                ))}
-              </div>
-              <span>{currentPalette?.name || 'Cores'}</span>
-              <ChevronDown className="w-3 h-3 text-zinc-500" />
-            </button>
-
-            {activePopover === 'palette' && (
-              <div
-                onMouseDown={e => e.stopPropagation()}
-                className={`absolute top-8 left-0 ${isCreatingPalette ? 'w-64' : 'w-56'} bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1.5 z-50`}
-              >
-                {isCreatingPalette ? (
-                  <div className="space-y-2 p-1">
-                    <div className="flex items-center justify-between pb-1 border-b border-zinc-800">
-                      <span className="text-xs font-semibold text-zinc-100">Criar Grupo de Cores</span>
-                      <button
-                        type="button"
-                        onClick={() => setIsCreatingPalette(false)}
-                        className="text-zinc-500 hover:text-zinc-300 p-0.5 cursor-pointer"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+              {/* TAB 1: ESTRUTURA (Layout, Linhas & Estilos) */}
+              {settingsTab === 'layout' && (
+                <div className="space-y-3">
+                  {/* Layout do Mapa */}
+                  <div>
+                    <div className="text-[10px] uppercase font-bold text-zinc-400 mb-1.5 flex items-center justify-between">
+                      <span>Layout do Mapa</span>
                     </div>
-
-                    <div>
-                      <label className="text-[10px] text-zinc-400 block mb-1">Nome da Paleta</label>
-                      <input
-                        type="text"
-                        value={newPaletteName}
-                        onChange={e => setNewPaletteName(e.target.value)}
-                        placeholder="Ex: Minha Marca"
-                        className="w-full bg-[#18181e] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-hidden focus:border-[var(--accent,#c59b27)]"
-                        autoFocus
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] text-zinc-400 block mb-1">Cores dos Ramos (5 cores)</label>
-                      <div className="flex items-center justify-between gap-1">
-                        {newPaletteColors.map((color, idx) => (
-                          <div key={idx} className="relative">
-                            <input
-                              type="color"
-                              value={color}
-                              onChange={e => {
-                                const next = [...newPaletteColors]
-                                next[idx] = e.target.value
-                                setNewPaletteColors(next)
-                              }}
-                              className="w-8 h-8 rounded-lg border border-zinc-700 bg-transparent cursor-pointer p-0 block hover:scale-105 transition-transform"
-                              title={`Cor ${idx + 1}: ${color}`}
-                            />
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { id: 'radial', label: 'Mind Map (Radial)' },
+                        { id: 'right', label: 'Árvore à Direita' },
+                        { id: 'left', label: 'Árvore à Esquerda' },
+                        { id: 'org-chart', label: 'Organograma' }
+                      ].map(l => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          onClick={() => {
+                            const cleaned = resetNodePositions(doc)
+                            commitDoc({ ...cleaned, layout: l.id as MindMapLayout })
+                          }}
+                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                            doc.layout === l.id
+                              ? 'bg-[#1e1e26] border-[var(--accent,#c59b27)]/80 text-[var(--accent,#c59b27)] font-semibold shadow-xs'
+                              : 'bg-[#141418] border-zinc-800 text-zinc-300 hover:bg-zinc-800/60 hover:border-zinc-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="truncate">{l.label}</span>
+                            {doc.layout === l.id && <Check className="w-3.5 h-3.5 shrink-0" />}
                           </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-zinc-800">
-                      <button
-                        type="button"
-                        onClick={() => setIsCreatingPalette(false)}
-                        className="px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer rounded"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const id = 'custom_' + Date.now()
-                          const customPalettes = {
-                            ...(doc.customPalettes || {}),
-                            [id]: {
-                              name: newPaletteName.trim() || 'Grupo Personalizado',
-                              colors: newPaletteColors
-                            }
-                          }
-                          const nextNodes = { ...doc.nodes }
-                          for (const nid in nextNodes) {
-                            if (nid !== doc.rootId && nextNodes[nid].branchColor) {
-                              nextNodes[nid] = { ...nextNodes[nid], branchColor: undefined }
-                            }
-                          }
-                          commitDoc({
-                            ...doc,
-                            paletteId: id,
-                            customPalettes,
-                            nodes: nextNodes
-                          })
-                          setIsCreatingPalette(false)
-                          setActivePopover(null)
-                        }}
-                        className="px-2.5 py-1 text-xs bg-[var(--accent,#c59b27)] text-black font-semibold rounded hover:brightness-110 cursor-pointer shadow-xs"
-                      >
-                        Salvar Grupo
-                      </button>
+                        </button>
+                      ))}
                     </div>
                   </div>
-                ) : (
-                  <div className="space-y-1">
-                    {/* Toggle: Colorir fundo dos nós com a cor do ramo */}
-                    <div className="flex items-center justify-between px-2 py-1.5 rounded bg-[#18181e] border border-zinc-800 mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <Palette className="w-3.5 h-3.5 text-[var(--accent,#c59b27)]" />
-                        <span className="text-[11px] font-medium text-zinc-200">Colorir fundo dos nós</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => commitDoc({ ...doc, colorizeNodeBg: !doc.colorizeNodeBg })}
-                        className={`w-7 h-4 rounded-full transition-colors relative cursor-pointer ${
-                          doc.colorizeNodeBg ? 'bg-[var(--accent,#c59b27)]' : 'bg-zinc-700'
-                        }`}
-                        title={doc.colorizeNodeBg ? 'Desativar preenchimento dos nós' : 'Ativar preenchimento dos nós'}
-                      >
-                        <span
-                          className={`w-3 h-3 rounded-full bg-white absolute top-0.5 transition-transform ${
-                            doc.colorizeNodeBg ? 'right-0.5' : 'left-0.5'
-                          }`}
-                        />
-                      </button>
-                    </div>
 
-                    <div className="text-[10px] uppercase font-bold text-zinc-500 px-2 pt-0.5">Paletas Padrão</div>
-                    {Object.entries(MINDMAP_PALETTES).map(([pId, p]) => (
-                      <button
-                        key={pId}
-                        onClick={() => {
-                          const nextNodes = { ...doc.nodes }
-                          for (const id in nextNodes) {
-                            if (id !== doc.rootId && nextNodes[id].branchColor) {
-                              nextNodes[id] = { ...nextNodes[id], branchColor: undefined }
+                  {/* Estilo de Linhas & Ramos */}
+                  <div>
+                    <div className="text-[10px] uppercase font-bold text-zinc-400 mb-1.5">Conexões & Linhas</div>
+                    <div className="space-y-1">
+                      {[
+                        { id: 'tapered', label: 'Ramo Orgânico (Afunilado)' },
+                        { id: 'curved', label: 'Curva Suave (Bézier)' },
+                        { id: 'rounded-elbow', label: 'Cotovelo / Ortogonal' }
+                      ].map(line => (
+                        <button
+                          key={line.id}
+                          type="button"
+                          onClick={() => {
+                            const nextNodes = { ...doc.nodes }
+                            for (const id in nextNodes) {
+                              if (nextNodes[id].branchStyle) {
+                                nextNodes[id] = { ...nextNodes[id], branchStyle: undefined }
+                              }
                             }
-                          }
-                          commitDoc({ ...doc, paletteId: pId as MindMapPaletteId, nodes: nextNodes })
-                          setActivePopover(null)
-                        }}
-                        className={`w-full text-left px-2 py-1.5 rounded flex items-center justify-between text-xs cursor-pointer ${
-                          (doc.paletteId || 'rainbow') === pId ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-medium' : 'text-zinc-300 hover:bg-zinc-800/60'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="flex gap-0.5">
-                            {p.colors.slice(0, 4).map((c, i) => (
-                              <span key={i} className="w-2 h-2 rounded-full" style={{ backgroundColor: c }} />
-                            ))}
-                          </div>
-                          <span>{p.name}</span>
-                        </div>
-                        {(doc.paletteId || 'rainbow') === pId && <Check className="w-3.5 h-3.5" />}
-                      </button>
-                    ))}
+                            commitDoc({ ...doc, lineStyle: line.id as MindMapLineStyle, nodes: nextNodes })
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs cursor-pointer border transition-colors ${
+                            doc.lineStyle === line.id
+                              ? 'bg-[#1e1e26] border-[var(--accent,#c59b27)]/80 text-[var(--accent,#c59b27)] font-semibold'
+                              : 'bg-[#141418] border-zinc-800 text-zinc-300 hover:bg-zinc-800/60'
+                          }`}
+                        >
+                          <span>{line.label}</span>
+                          {doc.lineStyle === line.id && <Check className="w-3.5 h-3.5" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-                    {/* Custom Palettes (if any) */}
-                    {doc.customPalettes && Object.keys(doc.customPalettes).length > 0 && (
-                      <>
-                        <div className="text-[10px] uppercase font-bold text-zinc-500 px-2 pt-1.5 border-t border-zinc-800/80">
-                          Grupos Personalizados
+                  {/* Estilos Visuais (Presets Prontos) */}
+                  <div>
+                    <div className="text-[10px] uppercase font-bold text-zinc-400 mb-1.5 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-[var(--accent,#c59b27)]" />
+                      <span>Estilo Visual Rápido</span>
+                    </div>
+                    <div className="space-y-1">
+                      {[
+                        { id: 'organic-branch', label: 'Orgânico (Galhos & Linhas)' },
+                        { id: 'modern-cards', label: 'Cartões Modernos' },
+                        { id: 'pills', label: 'Pílulas & Cápsulas' },
+                        { id: 'technical', label: 'Técnico / Ortogonal' },
+                        { id: 'minimal-lines', label: 'Minimalista (Linhas)' }
+                      ].map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => commitDoc(applyMapStylePreset(doc, s.id as MindMapStylePreset))}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs cursor-pointer border transition-colors ${
+                            doc.mapStyle === s.id
+                              ? 'bg-[#1e1e26] border-[var(--accent,#c59b27)]/80 text-[var(--accent,#c59b27)] font-semibold'
+                              : 'bg-[#141418] border-zinc-800 text-zinc-300 hover:bg-zinc-800/60'
+                          }`}
+                        >
+                          <span>{s.label}</span>
+                          {doc.mapStyle === s.id && <Check className="w-3.5 h-3.5" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: CORES & PALETAS */}
+              {settingsTab === 'colors' && (
+                <div className="space-y-2.5">
+                  {isCreatingPalette ? (
+                    <div className="space-y-2 p-1 bg-[#141418] border border-zinc-800 rounded-xl p-2.5">
+                      <div className="flex items-center justify-between pb-1 border-b border-zinc-800">
+                        <span className="text-xs font-semibold text-zinc-100">Criar Grupo de Cores</span>
+                        <button
+                          type="button"
+                          onClick={() => setIsCreatingPalette(false)}
+                          className="text-zinc-500 hover:text-zinc-300 p-0.5 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-zinc-400 block mb-1">Nome do Grupo</label>
+                        <input
+                          type="text"
+                          value={newPaletteName}
+                          onChange={e => setNewPaletteName(e.target.value)}
+                          placeholder="Ex: Minha Marca"
+                          className="w-full bg-[#18181e] border border-zinc-700 rounded-lg px-2.5 py-1 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-hidden focus:border-[var(--accent,#c59b27)]"
+                          autoFocus
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-zinc-400 block mb-1">Cores dos Ramos (5 cores)</label>
+                        <div className="flex items-center justify-between gap-1">
+                          {newPaletteColors.map((color, idx) => (
+                            <div key={idx} className="relative">
+                              <input
+                                type="color"
+                                value={color}
+                                onChange={e => {
+                                  const next = [...newPaletteColors]
+                                  next[idx] = e.target.value
+                                  setNewPaletteColors(next)
+                                }}
+                                className="w-8 h-8 rounded-lg border border-zinc-700 bg-transparent cursor-pointer p-0 block hover:scale-105 transition-transform"
+                                title={`Cor ${idx + 1}: ${color}`}
+                              />
+                            </div>
+                          ))}
                         </div>
-                        {Object.entries(doc.customPalettes).map(([pId, p]) => (
-                          <div
-                            key={pId}
-                            className={`w-full px-2 py-1 rounded flex items-center justify-between text-xs ${
-                              doc.paletteId === pId ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-medium' : 'text-zinc-300 hover:bg-zinc-800/60'
+                      </div>
+
+                      <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-zinc-800">
+                        <button
+                          type="button"
+                          onClick={() => setIsCreatingPalette(false)}
+                          className="px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer rounded"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const id = 'custom_' + Date.now()
+                            const customPalettes = {
+                              ...(doc.customPalettes || {}),
+                              [id]: {
+                                name: newPaletteName.trim() || 'Grupo Personalizado',
+                                colors: newPaletteColors
+                              }
+                            }
+                            const nextNodes = { ...doc.nodes }
+                            for (const nid in nextNodes) {
+                              if (nid !== doc.rootId && nextNodes[nid].branchColor) {
+                                nextNodes[nid] = { ...nextNodes[nid], branchColor: undefined }
+                              }
+                            }
+                            commitDoc({
+                              ...doc,
+                              paletteId: id,
+                              customPalettes,
+                              nodes: nextNodes
+                            })
+                            setIsCreatingPalette(false)
+                          }}
+                          className="px-2.5 py-1 text-xs bg-[var(--accent,#c59b27)] text-black font-semibold rounded-lg hover:brightness-110 cursor-pointer shadow-xs"
+                        >
+                          Salvar Grupo
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Distribuição da Cor */}
+                      <div className="px-2.5 py-1.5 bg-[#141418] border border-zinc-800 rounded-xl space-y-1">
+                        <span className="text-[10px] text-zinc-400 font-medium block">Distribuição da Cor</span>
+                        <div className="grid grid-cols-2 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => commitDoc({ ...doc, colorDistribution: 'hierarchy' })}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer text-center ${
+                              doc.colorDistribution !== 'branch'
+                                ? 'bg-[var(--accent,#c59b27)] text-black font-semibold shadow-xs'
+                                : 'bg-zinc-800/80 text-zinc-300 hover:text-white'
                             }`}
                           >
-                            <button
-                              onClick={() => {
-                                const nextNodes = { ...doc.nodes }
-                                for (const id in nextNodes) {
-                                  if (id !== doc.rootId && nextNodes[id].branchColor) {
-                                    nextNodes[id] = { ...nextNodes[id], branchColor: undefined }
-                                  }
+                            Por Nível (Etapa)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => commitDoc({ ...doc, colorDistribution: 'branch' })}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer text-center ${
+                              doc.colorDistribution === 'branch'
+                                ? 'bg-[var(--accent,#c59b27)] text-black font-semibold shadow-xs'
+                                : 'bg-zinc-800/80 text-zinc-300 hover:text-white'
+                            }`}
+                          >
+                            Por Ramo
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Toggle: Colorir fundo dos nós com a cor do ramo */}
+                      <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-[#141418] border border-zinc-800">
+                        <div className="flex items-center gap-1.5">
+                          <Palette className="w-3.5 h-3.5 text-[var(--accent,#c59b27)]" />
+                          <span className="text-[11px] font-medium text-zinc-200">Colorir fundo dos cartões</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => commitDoc({ ...doc, colorizeNodeBg: !doc.colorizeNodeBg })}
+                          className={`w-7 h-4 rounded-full transition-colors relative cursor-pointer ${
+                            doc.colorizeNodeBg ? 'bg-[var(--accent,#c59b27)]' : 'bg-zinc-700'
+                          }`}
+                          title={doc.colorizeNodeBg ? 'Desativar preenchimento dos nós' : 'Ativar preenchimento dos nós'}
+                        >
+                          <span
+                            className={`w-3 h-3 rounded-full bg-white absolute top-0.5 transition-transform ${
+                              doc.colorizeNodeBg ? 'right-0.5' : 'left-0.5'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Paletas Padrão */}
+                      <div className="space-y-1">
+                        <div className="text-[10px] uppercase font-bold text-zinc-500 px-1 pt-1">Paletas Prontas</div>
+                        {Object.entries(MINDMAP_PALETTES).map(([pId, p]) => (
+                          <button
+                            key={pId}
+                            type="button"
+                            onClick={() => {
+                              const nextNodes = { ...doc.nodes }
+                              for (const id in nextNodes) {
+                                if (id !== doc.rootId && nextNodes[id].branchColor) {
+                                  nextNodes[id] = { ...nextNodes[id], branchColor: undefined }
                                 }
-                                commitDoc({ ...doc, paletteId: pId as MindMapPaletteId, nodes: nextNodes })
-                                setActivePopover(null)
-                              }}
-                              className="flex items-center gap-2 flex-1 text-left cursor-pointer min-w-0"
-                            >
-                              <div className="flex gap-0.5 shrink-0">
+                              }
+                              commitDoc({ ...doc, paletteId: pId as MindMapPaletteId, nodes: nextNodes })
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs cursor-pointer border transition-colors ${
+                              (doc.paletteId || 'rainbow') === pId
+                                ? 'bg-[#1e1e26] border-[var(--accent,#c59b27)]/80 text-[var(--accent,#c59b27)] font-medium'
+                                : 'bg-[#141418] border-zinc-800 text-zinc-300 hover:bg-zinc-800/60'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="flex gap-0.5">
                                 {p.colors.slice(0, 4).map((c, i) => (
-                                  <span key={i} className="w-2 h-2 rounded-full" style={{ backgroundColor: c }} />
+                                  <span key={i} className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c }} />
                                 ))}
                               </div>
-                              <span className="truncate">{p.name}</span>
-                            </button>
-                            <div className="flex items-center gap-1 shrink-0">
-                              {doc.paletteId === pId && <Check className="w-3.5 h-3.5 mr-1" />}
+                              <span>{p.name}</span>
+                            </div>
+                            {(doc.paletteId || 'rainbow') === pId && <Check className="w-3.5 h-3.5" />}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Custom Palettes (if any) */}
+                      {doc.customPalettes && Object.keys(doc.customPalettes).length > 0 && (
+                        <div className="space-y-1 pt-1">
+                          <div className="text-[10px] uppercase font-bold text-zinc-500 px-1 pt-1 border-t border-zinc-800/80">
+                            Grupos Personalizados
+                          </div>
+                          {Object.entries(doc.customPalettes).map(([pId, p]) => (
+                            <div
+                              key={pId}
+                              className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs border ${
+                                doc.paletteId === pId
+                                  ? 'bg-[#1e1e26] border-[var(--accent,#c59b27)]/80 text-[var(--accent,#c59b27)] font-medium'
+                                  : 'bg-[#141418] border-zinc-800 text-zinc-300 hover:bg-zinc-800/60'
+                              }`}
+                            >
                               <button
                                 type="button"
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  handleDeleteCustomPalette(pId)
+                                onClick={() => {
+                                  const nextNodes = { ...doc.nodes }
+                                  for (const id in nextNodes) {
+                                    if (id !== doc.rootId && nextNodes[id].branchColor) {
+                                      nextNodes[id] = { ...nextNodes[id], branchColor: undefined }
+                                    }
+                                  }
+                                  commitDoc({ ...doc, paletteId: pId as MindMapPaletteId, nodes: nextNodes })
                                 }}
-                                className="p-0.5 text-zinc-500 hover:text-red-400 cursor-pointer"
-                                title="Excluir Grupo"
+                                className="flex items-center gap-2 flex-1 text-left cursor-pointer min-w-0"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <div className="flex gap-0.5 shrink-0">
+                                  {p.colors.slice(0, 4).map((c, i) => (
+                                    <span key={i} className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c }} />
+                                  ))}
+                                </div>
+                                <span className="truncate">{p.name}</span>
                               </button>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {doc.paletteId === pId && <Check className="w-3.5 h-3.5 mr-1" />}
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    handleDeleteCustomPalette(pId)
+                                  }}
+                                  className="p-1 text-zinc-500 hover:text-red-400 cursor-pointer"
+                                  title="Excluir Grupo"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
+                          ))}
+                        </div>
+                      )}
 
-                    {/* Criar Grupo de Cores button */}
+                      {/* Criar Grupo de Cores button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewPaletteName(`Paleta ${(Object.keys(doc.customPalettes || {}).length || 0) + 1}`)
+                          setNewPaletteColors(['#f43f5e', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b'])
+                          setIsCreatingPalette(true)
+                        }}
+                        className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-dashed border-zinc-700 hover:border-[var(--accent,#c59b27)] text-zinc-300 hover:text-[var(--accent,#c59b27)] flex items-center justify-center gap-1.5 text-xs transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Criar Grupo de Cores</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: FUNDO DA TELA */}
+              {settingsTab === 'canvas' && (
+                <div className="space-y-2.5">
+                  <div className="text-[10px] uppercase font-bold text-zinc-400 px-1">Cores Prontas do Fundo</div>
+                  <div className="space-y-1">
+                    {CANVAS_BG_OPTIONS.map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => commitDoc({ ...doc, canvasBg: opt.id })}
+                        className={`w-full text-left px-2.5 py-2 rounded-lg flex items-center justify-between text-xs cursor-pointer border transition-colors ${
+                          currentCanvasBg === opt.id
+                            ? 'bg-[#1e1e26] border-[var(--accent,#c59b27)]/80 text-[var(--accent,#c59b27)] font-semibold shadow-xs'
+                            : 'bg-[#141418] border-zinc-800 text-zinc-300 hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-3.5 h-3.5 rounded-full border border-zinc-600 shrink-0" style={{ backgroundColor: opt.id }} />
+                          <span>{opt.label}</span>
+                        </div>
+                        {currentCanvasBg === opt.id && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="pt-2 border-t border-zinc-800 space-y-1.5">
+                    <div className="text-[10px] uppercase font-bold text-zinc-400 px-1">Cor Personalizada</div>
                     <button
+                      ref={canvasBgBtnRef}
                       type="button"
-                      onClick={() => {
-                        setNewPaletteName(`Paleta ${(Object.keys(doc.customPalettes || {}).length || 0) + 1}`)
-                        setNewPaletteColors(['#f43f5e', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b'])
-                        setIsCreatingPalette(true)
-                      }}
-                      className="w-full mt-1.5 px-2 py-1.5 rounded border border-dashed border-zinc-700 hover:border-[var(--accent,#c59b27)] text-zinc-300 hover:text-[var(--accent,#c59b27)] flex items-center justify-center gap-1.5 text-xs transition-colors cursor-pointer"
+                      onClick={() => setActivePopover(prev => (prev === 'canvasBgPicker' ? null : 'canvasBgPicker'))}
+                      className="w-full text-left px-2.5 py-2 rounded-lg flex items-center justify-between text-xs bg-[#141418] border border-zinc-800 hover:border-zinc-700 text-zinc-200 hover:bg-zinc-800/70 cursor-pointer transition-colors"
                     >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Criar Grupo de Cores</span>
+                      <div className="flex items-center gap-2">
+                        <Palette className="w-3.5 h-3.5 text-[var(--accent,#c59b27)]" />
+                        <span>Abrir Color Picker...</span>
+                      </div>
+                      <span className="w-4 h-4 rounded-md border border-zinc-600" style={{ backgroundColor: currentCanvasBg }} />
                     </button>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* Layout Estrutural */}
-          <div className="relative mindmap-popover-anchor">
-            <button
-              onClick={() => setActivePopover(prev => (prev === 'layout' ? null : 'layout'))}
-              className="flex items-center gap-1 px-2 py-1 rounded bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
-              title="Estrutura do Mapa"
-            >
-              <span>
-                {doc.layout === 'radial'
-                  ? 'Radial'
-                  : doc.layout === 'right'
-                  ? 'À Direita'
-                  : doc.layout === 'left'
-                  ? 'À Esquerda'
-                  : 'Organograma'}
-              </span>
-              <ChevronDown className="w-3 h-3 text-zinc-500" />
-            </button>
-
-            {activePopover === 'layout' && (
-              <div
-                onMouseDown={e => e.stopPropagation()}
-                className="absolute top-8 left-0 w-44 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-0.5"
-              >
-                {[
-                  { id: 'radial', label: 'Mind Map (Radial)' },
-                  { id: 'right', label: 'Árvore à Direita' },
-                  { id: 'left', label: 'Árvore à Esquerda' },
-                  { id: 'org-chart', label: 'Organograma (Top-Down)' }
-                ].map(l => (
-                  <button
-                    key={l.id}
-                    onClick={() => {
-                      const cleaned = resetNodePositions(doc)
-                      commitDoc({ ...cleaned, layout: l.id as MindMapLayout })
-                      setActivePopover(null)
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded flex items-center justify-between text-xs cursor-pointer ${
-                      doc.layout === l.id ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-medium' : 'text-zinc-300 hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    <span>{l.label}</span>
-                    {doc.layout === l.id && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Fundo da Malha (Canvas Background) */}
-          <div className="relative mindmap-popover-anchor">
-            <button
-              onClick={() => setActivePopover(prev => (prev === 'canvasBg' ? null : 'canvasBg'))}
-              className="p-1 rounded bg-[#18181e] hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
-              title="Cor de Fundo da Tela"
-            >
-              <span
-                className="w-3.5 h-3.5 rounded-full block border border-zinc-700"
-                style={{ backgroundColor: currentCanvasBg }}
-              />
-            </button>
-
-            {activePopover === 'canvasBg' && (
-              <div
-                onMouseDown={e => e.stopPropagation()}
-                className="absolute top-8 left-0 w-40 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-0.5"
-              >
-                {CANVAS_BG_OPTIONS.map(opt => (
-                  <button
-                    key={opt.id}
-                    onClick={() => {
-                      commitDoc({ ...doc, canvasBg: opt.id })
-                      setActivePopover(null)
-                    }}
-                    className={`w-full text-left px-2 py-1.5 rounded flex items-center justify-between text-xs cursor-pointer ${
-                      currentCanvasBg === opt.id ? 'bg-[#1e1e26] text-[var(--accent,#c59b27)] font-medium' : 'text-zinc-300 hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full border border-zinc-600" style={{ backgroundColor: opt.id }} />
-                      <span>{opt.label}</span>
-                    </div>
-                    {currentCanvasBg === opt.id && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Color Picker popover for Canvas Background (Portal attached) */}
+          {activePopover === 'canvasBgPicker' && (
+            <CustomColorPickerPopover
+              currentColor={currentCanvasBg}
+              onChange={c => {
+                pushRecentColor(c)
+                commitDoc({ ...doc, canvasBg: c })
+              }}
+              onClearColor={() => {
+                commitDoc({ ...doc, canvasBg: undefined })
+              }}
+              onClose={() => setActivePopover(null)}
+              anchorEl={canvasBgBtnRef.current}
+              align="left"
+              recentColors={recentColors}
+            />
+          )}
         </div>
 
         {/* Right: Search, Undo/Redo, Reorganizar, Zoom, Minimap, Export */}
@@ -1334,8 +1433,8 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
         </div>
       </header>
 
-      {/* 2. FLOATING NODE TOOLBAR (Only renders if a node is selected!) */}
-      {selectedComputed && (
+      {/* 2. FLOATING NODE TOOLBAR (Only renders if exactly 1 node is selected!) */}
+      {selectedComputed && selectedNodeIds.length <= 1 && (
         <div
           onMouseDown={e => e.stopPropagation()}
           style={{
@@ -1361,7 +1460,11 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
 
             {activePopover === 'color' && (
               <CustomColorPickerPopover
-                currentColor={selectedComputed.node.fillColor || (doc.colorizeNodeBg ? selectedComputed.branchColor : '#1e293b')}
+                currentColor={
+                  selectedComputed.node.fillColor && selectedComputed.node.fillColor !== 'transparent'
+                    ? selectedComputed.node.fillColor
+                    : (doc.colorizeNodeBg ? selectedComputed.branchColor : '#1e293b')
+                }
                 onChange={c => {
                   pushRecentColor(c)
                   commitDoc(
@@ -1374,7 +1477,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                 onClearColor={() => {
                   commitDoc(
                     updateNode(doc, selectedComputed.id, {
-                      fillColor: undefined,
+                      fillColor: 'transparent',
                       textColor: undefined
                     })
                   )
@@ -1557,6 +1660,36 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
         </div>
       )}
 
+      {/* 2b. MULTI-SELECTION FLOATING TOOLBAR (When > 1 node selected with Ctrl) */}
+      {selectedNodeIds.length > 1 && selectedComputed && (
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            left: `${viewport.panX + selectedComputed.x * viewport.zoom}px`,
+            top: `${viewport.panY + (selectedComputed.y - selectedComputed.height / 2 - 16) * viewport.zoom}px`,
+            transform: 'translate(-50%, -100%)'
+          }}
+          className="mindmap-interactive-control z-30 flex items-center gap-2.5 px-3 py-1.5 bg-[#121216]/95 backdrop-blur-md border border-[var(--accent,#c59b27)]/60 rounded-xl shadow-2xl text-xs select-none"
+        >
+          <div className="flex items-center gap-1.5 text-zinc-200 font-medium">
+            <span className="w-2 h-2 rounded-full bg-[var(--accent,#c59b27)] animate-pulse" />
+            <span>{selectedNodeIds.length} tópicos selecionados</span>
+          </div>
+
+          <div className="h-3.5 w-px bg-zinc-700 mx-0.5" />
+
+          <button
+            onClick={handleDeleteSelected}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-500/15 hover:bg-red-500/25 text-red-400 hover:text-red-300 border border-red-500/30 transition-colors cursor-pointer font-medium"
+            title="Excluir selecionados (Del ou Backspace)"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Excluir Selecionados</span>
+          </button>
+        </div>
+      )}
+
       {/* 3. RELATIONSHIP CREATION NOTICE */}
       {connectingFromId && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 px-3 py-1.5 bg-blue-600/90 text-white text-xs rounded-full shadow-lg flex items-center gap-2 backdrop-blur-xs">
@@ -1722,7 +1855,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
         >
           {layoutResult.nodes.map(cn => {
             const isRoot = cn.id === doc.rootId
-            const isSelected = cn.id === selectedNodeId
+            const isSelected = selectedNodeIds.includes(cn.id)
             const isEditing = cn.id === editingNodeId
             const isHighlighted = searchQuery && cn.node.title.toLowerCase().includes(searchQuery.toLowerCase())
             const hasChildren = cn.node.children && cn.node.children.length > 0
@@ -1732,15 +1865,20 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             const isUnderline = shape === 'underline'
 
             // Color resolution based on light/dark canvas, hierarchy level & colorizeNodeBg
-            const effectiveBg = cn.node.fillColor
-              ? cn.node.fillColor
-              : doc.colorizeNodeBg
-              ? (isRoot ? (cn.branchColor || currentTheme.rootBg) : cn.level === 1 ? cn.branchColor : `${cn.branchColor}22`)
-              : isRoot
+            const isExplicitTransparent = cn.node.fillColor === 'transparent' || cn.node.fillColor === 'none'
+            const defaultCardBg = isRoot
               ? currentTheme.rootBg
               : isCanvasLight
               ? '#ffffff'
               : currentTheme.subtopicBg
+
+            const effectiveBg = isExplicitTransparent
+              ? (isUnderline ? 'transparent' : defaultCardBg)
+              : cn.node.fillColor
+              ? cn.node.fillColor
+              : doc.colorizeNodeBg
+              ? (isRoot ? (cn.branchColor || currentTheme.rootBg) : cn.level === 1 ? cn.branchColor : `${cn.branchColor}22`)
+              : defaultCardBg
 
             const effectiveBorder = cn.node.strokeColor
               ? cn.node.strokeColor
@@ -1752,7 +1890,9 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
               ? cn.branchColor
               : (cn.branchColor || currentTheme.subtopicBorder)
 
-            const effectiveText = cn.node.textColor
+            const effectiveText = isExplicitTransparent
+              ? (isRoot ? currentTheme.rootText : isCanvasLight ? '#0f172a' : currentTheme.subtopicText)
+              : cn.node.textColor
               ? cn.node.textColor
               : doc.colorizeNodeBg && !cn.node.fillColor
               ? (cn.level === 1 && isColorLight(cn.branchColor) ? '#09090b' : '#ffffff')
@@ -2008,7 +2148,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                 cx={20 + ((cn.x - layoutResult.bounds.minX) / (layoutResult.bounds.maxX - layoutResult.bounds.minX || 1)) * 120}
                 cy={15 + ((cn.y - layoutResult.bounds.minY) / (layoutResult.bounds.maxY - layoutResult.bounds.minY || 1)) * 80}
                 r={cn.id === doc.rootId ? 4 : 2}
-                fill={cn.id === selectedNodeId ? 'var(--accent,#c59b27)' : cn.branchColor}
+                fill={selectedNodeIds.includes(cn.id) ? 'var(--accent,#c59b27)' : cn.branchColor}
               />
             ))}
           </svg>

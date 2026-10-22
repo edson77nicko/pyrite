@@ -10,13 +10,11 @@ import {
   RotateCcw,
   Focus,
   Sliders,
-  Sparkles,
   ExternalLink,
   Layers,
   ArrowRight,
   Play,
   Pause,
-  Eye,
   Compass
 } from 'lucide-react'
 
@@ -218,12 +216,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [pinnedPopoverNodeId, setPinnedPopoverNodeId] = useState<string | null>(null)
-  const [hoveredFolder, setHoveredFolder] = useState<string | null>(null)
   const [isLocalMode, setIsLocalMode] = useState(false)
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
-  const [isContemplationMode, setIsContemplationMode] = useState(false)
-  const [contemplatedNodeId, setContemplatedNodeId] = useState<string | null>(null)
 
   const [settings, setSettings] = useState<GraphSettings & {
     orbitalSpeed: number
@@ -270,32 +265,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isContemplationMode) {
-        setIsContemplationMode(false)
+      if (e.key === 'Escape') {
+        setShowSettingsDrawer(false)
+        setPinnedPopoverNodeId(null)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isContemplationMode])
-
-  // Contemplation Mode auto-dream spotlight timer
-  useEffect(() => {
-    if (!isContemplationMode || nodes.length === 0) {
-      setContemplatedNodeId(null)
-      return
-    }
-
-    const pickSpotlight = () => {
-      const connected = nodes.filter(n => n.connections > 0)
-      const pool = connected.length > 0 ? connected : nodes
-      const chosen = pool[Math.floor(Math.random() * pool.length)]
-      if (chosen) setContemplatedNodeId(chosen.id)
-    }
-
-    pickSpotlight()
-    const timer = setInterval(pickSpotlight, 5500)
-    return () => clearInterval(timer)
-  }, [isContemplationMode, nodes])
+  }, [])
 
   // Map folders to subtle Planckian star temperatures
   const folderTintMap = useMemo(() => {
@@ -589,12 +566,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
       const effectiveDt = rawDt * timeScaleRef.current
       simTimeRef.current += effectiveDt
 
-      if (isContemplationMode && !isDraggingCanvasRef.current && !isTiltingCameraRef.current) {
-        const t = currentTime * 0.00022
-        tiltRef.current = 0.31 + Math.sin(t) * 0.1
-        transformRef.current.scale = 0.95 + Math.cos(t * 0.7) * 0.1
-      }
-
       const transform = transformRef.current
       const centerX = width / 2 + transform.x
       const centerY = height / 2 + transform.y
@@ -633,8 +604,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
       const focalNodeId =
         pinnedPopoverNodeId ||
         hoveredNodeId ||
-        selectedNodeId ||
-        (isContemplationMode ? contemplatedNodeId : null)
+        selectedNodeId
 
       const activeNeighborIds = new Set<string>()
       if (focalNodeId) {
@@ -739,9 +709,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             ? edge.source === focalNodeId || edge.target === focalNodeId
             : false
 
-          const isDimmed = hoveredNodeId
-            ? !isHighlighted
-            : hoveredFolder && s.folderShort !== hoveredFolder && t.folderShort !== hoveredFolder
+          const isDimmed = hoveredNodeId ? !isHighlighted : false
 
           if (isDimmed && !isHighlighted) continue
 
@@ -788,7 +756,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           const isFocal = node.id === focalNodeId
           const isNeighbor = focalNodeId ? activeNeighborIds.has(node.id) : false
-          const isFolderMatch = hoveredFolder ? node.folderShort === hoveredFolder : true
           const isSearchMatch = searchQuery
             ? node.title.toLowerCase().includes(searchQuery.toLowerCase())
             : false
@@ -799,8 +766,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
           let starAlpha = twinkle
           if (searchQuery) {
             starAlpha = isSearchMatch ? 1.0 : 0.1
-          } else if (hoveredFolder) {
-            starAlpha = isFolderMatch ? 1.0 : 0.12
           } else if (focalNodeId) {
             starAlpha = isFocal || isNeighbor ? 1.0 : 0.18
           } else if (node.behindHorizon) {
@@ -920,12 +885,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
       hoveredNodeId,
       selectedNodeId,
       pinnedPopoverNodeId,
-      contemplatedNodeId,
-      hoveredFolder,
       searchQuery,
       settings,
-      isPaused,
-      isContemplationMode
+      isPaused
     ])
 
   // Screen-space Hit Testing
@@ -1146,14 +1108,10 @@ export const GraphView: React.FC<GraphViewProps> = ({
   }
 
   const activeInspectNode = useMemo(() => {
-    const id =
-      pinnedPopoverNodeId ||
-      hoveredNodeId ||
-      selectedNodeId ||
-      (isContemplationMode ? contemplatedNodeId : null)
+    const id = pinnedPopoverNodeId || hoveredNodeId || selectedNodeId
     if (!id) return null
     return nodes.find(n => n.id === id) || null
-  }, [pinnedPopoverNodeId, hoveredNodeId, selectedNodeId, contemplatedNodeId, isContemplationMode, nodes])
+  }, [pinnedPopoverNodeId, hoveredNodeId, selectedNodeId, nodes])
 
   const activeInspectConnections = useMemo(() => {
     if (!activeInspectNode) return []
@@ -1165,11 +1123,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
     return nodes.filter(n => ids.includes(n.id))
   }, [activeInspectNode, edges, nodes])
 
-  const allFolderShorts = useMemo(() => {
-    const set = new Set(nodes.map(n => n.folderShort))
-    return Array.from(set).sort()
-  }, [nodes])
-
   return (
     <div
       ref={containerRef}
@@ -1177,95 +1130,69 @@ export const GraphView: React.FC<GraphViewProps> = ({
       className="relative w-full h-full bg-[#010103] overflow-hidden flex flex-col select-none"
     >
       {/* 1. TOP HUD CONTROL BAR */}
-      {!isContemplationMode && (
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-[#080911]/80 backdrop-blur-2xl border border-white/[0.08] rounded-2xl p-1.5 shadow-2xl">
-          {/* Search */}
-          <div className="relative flex items-center">
-            <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Buscar estrela..."
-              className="w-40 pl-8 pr-7 py-1.5 bg-[#0f111c]/90 border border-white/[0.06] rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[var(--accent)] font-mono transition-all"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 text-zinc-500 hover:text-zinc-300 cursor-pointer"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-
-          <button
-            onClick={() => setIsPaused(p => !p)}
-            className={`p-1.5 rounded-xl transition-all cursor-pointer ${
-              isPaused
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
-            }`}
-            title={isPaused ? 'Retomar órbita' : 'Pausar órbita'}
-          >
-            {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-          </button>
-
-          <button
-            onClick={() => setIsContemplationMode(true)}
-            className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all cursor-pointer"
-            title="Modo Contemplação (Ocultar interface)"
-          >
-            <Eye className="w-3.5 h-3.5" />
-          </button>
-
-          <button
-            onClick={() => setIsLocalMode(m => !m)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              isLocalMode
-                ? 'bg-[var(--accent)] text-zinc-950 shadow-md'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
-            }`}
-            title="Alternar entre Galáxia Completa e Órbita Local"
-          >
-            <Focus className="w-3.5 h-3.5" />
-            <span>{isLocalMode ? 'Foco Local' : 'Global'}</span>
-          </button>
-
-          <button
-            onClick={() => setShowSettingsDrawer(d => !d)}
-            className={`p-1.5 rounded-xl transition-all cursor-pointer ${
-              showSettingsDrawer
-                ? 'bg-[var(--accent)] text-zinc-950 font-bold'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
-            }`}
-            title="Parâmetros Astronômicos"
-          >
-            <Sliders className="w-3.5 h-3.5" />
-          </button>
+      <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-[#0c0c0e]/95 backdrop-blur-2xl border border-zinc-800 rounded-2xl p-1.5 shadow-2xl">
+        {/* Search */}
+        <div className="relative flex items-center">
+          <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Buscar estrela..."
+            className="w-40 pl-8 pr-7 py-1.5 bg-[#18181e] border border-zinc-700/60 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[var(--accent)] font-mono transition-all"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 text-zinc-500 hover:text-zinc-300 cursor-pointer"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
-      )}
 
-      {/* CONTEMPLATION MODE FLOATING EXIT PILL */}
-      {isContemplationMode && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-[#080911]/75 backdrop-blur-2xl border border-white/15 rounded-full px-4 py-2 text-xs text-zinc-300 shadow-2xl animate-in fade-in duration-300">
-          <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-          <span className="font-mono text-[11px] tracking-wide">
-            MODO CONTEMPLAÇÃO HUBBLE
-          </span>
-          <button
-            onClick={() => setIsContemplationMode(false)}
-            className="px-2.5 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold transition-colors cursor-pointer"
-          >
-            Sair (ESC)
-          </button>
-        </div>
-      )}
+        <button
+          onClick={() => setIsPaused(p => !p)}
+          className={`p-1.5 rounded-xl transition-all cursor-pointer ${
+            isPaused
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+          }`}
+          title={isPaused ? 'Retomar órbita' : 'Pausar órbita'}
+        >
+          {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+        </button>
+
+        <button
+          onClick={() => setIsLocalMode(m => !m)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            isLocalMode
+              ? 'bg-[var(--accent)] text-zinc-950 shadow-md'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+          }`}
+          title="Alternar entre Galáxia Completa e Órbita Local"
+        >
+          <Focus className="w-3.5 h-3.5" />
+          <span>{isLocalMode ? 'Foco Local' : 'Global'}</span>
+        </button>
+
+        <button
+          onClick={() => setShowSettingsDrawer(d => !d)}
+          className={`p-1.5 rounded-xl transition-all cursor-pointer ${
+            showSettingsDrawer
+              ? 'bg-[var(--accent)] text-zinc-950 font-bold'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+          }`}
+          title="Parâmetros Astronômicos"
+        >
+          <Sliders className="w-3.5 h-3.5" />
+        </button>
+      </div>
 
       {/* 2. TOP-RIGHT INSPECTOR HUD CARD */}
       {activeInspectNode && (
-        <div className="absolute top-4 right-4 z-20 w-84 bg-[#06070c]/90 backdrop-blur-2xl border border-white/[0.1] rounded-2xl p-4 shadow-2xl space-y-3 text-xs animate-in fade-in zoom-in-95 duration-150 select-none">
-          <div className="flex items-start justify-between gap-2 border-b border-white/[0.07] pb-2.5">
+        <div className="absolute top-4 right-4 z-20 w-84 bg-[#121216]/95 backdrop-blur-2xl border border-zinc-800 rounded-2xl p-4 shadow-2xl space-y-3 text-xs animate-in fade-in zoom-in-95 duration-150 select-none">
+          <div className="flex items-start justify-between gap-2 border-b border-zinc-800 pb-2.5">
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400">
                 <span
@@ -1297,7 +1224,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                   setSelectedNodeId(null)
                   setHoveredNodeId(null)
                 }}
-                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-white/10 transition-all cursor-pointer"
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-all cursor-pointer"
                 title="Fechar (ou clique fora)"
               >
                 <X className="w-3.5 h-3.5" />
@@ -1324,7 +1251,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                       setSelectedNodeId(c.id)
                       setPinnedPopoverNodeId(c.id)
                     }}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.07] text-[10px] text-zinc-200 transition-colors cursor-pointer"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#18181e] hover:bg-zinc-800 border border-zinc-700/60 text-[10px] text-zinc-200 transition-colors cursor-pointer"
                     title={`Ver grupo de: ${c.title}`}
                   >
                     <span
@@ -1338,7 +1265,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-1 border-t border-white/[0.07] text-[10px] text-zinc-400 font-mono">
+          <div className="flex items-center justify-between pt-1 border-t border-zinc-800 text-[10px] text-zinc-400 font-mono">
             <span>RAIO ORBITAL: {activeInspectNode.orbitRadius.toFixed(2)} Rs</span>
             <button
               onClick={() => onSelectNote(activeInspectNode.id)}
@@ -1351,9 +1278,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
       )}
 
       {/* 3. SETTINGS DRAWER */}
-      {showSettingsDrawer && !isContemplationMode && (
-        <div className="absolute top-18 left-4 z-30 w-76 bg-[#080911]/95 backdrop-blur-2xl border border-white/[0.1] rounded-2xl p-4 shadow-2xl space-y-3.5 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150">
-          <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+      {showSettingsDrawer && (
+        <div className="absolute top-18 left-4 z-30 w-76 bg-[#121216]/98 backdrop-blur-2xl border border-zinc-800 rounded-2xl p-4 shadow-2xl space-y-3.5 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
             <span className="font-bold text-zinc-100 flex items-center gap-1.5 font-mono text-[11px]">
               <Compass className="w-3.5 h-3.5 text-[var(--accent)]" />
               ÓPTICA HUBBLE & SINGULARIDADE
@@ -1438,7 +1365,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             />
           </div>
 
-          <div className="pt-2 border-t border-white/[0.08] space-y-2">
+          <div className="pt-2 border-t border-zinc-800 space-y-2">
             <label className="flex items-center justify-between cursor-pointer">
               <span className="text-[11px]">Rastros Orbitais de Luz</span>
               <input
@@ -1472,86 +1399,51 @@ export const GraphView: React.FC<GraphViewProps> = ({
         </div>
       )}
 
-      {/* 4. BOTTOM STELLAR CLUSTERS BAR */}
-      {!isContemplationMode && (
-        <div className="absolute bottom-5 left-5 z-20 bg-[#080911]/80 backdrop-blur-2xl border border-white/[0.08] rounded-2xl px-3.5 py-2 text-xs text-zinc-400 flex items-center gap-3 shadow-2xl">
-          <div className="flex items-center gap-1.5 font-bold text-zinc-200 font-mono text-[11px]">
-            <Layers className="w-3.5 h-3.5 text-[var(--accent)]" />
-            <span>{nodes.length} ESTRELAS</span>
-          </div>
-          <span className="text-zinc-700">•</span>
-          <span className="font-mono text-[11px]">{edges.length} LIGAÇÕES</span>
-          <span className="text-zinc-700">•</span>
-
-          <div className="flex items-center gap-1.5">
-            {allFolderShorts.slice(0, 6).map(fShort => {
-              const tint = folderTintMap.get(fShort) || STELLAR_PALETTE[0]
-              const isHovered = hoveredFolder === fShort
-              return (
-                <button
-                  key={fShort}
-                  type="button"
-                  onClick={() =>
-                    setHoveredFolder(prev => (prev === fShort ? null : fShort))
-                  }
-                  onMouseEnter={() => setHoveredFolder(fShort)}
-                  onMouseLeave={() => setHoveredFolder(null)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer ${
-                    isHovered
-                      ? 'bg-white/15 text-zinc-100 scale-105 border border-white/25'
-                      : 'bg-[#0f111c]/90 text-zinc-400 hover:text-zinc-200 border border-white/[0.06]'
-                  }`}
-                  title={`Destacar constelação: ${fShort}`}
-                >
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0 shadow-[0_0_6px_currentColor]"
-                    style={{ backgroundColor: tint.hex, color: tint.hex }}
-                  />
-                  <span className="truncate max-w-[85px]">{fShort}</span>
-                </button>
-              )
-            })}
-          </div>
+      {/* 4. BOTTOM STELLAR BAR */}
+      <div className="absolute bottom-5 left-5 z-20 bg-[#0c0c0e]/95 backdrop-blur-2xl border border-zinc-800 rounded-2xl px-3.5 py-2 text-xs text-zinc-400 flex items-center gap-2.5 shadow-2xl">
+        <div className="flex items-center gap-1.5 font-bold text-zinc-200 font-mono text-[11px]">
+          <Layers className="w-3.5 h-3.5 text-[var(--accent)]" />
+          <span>{nodes.length} ESTRELAS</span>
         </div>
-      )}
+        <span className="text-zinc-700">•</span>
+        <span className="font-mono text-[11px] text-zinc-300">{edges.length} LIGAÇÕES</span>
+      </div>
 
       {/* 5. FLOATING CAMERA & ZOOM CONTROLS */}
-      {!isContemplationMode && (
-        <div className="absolute bottom-5 right-5 z-20 flex flex-col gap-1.5 bg-[#080911]/80 backdrop-blur-2xl border border-white/[0.08] rounded-2xl p-1.5 shadow-2xl">
-          <button
-            onClick={() => {
-              transformRef.current.scale = Math.min(3.5, transformRef.current.scale * 1.28)
-            }}
-            className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-white/10 rounded-xl transition-all cursor-pointer"
-            title="Aproximar (+)"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => {
-              transformRef.current.scale = Math.max(0.25, transformRef.current.scale * 0.78)
-            }}
-            className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-white/10 rounded-xl transition-all cursor-pointer"
-            title="Afastar (-)"
-          >
-            <ZoomOut className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleFocusActiveNote}
-            className="p-2 text-zinc-400 hover:text-[var(--accent)] hover:bg-white/10 rounded-xl transition-all cursor-pointer"
-            title="Focar na Estrela da Nota Ativa"
-          >
-            <Focus className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleResetCamera}
-            className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-white/10 rounded-xl transition-all cursor-pointer"
-            title="Centralizar Câmera"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+      <div className="absolute bottom-5 right-5 z-20 flex flex-col gap-1.5 bg-[#0c0c0e]/95 backdrop-blur-2xl border border-zinc-800 rounded-2xl p-1.5 shadow-2xl">
+        <button
+          onClick={() => {
+            transformRef.current.scale = Math.min(3.5, transformRef.current.scale * 1.28)
+          }}
+          className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-xl transition-all cursor-pointer"
+          title="Aproximar (+)"
+        >
+          <ZoomIn className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => {
+            transformRef.current.scale = Math.max(0.25, transformRef.current.scale * 0.78)
+          }}
+          className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-xl transition-all cursor-pointer"
+          title="Afastar (-)"
+        >
+          <ZoomOut className="w-4 h-4" />
+        </button>
+        <button
+          onClick={handleFocusActiveNote}
+          className="p-2 text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800 rounded-xl transition-all cursor-pointer"
+          title="Focar na Estrela da Nota Ativa"
+        >
+          <Focus className="w-4 h-4" />
+        </button>
+        <button
+          onClick={handleResetCamera}
+          className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-xl transition-all cursor-pointer"
+          title="Centralizar Câmera"
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
+      </div>
 
       {/* 6. LAYER 1: WEBGL HUBBLE DEEP-FIELD & GARGANTUA SHADER CANVAS */}
       <canvas

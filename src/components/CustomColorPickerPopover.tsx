@@ -255,6 +255,7 @@ export const CustomColorPickerPopover: React.FC<CustomColorPickerPopoverProps> =
   const popoverContent = (
     <div
       ref={popoverRef}
+      onMouseDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
       data-color-picker-portal="true"
       className="fixed z-[99999] w-[230px] bg-[#12131a] border border-zinc-800 rounded-2xl shadow-xl p-3 text-xs text-zinc-200 select-none animate-in fade-in duration-75 space-y-2.5"

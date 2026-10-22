@@ -413,7 +413,7 @@ export function parseMindMapDocument(content?: string, fallbackTitle?: string): 
         }
       }
     }
-  } catch (err) {
+  } catch {
     // If not valid JSON, proceed to Markdown outline parser
   }
 
@@ -630,6 +630,8 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
   const rightChildren: string[] = []
   const leftChildren: string[] = []
 
+  const isBranchMode = doc.colorDistribution === 'branch'
+
   // Global branch color mapping to keep color hierarchy perfectly standard and harmonious
   const branchColorMap: Record<string, string> = {}
   rootChildren.forEach((cid, index) => {
@@ -670,7 +672,10 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
     let currentY = -totalSideHeight / 2
 
     metrics.forEach((metric) => {
-      const branchColor = branchColorMap[metric.id] || activeBranchColors[0]
+      // In hierarchy mode, all Level 1 nodes share the exact same Stage 1 color!
+      const branchColor = isBranchMode
+        ? (branchColorMap[metric.id] || activeBranchColors[0])
+        : activeBranchColors[0]
       const branchCenterY = currentY + metric.totalHeight / 2
 
       // Position branch root - check if node has custom position
@@ -721,7 +726,11 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
     inheritedBranchColor: string
   ) => {
     const node = nodes[metric.id]
-    const effectiveColor = node.branchColor || inheritedBranchColor
+    // In hierarchy mode, each stage/level has its own standardized color!
+    const stageColor = isBranchMode
+      ? inheritedBranchColor
+      : (activeBranchColors[(level - 1) % activeBranchColors.length] || activeBranchColors[0])
+    const effectiveColor = node.branchColor || stageColor
 
     computedNodes.push({
       id: metric.id,
@@ -765,6 +774,11 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
       const w1 = level === 1 ? 3.5 : Math.max(1.5, 2.8 - level * 0.4)
       const w2 = Math.max(1.5, 2.2 - level * 0.4)
 
+      const nextLevel = level + 1
+      const childStageColor = isBranchMode
+        ? effectiveColor
+        : (activeBranchColors[(nextLevel - 1) % activeBranchColors.length] || activeBranchColors[0])
+
       computedEdges.push({
         id: `edge_${metric.id}_${childMetric.id}`,
         fromId: metric.id,
@@ -772,7 +786,7 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
         path: isTapered
           ? createTaperedEdgePath(fromAnchorX, fromAnchorY, toAnchorX, toAnchorY, w1, w2, side)
           : createEdgePath(fromAnchorX, fromAnchorY, toAnchorX, toAnchorY, effectiveLineStyle, side),
-        color: childObj.branchColor || effectiveColor,
+        color: childObj.branchColor || childStageColor,
         width: w1,
         style: 'solid',
         isTapered
@@ -791,13 +805,20 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
     const startY = rootDim.height / 2 + 60
 
     metrics.forEach((metric, branchIndex) => {
-      const branchColor = activeBranchColors[branchIndex % activeBranchColors.length]
+      const branchColor = isBranchMode
+        ? activeBranchColors[branchIndex % activeBranchColors.length]
+        : activeBranchColors[0]
       const centerX = currentX + metric.width / 2
 
       const positionVerticalSubtree = (m: SubtreeMetric, posX: number, posY: number, lvl: number) => {
         const nd = nodes[m.id]
         const actualX = nd.customX != null ? nd.customX : posX
         const actualY = nd.customY != null ? nd.customY : posY
+
+        const lvlColor = isBranchMode
+          ? branchColor
+          : (activeBranchColors[(lvl - 1) % activeBranchColors.length] || activeBranchColors[0])
+        const actualColor = nd.branchColor || lvlColor
 
         computedNodes.push({
           id: m.id,
@@ -808,7 +829,7 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
           side: 'bottom',
           level: lvl,
           node: nd,
-          branchColor
+          branchColor: actualColor
         })
 
         if (nd.collapsed || m.children.length === 0) return
@@ -827,6 +848,10 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
 
           // Edge
           const isTapered = lineStyle === 'tapered'
+          const childLvlColor = isBranchMode
+            ? branchColor
+            : (activeBranchColors[lvl % activeBranchColors.length] || activeBranchColors[0])
+
           computedEdges.push({
             id: `edge_${m.id}_${cm.id}`,
             fromId: m.id,
@@ -834,7 +859,7 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
             path: isTapered
               ? createTaperedEdgePath(actualX, actualY + m.height / 2, actualChildX, actualChildY - cm.height / 2, 3.5, 2, 'bottom')
               : createEdgePath(actualX, actualY + m.height / 2, actualChildX, actualChildY - cm.height / 2, lineStyle, 'bottom'),
-            color: branchColor,
+            color: childNd.branchColor || childLvlColor,
             width: 2,
             style: 'solid',
             isTapered
@@ -858,7 +883,7 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
         path: isRootTapered
           ? createTaperedEdgePath(0, rootDim.height / 2, actualBranchX, actualBranchY - metric.height / 2, 7.5, 2.5, 'bottom')
           : createEdgePath(0, rootDim.height / 2, actualBranchX, actualBranchY - metric.height / 2, lineStyle, 'bottom'),
-        color: branchColor,
+        color: branchObj.branchColor || branchColor,
         width: 3,
         style: 'solid',
         isTapered: isRootTapered
@@ -1080,14 +1105,20 @@ export function updateNode(
   const current = doc.nodes[nodeId]
   if (!current) return doc
 
+  const updatedNode = { ...current }
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined || value === null) {
+      delete (updatedNode as any)[key]
+    } else {
+      (updatedNode as any)[key] = value
+    }
+  }
+
   return {
     ...doc,
     nodes: {
       ...doc.nodes,
-      [nodeId]: {
-        ...current,
-        ...updates
-      }
+      [nodeId]: updatedNode
     }
   }
 }
@@ -1112,7 +1143,7 @@ export function toggleCollapse(doc: MindMapDocument, nodeId: string): MindMapDoc
 export function resetNodePositions(doc: MindMapDocument): MindMapDocument {
   const nextNodes: Record<string, MindMapNode> = {}
   for (const [id, node] of Object.entries(doc.nodes)) {
-    const { customX, customY, ...cleanNode } = node
+    const { customX: _customX, customY: _customY, ...cleanNode } = node
     nextNodes[id] = cleanNode
   }
   return {

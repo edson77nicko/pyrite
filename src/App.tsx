@@ -330,6 +330,10 @@ export const App: React.FC = () => {
 
   const handleCloseTab = (tabId: string) => {
     const remaining = tabs.filter(t => t.id !== tabId)
+    if (remaining.length === 0) {
+      handleCreateNote()
+      return
+    }
     setTabs(remaining)
     if (activeTabId === tabId && remaining.length > 0) {
       const nextTab = remaining[remaining.length - 1]

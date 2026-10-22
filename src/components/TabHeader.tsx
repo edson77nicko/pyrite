@@ -54,6 +54,26 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
   const [isMaximized, setIsMaximized] = useState(false)
   const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatusData | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    tab: TabItem
+  } | null>(null)
+
+  // Close context menu on outside click or Escape
+  useEffect(() => {
+    if (!contextMenu) return
+    const handleCloseMenu = () => setContextMenu(null)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null)
+    }
+    window.addEventListener('mousedown', handleCloseMenu)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', handleCloseMenu)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [contextMenu])
 
   useEffect(() => {
     if (!isElectron || !window.electronAPI) return
@@ -89,6 +109,10 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
             <div
               key={tab.id}
               onClick={() => onSelectTab(tab.id)}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setContextMenu({ x: e.clientX, y: e.clientY, tab })
+              }}
               title={tab.isPinned ? `[Fixada] ${tab.title || 'Sem título'}` : (tab.title || 'Sem título')}
               className={`group flex items-center gap-1.5 h-7 rounded-t-lg text-xs cursor-pointer border-t border-x transition-all ${
                 tab.isPinned ? 'px-2 max-w-[130px]' : 'px-2.5 max-w-[170px]'
@@ -102,37 +126,49 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
               <TabIcon className="w-3.5 h-3.5 shrink-0" style={isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
               <span className="truncate">{tab.title || 'Sem título'}</span>
 
-              {/* Pin / Unpin Button */}
-              {onTogglePinTab && (
+              {/* If Pinned: Show ONLY the Gold Pin icon (click to unpin) */}
+              {tab.isPinned && onTogglePinTab && (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
                     onTogglePinTab(tab.id)
                   }}
-                  className={`p-0.5 rounded hover:bg-zinc-800 transition-all cursor-pointer ${
-                    tab.isPinned
-                      ? 'text-[var(--accent)] opacity-90 hover:opacity-100'
-                      : 'text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-zinc-200'
-                  }`}
-                  title={tab.isPinned ? 'Desafixar aba' : 'Fixar aba'}
+                  className="p-0.5 rounded hover:bg-zinc-800 text-[var(--accent)] transition-all cursor-pointer shrink-0"
+                  title="Aba fixada - clique para desafixar"
                 >
-                  <Pin className={`w-3 h-3 ${tab.isPinned ? 'rotate-45 fill-current' : ''}`} />
+                  <Pin className="w-3 h-3 rotate-45 fill-current" />
                 </button>
               )}
 
-              {/* Close Button (only if not pinned and multiple tabs) */}
-              {!tab.isPinned && tabs.length > 1 && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onCloseTab(tab.id)
-                  }}
-                  className="p-0.5 rounded-full hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 cursor-pointer"
-                  title="Fechar aba"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+              {/* If Unpinned: Show Pin on hover and Close (X) on hover */}
+              {!tab.isPinned && (
+                <div className="flex items-center gap-0.5 shrink-0">
+                  {onTogglePinTab && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onTogglePinTab(tab.id)
+                      }}
+                      className="p-0.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-[var(--accent)] opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                      title="Fixar aba"
+                    >
+                      <Pin className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onCloseTab(tab.id)
+                    }}
+                    className="p-0.5 rounded-full hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                    title="Fechar aba"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
               )}
             </div>
           )
@@ -265,6 +301,69 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           </div>
         )}
       </div>
+
+      {/* Tab Context Menu */}
+      {contextMenu && (
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          className="fixed z-50 w-44 bg-[#141418] border border-zinc-700/80 rounded-xl shadow-2xl p-1 text-xs text-zinc-300 space-y-0.5 animate-in fade-in zoom-in-95 duration-100"
+        >
+          {onTogglePinTab && (
+            <button
+              onClick={() => {
+                onTogglePinTab(contextMenu.tab.id)
+                setContextMenu(null)
+              }}
+              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors"
+            >
+              <Pin className={`w-3.5 h-3.5 ${contextMenu.tab.isPinned ? 'rotate-45 fill-current text-[var(--accent)]' : ''}`} />
+              <span>{contextMenu.tab.isPinned ? 'Desafixar aba' : 'Fixar aba'}</span>
+            </button>
+          )}
+
+          {!contextMenu.tab.isPinned && (
+            <button
+              onClick={() => {
+                onCloseTab(contextMenu.tab.id)
+                setContextMenu(null)
+              }}
+              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 flex items-center gap-2 text-zinc-300 hover:text-red-400 cursor-pointer transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Fechar aba</span>
+            </button>
+          )}
+
+          {tabs.length > 1 && (
+            <button
+              onClick={() => {
+                // Close other unpinned tabs
+                tabs.forEach(t => {
+                  if (t.id !== contextMenu.tab.id && !t.isPinned) {
+                    onCloseTab(t.id)
+                  }
+                })
+                setContextMenu(null)
+              }}
+              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 flex items-center gap-2 text-zinc-300 cursor-pointer transition-colors border-t border-zinc-800/80 pt-1 mt-0.5"
+            >
+              <span>Fechar outras abas</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              onNewTab()
+              setContextMenu(null)
+            }}
+            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 flex items-center gap-2 text-zinc-300 cursor-pointer transition-colors border-t border-zinc-800/80 pt-1 mt-0.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Nova nota em aba</span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }
