@@ -15,7 +15,7 @@ export type MindMapLayout =
   | 'org-chart'   // Top-down organizational chart
   | 'tree-bottom' // Bottom-up hierarchy
 
-export type MindMapLineStyle = 'curved' | 'straight' | 'rounded-elbow'
+export type MindMapLineStyle = 'tapered' | 'curved' | 'rounded-elbow'
 
 export type MindMapStylePreset =
   | 'organic-branch' // Reference: Thick organic branches, underline subtopics

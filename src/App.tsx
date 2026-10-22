@@ -9,7 +9,7 @@ import {
   extractTags
 } from './utils/vault'
 import { createEmptyDrawDocument, isDrawContent, serializeDrawDocument } from './utils/drawUtils'
-import { createEmptyMindMapDocument, isMindMapContent, serializeMindMapDocument } from './utils/mindMapUtils'
+import { createEmptyMindMapDocument, isMindMapContent, parseMindMapDocument, serializeMindMapDocument } from './utils/mindMapUtils'
 import { loadTasks, saveTasks, loadTaskSettings, saveTaskSettings, DEFAULT_BOARDS } from './utils/taskStorage'
 import { Ribbon } from './components/Ribbon'
 import { TabHeader } from './components/TabHeader'
@@ -120,7 +120,7 @@ export const App: React.FC = () => {
   const [tabs, setTabs] = useState<TabItem[]>(() => {
     const initialNote = notes[0]
     return initialNote
-      ? [{ id: `tab_${initialNote.id}`, noteId: initialNote.id, title: initialNote.title }]
+      ? [{ id: `tab_${initialNote.id}`, noteId: initialNote.id, title: initialNote.title, type: initialNote.type }]
       : []
   })
   const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0]?.id || '')
@@ -991,21 +991,30 @@ export const App: React.FC = () => {
             onAddTag={handleAddTag}
             onInsertSnippet={handleInsertSnippet}
             onCreateNote={(folder, initialTitle, initialContent) => {
+              const isMind = isMindMapContent(initialContent)
               const targetFolder = folder || currentNote?.folder || 'Início'
-              const title = initialTitle || `Nota ${notes.length + 1}`
+              const mindMapCount = notes.filter(n => n.type === 'mindmap').length
+              const noteCount = notes.filter(n => n.type !== 'draw' && n.type !== 'mindmap').length
+              const title = initialTitle || (isMind ? `Mapa Mental ${mindMapCount + 1}` : `Nota ${noteCount + 1}`)
+              const type: NoteType = isMind ? 'mindmap' : 'note'
+              const content = isMind
+                ? serializeMindMapDocument(parseMindMapDocument(initialContent, title))
+                : (initialContent || `Escreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`)
+
               const newNote: Note = {
-                id: `note_${Date.now()}`,
+                id: `${type}_${Date.now()}`,
                 title,
-                content: initialContent || `Escreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`,
+                content,
                 folder: targetFolder,
-                tags: [],
+                tags: isMind ? ['mindmap', 'mapa-mental'] : [],
+                type,
                 createdAt: Date.now(),
                 updatedAt: Date.now()
               }
               const updated = [newNote, ...notes]
               setNotes(updated)
               saveNotes(updated)
-              handleSelectNote(newNote.id)
+              handleSelectNote(newNote.id, newNote)
 
               if (window.electronAPI?.isElectron && vaultPath) {
                 window.electronAPI.saveFile({

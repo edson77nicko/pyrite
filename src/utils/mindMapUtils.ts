@@ -199,7 +199,7 @@ export function createEmptyMindMapDocument(initialTitle?: string): MindMapDocume
     theme: 'pyrita-classic',
     layout: 'radial',
     canvasBg: '#0f172a',
-    lineStyle: 'curved',
+    lineStyle: 'tapered',
     mapStyle: 'organic-branch',
     paletteId: 'rainbow',
     viewport: {
@@ -210,39 +210,215 @@ export function createEmptyMindMapDocument(initialTitle?: string): MindMapDocume
   }
 }
 
+/**
+ * Converts a structured Markdown outline into a full interactive MindMapDocument.
+ * Handles headings (#, ##, ###), bullet lists (- , * , 1. ), task checkboxes ([ ] / [x]),
+ * and indented subtopics, distributing Level 1 children symmetrically.
+ */
+export function parseMarkdownToMindMap(content: string, fallbackTitle?: string): MindMapDocument {
+  const rootId = 'node_root_' + Math.random().toString(36).substring(2, 9)
+  const nodes: Record<string, MindMapNode> = {}
+
+  const rawLines = content
+    .split('\n')
+    .map(line => line.replace(/\r$/, ''))
+    .filter(line => line.trim().length > 0)
+
+  let rootTitle = fallbackTitle || 'Meu Mapa Mental'
+  let linesToProcess = rawLines
+
+  // If first non-empty line is H1 (e.g. # Title), treat as root title
+  const h1Match = rawLines[0]?.match(/^#\s+(.+)$/)
+  if (h1Match) {
+    rootTitle = h1Match[1].trim()
+    linesToProcess = rawLines.slice(1)
+  }
+
+  nodes[rootId] = {
+    id: rootId,
+    parentId: null,
+    children: [],
+    title: rootTitle,
+    shape: 'rounded',
+    fontSize: 18,
+    fontWeight: 'bold'
+  }
+
+  const stack: { level: number; id: string }[] = [{ level: 0, id: rootId }]
+  let l1Counter = 0
+
+  for (const line of linesToProcess) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+
+    const headingMatch = line.match(/^(#{2,6})\s+(.+)$/)
+    const bulletMatch = line.match(/^(\s*)(?:[-*+]|\d+\.)\s+(.+)$/)
+
+    let depth = 1
+    let title = ''
+
+    if (headingMatch) {
+      depth = headingMatch[1].length - 1
+      title = headingMatch[2].trim()
+    } else if (bulletMatch) {
+      const leadingSpaces = bulletMatch[1].replace(/\t/g, '  ').length
+      depth = 1 + Math.floor(leadingSpaces / 2)
+      title = bulletMatch[2].trim()
+    } else {
+      depth = 1
+      title = trimmed
+    }
+
+    if (!title) continue
+
+    // Checkbox support: [ ] or [x]
+    let task: { completed?: boolean } | undefined = undefined
+    const checkboxMatch = title.match(/^\[([ xX])\]\s*(.*)$/)
+    if (checkboxMatch) {
+      task = { completed: checkboxMatch[1].toLowerCase() === 'x' }
+      title = checkboxMatch[2].trim()
+    }
+
+    // Stack unwinding to find immediate parent
+    while (stack.length > 1 && stack[stack.length - 1].level >= depth) {
+      stack.pop()
+    }
+
+    const parent = stack[stack.length - 1]
+    const nodeId = 'node_' + Math.random().toString(36).substring(2, 9)
+    const isLevel1 = parent.id === rootId
+
+    let side: 'left' | 'right' | undefined = undefined
+    if (isLevel1) {
+      side = l1Counter % 2 === 0 ? 'right' : 'left'
+      l1Counter++
+    }
+
+    nodes[nodeId] = {
+      id: nodeId,
+      parentId: parent.id,
+      children: [],
+      title: title || 'Tópico',
+      shape: depth >= 3 ? 'underline' : 'rounded',
+      side,
+      task
+    }
+
+    if (nodes[parent.id]) {
+      nodes[parent.id].children.push(nodeId)
+    }
+
+    stack.push({ level: depth, id: nodeId })
+  }
+
+  // Fallback children if none were parsed
+  if (nodes[rootId].children.length === 0) {
+    const c1 = 'node_' + Math.random().toString(36).substring(2, 9)
+    const c2 = 'node_' + Math.random().toString(36).substring(2, 9)
+    nodes[rootId].children = [c1, c2]
+    nodes[c1] = { id: c1, parentId: rootId, children: [], title: 'Ideias Iniciais', shape: 'rounded', side: 'right' }
+    nodes[c2] = { id: c2, parentId: rootId, children: [], title: 'Objetivos', shape: 'rounded', side: 'left' }
+  }
+
+  return {
+    type: 'pyrita-mindmap',
+    version: 1,
+    rootId,
+    nodes,
+    relations: [],
+    boundaries: [],
+    theme: 'pyrita-classic',
+    layout: 'radial',
+    canvasBg: '#0f172a',
+    lineStyle: 'tapered',
+    mapStyle: 'organic-branch',
+    paletteId: 'rainbow',
+    viewport: { panX: 0, panY: 0, zoom: 1 }
+  }
+}
+
+/**
+ * Serializes a MindMapDocument into a clean, human-readable Markdown outline.
+ * Ideal for feeding mindmap structure into LLMs or exporting to markdown files.
+ */
+export function mindMapToMarkdownOutline(doc: MindMapDocument): string {
+  const root = doc.nodes[doc.rootId]
+  if (!root) return '# Meu Mapa Mental\n'
+
+  const lines: string[] = []
+  lines.push(`# ${root.title}`)
+
+  const appendChildren = (nodeId: string, depth: number) => {
+    const node = doc.nodes[nodeId]
+    if (!node || !node.children) return
+
+    for (const childId of node.children) {
+      const child = doc.nodes[childId]
+      if (!child) continue
+
+      const indent = '  '.repeat(Math.max(0, depth - 2))
+      const taskPrefix = child.task ? `[${child.task.completed ? 'x' : ' '}] ` : ''
+
+      if (depth === 1) {
+        lines.push(`\n## ${taskPrefix}${child.title}`)
+      } else {
+        lines.push(`${indent}- ${taskPrefix}${child.title}`)
+      }
+
+      appendChildren(childId, depth + 1)
+    }
+  }
+
+  appendChildren(doc.rootId, 1)
+  return lines.join('\n')
+}
+
 export function parseMindMapDocument(content?: string, fallbackTitle?: string): MindMapDocument {
   if (!content || !content.trim()) {
     return createEmptyMindMapDocument(fallbackTitle)
   }
 
+  const raw = content.trim()
+
+  // 1. If wrapped in markdown code blocks (e.g. ```json ... ```), extract the inner content
+  let jsonCandidate = raw
+  const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+  if (codeBlockMatch && codeBlockMatch[1]) {
+    jsonCandidate = codeBlockMatch[1].trim()
+  }
+
+  // 2. Try JSON parsing
   try {
-    const parsed = JSON.parse(content)
-    if (parsed && (parsed.type === 'pyrita-mindmap' || parsed.rootId)) {
-      const rootId = parsed.rootId || Object.keys(parsed.nodes || {})[0] || 'root'
-      const theme = parsed.theme && MINDMAP_THEMES[parsed.theme as MindMapThemeId] ? parsed.theme : 'pyrita-classic'
-      return {
-        type: 'pyrita-mindmap',
-        version: parsed.version || 1,
-        rootId,
-        nodes: parsed.nodes || {},
-        relations: Array.isArray(parsed.relations) ? parsed.relations : [],
-        boundaries: Array.isArray(parsed.boundaries) ? parsed.boundaries : [],
-        theme,
-        layout: parsed.layout || 'radial',
-        canvasBg: parsed.canvasBg || '#0f172a',
-        lineStyle: parsed.lineStyle || 'curved',
-        mapStyle: parsed.mapStyle || 'organic-branch',
-        paletteId: parsed.paletteId || 'rainbow',
-        colorizeNodeBg: parsed.colorizeNodeBg ?? false,
-        customPalettes: parsed.customPalettes || {},
-        viewport: parsed.viewport || { panX: 0, panY: 0, zoom: 1 }
+    if (jsonCandidate.startsWith('{') && jsonCandidate.endsWith('}')) {
+      const parsed = JSON.parse(jsonCandidate)
+      if (parsed && (parsed.type === 'pyrita-mindmap' || parsed.rootId || parsed.nodes)) {
+        const rootId = parsed.rootId || Object.keys(parsed.nodes || {})[0] || 'root'
+        const theme = parsed.theme && MINDMAP_THEMES[parsed.theme as MindMapThemeId] ? parsed.theme : 'pyrita-classic'
+        return {
+          type: 'pyrita-mindmap',
+          version: parsed.version || 1,
+          rootId,
+          nodes: parsed.nodes || {},
+          relations: Array.isArray(parsed.relations) ? parsed.relations : [],
+          boundaries: Array.isArray(parsed.boundaries) ? parsed.boundaries : [],
+          theme,
+          layout: parsed.layout || 'radial',
+          canvasBg: parsed.canvasBg || '#0f172a',
+          lineStyle: parsed.lineStyle || 'tapered',
+          mapStyle: parsed.mapStyle || 'organic-branch',
+          paletteId: parsed.paletteId || 'rainbow',
+          colorizeNodeBg: parsed.colorizeNodeBg ?? false,
+          customPalettes: parsed.customPalettes || {},
+          viewport: parsed.viewport || { panX: 0, panY: 0, zoom: 1 }
+        }
       }
     }
   } catch (err) {
-    console.warn('Failed to parse mind map json, falling back to empty:', err)
+    // If not valid JSON, proceed to Markdown outline parser
   }
 
-  return createEmptyMindMapDocument(fallbackTitle)
+  // 3. Fallback: Parse as Markdown outline (supports AI-generated lists/outlines)
+  return parseMarkdownToMindMap(raw, fallbackTitle)
 }
 
 export function serializeMindMapDocument(doc: MindMapDocument): string {
@@ -254,15 +430,15 @@ export function estimateNodeDimensions(node: MindMapNode, isRoot: boolean): { wi
   const text = node.title || 'Tópico'
   const isUnderline = node.shape === 'underline'
   const charWidth = isRoot ? 9.5 : 8
-  const basePaddingX = isUnderline ? 16 : isRoot ? 36 : 28
+  const basePaddingX = isUnderline ? 12 : isRoot ? 36 : 28
   const iconsWidth = (node.icons && node.icons.length > 0) ? node.icons.length * 20 + 8 : 0
   const taskWidth = node.task ? 24 : 0
   const noteIndicatorWidth = node.note ? 20 : 0
   const linkIndicatorWidth = node.link ? 20 : 0
 
   const contentWidth = text.length * charWidth + basePaddingX + iconsWidth + taskWidth + noteIndicatorWidth + linkIndicatorWidth
-  const width = Math.max(isRoot ? 140 : isUnderline ? 80 : 110, Math.min(360, Math.round(contentWidth)))
-  const height = isUnderline ? 28 : isRoot ? 48 : (node.note || (node.icons && node.icons.length > 2) ? 42 : 36)
+  const width = Math.max(isRoot ? 140 : isUnderline ? 60 : 110, Math.min(380, Math.round(contentWidth)))
+  const height = isUnderline ? 26 : isRoot ? 48 : (node.note || (node.icons && node.icons.length > 2) ? 42 : 36)
 
   return { width, height }
 }
@@ -310,17 +486,64 @@ function computeSubtreeMetrics(
   }
 }
 
+// Generate tapered organic branch path (thick at parent, smoothly tapering down to child)
+export function createTaperedEdgePath(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  w1: number = 7,
+  w2: number = 2,
+  side: 'left' | 'right' | 'bottom' = 'right'
+): string {
+  if (side === 'bottom') {
+    const deltaY = Math.abs(y2 - y1)
+    const ctrlDist = Math.max(20, deltaY * 0.5)
+    const p1x = x1 - w1 / 2
+    const p2x = x2 - w2 / 2
+    const p3x = x2 + w2 / 2
+    const p4x = x1 + w1 / 2
+
+    return `M ${p1x} ${y1} C ${p1x} ${y1 + ctrlDist}, ${p2x} ${y2 - ctrlDist}, ${p2x} ${y2} L ${p3x} ${y2} C ${p3x} ${y2 - ctrlDist}, ${p4x} ${y1 + ctrlDist}, ${p4x} ${y1} Z`
+  }
+
+  const deltaX = Math.abs(x2 - x1)
+  const ctrlDistance = Math.max(24, deltaX * 0.55)
+
+  if (side === 'right') {
+    const p1y = y1 - w1 / 2
+    const p2y = y2 - w2 / 2
+    const p3y = y2 + w2 / 2
+    const p4y = y1 + w1 / 2
+
+    const ctrl1X = x1 + ctrlDistance
+    const ctrl2X = x2 - ctrlDistance
+
+    return `M ${x1} ${p1y} C ${ctrl1X} ${p1y}, ${ctrl2X} ${p2y}, ${x2} ${p2y} L ${x2} ${p3y} C ${ctrl2X} ${p3y}, ${ctrl1X} ${p4y}, ${x1} ${p4y} Z`
+  } else {
+    const p1y = y1 - w1 / 2
+    const p2y = y2 - w2 / 2
+    const p3y = y2 + w2 / 2
+    const p4y = y1 + w1 / 2
+
+    const ctrl1X = x1 - ctrlDistance
+    const ctrl2X = x2 + ctrlDistance
+
+    return `M ${x1} ${p1y} C ${ctrl1X} ${p1y}, ${ctrl2X} ${p2y}, ${x2} ${p2y} L ${x2} ${p3y} C ${ctrl2X} ${p3y}, ${ctrl1X} ${p4y}, ${x1} ${p4y} Z`
+  }
+}
+
 // Generate path based on lineStyle
 export function createEdgePath(
   x1: number,
   y1: number,
   x2: number,
   y2: number,
-  lineStyle: MindMapLineStyle = 'curved',
+  lineStyle: MindMapLineStyle = 'tapered',
   side: 'left' | 'right' | 'bottom' = 'right'
 ): string {
-  if (lineStyle === 'straight') {
-    return `M ${x1} ${y1} L ${x2} ${y2}`
+  if (lineStyle === 'tapered') {
+    return createTaperedEdgePath(x1, y1, x2, y2, 4, 1.8, side)
   }
 
   if (lineStyle === 'rounded-elbow') {
@@ -348,7 +571,7 @@ export function createEdgePath(
 }
 
 export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
-  const { rootId, nodes, layout, theme: themeId, boundaries = [], paletteId = 'rainbow', lineStyle = 'curved' } = doc
+  const { rootId, nodes, layout, theme: themeId, boundaries = [], paletteId = 'rainbow', lineStyle = 'tapered' } = doc
   const theme = MINDMAP_THEMES[themeId] || MINDMAP_THEMES['pyrita-classic']
   const allPalettes: Record<string, { name: string; colors: string[] }> = {
     ...MINDMAP_PALETTES,
@@ -407,6 +630,12 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
   const rightChildren: string[] = []
   const leftChildren: string[] = []
 
+  // Global branch color mapping to keep color hierarchy perfectly standard and harmonious
+  const branchColorMap: Record<string, string> = {}
+  rootChildren.forEach((cid, index) => {
+    branchColorMap[cid] = activeBranchColors[index % activeBranchColors.length]
+  })
+
   if (layout === 'right') {
     rightChildren.push(...rootChildren)
   } else if (layout === 'left') {
@@ -440,8 +669,8 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
     const totalSideHeight = metrics.reduce((sum, m) => sum + m.totalHeight, 0) + Math.max(0, metrics.length - 1) * gapY
     let currentY = -totalSideHeight / 2
 
-    metrics.forEach((metric, branchIndex) => {
-      const branchColor = activeBranchColors[branchIndex % activeBranchColors.length]
+    metrics.forEach((metric) => {
+      const branchColor = branchColorMap[metric.id] || activeBranchColors[0]
       const branchCenterY = currentY + metric.totalHeight / 2
 
       // Position branch root - check if node has custom position
@@ -460,19 +689,22 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
       const rootAnchorX = side === 'right' ? rootDim.width / 2 : -rootDim.width / 2
       const rootAnchorY = 0
       const targetAnchorX = side === 'right' ? nodeX - metric.width / 2 : nodeX + metric.width / 2
-      const targetAnchorY = nodeY
+      const targetAnchorY = nodeObj.shape === 'underline' ? nodeY + metric.height / 2 - 1 : nodeY
 
       const effectiveLineStyle = nodeObj.branchStyle || lineStyle
+      const isTapered = effectiveLineStyle === 'tapered'
 
       computedEdges.push({
         id: `edge_${rootId}_${metric.id}`,
         fromId: rootId,
         toId: metric.id,
-        path: createEdgePath(rootAnchorX, rootAnchorY, targetAnchorX, targetAnchorY, effectiveLineStyle, side),
+        path: isTapered
+          ? createTaperedEdgePath(rootAnchorX, rootAnchorY, targetAnchorX, targetAnchorY, 8.5, 2.5, side)
+          : createEdgePath(rootAnchorX, rootAnchorY, targetAnchorX, targetAnchorY, effectiveLineStyle, side),
         color: nodeObj.branchColor || branchColor,
         width: 3.5,
         style: 'solid',
-        isTapered: true
+        isTapered
       })
 
       currentY += metric.totalHeight + gapY
@@ -522,22 +754,28 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
 
       positionSubtree(childMetric, childNodeX, childNodeY, side, level + 1, effectiveColor)
 
-      // Edge from parent to child
+      // Edge from parent to child (exact baseline alignment for underline shapes)
       const fromAnchorX = side === 'right' ? x + metric.width / 2 : x - metric.width / 2
-      const fromAnchorY = node.shape === 'underline' ? y + metric.height / 2 - 2 : y
+      const fromAnchorY = node.shape === 'underline' ? y + metric.height / 2 - 1 : y
       const toAnchorX = side === 'right' ? childNodeX - childMetric.width / 2 : childNodeX + childMetric.width / 2
-      const toAnchorY = childObj.shape === 'underline' ? childNodeY + childMetric.height / 2 - 2 : childNodeY
+      const toAnchorY = childObj.shape === 'underline' ? childNodeY + childMetric.height / 2 - 1 : childNodeY
 
       const effectiveLineStyle = childObj.branchStyle || lineStyle
+      const isTapered = effectiveLineStyle === 'tapered'
+      const w1 = level === 1 ? 3.5 : Math.max(1.5, 2.8 - level * 0.4)
+      const w2 = Math.max(1.5, 2.2 - level * 0.4)
 
       computedEdges.push({
         id: `edge_${metric.id}_${childMetric.id}`,
         fromId: metric.id,
         toId: childMetric.id,
-        path: createEdgePath(fromAnchorX, fromAnchorY, toAnchorX, toAnchorY, effectiveLineStyle, side),
+        path: isTapered
+          ? createTaperedEdgePath(fromAnchorX, fromAnchorY, toAnchorX, toAnchorY, w1, w2, side)
+          : createEdgePath(fromAnchorX, fromAnchorY, toAnchorX, toAnchorY, effectiveLineStyle, side),
         color: childObj.branchColor || effectiveColor,
-        width: Math.max(1.5, 2.8 - level * 0.4),
-        style: 'solid'
+        width: w1,
+        style: 'solid',
+        isTapered
       })
 
       childY += childMetric.totalHeight + gapY
@@ -588,14 +826,18 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
           positionVerticalSubtree(cm, actualChildX, actualChildY, lvl + 1)
 
           // Edge
+          const isTapered = lineStyle === 'tapered'
           computedEdges.push({
             id: `edge_${m.id}_${cm.id}`,
             fromId: m.id,
             toId: cm.id,
-            path: createEdgePath(actualX, actualY + m.height / 2, actualChildX, actualChildY - cm.height / 2, lineStyle, 'bottom'),
+            path: isTapered
+              ? createTaperedEdgePath(actualX, actualY + m.height / 2, actualChildX, actualChildY - cm.height / 2, 3.5, 2, 'bottom')
+              : createEdgePath(actualX, actualY + m.height / 2, actualChildX, actualChildY - cm.height / 2, lineStyle, 'bottom'),
             color: branchColor,
             width: 2,
-            style: 'solid'
+            style: 'solid',
+            isTapered
           })
 
           chX += cm.width + 24
@@ -608,14 +850,18 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
 
       positionVerticalSubtree(metric, actualBranchX, actualBranchY, 1)
 
+      const isRootTapered = lineStyle === 'tapered'
       computedEdges.push({
         id: `edge_${rootId}_${metric.id}`,
         fromId: rootId,
         toId: metric.id,
-        path: createEdgePath(0, rootDim.height / 2, actualBranchX, actualBranchY - metric.height / 2, lineStyle, 'bottom'),
+        path: isRootTapered
+          ? createTaperedEdgePath(0, rootDim.height / 2, actualBranchX, actualBranchY - metric.height / 2, 7.5, 2.5, 'bottom')
+          : createEdgePath(0, rootDim.height / 2, actualBranchX, actualBranchY - metric.height / 2, lineStyle, 'bottom'),
         color: branchColor,
         width: 3,
-        style: 'solid'
+        style: 'solid',
+        isTapered: isRootTapered
       })
 
       currentX += metric.width + 36
@@ -879,9 +1125,10 @@ export function resetNodePositions(doc: MindMapDocument): MindMapDocument {
 export function applyMapStylePreset(doc: MindMapDocument, preset: MindMapStylePreset): MindMapDocument {
   const nextNodes: Record<string, MindMapNode> = {}
 
-  let targetLineStyle: MindMapLineStyle = 'curved'
-  if (preset === 'technical') targetLineStyle = 'rounded-elbow'
-  else if (preset === 'minimal-lines') targetLineStyle = 'straight'
+  let targetLineStyle: MindMapLineStyle = 'tapered'
+  if (preset === 'organic-branch') targetLineStyle = 'tapered'
+  else if (preset === 'technical') targetLineStyle = 'rounded-elbow'
+  else if (preset === 'minimal-lines') targetLineStyle = 'curved'
 
   for (const [id, node] of Object.entries(doc.nodes)) {
     const isRoot = id === doc.rootId

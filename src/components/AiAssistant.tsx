@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import type { Note } from '../types'
 import type { TaskItem, TaskSettings, SubTask, TaskBoard } from '../types/tasks'
 import { extractWikiLinks } from '../utils/vault'
+import { mindMapToMarkdownOutline, parseMindMapDocument, serializeMindMapDocument, isMindMapContent } from '../utils/mindMapUtils'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { AiSettingsModal } from './AiSettingsModal'
 import { FolderTreePicker } from './FolderTreePicker'
@@ -291,6 +292,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   onConnectNote,
   onAddTag,
   onInsertSnippet,
+  onCreateNote,
   onUpdateNote,
   tasks,
   taskSettings,
@@ -914,7 +916,13 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
         // 1. Current Note Context (if enabled)
         if (isNoteContextActive && effectiveNote) {
-          contextBlock += `\n### NOTA ATIVA PRINCIPAL EM CONTEXTO:\nTítulo: "${effectiveNote.title}"\nPasta: ${effectiveNote.folder || 'Início'}\nTags: ${effectiveNote.tags?.join(', ') || 'nenhuma'}\nConteúdo da nota:\n---\n${effectiveNote.content || '(nota vazia)'}\n---\n`
+          if (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content)) {
+            const mindMapDoc = parseMindMapDocument(effectiveNote.content, effectiveNote.title)
+            const outline = mindMapToMarkdownOutline(mindMapDoc)
+            contextBlock += `\n### NOTA ATIVA PRINCIPAL EM CONTEXTO (MAPA MENTAL INTERATIVO):\nTítulo: "${effectiveNote.title}"\nPasta: ${effectiveNote.folder || 'Início'}\nTags: ${effectiveNote.tags?.join(', ') || 'mindmap'}\nTipo: Mapa Mental (Mind Map)\nEstrutura Atual do Mapa em Formato Hierárquico:\n---\n${outline}\n---\n`
+          } else {
+            contextBlock += `\n### NOTA ATIVA PRINCIPAL EM CONTEXTO:\nTítulo: "${effectiveNote.title}"\nPasta: ${effectiveNote.folder || 'Início'}\nTags: ${effectiveNote.tags?.join(', ') || 'nenhuma'}\nConteúdo da nota:\n---\n${effectiveNote.content || '(nota vazia)'}\n---\n`
+          }
         }
 
         // 2. Extra Tagged Notes via `@`
@@ -972,13 +980,25 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           ? `REGRA DE OPERAÇÃO: MODO CO-AUTOR (ESCRITA & CRIAÇÃO ATIVA).
 - A nota ativa é o seu CANVA de trabalho direto!
 - Você tem permissão para editar, reescrever, melhorar e atualizar a nota ativa diretamente quando o usuário solicitar.
-- QUANDO O USUÁRIO SOLICITAR PARA SUBSTITUIR, EDITAR, REESCREVER OU MELHORAR A NOTA ATIVA (ex: "substitua a nota", "reescreva a nota", "melhore o texto da nota", "atualize a nota com...", "aplique as alterações na nota"):
-  Você DEVE fornecer a versão final completa da nota delimitada EXATAMENTE pelo bloco:
+- QUANDO O USUÁRIO SOLICITAR PARA SUBSTITUIR, EDITAR, REESCREVER OU MELHORAR A NOTA ATIVA (ex: "substitua a nota", "reescreva a nota", "melhore o texto da nota", "atualize o mapa mental", "adicione tópicos no mapa", "expanda o mapa", "aplique as alterações na nota"):
+  Você DEVE fornecer a versão final completa delimitada EXATAMENTE pelo bloco:
   <<<REPLACE_NOTE>>>
-  (todo o conteúdo revisado em markdown da nota aqui)
+  (todo o conteúdo revisado aqui)
   <<<END_REPLACE_NOTE>>>
-  O Pyrita irá detectar esse bloco e atualizar a nota do usuário automaticamente no editor!
-- Fora do bloco <<<REPLACE_NOTE>>>, explique resumidamente no chat o que foi aprimorado.`
+  O Pyrita irá detectar esse bloco e atualizar a nota ou mapa mental do usuário automaticamente no editor!
+- PARA NOTAS DO TIPO MAPA MENTAL (mindmap): Dentro do bloco <<<REPLACE_NOTE>>>, forneça uma estrutura hierárquica clara em Markdown (# Tópico Central, ## Ramos Principais e listas com marcadores - e subtópicos aninhados por indentação de 2 espaços). Opcionalmente pode usar tarefas - [ ] ou - [x]. O Pyrita transformará instantaneamente essa estrutura em nós, ramos orgânicos e conexões visuais no mapa mental!
+- QUANDO O USUÁRIO PEDIR PARA CRIAR UMA NOVA NOTA OU NOVO MAPA MENTAL SEPARADO (ex: "crie um novo mapa sobre...", "crie uma nova nota sobre..."):
+  Você pode fornecer o bloco executável:
+  <<<CREATE_NOTE>>>
+  Título: Nome da Nota ou Mapa
+  Pasta: Início
+  Tipo: mindmap (ou note)
+  Conteúdo:
+  # Tópico Central
+  ## Ramo 1
+  - Subtópico 1
+  <<<END_CREATE_NOTE>>>
+- Fora dos blocos delimitadores, explique resumidamente no chat o que foi gerado/aprimorado.`
           : `REGRA DE OPERAÇÃO: MODO ANALISTA (SOMENTE LEITURA).
 - Você atua exclusivamente como consultor, parceiro de pensamento e analista de conhecimento.
 - Analise a nota e a pasta em profundidade, formule hipóteses, aponte conexões e proponha melhorias.
@@ -1106,17 +1126,61 @@ Diretrizes gerais:
             const replaceMatch = responseText.match(/<<<REPLACE_NOTE>>>([\s\S]*?)<<<END_REPLACE_NOTE>>>/)
             if (replaceMatch && replaceMatch[1]) {
               const revisedContent = replaceMatch[1].trim()
+              const isMind = effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content) || isMindMapContent(revisedContent)
+              const finalContent = isMind
+                ? serializeMindMapDocument(parseMindMapDocument(revisedContent, effectiveNote.title))
+                : revisedContent
+
               onUpdateNote({
                 ...effectiveNote,
-                content: revisedContent,
+                content: finalContent,
+                type: isMind ? 'mindmap' : effectiveNote.type,
                 updatedAt: Date.now()
               })
-              setToastNotice(`✨ Nota "${effectiveNote.title}" atualizada pelo Agente!`)
+              setToastNotice(`✨ ${isMind ? 'Mapa Mental' : 'Nota'} "${effectiveNote.title}" atualizado pelo Agente!`)
               setTimeout(() => setToastNotice(null), 4000)
 
               responseText = responseText.replace(
                 /<<<REPLACE_NOTE>>>[\s\S]*?<<<END_REPLACE_NOTE>>>/,
-                `> ✨ **Nota [[${effectiveNote.title}]] atualizada com sucesso no seu cofre!**\n`
+                `> ✨ **${isMind ? 'Mapa Mental' : 'Nota'} [[${effectiveNote.title}]] atualizado com sucesso no seu cofre!**\n`
+              ).trim()
+            }
+          }
+
+          // Check for Note / MindMap Creation <<<CREATE_NOTE>>>
+          if (onCreateNote && responseText.includes('<<<CREATE_NOTE>>>')) {
+            const createMatch = responseText.match(/<<<CREATE_NOTE>>>([\s\S]*?)<<<END_CREATE_NOTE>>>/)
+            if (createMatch && createMatch[1]) {
+              const blockText = createMatch[1].trim()
+              let title = 'Novo Conteúdo'
+              let folder = 'Início'
+              let type = 'note'
+              let content = blockText
+
+              const titleM = blockText.match(/Título:\s*(.+)/i)
+              if (titleM) title = titleM[1].trim()
+
+              const folderM = blockText.match(/Pasta:\s*(.+)/i)
+              if (folderM) folder = folderM[1].trim()
+
+              const typeM = blockText.match(/Tipo:\s*(.+)/i)
+              if (typeM) type = typeM[1].trim().toLowerCase()
+
+              const contentM = blockText.match(/Conteúdo:\s*([\s\S]*)/i)
+              if (contentM) content = contentM[1].trim()
+
+              const isMind = type === 'mindmap' || isMindMapContent(content)
+              const finalContent = isMind
+                ? serializeMindMapDocument(parseMindMapDocument(content, title))
+                : content
+
+              onCreateNote(folder, title, finalContent)
+              setToastNotice(`✨ ${isMind ? 'Mapa Mental' : 'Nota'} "${title}" criado pelo Agente!`)
+              setTimeout(() => setToastNotice(null), 4000)
+
+              responseText = responseText.replace(
+                /<<<CREATE_NOTE>>>[\s\S]*?<<<END_CREATE_NOTE>>>/,
+                `> ✨ **${isMind ? 'Mapa Mental' : 'Nota'} [[${title}]] criado com sucesso no seu cofre!**\n`
               ).trim()
             }
           }

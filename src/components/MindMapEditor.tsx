@@ -230,15 +230,30 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   const currentCanvasBg = doc.canvasBg || currentTheme.bg || '#0f172a'
   const isCanvasLight = currentCanvasBg === '#ffffff' || currentCanvasBg === '#f4f4f5'
 
+  // Synchronization with external changes (e.g. AI Assistant or file reload)
+  const lastExternalContentRef = useRef<string>(note.content)
+
+  useEffect(() => {
+    if (note.content !== lastExternalContentRef.current) {
+      lastExternalContentRef.current = note.content
+      const updatedDoc = parseMindMapDocument(note.content, note.title)
+      setDoc(updatedDoc)
+      historyRef.current = [JSON.parse(JSON.stringify(updatedDoc))]
+      historyIndexRef.current = 0
+    }
+  }, [note.content, note.title])
+
   // Auto-save debounced
   const saveTimeoutRef = useRef<number | null>(null)
   const scheduleSave = useCallback(
     (newDoc: MindMapDocument) => {
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = window.setTimeout(() => {
+        const serialized = serializeMindMapDocument(newDoc)
+        lastExternalContentRef.current = serialized
         onUpdateNote({
           ...note,
-          content: serializeMindMapDocument(newDoc),
+          content: serialized,
           updatedAt: Date.now()
         })
       }, 400)
@@ -809,7 +824,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             >
               <GitFork className="w-3.5 h-3.5 text-zinc-400" />
               <span>
-                {doc.lineStyle === 'curved' ? 'Curva Suave' : doc.lineStyle === 'straight' ? 'Reta' : 'Ortogonal'}
+                {doc.lineStyle === 'tapered' ? 'Ramo Orgânico' : doc.lineStyle === 'curved' ? 'Curva Suave' : 'Ortogonal'}
               </span>
               <ChevronDown className="w-3 h-3 text-zinc-500" />
             </button>
@@ -817,11 +832,11 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             {activePopover === 'lines' && (
               <div
                 onMouseDown={e => e.stopPropagation()}
-                className="absolute top-8 left-0 w-44 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-0.5"
+                className="absolute top-8 left-0 w-48 bg-[#141418] border border-zinc-700/80 rounded-lg shadow-2xl p-1 z-50 space-y-0.5"
               >
                 {[
+                  { id: 'tapered', label: 'Ramo Orgânico (Afunilado)' },
                   { id: 'curved', label: 'Curva Suave (Bézier)' },
-                  { id: 'straight', label: 'Linha Reta Direta' },
                   { id: 'rounded-elbow', label: 'Cotovelo / Ortogonal' }
                 ].map(line => (
                   <button
@@ -1629,17 +1644,30 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
               </g>
             ))}
 
-            {/* Tree Branch Edges */}
+            {/* Tree Branch Edges (Tapered Organic or Smoothed Stroke) */}
             {layoutResult.edges.map(edge => (
-              <path
-                key={edge.id}
-                d={edge.path}
-                fill="none"
-                stroke={edge.color}
-                strokeWidth={edge.width}
-                strokeLinecap="round"
-                opacity="0.9"
-              />
+              edge.isTapered ? (
+                <path
+                  key={edge.id}
+                  d={edge.path}
+                  fill={edge.color}
+                  stroke={edge.color}
+                  strokeWidth={0.5}
+                  strokeLinejoin="round"
+                  opacity="0.94"
+                />
+              ) : (
+                <path
+                  key={edge.id}
+                  d={edge.path}
+                  fill="none"
+                  stroke={edge.color}
+                  strokeWidth={edge.width}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity="0.9"
+                />
+              )
             ))}
 
             {/* Cross-Topic Relations */}
@@ -1700,11 +1728,14 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             const hasChildren = cn.node.children && cn.node.children.length > 0
             const isCollapsed = !!cn.node.collapsed
 
-            // Color resolution based on light/dark canvas & colorizeNodeBg
+            const shape = cn.node.shape || 'rounded'
+            const isUnderline = shape === 'underline'
+
+            // Color resolution based on light/dark canvas, hierarchy level & colorizeNodeBg
             const effectiveBg = cn.node.fillColor
               ? cn.node.fillColor
               : doc.colorizeNodeBg
-              ? (isRoot ? (cn.branchColor || currentTheme.rootBg) : cn.branchColor)
+              ? (isRoot ? (cn.branchColor || currentTheme.rootBg) : cn.level === 1 ? cn.branchColor : `${cn.branchColor}22`)
               : isRoot
               ? currentTheme.rootBg
               : isCanvasLight
@@ -1715,22 +1746,21 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
               ? cn.node.strokeColor
               : isRoot
               ? currentTheme.rootBorder
-              : doc.colorizeNodeBg && !cn.node.fillColor
-              ? 'rgba(255, 255, 255, 0.25)'
-              : cn.branchColor
+              : isUnderline
+              ? cn.branchColor
+              : doc.colorizeNodeBg
+              ? cn.branchColor
+              : (cn.branchColor || currentTheme.subtopicBorder)
 
             const effectiveText = cn.node.textColor
               ? cn.node.textColor
               : doc.colorizeNodeBg && !cn.node.fillColor
-              ? (isColorLight(effectiveBg) ? '#09090b' : '#ffffff')
+              ? (cn.level === 1 && isColorLight(cn.branchColor) ? '#09090b' : '#ffffff')
               : isRoot
               ? currentTheme.rootText
               : isCanvasLight
               ? '#0f172a'
               : currentTheme.subtopicText
-
-            const shape = cn.node.shape || 'rounded'
-            const isUnderline = shape === 'underline'
 
             const borderRadiusClass =
               shape === 'capsule'
@@ -1742,7 +1772,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                 : shape === 'cloud'
                 ? 'rounded-2xl border-dashed'
                 : isUnderline
-                ? 'rounded-none border-b-2! border-t-0! border-l-0! border-r-0! bg-transparent!'
+                ? 'rounded-none'
                 : 'rounded-xl'
 
             return (
@@ -1760,11 +1790,14 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                   top: `${cn.y}px`,
                   transform: 'translate(-50%, -50%)',
                   width: `${cn.width}px`,
-                  minHeight: `${cn.height}px`,
+                  height: isUnderline ? `${cn.height}px` : undefined,
+                  minHeight: isUnderline ? undefined : `${cn.height}px`,
+                  boxSizing: 'border-box',
                   backgroundColor: isUnderline ? 'transparent' : effectiveBg,
-                  borderColor: isSelected ? 'var(--accent,#c59b27)' : effectiveBorder,
+                  borderColor: isSelected ? 'var(--accent,#c59b27)' : isUnderline ? cn.branchColor : effectiveBorder,
                   color: effectiveText,
-                  borderWidth: isUnderline ? '0 0 1.5px 0' : isSelected ? '1.5px' : '1px',
+                  borderWidth: isUnderline ? '0 0 2px 0' : isSelected ? '1.5px' : '1px',
+                  borderBottomStyle: 'solid',
                   boxShadow: isUnderline
                     ? 'none'
                     : isSelected
@@ -1773,7 +1806,8 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                     ? '0 0 0 2.5px rgba(245, 158, 11, 0.5)'
                     : isCanvasLight
                     ? '0 1px 4px rgba(0,0,0,0.06)'
-                    : '0 2px 8px rgba(0,0,0,0.2)'
+                    : '0 2px 8px rgba(0,0,0,0.2)',
+                  padding: isUnderline ? '2px 4px' : undefined
                 }}
                 className={`mindmap-interactive-node group pointer-events-auto cursor-grab active:cursor-grabbing transition-shadow flex items-center justify-between px-2.5 py-1 ${borderRadiusClass} border select-none`}
               >
@@ -1830,20 +1864,6 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                     </span>
                   )}
 
-                  {/* Collapse / Expand Toggle Button on nodes with children */}
-                  {hasChildren && (
-                    <button
-                      onClick={e => {
-                        e.stopPropagation()
-                        commitDoc(toggleCollapse(doc, cn.id))
-                      }}
-                      className="w-4 h-4 rounded-full bg-zinc-800/90 hover:bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-300 transition-transform active:scale-90 cursor-pointer"
-                      title={isCollapsed ? 'Expandir ramo' : 'Recolher ramo'}
-                    >
-                      {isCollapsed ? <Plus className="w-2.5 h-2.5" /> : <Minus className="w-2.5 h-2.5" />}
-                    </button>
-                  )}
-
                   {/* DIRECT (+) ADD SUBTOPIC BUTTON ON THE NODE */}
                   <button
                     onClick={e => {
@@ -1856,6 +1876,66 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                     <Plus className="w-2.5 h-2.5 stroke-[2.5]" />
                   </button>
                 </div>
+
+                {/* OUTSIDE COLLAPSE BUTTON: Sits on the connecting line outside the node when expanded */}
+                {hasChildren && !isCollapsed && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      commitDoc(toggleCollapse(doc, cn.id))
+                    }}
+                    style={{
+                      position: 'absolute',
+                      [cn.side === 'left' ? 'left' : 'right']: '-8px',
+                      top: isUnderline ? 'calc(100% - 1px)' : '50%',
+                      transform: cn.side === 'left' ? 'translate(-50%, -50%)' : 'translate(50%, -50%)',
+                      borderColor: cn.branchColor
+                    }}
+                    className="w-3.5 h-3.5 rounded-full bg-[#18181e] hover:bg-zinc-700 border flex items-center justify-center text-[9px] font-bold text-zinc-300 opacity-0 group-hover:opacity-100 hover:opacity-100! transition-opacity active:scale-90 cursor-pointer shadow-xs z-30"
+                    title="Recolher ramo (-)"
+                  >
+                    <Minus className="w-2 h-2 stroke-[2.5]" />
+                  </button>
+                )}
+
+                {/* OUTSIDE EXPAND STUB & BADGE: Protrudes on a small branch line stub when collapsed */}
+                {hasChildren && isCollapsed && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      [cn.side === 'left' ? 'left' : 'right']: '-22px',
+                      top: isUnderline ? 'calc(100% - 1px)' : '50%',
+                      transform: cn.side === 'left' ? 'translate(-100%, -50%)' : 'translate(0, -50%)'
+                    }}
+                    className={`flex items-center z-30 pointer-events-auto ${cn.side === 'left' ? 'flex-row-reverse' : ''}`}
+                  >
+                    {/* Small branch line stub */}
+                    <div
+                      style={{
+                        width: '10px',
+                        height: '2px',
+                        backgroundColor: cn.branchColor
+                      }}
+                    />
+                    {/* Expand badge button */}
+                    <button
+                      onClick={e => {
+                        e.stopPropagation()
+                        commitDoc(toggleCollapse(doc, cn.id))
+                      }}
+                      style={{
+                        borderColor: cn.branchColor,
+                        backgroundColor: '#18181e',
+                        color: cn.branchColor
+                      }}
+                      className="px-1.5 h-4.5 rounded-full border flex items-center justify-center gap-0.5 text-[10px] font-bold hover:brightness-125 transition-transform active:scale-90 cursor-pointer shadow-xs"
+                      title={`Expandir ramo (${cn.node.children.length} subtópicos)`}
+                    >
+                      <Plus className="w-2.5 h-2.5 stroke-[2.5]" />
+                      <span className="text-[9px] font-semibold">{cn.node.children.length}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}
