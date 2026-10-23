@@ -365,6 +365,23 @@ export const App: React.FC = () => {
   const handleSelectTaskBoard = (boardId: string) => {
     setActiveBoardId(boardId)
     setCurrentView('tasks')
+    const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
+    const boardObj = currentBoards.find(b => b.id === boardId)
+    const boardTitle = boardObj?.name || 'Tarefas'
+    setTabs(prev => {
+      const existing = prev.find(t => t.noteId === '__tasks__')
+      if (existing) {
+        setActiveTabId(existing.id)
+        return prev.map(t => t.id === existing.id ? { ...t, title: boardTitle } : t)
+      }
+      const tasksTab: TabItem = {
+        id: 'tab_tasks',
+        noteId: '__tasks__',
+        title: boardTitle
+      }
+      setActiveTabId(tasksTab.id)
+      return [...prev, tasksTab]
+    })
   }
 
   const handleCreateTaskBoard = (name: string, icon: string = 'CheckCircle2') => {
@@ -380,6 +397,20 @@ export const App: React.FC = () => {
     handleUpdateTaskSettings(updatedSettings)
     setActiveBoardId(newBoard.id)
     setCurrentView('tasks')
+    setTabs(prev => {
+      const existing = prev.find(t => t.noteId === '__tasks__')
+      if (existing) {
+        setActiveTabId(existing.id)
+        return prev.map(t => t.id === existing.id ? { ...t, title: newBoard.name } : t)
+      }
+      const tasksTab: TabItem = {
+        id: 'tab_tasks',
+        noteId: '__tasks__',
+        title: newBoard.name
+      }
+      setActiveTabId(tasksTab.id)
+      return [...prev, tasksTab]
+    })
   }
 
   const handleRenameTaskBoard = (boardId: string, newName: string) => {
@@ -1101,7 +1132,7 @@ export const App: React.FC = () => {
           {/* Page area below Header: Contains Editor/Graph/Canvas and the RightSidebar (Sumário) */}
           <div className="flex-1 flex overflow-hidden relative">
             <div className="flex-1 overflow-hidden relative">
-              {tabs.length === 0 && (
+              {currentView === 'editor' && (tabs.length === 0 || !currentNote) && (
                 <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 select-none">
                   <div className="w-14 h-14 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-center text-zinc-500 mb-4 shadow-sm">
                     <FileText className="w-6 h-6 stroke-[1.5]" />
@@ -1122,7 +1153,7 @@ export const App: React.FC = () => {
                 </div>
               )}
 
-              {tabs.length > 0 && currentView === 'editor' && currentNote && (
+              {currentView === 'editor' && tabs.length > 0 && currentNote && (
                 currentNote.type === 'mindmap' ? (
                   <MindMapEditor
                     key={currentNote.id}

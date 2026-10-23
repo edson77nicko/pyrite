@@ -1570,11 +1570,10 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
               e.preventDefault()
               handleToolbarWrap('link')
             }}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-amber-200 hover:text-zinc-950 bg-amber-500/15 hover:bg-amber-400 border border-amber-500/40 transition-all shadow-sm cursor-pointer"
+            className="p-1.5 rounded-lg text-amber-300 hover:text-zinc-950 bg-amber-500/15 hover:bg-amber-400 border border-amber-500/40 transition-all shadow-sm cursor-pointer flex items-center justify-center"
             title="Conectar com Nota / Link Bidirecional [[...]]"
           >
-            <Link2 className="w-3.5 h-3.5 text-amber-400" />
-            <span className="font-semibold text-[11px]">[[ Link ]]</span>
+            <Link2 className="w-3.5 h-3.5" />
           </button>
 
           <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />

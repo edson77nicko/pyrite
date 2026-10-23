@@ -1440,18 +1440,14 @@ Diretrizes gerais:
             <button
               type="button"
               onClick={() => setIsRuleMenuOpen(o => !o)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs transition-all cursor-pointer shadow-sm ${
+              className={`flex items-center justify-center w-7 h-7 rounded-lg border text-xs transition-all cursor-pointer shadow-sm ${
                 agentRule === 'editor'
                   ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-[var(--accent)]'
                   : 'bg-zinc-900 border-zinc-700/70 text-zinc-200 hover:border-zinc-500'
               }`}
-              title="Permissão do Agente: Modo Analista (Leitura) ou Modo Co-Autor (Edita Notas)"
+              title={`Permissão do Agente: ${agentRule === 'editor' ? 'Modo Co-Autor (Edita Notas)' : 'Modo Analista (Leitura)'} (clique para alternar)`}
             >
-              <span>{agentRule === 'editor' ? '✍️' : '👁️'}</span>
-              <span className="font-semibold text-[11px]">
-                {agentRule === 'editor' ? 'Modo Co-Autor' : 'Modo Analista'}
-              </span>
-              <ChevronDown className="w-3 h-3 text-zinc-500 ml-0.5" />
+              <span className="text-sm leading-none">{agentRule === 'editor' ? '✍️' : '👁️'}</span>
             </button>
 
             {isRuleMenuOpen && (
