@@ -36,7 +36,8 @@ import {
   CheckSquare,
   Calendar,
   Flag,
-  ListTodo
+  ListTodo,
+  FilePlus
 } from 'lucide-react'
 
 export type AgentRuleMode = 'analyst' | 'editor'
@@ -1043,25 +1044,30 @@ ${outline}
        - [ ] Testes e Validação
          - Testes de Usabilidade
          - Homologação em Produção
-- QUANDO O USUÁRIO PEDIR PARA CRIAR UMA NOVA NOTA OU NOVO MAPA MENTAL SEPARADO (ex: "crie um novo mapa sobre...", "crie uma nova nota sobre..."):
-  Você pode fornecer o bloco executável:
+- REGRA CRÍTICA PARA CRIAÇÃO DE NOVAS NOTAS OU MAPAS MENTAIS:
+  Sempre que o usuário pedir para CRIAR, GERAR, SALVAR ou MONTAR uma nova nota, novo documento ou novo mapa mental (ex: "crie uma nota sobre...", "criar nova nota...", "crie um novo mapa sobre...", "gere uma nota...", "salve essa ideia em uma nota..."):
+  Você DEVE OBRIGATORIAMENTE emitir o bloco executável delimitado no formato exato:
   <<<CREATE_NOTE>>>
-  Título: Nome da Nota ou Mapa
+  Título: Nome Exato da Nova Nota
   Pasta: Início
-  Tipo: mindmap (ou note)
+  Tipo: note (ou mindmap se for mapa mental)
   Conteúdo:
-  # Tópico Central
-  ## Ramo 1
-    - Subtópico 1.1
-      - Detalhe 1.1.1
-  ## Ramo 2
-    - Subtópico 2.1
+  (coloque todo o conteúdo formatado em markdown aqui)
   <<<END_CREATE_NOTE>>>
+  NUNCA apenas diga no texto que vai criar sem emitir o bloco <<<CREATE_NOTE>>>, pois este bloco é o comando que cria o arquivo no cofre do usuário!
 - Fora dos blocos delimitadores, explique resumidamente no chat o que foi gerado/aprimorado.`
-          : `REGRA DE OPERAÇÃO: MODO ANALISTA (SOMENTE LEITURA).
+          : `REGRA DE OPERAÇÃO: MODO ANALISTA (CONSULTORIA & LEITURA).
 - Você atua exclusivamente como consultor, parceiro de pensamento e analista de conhecimento.
 - Analise a nota e a pasta em profundidade, formule hipóteses, aponte conexões e proponha melhorias.
-- Não altere arquivos nem modifique notas diretamente. Todas as interações devem ser no chat.`
+- Não altere a nota ativa atual diretamente sem permissão.
+- CRIAÇÃO DE NOVAS NOTAS OU MAPAS MENTAIS: Quando o usuário solicitar expressamente a criação de uma NOVA nota ou mapa mental (ex: "crie uma nota sobre...", "crie um mapa sobre..."), você DEVE emitir o bloco executável <<<CREATE_NOTE>>> normalmente para criá-lo no cofre:
+  <<<CREATE_NOTE>>>
+  Título: Nome da Nova Nota
+  Pasta: Início
+  Tipo: note (ou mindmap)
+  Conteúdo:
+  (conteúdo em markdown completo aqui)
+  <<<END_CREATE_NOTE>>>`
 
         const specialtyBlock = activeSpecialty.id !== 'none' && activeSpecialty.systemDirective
           ? `Especialidade cognitiva ativa: ${activeSpecialty.name} (${activeSpecialty.icon})\nDiretriz de Especialidade:\n${activeSpecialty.systemDirective}\n`
@@ -1223,10 +1229,47 @@ Diretrizes gerais:
           }
 
           // Check for Note / MindMap Creation <<<CREATE_NOTE>>>
-          if (onCreateNote && responseText.includes('<<<CREATE_NOTE>>>')) {
-            const createMatch = responseText.match(/<<<CREATE_NOTE>>>([\s\S]*?)<<<END_CREATE_NOTE>>>/)
-            if (createMatch && createMatch[1]) {
-              const blockText = createMatch[1].trim()
+          if (onCreateNote) {
+            const createRegex = /<<<(?:CREATE_NOTE|create_note)>>>([\s\S]*?)(?:<<<(?:END_CREATE_NOTE|end_create_note)>>>|$)/i
+            const codeBlockRegex = /```(?:create-note|create_note|note-action)\s*([\s\S]*?)\s*```/i
+
+            let blockText: string | null = null
+            let matchedRaw: string | null = null
+
+            const match1 = responseText.match(createRegex)
+            if (match1 && match1[1] && match1[1].trim()) {
+              blockText = match1[1].trim()
+              matchedRaw = match1[0]
+            } else {
+              const match2 = responseText.match(codeBlockRegex)
+              if (match2 && match2[1] && match2[1].trim()) {
+                blockText = match2[1].trim()
+                matchedRaw = match2[0]
+              }
+            }
+
+            // Fallback Intent Detection: user explicitly asked to create a note and AI responded with note content without delimiters
+            if (!blockText) {
+              const userPromptLower = userContent.toLowerCase()
+              const userWantsNewNote = /\b(?:crie|criar|gere|gerar|salve|salvar|monte|montar)\s+(?:uma\s+)?(?:nova\s+)?(?:nota|mapa|documento)\b/i.test(userPromptLower)
+
+              if (userWantsNewNote) {
+                const headingMatch = responseText.match(/(?:^|\n)#\s+([^\n]+)/)
+                const titleFieldMatch = responseText.match(/(?:^|\n)T[íi]tulo:\s*([^\n]+)/i)
+                const noteTitle = (headingMatch ? headingMatch[1] : titleFieldMatch ? titleFieldMatch[1] : '').replace(/[\[\]]/g, '').trim()
+
+                if (noteTitle && responseText.length > 40) {
+                  const isMind = /\bmapa\b/i.test(userPromptLower) || isMindMapContent(responseText)
+                  const cleanContent = responseText
+                    .replace(/^(?:Claro[!,.]?|Com certeza[!,.]?|Vou criar[^\n]*|Aqui est[áa][^\n]*)\s*\n+/i, '')
+                    .trim()
+
+                  blockText = `Título: ${noteTitle}\nPasta: Início\nTipo: ${isMind ? 'mindmap' : 'note'}\nConteúdo:\n${cleanContent}`
+                }
+              }
+            }
+
+            if (blockText) {
               let title = 'Novo Conteúdo'
               let folder = 'Início'
               let type = 'note'
@@ -1244,19 +1287,25 @@ Diretrizes gerais:
               const contentM = blockText.match(/Conteúdo:\s*([\s\S]*)/i)
               if (contentM) content = contentM[1].trim()
 
+              title = title.replace(/[\[\]]/g, '').trim() || 'Nova Nota'
+
               const isMind = type === 'mindmap' || isMindMapContent(content)
               const finalContent = isMind
                 ? serializeMindMapDocument(parseMindMapDocument(content, title))
                 : content
 
               onCreateNote(folder, title, finalContent)
-              setToastNotice(`✨ ${isMind ? 'Mapa Mental' : 'Nota'} "${title}" criado pelo Agente!`)
+              setToastNotice(`✨ ${isMind ? 'Mapa Mental' : 'Nota'} "${title}" criada com sucesso!`)
               setTimeout(() => setToastNotice(null), 4000)
 
-              responseText = responseText.replace(
-                /<<<CREATE_NOTE>>>[\s\S]*?<<<END_CREATE_NOTE>>>/,
-                `> ✨ **${isMind ? 'Mapa Mental' : 'Nota'} [[${title}]] criado com sucesso no seu cofre!**\n`
-              ).trim()
+              if (matchedRaw) {
+                responseText = responseText.replace(
+                  matchedRaw,
+                  `> ✨ **${isMind ? 'Mapa Mental' : 'Nota'} [[${title}]] criada com sucesso no seu cofre!**\n`
+                ).trim()
+              } else {
+                responseText = `> ✨ **${isMind ? 'Mapa Mental' : 'Nota'} [[${title}]] criada com sucesso no seu cofre!**\n\n` + responseText
+              }
             }
           }
 
@@ -1988,19 +2037,43 @@ Diretrizes gerais:
                             )}
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(displayText)
-                              setCopiedNotice(m.id)
-                              setTimeout(() => setCopiedNotice(null), 2000)
-                            }}
-                            className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 bg-zinc-900/40 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
-                            title="Copiar texto em Markdown"
-                          >
-                            {copiedNotice === m.id ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
-                            <span>{copiedNotice === m.id ? 'Copiado!' : 'Copiar'}</span>
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            {onCreateNote && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const headingMatch = displayText.match(/(?:^|\n)#\s+([^\n]+)/)
+                                  const extractedTitle = (headingMatch ? headingMatch[1] : 'Nova Nota da IA').replace(/[\[\]]/g, '').trim()
+                                  const isMind = isMindMapContent(displayText)
+                                  const finalContent = isMind
+                                    ? serializeMindMapDocument(parseMindMapDocument(displayText, extractedTitle))
+                                    : displayText
+                                  onCreateNote('Início', extractedTitle, finalContent)
+                                  setToastNotice(`✨ ${isMind ? 'Mapa Mental' : 'Nota'} "${extractedTitle}" criada no cofre!`)
+                                  setTimeout(() => setToastNotice(null), 4000)
+                                }}
+                                className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-[var(--accent)] border border-zinc-800/80 hover:border-[var(--accent)]/50 bg-zinc-900/40 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                                title="Criar nova nota no cofre com esta resposta"
+                              >
+                                <FilePlus className="w-2.5 h-2.5" />
+                                <span>Criar como Nota</span>
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(displayText)
+                                setCopiedNotice(m.id)
+                                setTimeout(() => setCopiedNotice(null), 2000)
+                              }}
+                              className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80 hover:border-zinc-700 bg-zinc-900/40 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                              title="Copiar texto em Markdown"
+                            >
+                              {copiedNotice === m.id ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
+                              <span>{copiedNotice === m.id ? 'Copiado!' : 'Copiar'}</span>
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>

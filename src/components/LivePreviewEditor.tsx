@@ -766,11 +766,12 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   }, [note.id, note.content, note.title, allNotes, refreshBlocks])
 
   const insertBlock = (html: string) => {
-    if (!containerRef.current) return
-    insertEditorBlock(containerRef.current, html)
+    if (!containerRef.current) return null
+    const block = insertEditorBlock(containerRef.current, html)
     refreshBlocks()
     setSelectionToolbar(null)
     persistContent()
+    return block
   }
   const insertTableBlock = () => insertBlock(tableShell(DEFAULT_TABLE))
 
@@ -816,10 +817,19 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         const taskHtml = `
           <div class="task-item flex items-start gap-2.5 my-1.5 group" data-type="task">
             <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
-            <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">Nova tarefa...</span>
+            <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed"><br></span>
           </div>
         `
-        insertBlock(taskHtml)
+        const block = insertBlock(taskHtml)
+        const textSpan = block?.querySelector('.task-text') as HTMLElement | null
+        if (textSpan) {
+          const sel = window.getSelection()
+          const range = document.createRange()
+          range.selectNodeContents(textSpan)
+          range.collapse(true)
+          sel?.removeAllRanges()
+          sel?.addRange(range)
+        }
       } else {
         formatBlockSafe('p')
       }
@@ -1309,10 +1319,19 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       const taskHtml = `
         <div class="task-item flex items-start gap-2.5 my-1.5 group" data-type="task">
           <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
-          <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">Nova tarefa...</span>
+          <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed"><br></span>
         </div>
       `
-      insertBlock(taskHtml)
+      const block = insertBlock(taskHtml)
+      const textSpan = block?.querySelector('.task-text') as HTMLElement | null
+      if (textSpan) {
+        const sel = window.getSelection()
+        const range = document.createRange()
+        range.selectNodeContents(textSpan)
+        range.collapse(true)
+        sel?.removeAllRanges()
+        sel?.addRange(range)
+      }
     } else if (cmdId === 'table') {
       insertTableBlock()
     } else if (cmdId === 'code') {

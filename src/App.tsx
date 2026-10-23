@@ -27,6 +27,7 @@ import { AiAssistant } from './components/AiAssistant'
 import { StatusBar } from './components/StatusBar'
 import { SettingsModal } from './components/SettingsModal'
 import { VaultSwitcherModal } from './components/VaultSwitcherModal'
+import { FileText, Plus } from 'lucide-react'
 
 const MAX_TABS = 8
 
@@ -338,11 +339,12 @@ export const App: React.FC = () => {
 
   const handleCloseTab = (tabId: string) => {
     const remaining = tabs.filter(t => t.id !== tabId)
+    setTabs(remaining)
     if (remaining.length === 0) {
-      handleCreateNote()
+      setActiveTabId('')
+      setCurrentNoteId('')
       return
     }
-    setTabs(remaining)
     if (activeTabId === tabId && remaining.length > 0) {
       const nextTab = remaining[remaining.length - 1]
       setActiveTabId(nextTab.id)
@@ -1099,7 +1101,28 @@ export const App: React.FC = () => {
           {/* Page area below Header: Contains Editor/Graph/Canvas and the RightSidebar (Sumário) */}
           <div className="flex-1 flex overflow-hidden relative">
             <div className="flex-1 overflow-hidden relative">
-              {currentView === 'editor' && currentNote && (
+              {tabs.length === 0 && (
+                <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 select-none">
+                  <div className="w-14 h-14 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-center text-zinc-500 mb-4 shadow-sm">
+                    <FileText className="w-6 h-6 stroke-[1.5]" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">
+                    Nenhuma aba aberta
+                  </h3>
+                  <p className="text-xs text-zinc-500 max-w-sm mb-4 leading-relaxed">
+                    Selecione uma nota na barra lateral para visualizá-la ou clique abaixo para criar uma nova.
+                  </p>
+                  <button
+                    onClick={() => handleCreateNote()}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] hover:opacity-90 text-zinc-950 font-semibold text-xs transition-all shadow-sm cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Criar nova nota</span>
+                  </button>
+                </div>
+              )}
+
+              {tabs.length > 0 && currentView === 'editor' && currentNote && (
                 currentNote.type === 'mindmap' ? (
                   <MindMapEditor
                     key={currentNote.id}
