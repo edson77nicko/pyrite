@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Cpu,
   KeyRound,
@@ -412,17 +413,17 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
 
   const installedSkillsCount = customSkills.filter(s => s.enabled).length
 
-  return (
-    <>
+  return createPortal(
+    <div className="ai-settings-portal-root fixed inset-0 z-[9999] flex items-center justify-center p-4">
       {/* Semi-transparent Backdrop with subtle blur */}
       <div
-        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
 
       {/* Main Settings Modal with Left Sidebar */}
       <div
-        className="ai-settings-modal fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[840px] max-w-[95vw] h-[600px] max-h-[90vh] bg-[#0c0d11] border border-zinc-800/90 rounded-2xl shadow-2xl flex overflow-hidden text-xs text-zinc-300 select-none animate-in fade-in zoom-in-95 duration-150"
+        className="ai-settings-modal relative z-10 w-[840px] max-w-[95vw] h-[600px] max-h-[90vh] bg-[#0c0d11] border border-zinc-800/90 rounded-2xl shadow-2xl flex overflow-hidden text-xs text-zinc-300 select-none animate-in fade-in zoom-in-95 duration-150"
         onClick={e => e.stopPropagation()}
       >
         {/* ========================================================================= */}
@@ -1075,11 +1076,11 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                 {/* File Inspection Modal (when previewFile is selected) */}
                 {previewFile && (
                   <div
-                    className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
+                    className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
                     onClick={() => setPreviewFile(null)}
                   >
                     <div
-                      className="bg-[#121318] border border-zinc-700 rounded-2xl w-[600px] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-100"
+                      className="ai-file-preview-modal bg-[#121318] border border-zinc-700 rounded-2xl w-[600px] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-100"
                       onClick={e => e.stopPropagation()}
                     >
                       <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
@@ -1111,6 +1112,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
           </div>
         </div>
       </div>
-    </>
+    </div>,
+    document.body
   )
 }

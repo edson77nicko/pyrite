@@ -1013,7 +1013,7 @@ html.light #root {
   color: #27272a !important;
 }
 
-/* AiSettingsModal Popup */
+/* AiSettingsModal Popup (Tabs 1, 2 e 3 Completas no Modo Claro) */
 .light .ai-settings-modal {
   background-color: #ffffff !important;
   border-color: #dcdde0 !important;
@@ -1028,23 +1028,49 @@ html.light #root {
 .light .ai-settings-modal .bg-\[\#0c0d11\] {
   background-color: #ffffff !important;
 }
+
+/* Todos os Cards de Modelos, Especialidades (Aba 2) e Skills (Aba 3) */
 .light .ai-settings-modal .bg-\[\#111216\],
 .light .ai-settings-modal .bg-\[\#121319\],
 .light .ai-settings-modal .bg-\[\#15161f\],
-.light .ai-settings-modal .bg-\[\#15171e\] {
+.light .ai-settings-modal .bg-\[\#15171e\],
+.light .ai-settings-modal .bg-\[\#0f1014\],
+.light .ai-settings-modal .bg-\[\#0f1013\],
+.light .ai-settings-modal .bg-\[\#0f1013\]\/50,
+.light .ai-settings-modal .bg-\[\#12141a\],
+.light .ai-settings-modal .bg-\[\#161820\],
+.light .ai-settings-modal .bg-\[\#121318\] {
   background-color: #f7f7fa !important;
   border-color: #e4e4e7 !important;
 }
+
+/* Card Selecionado / Ativo em Especialidades (Aba 2) */
+.light .ai-settings-modal .bg-\[\#13151c\] {
+  background-color: #ffffff !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Inputs de Texto e Senha na Modal */
 .light .ai-settings-modal input[type="text"],
-.light .ai-settings-modal input[type="password"] {
+.light .ai-settings-modal input[type="password"],
+.light .ai-settings-modal textarea {
   background-color: #ffffff !important;
   border-color: #dcdde0 !important;
   color: #18181b !important;
 }
+.light .ai-settings-modal input::placeholder,
+.light .ai-settings-modal textarea::placeholder {
+  color: #71717a !important;
+}
+
+/* Textos e Rótulos */
 .light .ai-settings-modal .text-zinc-100,
-.light .ai-settings-modal .text-zinc-200,
-.light .ai-settings-modal .text-zinc-300 {
+.light .ai-settings-modal .text-zinc-200 {
   color: #18181b !important;
+}
+.light .ai-settings-modal .text-zinc-300 {
+  color: #27272a !important;
 }
 .light .ai-settings-modal .text-zinc-400 {
   color: #52525b !important;
@@ -1052,19 +1078,76 @@ html.light #root {
 .light .ai-settings-modal .text-zinc-500 {
   color: #71717a !important;
 }
+.light .ai-settings-modal .text-white {
+  color: #18181b !important;
+}
+.light .ai-settings-modal code {
+  color: #18181b !important;
+  background-color: #e4e4e7 !important;
+}
+
+/* Bordas da Modal */
 .light .ai-settings-modal .border-zinc-800,
 .light .ai-settings-modal .border-zinc-800\/60,
 .light .ai-settings-modal .border-zinc-800\/80,
-.light .ai-settings-modal .border-zinc-800\/90 {
+.light .ai-settings-modal .border-zinc-800\/90,
+.light .ai-settings-modal .border-zinc-700,
+.light .ai-settings-modal .border-zinc-700\/50,
+.light .ai-settings-modal .border-zinc-700\/60,
+.light .ai-settings-modal .border-zinc-700\/80,
+.light .ai-settings-modal .border-zinc-850 {
   border-color: #e4e4e7 !important;
 }
-.light .ai-settings-modal .bg-zinc-900\/60,
+
+/* Pílulas, Tags e Badges secundárias */
+.light .ai-settings-modal .bg-zinc-850 {
+  background-color: #ebebed !important;
+  border-color: #dcdde0 !important;
+  color: #27272a !important;
+}
 .light .ai-settings-modal .bg-zinc-800 {
+  background-color: #e4e4e7 !important;
+  color: #18181b !important;
+  border-color: #dcdde0 !important;
+}
+.light .ai-settings-modal .bg-zinc-900,
+.light .ai-settings-modal .bg-zinc-900\/50,
+.light .ai-settings-modal .bg-zinc-900\/60 {
   background-color: #f0f0f3 !important;
   border-color: #e4e4e7 !important;
 }
+
+/* Botões interativos */
 .light .ai-settings-modal button:hover:not([disabled]) {
   background-color: #ebebed !important;
+  color: #18181b !important;
+}
+.light .ai-settings-modal button.bg-\[var\(--accent\)\] {
+  background-color: var(--accent) !important;
+  color: #09090b !important;
+}
+.light .ai-settings-modal button.bg-\[var\(--accent\)\]:hover {
+  filter: brightness(0.95);
+}
+
+/* Lista de Arquivos Ingeridos na Aba de Skills */
+.light .ai-settings-modal .max-h-40 {
+  background-color: #ffffff !important;
+  border-color: #e4e4e7 !important;
+}
+.light .ai-settings-modal .max-h-40 button:hover {
+  background-color: #f0f0f3 !important;
+}
+
+/* Modal de Inspecionar Arquivo da Skill */
+.light .ai-file-preview-modal {
+  background-color: #ffffff !important;
+  border-color: #dcdde0 !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2) !important;
+}
+.light .ai-file-preview-modal pre {
+  background-color: #f7f7fa !important;
+  color: #18181b !important;
 }
 
 

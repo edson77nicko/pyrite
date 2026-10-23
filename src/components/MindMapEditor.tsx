@@ -2029,9 +2029,11 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                       [cn.side === 'left' ? 'left' : 'right']: '-8px',
                       top: isUnderline ? 'calc(100% - 1px)' : '50%',
                       transform: cn.side === 'left' ? 'translate(-50%, -50%)' : 'translate(50%, -50%)',
-                      borderColor: cn.branchColor
+                      borderColor: effectiveBorder,
+                      backgroundColor: effectiveBg !== 'transparent' ? effectiveBg : (isCanvasLight ? '#ffffff' : currentTheme.subtopicBg || '#18181e'),
+                      color: effectiveBorder
                     }}
-                    className="w-3.5 h-3.5 rounded-full bg-[#18181e] hover:bg-zinc-700 border flex items-center justify-center text-[9px] font-bold text-zinc-300 opacity-0 group-hover:opacity-100 hover:opacity-100! transition-opacity active:scale-90 cursor-pointer shadow-xs z-30"
+                    className="w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] font-bold opacity-0 group-hover:opacity-100 hover:opacity-100! transition-opacity active:scale-90 cursor-pointer shadow-xs z-30 hover:brightness-110"
                     title="Recolher ramo (-)"
                   >
                     <Minus className="w-2 h-2 stroke-[2.5]" />
@@ -2043,18 +2045,19 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                   <div
                     style={{
                       position: 'absolute',
-                      [cn.side === 'left' ? 'left' : 'right']: '-22px',
+                      [cn.side === 'left' ? 'right' : 'left']: '100%',
                       top: isUnderline ? 'calc(100% - 1px)' : '50%',
-                      transform: cn.side === 'left' ? 'translate(-100%, -50%)' : 'translate(0, -50%)'
+                      transform: 'translate(0, -50%)'
                     }}
-                    className={`flex items-center z-30 pointer-events-auto ${cn.side === 'left' ? 'flex-row-reverse' : ''}`}
+                    className={`flex items-center z-30 pointer-events-auto ${cn.side === 'left' ? 'flex-row-reverse' : 'flex-row'}`}
                   >
                     {/* Small branch line stub */}
                     <div
                       style={{
-                        width: '10px',
+                        width: '8px',
                         height: '2px',
-                        backgroundColor: cn.branchColor
+                        backgroundColor: cn.branchColor,
+                        flexShrink: 0
                       }}
                     />
                     {/* Expand badge button */}
@@ -2064,11 +2067,11 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                         commitDoc(toggleCollapse(doc, cn.id))
                       }}
                       style={{
-                        borderColor: cn.branchColor,
-                        backgroundColor: '#18181e',
-                        color: cn.branchColor
+                        borderColor: effectiveBorder,
+                        backgroundColor: effectiveBg !== 'transparent' ? effectiveBg : (isCanvasLight ? '#ffffff' : currentTheme.subtopicBg || '#18181e'),
+                        color: effectiveBorder
                       }}
-                      className="px-1.5 h-4.5 rounded-full border flex items-center justify-center gap-0.5 text-[10px] font-bold hover:brightness-125 transition-transform active:scale-90 cursor-pointer shadow-xs"
+                      className="px-1.5 h-4.5 rounded-full border flex items-center justify-center gap-0.5 text-[10px] font-bold hover:brightness-125 transition-transform active:scale-90 cursor-pointer shadow-xs shrink-0"
                       title={`Expandir ramo (${cn.node.children.length} subtópicos)`}
                     >
                       <Plus className="w-2.5 h-2.5 stroke-[2.5]" />

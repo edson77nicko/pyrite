@@ -2289,7 +2289,7 @@ Diretrizes gerais:
         onConfigSaved={refreshAiConfig}
       />
 
-      {/* Vertical Resizable Drag Handle */}
+      {/* Vertical Resizable Drag Handle - Completely invisible when idle */}
       <div
         onMouseDown={handleMouseDown}
         onDoubleClick={() => {
@@ -2298,12 +2298,12 @@ Diretrizes gerais:
             localStorage.setItem('pyrita_ai_width', '380')
           } catch {}
         }}
-        className={`absolute top-0 right-0 w-1.5 h-full cursor-col-resize select-none z-30 transition-colors group ${
-          isDragging ? 'bg-[var(--accent)]' : 'hover:bg-[var(--accent)]/50'
+        className={`absolute top-0 right-0 w-2 h-full cursor-col-resize select-none z-30 transition-colors ${
+          isDragging ? 'bg-[var(--accent)]/80' : 'hover:bg-[var(--accent)]/30'
         }`}
         title="Arraste para redimensionar a largura do chat (duplo clique para restaurar)"
       >
-        <div className="w-[1px] h-full bg-zinc-800/80 group-hover:bg-[var(--accent)]/80 mx-auto" />
+        {isDragging && <div className="w-[1px] h-full bg-[var(--accent)] mx-auto" />}
       </div>
     </div>
   )
