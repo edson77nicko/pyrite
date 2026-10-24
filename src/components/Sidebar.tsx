@@ -128,6 +128,159 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const openContext = (e: React.MouseEvent, target: { note?: Note; folder?: string }) => { e.preventDefault(); e.stopPropagation(); setContext({ x: e.clientX, y: e.clientY, ...target }) }
   const [search, setSearch] = useState('')
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({})
+
+  // Drag and drop state for notes and folders
+  const [draggedItem, setDraggedItem] = useState<
+    | { type: 'note'; note: Note }
+    | { type: 'folder'; fullPath: string }
+    | null
+  >(null)
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
+  const autoExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearAutoExpandTimer = () => {
+    if (autoExpandTimerRef.current) {
+      clearTimeout(autoExpandTimerRef.current)
+      autoExpandTimerRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      clearAutoExpandTimer()
+    }
+  }, [])
+
+  const isVaultRoot = (path?: string) => !path || path === 'Início' || path === 'Sem Pasta' || path.trim() === ''
+
+  const canDropInto = (
+    dragged: { type: 'note'; note: Note } | { type: 'folder'; fullPath: string } | null,
+    targetFolder: string
+  ): boolean => {
+    if (!dragged) return false
+    const targetIsRoot = isVaultRoot(targetFolder)
+
+    if (dragged.type === 'note') {
+      const noteIsRoot = isVaultRoot(dragged.note.folder)
+      if (targetIsRoot && noteIsRoot) return false
+      if (!targetIsRoot && dragged.note.folder === targetFolder) return false
+      return true
+    }
+
+    if (dragged.type === 'folder') {
+      const folderPath = dragged.fullPath
+      if (isVaultRoot(folderPath)) return false
+      if (folderPath === targetFolder) return false
+      if (targetFolder.startsWith(folderPath + '/')) return false
+      const lastSlash = folderPath.lastIndexOf('/')
+      const currentParent = lastSlash === -1 ? '' : folderPath.substring(0, lastSlash)
+      const parentIsRoot = isVaultRoot(currentParent)
+      if (targetIsRoot && parentIsRoot) return false
+      if (!targetIsRoot && currentParent === targetFolder) return false
+      return true
+    }
+
+    return false
+  }
+
+  const handleFolderDragStart = (e: React.DragEvent, fullPath: string) => {
+    e.stopPropagation()
+    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'folder', fullPath }))
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggedItem({ type: 'folder', fullPath })
+  }
+
+  const handleNoteDragStart = (e: React.DragEvent, note: Note) => {
+    e.stopPropagation()
+    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'note', id: note.id }))
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggedItem({ type: 'note', note })
+  }
+
+  const handleDragEnd = () => {
+    setDraggedItem(null)
+    setDragOverTarget(null)
+    clearAutoExpandTimer()
+  }
+
+  const handleFolderDragOver = (e: React.DragEvent, folderPath: string) => {
+    if (canDropInto(draggedItem, folderPath)) {
+      e.preventDefault()
+      e.stopPropagation()
+      e.dataTransfer.dropEffect = 'move'
+      if (dragOverTarget !== folderPath) {
+        setDragOverTarget(folderPath)
+      }
+
+      // Auto-expand folder on hover if collapsed
+      if (collapsedFolders[folderPath] ?? true) {
+        if (!autoExpandTimerRef.current) {
+          autoExpandTimerRef.current = setTimeout(() => {
+            setCollapsedFolders(prev => ({ ...prev, [folderPath]: false }))
+            autoExpandTimerRef.current = null
+          }, 600)
+        }
+      }
+    }
+  }
+
+  const handleFolderDragLeave = (e: React.DragEvent, folderPath: string) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+    if (dragOverTarget === folderPath) {
+      setDragOverTarget(null)
+    }
+    clearAutoExpandTimer()
+  }
+
+  const handleNoteDragOver = (e: React.DragEvent, note: Note) => {
+    const targetFolder = isVaultRoot(note.folder) ? '' : note.folder
+    if (canDropInto(draggedItem, targetFolder)) {
+      e.preventDefault()
+      e.stopPropagation()
+      e.dataTransfer.dropEffect = 'move'
+      if (dragOverTarget !== targetFolder) {
+        setDragOverTarget(targetFolder)
+      }
+    }
+  }
+
+  const handleNoteDragLeave = (e: React.DragEvent, note: Note) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+    const targetFolder = isVaultRoot(note.folder) ? '' : note.folder
+    if (dragOverTarget === targetFolder) {
+      setDragOverTarget(null)
+    }
+  }
+
+  const handleDrop = async (e: React.DragEvent, targetFolder: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    clearAutoExpandTimer()
+
+    const currentDrag = draggedItem
+    setDraggedItem(null)
+    setDragOverTarget(null)
+
+    if (!currentDrag) return
+    if (!canDropInto(currentDrag, targetFolder)) return
+
+    const dest = isVaultRoot(targetFolder) ? '' : targetFolder
+
+    try {
+      if (currentDrag.type === 'note') {
+        await onManage('move', { note: currentDrag.note }, dest)
+      } else if (currentDrag.type === 'folder') {
+        await onManage('move', { folder: currentDrag.fullPath }, dest)
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Não foi possível mover o item.')
+    }
+  }
+
+  const handleNoteDrop = async (e: React.DragEvent, note: Note) => {
+    const targetFolder = isVaultRoot(note.folder) ? '' : note.folder
+    await handleDrop(e, targetFolder)
+  }
   const [newFolderName, setNewFolderName] = useState('')
   const [parentForNewFolder, setParentForNewFolder] = useState<string | null>(null)
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
@@ -347,15 +500,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const totalSubNotes = node.notes.length + node.children.reduce((acc, c) => acc + c.notes.length, 0)
     // Keep each nesting step small so deep folder trees remain readable.
     const indentPadding = 'ml-0.5 pl-0.5'
+    const isBeingDragged = draggedItem?.type === 'folder' && draggedItem.fullPath === node.fullPath
+    const isTargetFolder = dragOverTarget === node.fullPath
+    const isRootNode = isVaultRoot(node.fullPath)
 
     return (
       <div key={node.fullPath} className="space-y-[1px]">
         {/* Folder Header Row */}
         <div
+          draggable={!isRootNode}
+          onDragStart={(e) => handleFolderDragStart(e, node.fullPath)}
+          onDragEnd={handleDragEnd}
+          onDragOver={(e) => handleFolderDragOver(e, node.fullPath)}
+          onDragLeave={(e) => handleFolderDragLeave(e, node.fullPath)}
+          onDrop={(e) => handleDrop(e, node.fullPath)}
           onContextMenu={e => openContext(e, { folder: node.fullPath })}
           onClick={() => toggleFolder(node.fullPath)}
           title={node.fullPath}
-          className="flex items-center justify-between px-1.5 py-[3px] rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 cursor-pointer text-[11.5px] font-medium group transition-colors"
+          className={`flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] font-medium group transition-all cursor-pointer ${
+            isBeingDragged
+              ? 'opacity-40 scale-[0.98] border border-dashed border-zinc-600'
+              : isTargetFolder
+              ? 'ring-2 ring-[var(--accent)] bg-[var(--accent-glow-subtle)] text-zinc-100 shadow-xs'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+          }`}
         >
           <div className="flex items-center gap-1.5 truncate min-w-0">
             {isCollapsed ? (
@@ -366,59 +534,82 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="truncate">{node.name}</span>
           </div>
 
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onCreateNote(node.fullPath, undefined, 'note')
-              }}
-              className="p-0.5 hover:text-white rounded"
-              title={`Nova nota em ${node.fullPath}`}
-            >
-              <Plus className="w-3 h-3" />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onCreateNote(node.fullPath, undefined, 'draw')
-              }}
-              className="p-0.5 hover:text-white rounded"
-              title={`Novo Draw em ${node.fullPath}`}
-            >
-              <Palette className="w-3 h-3" style={{ color: 'var(--accent)' }} />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onCreateNote(node.fullPath, undefined, 'mindmap')
-              }}
-              className="p-0.5 hover:text-white rounded"
-              title={`Novo Mapa Mental em ${node.fullPath}`}
-            >
-              <Brain className="w-3 h-3" style={{ color: 'var(--accent)' }} />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                handleStartCreateFolder(node.fullPath)
-              }}
-              className="p-0.5 hover:text-white rounded"
-              title={`Nova subpasta em ${node.fullPath}`}
-            >
-              <FolderPlus className="w-3 h-3" />
-            </button>
-            <span className="text-[9.5px] text-zinc-600 font-mono px-0.5">
-              {totalSubNotes}
+          {isTargetFolder ? (
+            <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold text-zinc-950 shrink-0 shadow-xs animate-in fade-in duration-100" style={{ backgroundColor: 'var(--accent)' }}>
+              Mover para cá
             </span>
-          </div>
+          ) : (
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              <button
+                draggable={false}
+                onDragStart={e => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCreateNote(node.fullPath, undefined, 'note')
+                }}
+                className="p-0.5 hover:text-white rounded"
+                title={`Nova nota em ${node.fullPath}`}
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+              <button
+                draggable={false}
+                onDragStart={e => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCreateNote(node.fullPath, undefined, 'draw')
+                }}
+                className="p-0.5 hover:text-white rounded"
+                title={`Novo Draw em ${node.fullPath}`}
+              >
+                <Palette className="w-3 h-3" style={{ color: 'var(--accent)' }} />
+              </button>
+              <button
+                draggable={false}
+                onDragStart={e => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCreateNote(node.fullPath, undefined, 'mindmap')
+                }}
+                className="p-0.5 hover:text-white rounded"
+                title={`Novo Mapa Mental em ${node.fullPath}`}
+              >
+                <Brain className="w-3 h-3" style={{ color: 'var(--accent)' }} />
+              </button>
+              <button
+                draggable={false}
+                onDragStart={e => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleStartCreateFolder(node.fullPath)
+                }}
+                className="p-0.5 hover:text-white rounded"
+                title={`Nova subpasta em ${node.fullPath}`}
+              >
+                <FolderPlus className="w-3 h-3" />
+              </button>
+              <span className="text-[9.5px] text-zinc-600 font-mono px-0.5">
+                {totalSubNotes}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Folder Children (Subfolders & Notes) - Subtle Indented depth line */}
         {!isCollapsed && (
           <div className={`relative ${indentPadding} border-l border-zinc-800/40 hover:border-zinc-700/60 transition-colors space-y-[1px]`}>
             {node.notes.length === 0 && node.children.length === 0 && (
-              <div className="px-2 py-0.5 text-[10px] text-zinc-600 italic">
-                Pasta vazia
+              <div
+                onDragOver={(e) => handleFolderDragOver(e, node.fullPath)}
+                onDragLeave={(e) => handleFolderDragLeave(e, node.fullPath)}
+                onDrop={(e) => handleDrop(e, node.fullPath)}
+                className={`px-2 py-1 text-[10px] rounded transition-colors ${
+                  isTargetFolder
+                    ? 'border border-[var(--accent)] bg-[var(--accent-glow-subtle)] text-[var(--accent)] font-medium'
+                    : 'text-zinc-600 italic'
+                }`}
+              >
+                {isTargetFolder ? 'Soltar na pasta' : 'Pasta vazia'}
               </div>
             )}
 
@@ -428,18 +619,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
               const isDraw = note.type === 'draw'
               const isMindMap = note.type === 'mindmap'
               const NoteIcon = isMindMap ? Brain : isDraw ? Palette : FileText
+              const isNoteDragged = draggedItem?.type === 'note' && draggedItem.note.id === note.id
               return (
                 <div
                   key={note.id}
+                  draggable={true}
+                  onDragStart={(e) => handleNoteDragStart(e, note)}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={(e) => handleNoteDragOver(e, note)}
+                  onDragLeave={(e) => handleNoteDragLeave(e, note)}
+                  onDrop={(e) => handleNoteDrop(e, note)}
                   onContextMenu={e => openContext(e, { note })}
                   onClick={() => onSelectNote(note.id)}
                   title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : 'Nota'})`}
                   className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
-                    isActive
+                    isNoteDragged
+                      ? 'opacity-40 scale-[0.98] border-dashed border-zinc-600'
+                      : isActive
                       ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
                       : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                   }`}
-                  style={isActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
+                  style={isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
                 >
                   <div className="flex items-center gap-1.5 truncate min-w-0">
                     <NoteIcon className="w-3.5 h-3.5 shrink-0" style={isActive || isDraw || isMindMap ? { color: 'var(--accent)' } : { color: '#71717a' }} />
@@ -448,6 +648,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                     <button
+                      draggable={false}
+                      onDragStart={e => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation()
                         onToggleFavorite(note.id)
@@ -458,6 +660,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <Star className="w-3 h-3" style={note.isFavorite ? { fill: 'var(--accent)', color: 'var(--accent)' } : { color: '#71717a' }} />
                     </button>
                     <button
+                      draggable={false}
+                      onDragStart={e => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation()
                         if (confirm(`Excluir "${note.title}"?`)) {
@@ -890,10 +1094,62 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* PARTE 2: DOCUMENTOS */}
         <div className="space-y-1.5 pt-2">
-          <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            <span>Documentos</span>
-            <span className="text-[9.5px] font-mono text-zinc-600">{notes.length}</span>
+          <div
+            onDragOver={(e) => {
+              if (canDropInto(draggedItem, '')) {
+                e.preventDefault()
+                e.stopPropagation()
+                e.dataTransfer.dropEffect = 'move'
+                if (dragOverTarget !== '') setDragOverTarget('')
+              }
+            }}
+            onDragLeave={(e) => {
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return
+              if (dragOverTarget === '') setDragOverTarget(null)
+            }}
+            onDrop={(e) => handleDrop(e, '')}
+            className={`flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider transition-all rounded-md ${
+              dragOverTarget === ''
+                ? 'ring-2 ring-[var(--accent)] bg-[var(--accent-glow-subtle)] text-[var(--accent)]'
+                : 'text-zinc-500'
+            }`}
+          >
+            <span>Documentos {dragOverTarget === '' && '· Raiz do cofre'}</span>
+            {dragOverTarget === '' ? (
+              <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold text-zinc-950 uppercase tracking-normal" style={{ backgroundColor: 'var(--accent)' }}>
+                Mover para raiz
+              </span>
+            ) : (
+              <span className="text-[9.5px] font-mono text-zinc-600">{notes.length}</span>
+            )}
           </div>
+
+          {/* Root Drop Banner when dragging non-root item */}
+          {draggedItem && canDropInto(draggedItem, '') && (
+            <div
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                e.dataTransfer.dropEffect = 'move'
+                if (dragOverTarget !== '') setDragOverTarget('')
+              }}
+              onDragLeave={(e) => {
+                if (e.currentTarget.contains(e.relatedTarget as Node)) return
+                if (dragOverTarget === '') setDragOverTarget(null)
+              }}
+              onDrop={(e) => handleDrop(e, '')}
+              className={`my-1 px-3 py-2 border-2 border-dashed rounded-lg text-center text-xs font-medium transition-all cursor-copy ${
+                dragOverTarget === ''
+                  ? 'border-[var(--accent)] bg-[var(--accent-glow-subtle)] text-[var(--accent)] shadow-md scale-[1.01]'
+                  : 'border-zinc-700/60 text-zinc-400 bg-zinc-900/30 hover:border-zinc-500 hover:text-zinc-200'
+              }`}
+            >
+              <div className="flex items-center justify-center gap-1.5">
+                <Folder className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                <span>Mover para a raiz do cofre</span>
+              </div>
+            </div>
+          )}
 
           {/* Favoritos (Star section) */}
           {favoriteNotes.length > 0 && (
@@ -905,18 +1161,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="space-y-[1px]">
               {favoriteNotes.map(n => {
                 const isActive = n.id === currentNoteId
+                const isNoteDragged = draggedItem?.type === 'note' && draggedItem.note.id === n.id
                 return (
                   <div
                     key={`fav-${n.id}`}
+                    draggable={true}
+                    onDragStart={(e) => handleNoteDragStart(e, n)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={(e) => handleNoteDragOver(e, n)}
+                    onDragLeave={(e) => handleNoteDragLeave(e, n)}
+                    onDrop={(e) => handleNoteDrop(e, n)}
                     onContextMenu={e => openContext(e, { note: n })}
                     onClick={() => onSelectNote(n.id)}
                     title={n.title}
                     className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
-                      isActive
+                      isNoteDragged
+                        ? 'opacity-40 scale-[0.98] border-dashed border-zinc-600'
+                        : isActive
                         ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
                         : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                     }`}
-                    style={isActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
+                    style={isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
                   >
                     <div className="flex items-center gap-1.5 truncate min-w-0">
                       <Star className="w-3 h-3 shrink-0" style={{ fill: 'var(--accent)', color: 'var(--accent)' }} />
@@ -937,34 +1202,63 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Unassigned notes (without folder) */}
         {unassignedNotes.length > 0 && (
           <div className="pt-2 mt-1">
-            <div className="px-1.5 py-0.5 text-[9.5px] font-semibold uppercase text-zinc-500 tracking-wider">
+            <div
+              onDragOver={(e) => {
+                if (canDropInto(draggedItem, '')) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (dragOverTarget !== '') setDragOverTarget('')
+                }
+              }}
+              onDragLeave={(e) => {
+                if (e.currentTarget.contains(e.relatedTarget as Node)) return
+                if (dragOverTarget === '') setDragOverTarget(null)
+              }}
+              onDrop={(e) => handleDrop(e, '')}
+              className={`px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider rounded transition-colors ${
+                dragOverTarget === '' ? 'text-[var(--accent)] bg-[var(--accent-glow-subtle)]' : 'text-zinc-500'
+              }`}
+            >
               Avulsas ({unassignedNotes.length})
             </div>
             <div className="space-y-[1px]">
               {unassignedNotes.map(note => {
                 const isActive = note.id === currentNoteId
                 const isDraw = note.type === 'draw'
-                const NoteIcon = isDraw ? Palette : FileText
+                const isMindMap = note.type === 'mindmap'
+                const NoteIcon = isMindMap ? Brain : isDraw ? Palette : FileText
+                const isNoteDragged = draggedItem?.type === 'note' && draggedItem.note.id === note.id
                 return (
                   <div
                     key={note.id}
+                    draggable={true}
+                    onDragStart={(e) => handleNoteDragStart(e, note)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={(e) => handleNoteDragOver(e, note)}
+                    onDragLeave={(e) => handleNoteDragLeave(e, note)}
+                    onDrop={(e) => handleNoteDrop(e, note)}
                     onContextMenu={e => openContext(e, { note })}
                     onClick={() => onSelectNote(note.id)}
-                    title={`${note.title} (${isDraw ? 'Desenho / Draw' : 'Nota'})`}
+                    title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : 'Nota'})`}
                     className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
-                      isActive
+                      isNoteDragged
+                        ? 'opacity-40 scale-[0.98] border-dashed border-zinc-600'
+                        : isActive
                         ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
                         : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                     }`}
-                    style={isActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
+                    style={isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
                   >
                     <div className="flex items-center gap-1.5 truncate min-w-0">
-                      <NoteIcon className="w-3.5 h-3.5 shrink-0" style={isActive || isDraw ? { color: 'var(--accent)' } : { color: '#71717a' }} />
+                      <NoteIcon className="w-3.5 h-3.5 shrink-0" style={isActive || isDraw || isMindMap ? { color: 'var(--accent)' } : { color: '#71717a' }} />
                       <span className="truncate">{note.title}</span>
                     </div>
 
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                       <button
+                        draggable={false}
+                        onDragStart={e => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation()
                           onToggleFavorite(note.id)
@@ -975,6 +1269,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <Star className="w-3 h-3" style={note.isFavorite ? { fill: 'var(--accent)', color: 'var(--accent)' } : { color: '#71717a' }} />
                       </button>
                       <button
+                        draggable={false}
+                        onDragStart={e => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (confirm(`Excluir "${note.title}"?`)) {
@@ -993,6 +1289,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
         )}
+
+        {/* Empty bottom area allows dropping into root */}
+        <div
+          onDragOver={(e) => {
+            if (canDropInto(draggedItem, '')) {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+              if (dragOverTarget !== '') setDragOverTarget('')
+            }
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return
+            if (dragOverTarget === '') setDragOverTarget(null)
+          }}
+          onDrop={(e) => handleDrop(e, '')}
+          className="min-h-[48px] flex-1"
+        />
         </div>
       </div>
 
