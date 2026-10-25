@@ -9,6 +9,7 @@ import {
   parseButtonsBlock,
   parseHeaderMeta
 } from '../utils/artifactParser'
+import { splitTableRow } from '../utils/markdownTable'
 
 interface MarkdownRendererProps {
   content: string
@@ -45,7 +46,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         parts.push(renderBasicFormatting(text.substring(cursor, match.index)))
       }
       const rawTarget = match[1]
-      const [targetName, alias] = rawTarget.split('|')
+      const [targetName, alias] = rawTarget.split(/\\?\|/)
       const displayName = (alias || targetName).split('#')[0].trim()
       const destination = targetName.split('#')[0].trim()
 
@@ -422,8 +423,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       }
 
       if (tableLines.length >= 2) {
-        const headerRow = tableLines[0].split('|').slice(1, -1).map(c => c.trim())
-        const dataRows = tableLines.slice(2).map(row => row.split('|').slice(1, -1).map(c => c.trim()))
+        const headerRow = splitTableRow(tableLines[0])
+        const dataRows = tableLines.slice(2).map(splitTableRow)
 
         blocks.push(
           <div key={`table-${i}`} className="markdown-table-wrapper my-5 overflow-x-auto rounded-xl border border-zinc-800 shadow-md">

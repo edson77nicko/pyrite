@@ -172,7 +172,7 @@ function formatInlineHtml(text: string, allNotes: Note[] = []): string {
     // 1. Wikilinks [[Target]] or [[Target|Alias]]
     if (part.startsWith('[[') && part.endsWith(']]') && part.length >= 4) {
       const inner = part.slice(2, -2)
-      const [target, alias] = inner.split('|')
+      const [target, alias] = inner.split(/\\?\|/)
       const destination = target.split('#')[0].replace(/[\[\]]/g, '').trim()
       const displayName = (alias || target).split('#')[0].replace(/[\[\]]/g, '').trim()
       const exists = allNotes.some(n => n.title.toLowerCase().trim() === destination.toLowerCase().trim())
@@ -1545,7 +1545,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       />
 
       {blockHosts.map(block => createPortal(block.kind === 'table'
-        ? <EditableTable markdown={decodeURIComponent(block.wrapper.dataset.rawTable || '')} readOnly={!isEditable} renderInline={text => formatInlineHtml(text, allNotes)} onChange={markdown => updateTable(block.wrapper, markdown)} onDelete={() => deleteBlock(block.wrapper)} onExit={() => exitBlock(block.wrapper)} />
+        ? <EditableTable markdown={decodeURIComponent(block.wrapper.dataset.rawTable || '')} readOnly={!isEditable} renderInline={text => formatInlineHtml(text, allNotes)} onNavigate={onNavigate} allNotes={allNotes} onChange={markdown => updateTable(block.wrapper, markdown)} onDelete={() => deleteBlock(block.wrapper)} onExit={() => exitBlock(block.wrapper)} />
         : block.kind === 'code'
           ? <EditableCodeBlock initial={{ content: decodeURIComponent(block.wrapper.dataset.rawCode || ''), title: decodeURIComponent(block.wrapper.dataset.codeTitle || ''), language: block.wrapper.dataset.codeLang || '' }} readOnly={!isEditable} onChange={data => updateCode(block.wrapper, data)} onDelete={() => deleteBlock(block.wrapper)} onExit={() => exitBlock(block.wrapper)} />
           : <EditableCallout initial={{ type: block.wrapper.dataset.calloutType || 'NOTE', title: decodeURIComponent(block.wrapper.dataset.calloutTitle || ''), content: decodeURIComponent(block.wrapper.dataset.rawCallout || '') }} readOnly={!isEditable} renderInline={text => formatInlineHtml(text, allNotes)} onChange={data => updateCallout(block.wrapper, data)} onDelete={() => deleteBlock(block.wrapper)} onExit={() => exitBlock(block.wrapper)} />, block.host, block.id))}

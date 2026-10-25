@@ -183,6 +183,7 @@ input[type="checkbox"]:focus-visible,
 .pyrita-table textarea { display: block; width: 100%; min-width: 0; resize: none; field-sizing: content; min-height: 42px; max-height: 320px; padding: 11px 12px; border: 0; border-radius: 0; outline: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; line-height: 1.6; overflow-wrap: anywhere; }
 .pyrita-table-heading { display: flex; align-items: flex-start; text-align: inherit; }
 .pyrita-table-heading textarea { flex: 1; font-weight: 600; }
+.pyrita-table-heading .pyrita-table-value { flex: 1; font-weight: 600; }
 .pyrita-table-heading > button { flex-shrink: 0; margin: 9px 5px 0 0; padding: 4px; color: #a1a1aa; }
 .pyrita-table .pyrita-table-gutter { width: 38px; min-width: 38px; color: #71717a; text-align: center; background: #202023; }
 .pyrita-table-gutter button { width: 100%; justify-content: center; min-height: 42px; padding: 11px 2px; border-radius: 0; font-size: 10px; }
@@ -196,7 +197,8 @@ input[type="checkbox"]:focus-visible,
 .pyrita-table-filter input { min-width: 100px; flex: 1; padding: 5px 8px; background: #09090b; border: 1px solid #3f3f46; border-radius: 5px; outline-color: var(--accent); }
 .pyrita-table-confirm { border-top: 1px solid #3f3f46; border-bottom: 0; }
 .pyrita-table .danger, .pyrita-table-menu .danger { color: #fb7185; }
-.pyrita-table-value { padding: 11px 12px; min-height: 42px; overflow-wrap: anywhere; }
+.pyrita-table-value { display: block; width: 100%; min-width: 0; padding: 11px 12px; min-height: 42px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
+.pyrita-table-value .wiki-link { display: inline-flex; vertical-align: middle; cursor: pointer; }
 .pyrita-table-menu { position: fixed; z-index: 110; width: 256px; padding: 5px; border: 1px solid #3f3f46; border-radius: 10px; background: #242427; box-shadow: 0 16px 40px #0008; color: #e4e4e7; max-height: calc(100vh - 16px); overflow-y: auto; font-size: 12px; }
 .pyrita-table-menu button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 5px; text-align: left; cursor: pointer; }
 .pyrita-table-menu button:hover, .pyrita-table-menu button:focus-visible { background: #3f3f46; }
@@ -915,6 +917,14 @@ html.light #root {
 }
 .light .pyrita-table-menu button:hover {
   background: #f4f4f6 !important;
+}
+.light .pyrita-table-wiki-suggest {
+  background: #ffffff !important;
+  border-color: #dcdde0 !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12) !important;
+}
+.light .pyrita-table-wiki-suggest .wiki-suggest-header {
+  border-bottom-color: #e4e4e7 !important;
 }
 
 /* Blocos de Código Markdown */

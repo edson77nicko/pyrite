@@ -63,7 +63,20 @@ export function parseMarkdownTable(markdown: string): MarkdownTable {
 }
 
 export function serializeMarkdownTable(table: MarkdownTable): string {
-  const escapeCell = (cell: string) => cell.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>')
+  const escapeCell = (cell: string) => {
+    let result = ''
+    let wiki = false
+    for (let i = 0; i < cell.length; i++) {
+      if (cell.slice(i, i + 2) === '[[') wiki = true
+      if (cell.slice(i, i + 2) === ']]') { wiki = false; result += ']]'; i++; continue }
+      if (cell[i] === '|' && !wiki) {
+        result += '\\|'
+      } else {
+        result += cell[i]
+      }
+    }
+    return result.replace(/\r?\n/g, '<br>')
+  }
   const row = (cells: string[]) => `| ${cells.map(escapeCell).join(' | ')} |`
   const separators = table.columns.map((_, index) => table.alignments[index] === 'center' ? ':---:' : table.alignments[index] === 'right' ? '---:' : '---')
   const lines = [row(table.columns), row(separators), ...table.rows.map(cells => row(table.columns.map((_, index) => cells[index] || '')))]

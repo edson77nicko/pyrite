@@ -353,7 +353,7 @@ export function extractWikiLinks(content: string): string[] {
   const links: string[] = []
   for (const match of matches) {
     const full = match[1]
-    const target = full.split('|')[0].split('#')[0].trim()
+    const target = full.split(/\\?\|/)[0].split('#')[0].replace(/[\\\[\]]/g, '').trim()
     if (target && !links.includes(target)) {
       links.push(target)
     }
