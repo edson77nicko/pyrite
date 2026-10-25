@@ -2,6 +2,7 @@ import React from 'react'
 import type { Note } from '../types'
 import { getBacklinks } from '../utils/vault'
 import { Link2 } from 'lucide-react'
+import { APP_VERSION } from '../version'
 
 interface StatusBarProps {
   currentNote?: Note
@@ -73,6 +74,15 @@ export const StatusBar: React.FC<StatusBarProps> = ({
         >
           Ctrl+P
         </button>
+
+        <span className="text-zinc-700">|</span>
+
+        <span
+          className="font-mono text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors select-none"
+          title={`Pyrita v${APP_VERSION}`}
+        >
+          v{APP_VERSION}
+        </span>
       </div>
     </footer>
   )

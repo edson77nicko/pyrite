@@ -228,15 +228,14 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
       <div className="flex items-center gap-1 shrink-0 ml-2 app-no-drag">
         {/* Mode Switcher: Only icons, visible in editor view */}
         {currentView === 'editor' && (
-          <div className="flex items-center gap-0.5 bg-zinc-900/90 border border-zinc-800 rounded-md p-0.5 mr-1 shadow-sm">
+          <div className="mode-switcher flex items-center gap-0.5 bg-zinc-900/90 border border-zinc-800/80 rounded-md p-0.5 mr-1 shadow-xs">
             <button
               onClick={() => onChangeDisplayMode('live')}
               className={`p-1 rounded transition-all cursor-pointer ${
                 displayMode === 'live'
-                  ? 'font-bold shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
+                  ? 'bg-zinc-700/80 text-zinc-100 shadow-xs'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
               }`}
-              style={displayMode === 'live' ? { backgroundColor: 'var(--accent)', color: '#09090b' } : undefined}
               title="Modo Edição ao Vivo (Live Preview no estilo Obsidian)"
             >
               <Edit3 className="w-3.5 h-3.5" />
@@ -245,10 +244,9 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
               onClick={() => onChangeDisplayMode('reading')}
               className={`p-1 rounded transition-all cursor-pointer ${
                 displayMode === 'reading'
-                  ? 'font-bold shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
+                  ? 'bg-zinc-700/80 text-zinc-100 shadow-xs'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
               }`}
-              style={displayMode === 'reading' ? { backgroundColor: 'var(--accent)', color: '#09090b' } : undefined}
               title="Modo Leitura (Visualização pura)"
             >
               <Eye className="w-3.5 h-3.5" />

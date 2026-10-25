@@ -6,6 +6,7 @@ import type {
   MindMapDocument,
   MindMapLayout,
   MindMapLineStyle,
+  MindMapNode,
   MindMapPaletteId,
   MindMapRelation,
   MindMapShape,
@@ -31,9 +32,11 @@ import {
   AlertCircle,
   Bold,
   Check,
+  ChevronsDownUp,
   Download,
   FileText,
   Flag,
+  Focus,
   Folder,
   HelpCircle,
   Hexagon,
@@ -303,6 +306,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   const fitView = useCallback(() => {
     if (!containerRef.current) return
     const rect = containerRef.current.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
     const { minX, maxX, minY, maxY } = layoutResult.bounds
     const mapWidth = Math.max(100, maxX - minX)
     const mapHeight = Math.max(100, maxY - minY)
@@ -322,17 +326,49 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
     setViewport(newViewport)
   }, [layoutResult])
 
-  // Center view on mount if at (0,0)
+  // Automatically center and fit view whenever a mindmap is opened or loaded
+  const initialFitDoneRef = useRef<string | null>(null)
+
   useEffect(() => {
-    if (viewport.panX === 0 && viewport.panY === 0 && containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect()
-      setViewport({
-        zoom: 1,
-        panX: rect.width / 2,
-        panY: rect.height / 2
-      })
+    if (initialFitDoneRef.current !== note.id && containerRef.current) {
+      const timer = window.setTimeout(() => {
+        fitView()
+        initialFitDoneRef.current = note.id
+      }, 60)
+      return () => window.clearTimeout(timer)
     }
-  }, [])
+  }, [note.id, fitView])
+
+  // Check if any node with children is currently collapsed
+  const hasAnyCollapsed = useMemo(() => {
+    return Object.values(doc.nodes).some(n => n.children && n.children.length > 0 && !!n.collapsed)
+  }, [doc.nodes])
+
+  // Toggle expand / collapse all nodes in the mind map
+  const handleToggleExpandCollapseAll = useCallback(() => {
+    const nodesWithChildren = Object.values(doc.nodes).filter(n => n.children && n.children.length > 0)
+    if (nodesWithChildren.length === 0) return
+
+    const shouldCollapse = !hasAnyCollapsed
+
+    const nextNodes: Record<string, MindMapNode> = {}
+    for (const [id, node] of Object.entries(doc.nodes)) {
+      if (node.children && node.children.length > 0) {
+        nextNodes[id] = { ...node, collapsed: shouldCollapse }
+      } else {
+        nextNodes[id] = node
+      }
+    }
+
+    commitDoc({
+      ...doc,
+      nodes: nextNodes
+    })
+
+    setTimeout(() => {
+      fitView()
+    }, 60)
+  }, [doc, hasAnyCollapsed, commitDoc, fitView])
 
   // Node editing handlers
   const startEditing = useCallback(
@@ -1289,6 +1325,15 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
 
         {/* Right: Search, Undo/Redo, Reorganizar, Zoom, Minimap, Export */}
         <div className="flex items-center gap-1">
+          {/* Expand / Collapse All Mind Map Nodes */}
+          <button
+            onClick={handleToggleExpandCollapseAll}
+            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer transition-colors"
+            title={hasAnyCollapsed ? "Expandir todo o mapa mental" : "Recolher todo o mapa mental"}
+          >
+            <ChevronsDownUp className="w-3.5 h-3.5" />
+          </button>
+
           {/* Search Toggle */}
           <button
             onClick={() => setIsSearchOpen(prev => !prev)}
@@ -1362,6 +1407,13 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
             title="Centralizar e Ajustar à Tela"
           >
             {Math.round(viewport.zoom * 100)}%
+          </button>
+          <button
+            onClick={fitView}
+            className="p-1.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 cursor-pointer"
+            title="Centralizar Mapa Mental na Tela"
+          >
+            <Focus className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => setViewport(prev => ({ ...prev, zoom: Math.min(2.5, prev.zoom + 0.15) }))}
@@ -1440,7 +1492,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           style={{
             position: 'absolute',
             left: `${viewport.panX + selectedComputed.x * viewport.zoom}px`,
-            top: `${viewport.panY + (selectedComputed.y - selectedComputed.height / 2 - 14) * viewport.zoom}px`,
+            top: `${40 + viewport.panY + (selectedComputed.y - selectedComputed.height / 2) * viewport.zoom - 8}px`,
             transform: 'translate(-50%, -100%)'
           }}
           className="mindmap-interactive-control z-30 flex items-center gap-1 p-1 bg-[#121216]/95 backdrop-blur-md border border-zinc-700/80 rounded-lg shadow-2xl text-xs select-none"
@@ -1667,7 +1719,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           style={{
             position: 'absolute',
             left: `${viewport.panX + selectedComputed.x * viewport.zoom}px`,
-            top: `${viewport.panY + (selectedComputed.y - selectedComputed.height / 2 - 16) * viewport.zoom}px`,
+            top: `${40 + viewport.panY + (selectedComputed.y - selectedComputed.height / 2) * viewport.zoom - 8}px`,
             transform: 'translate(-50%, -100%)'
           }}
           className="mindmap-interactive-control z-30 flex items-center gap-2.5 px-3 py-1.5 bg-[#121216]/95 backdrop-blur-md border border-[var(--accent,#c59b27)]/60 rounded-xl shadow-2xl text-xs select-none"
@@ -1902,6 +1954,24 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
               ? '#0f172a'
               : currentTheme.subtopicText
 
+            // Badge styling with strong contrast against background
+            const badgeBg = effectiveBg !== 'transparent'
+              ? effectiveBg
+              : (isCanvasLight ? '#ffffff' : currentTheme.subtopicBg || '#18181e')
+
+            const isBadgeBgLight = isColorLight(badgeBg)
+
+            // When colorizeNodeBg is active or badge background is light:
+            // Ensure the text has high contrast (e.g. #09090b on light badge, #ffffff on dark badge).
+            // When colorizeNodeBg is false on dark background, keep the accent branch color (like Image 1).
+            const badgeTextColor = doc.colorizeNodeBg
+              ? (isBadgeBgLight ? '#09090b' : '#ffffff')
+              : (isBadgeBgLight ? (isColorLight(effectiveBorder) ? '#09090b' : effectiveBorder) : effectiveBorder)
+
+            const badgeBorderColor = doc.colorizeNodeBg && isBadgeBgLight
+              ? (isColorLight(effectiveBorder) ? 'rgba(0, 0, 0, 0.25)' : effectiveBorder)
+              : effectiveBorder
+
             const borderRadiusClass =
               shape === 'capsule'
                 ? 'rounded-full'
@@ -2029,9 +2099,9 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                       [cn.side === 'left' ? 'left' : 'right']: '-8px',
                       top: isUnderline ? 'calc(100% - 1px)' : '50%',
                       transform: cn.side === 'left' ? 'translate(-50%, -50%)' : 'translate(50%, -50%)',
-                      borderColor: effectiveBorder,
-                      backgroundColor: effectiveBg !== 'transparent' ? effectiveBg : (isCanvasLight ? '#ffffff' : currentTheme.subtopicBg || '#18181e'),
-                      color: effectiveBorder
+                      borderColor: badgeBorderColor,
+                      backgroundColor: badgeBg,
+                      color: badgeTextColor
                     }}
                     className="w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] font-bold opacity-0 group-hover:opacity-100 hover:opacity-100! transition-opacity active:scale-90 cursor-pointer shadow-xs z-30 hover:brightness-110"
                     title="Recolher ramo (-)"
@@ -2067,9 +2137,9 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                         commitDoc(toggleCollapse(doc, cn.id))
                       }}
                       style={{
-                        borderColor: effectiveBorder,
-                        backgroundColor: effectiveBg !== 'transparent' ? effectiveBg : (isCanvasLight ? '#ffffff' : currentTheme.subtopicBg || '#18181e'),
-                        color: effectiveBorder
+                        borderColor: badgeBorderColor,
+                        backgroundColor: badgeBg,
+                        color: badgeTextColor
                       }}
                       className="px-1.5 h-4.5 rounded-full border flex items-center justify-center gap-0.5 text-[10px] font-bold hover:brightness-125 transition-transform active:scale-90 cursor-pointer shadow-xs shrink-0"
                       title={`Expandir ramo (${cn.node.children.length} subtópicos)`}

@@ -54,6 +54,8 @@ export const Ribbon: React.FC<RibbonProps> = ({
   themeMode,
   onToggleTheme
 }) => {
+  const isEditorActive = isLeftSidebarOpen && currentView === 'editor' && !isMindMapActive
+
   return (
     <aside className="w-11 h-full bg-[#09090b] border-r border-zinc-800/80 flex flex-col items-center py-2 select-none shrink-0 text-zinc-400 z-10">
       {/* 1. Toggle Sidebar Button */}
@@ -74,24 +76,31 @@ export const Ribbon: React.FC<RibbonProps> = ({
       {/* 2. Main Views (Icon only): Editor, Graph, Canvas, Tasks, AI Agent */}
       <div className="flex flex-col items-center gap-1">
         <button
-          onClick={() => onChangeView('editor')}
-          style={currentView === 'editor' ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))', borderColor: 'var(--accent, #d4af37)', color: 'var(--accent, #d4af37)' } : undefined}
+          onClick={() => {
+            if (currentView === 'editor' && !isMindMapActive) {
+              onToggleLeftSidebar()
+            } else {
+              if (!isLeftSidebarOpen) onToggleLeftSidebar()
+              onChangeView('editor')
+            }
+          }}
+          style={isEditorActive ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))', color: 'var(--accent, #d4af37)' } : undefined}
           className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
-            currentView === 'editor'
-              ? 'border'
+            isEditorActive
+              ? 'shadow-xs'
               : 'text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/50'
           }`}
-          title="Editor de Notas"
+          title="Editor de Notas / Explorador de Arquivos"
         >
           <FileText className="w-4 h-4" />
         </button>
 
         <button
           onClick={() => onChangeView('graph')}
-          style={currentView === 'graph' ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))', borderColor: 'var(--accent, #d4af37)', color: 'var(--accent, #d4af37)' } : undefined}
+          style={currentView === 'graph' ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))', color: 'var(--accent, #d4af37)' } : undefined}
           className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             currentView === 'graph'
-              ? 'border'
+              ? 'shadow-xs'
               : 'text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/50'
           }`}
           title="Grafo de Conhecimento"
@@ -101,10 +110,10 @@ export const Ribbon: React.FC<RibbonProps> = ({
 
         <button
           onClick={() => onChangeView('canvas')}
-          style={currentView === 'canvas' ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))', borderColor: 'var(--accent, #d4af37)', color: 'var(--accent, #d4af37)' } : undefined}
+          style={currentView === 'canvas' ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))', color: 'var(--accent, #d4af37)' } : undefined}
           className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             currentView === 'canvas'
-              ? 'border'
+              ? 'shadow-xs'
               : 'text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/50'
           }`}
           title="Quadros de Desenho / Canvas (Excalidraw)"
@@ -114,10 +123,10 @@ export const Ribbon: React.FC<RibbonProps> = ({
 
         <button
           onClick={() => onChangeView('tasks')}
-          style={currentView === 'tasks' ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))', borderColor: 'var(--accent, #d4af37)', color: 'var(--accent, #d4af37)' } : undefined}
+          style={currentView === 'tasks' ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))', color: 'var(--accent, #d4af37)' } : undefined}
           className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             currentView === 'tasks'
-              ? 'border'
+              ? 'shadow-xs'
               : 'text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/50'
           }`}
           title="Tarefas do Workspace"
@@ -128,10 +137,10 @@ export const Ribbon: React.FC<RibbonProps> = ({
         {/* Mapas Mentais */}
         <button
           onClick={onOpenMindMap}
-          style={isMindMapActive ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))', borderColor: 'var(--accent, #d4af37)', color: 'var(--accent, #d4af37)' } : undefined}
+          style={isMindMapActive ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))', color: 'var(--accent, #d4af37)' } : undefined}
           className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             isMindMapActive
-              ? 'border'
+              ? 'shadow-xs'
               : 'text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/50'
           }`}
           title="Mapas Mentais"
@@ -142,10 +151,10 @@ export const Ribbon: React.FC<RibbonProps> = ({
         {/* AI Agent Icon right below Canvas */}
         <button
           onClick={onToggleAi}
-          style={isAiOpen ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.2))', borderColor: 'var(--accent, #d4af37)', color: 'var(--accent, #d4af37)' } : undefined}
+          style={isAiOpen ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))', color: 'var(--accent, #d4af37)' } : undefined}
           className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
             isAiOpen
-              ? 'border'
+              ? 'shadow-xs'
               : 'text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/50'
           }`}
           title="Agente Pyrita"
@@ -183,10 +192,10 @@ export const Ribbon: React.FC<RibbonProps> = ({
         {onToggleConversations && (
           <button
             onClick={onToggleConversations}
-            style={isConversationsOpen ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.2))', borderColor: 'var(--accent, #d4af37)', color: 'var(--accent, #d4af37)' } : undefined}
+            style={isConversationsOpen ? { backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))', color: 'var(--accent, #d4af37)' } : undefined}
             className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
               isConversationsOpen
-                ? 'border'
+                ? 'shadow-xs'
                 : 'text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/50'
             }`}
             title="Histórico de Conversas do Agente"
