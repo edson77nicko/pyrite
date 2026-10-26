@@ -1,4 +1,6 @@
 const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const pkg = require('../package.json');
 
 function getGitHubToken() {
@@ -36,6 +38,13 @@ async function publish() {
 
   console.log('Build and upload complete. Ensuring release is published (draft: false)...');
 
+  // Load release notes if available
+  const notesPath = path.join(__dirname, '..', 'releases', `${tag}.md`);
+  let releaseBody = `### Novidades no Pyrita ${tag}`;
+  if (fs.existsSync(notesPath)) {
+    releaseBody = fs.readFileSync(notesPath, 'utf-8');
+  }
+
   // 2. Patch draft to false on GitHub
   const listRes = await fetch('https://api.github.com/repos/edson77nicko/pyrite/releases', {
     headers: {
@@ -61,23 +70,7 @@ async function publish() {
       body: JSON.stringify({
         draft: false,
         name: `Pyrita ${tag}`,
-        body: `### Novidades no Pyrita ${tag}:
-
-#### 🌟 Estrelas Luminous & Calibradas (Óptica Hubble):
-- **Equilíbrio Óptico das Estrelas**: Restauração da luminosidade cromática, coroa difusa (*Point-Spread Function*) e raios de difração do espelho secundário (+).
-- As notas agora brilham como verdadeiras estrelas do Hubble com espectro de cor térmico estelar (Ouro Solar, Sirius Azul, Âmbar, Vega Cristal), disco colorido radiante e centro incandescente, sem parecerem meros pontinhos brancos estáticos.
-
-#### 🤖 Novo Header do Agente & Seletor de Regras de Permissão:
-- **Header Minimalista**: Removido o texto do modelo do cabeçalho, exibindo exclusivamente o ícone de configurações com LED de status da chave.
-- **Regra do Agente (Modo Analista vs Modo Co-Autor)**:
-  - 👁️ **Modo Analista (Apenas Leitura)**: Foco estritamente consultivo e de pensamento. O agente analisa o contexto da nota e da pasta, dialoga e responde no chat sem alterar arquivos.
-  - ✍️ **Modo Co-Autor (Edição & Criação)**: O agente ganha autonomia de escrita para injetar artefatos concêntricos nativos (\`:::kpi\`, \`:::timeline\`, \`:::comparison\`, \`:::card\`) diretamente na nota ativa com um clique, substituir o conteúdo ou gerar novas notas no cofre.
-
-#### ⚙️ Modal Unificado de Configurações com Sidebar Lateral:
-- **Popup Completo em 3 Abas**:
-  1. 🤖 **Configurações do Modelo**: Gerenciamento de provedores (OpenRouter, OpenAI, Gemini, DeepSeek, Groq, Ollama), modelos e chaves protegidas por criptografia Windows DPAPI (safeStorage).
-  2. 🧠 **Especialidades do Agente**: Seleção e visualização dos 5 perfis cognitivos (Arquiteto, Redator, Estrategista, Crítico, Técnico) com diretrizes do sistema e prompts rápidos.
-  3. ⚡ **Instalar Skills (Habilidades)**: Catálogo modular para ativar/desativar habilidades do agente (Artefatos Concêntricos, Mapeador de Grafos, Auditor de Pastas, Co-Autoria, Exportador Executivo, etc.).`
+        body: releaseBody
       })
     });
     const updated = await patchRes.json();
