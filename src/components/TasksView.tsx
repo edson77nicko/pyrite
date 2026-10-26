@@ -400,8 +400,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
               style={
                 viewMode === 'list'
                   ? {
-                      backgroundColor: 'var(--accent, #c59b27)',
-                      color: '#09090b'
+                      backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                      color: 'var(--accent, #c59b27)'
                     }
                   : undefined
               }
@@ -421,8 +421,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
               style={
                 viewMode === 'kanban'
                   ? {
-                      backgroundColor: 'var(--accent, #c59b27)',
-                      color: '#09090b'
+                      backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                      color: 'var(--accent, #c59b27)'
                     }
                   : undefined
               }
@@ -508,10 +508,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
           {/* New Task Button - ICON ONLY */}
           <button
             onClick={() => onCreateTask(undefined, { boardId: currentBoardId })}
-            className="w-7 h-7 flex items-center justify-center font-semibold rounded-lg text-xs transition-opacity hover:opacity-90 shadow-sm cursor-pointer shrink-0"
+            className="w-7 h-7 flex items-center justify-center font-semibold rounded-lg text-xs transition-all hover:bg-[var(--accent-glow)] shadow-xs cursor-pointer shrink-0 hover:scale-105 active:scale-95"
             style={{
-              backgroundColor: 'var(--accent, #c59b27)',
-              color: '#09090b'
+              backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+              color: 'var(--accent, #d4af37)'
             }}
             title="Nova Tarefa"
           >

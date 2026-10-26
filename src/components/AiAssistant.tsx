@@ -1618,7 +1618,11 @@ Diretrizes gerais:
             <button
               type="button"
               onClick={handleStartNewConversation}
-              className="px-2.5 py-1 bg-[var(--accent)] hover:opacity-90 text-zinc-950 font-bold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer shadow-sm transition-all"
+              className="px-2.5 py-1 font-bold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer shadow-xs transition-all hover:bg-[var(--accent-glow)]"
+              style={{
+                backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                color: 'var(--accent, #d4af37)'
+              }}
             >
               <Plus className="w-3 h-3 stroke-[3]" />
               <span>Nova Conversa</span>

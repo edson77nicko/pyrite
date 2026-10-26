@@ -1108,7 +1108,11 @@ export const App: React.FC = () => {
 
         {/* Central View Area with Workspace Tab Header */}
         <main
-          className={`flex-1 my-2 overflow-hidden relative bg-[#0f0f12] flex flex-col rounded-l-2xl border-y border-l border-zinc-800/80 shadow-lg ${
+          className={`flex-1 my-2 overflow-hidden relative flex flex-col ${
+            currentView === 'graph'
+              ? 'bg-[#010103] rounded-tl-2xl rounded-bl-none border-t border-l border-b-0 shadow-none'
+              : 'bg-[#0f0f12] rounded-l-2xl border-y border-l shadow-lg'
+          } border-zinc-800/80 ${
             isAiOpen ? '' : 'ml-1.5'
           }`}
         >
@@ -1145,7 +1149,11 @@ export const App: React.FC = () => {
                   </p>
                   <button
                     onClick={() => handleCreateNote()}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] hover:opacity-90 text-zinc-950 font-semibold text-xs transition-all shadow-sm cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer hover:bg-[var(--accent-glow)] hover:scale-105 active:scale-95"
+                    style={{
+                      backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                      color: 'var(--accent, #d4af37)'
+                    }}
                   >
                     <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>Criar nova nota</span>
@@ -1182,7 +1190,7 @@ export const App: React.FC = () => {
               )}
 
               {(currentView === 'graph' || tabs.some(t => t.noteId === '__graph__')) && (
-                <div className={currentView === 'graph' ? 'w-full h-full' : 'hidden'}>
+                <div className={currentView === 'graph' ? 'w-full h-full bg-[#010103]' : 'hidden'}>
                   <GraphView
                     notes={notes}
                     currentNoteId={currentNoteId}

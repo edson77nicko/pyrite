@@ -160,8 +160,8 @@ void main() {
   bool hitHorizon = false;
   float minRadius = 100.0;
 
-  // Geodesic Raymarching (50 steps for complete convergence into the Event Horizon)
-  for (int i = 0; i < 50; i++) {
+  // Geodesic Raymarching (56 steps for complete 360-degree convergence into the Event Horizon)
+  for (int i = 0; i < 56; i++) {
     float r = length(pos);
     minRadius = min(minRadius, r);
 
@@ -175,8 +175,8 @@ void main() {
     vec3 gravity = -pos * (0.102 / (r2 * r + 0.0015));
 
     float planeDist = abs(pos.y);
-    float dt = clamp(r * 0.07, 0.018, 0.20);
-    dt = min(dt, max(0.014, planeDist * 0.48));
+    float dt = clamp(r * 0.075, 0.020, 0.20);
+    dt = min(dt, max(0.016, planeDist * 0.55));
 
     vec3 nextPos = pos + dir * dt + 0.5 * gravity * dt * dt;
     dir = normalize(dir + gravity * dt);
@@ -250,7 +250,6 @@ void main() {
 
   if (hitHorizon) {
     // Pure pitch-black Event Horizon shadow (#000000 void)
-    // Deep black central void with zero overlapping stripes or haze
     finalColor = vec3(0.0);
   } else {
     // Ray escaped into deep space: sample lensed Hubble background + razor-thin Photon Ring
@@ -259,17 +258,22 @@ void main() {
 
     // Brilliant, incandescent razor-thin Photon Ring framing the event horizon shadow
     float distFromShadow = max(0.0, minRadius - rs);
-    float sharpRing = exp(-distFromShadow * 160.0) * 4.5;
-    float innerHalo = exp(-distFromShadow * 38.0) * 1.8;
+    float sharpRing = exp(-distFromShadow * 140.0) * 4.2;
+    float innerHalo = exp(-distFromShadow * 36.0) * 1.8;
     float coronaGlow = exp(-distFromShadow * 12.0) * 0.5;
 
     vec3 ringCore = vec3(1.0, 0.98, 0.94) * sharpRing;
     vec3 ringHalo = vec3(1.0, 0.84, 0.48) * innerHalo;
     vec3 ringCorona = mix(vec3(1.0, 0.70, 0.30), u_accentColor, 0.25) * coronaGlow;
 
-    vec3 photonCol = (ringCore + ringHalo + ringCorona) * u_intensity;
+    // Smooth optical sub-pixel antialiasing at the shadow boundary to eliminate serrated edge
+    float pixelDist = 3.2 / max(1.0, baseUnit * 0.45);
+    float edgeRamp = smoothstep(0.0, pixelDist, distFromShadow);
 
-    finalColor = accumDisk + transmittance * (deepSpace + photonCol);
+    vec3 photonCol = (ringCore + ringHalo + ringCorona) * edgeRamp * u_intensity;
+
+    vec3 escapedLight = accumDisk + transmittance * (deepSpace + photonCol);
+    finalColor = mix(vec3(0.0), escapedLight, edgeRamp);
   }
 
   // Smooth photographic filmic tone mapping (preserves rich golden highlights without washing out)
@@ -368,9 +372,9 @@ export function createBlackHoleRenderer(canvas: HTMLCanvasElement): BlackHoleRen
       mouseY,
       intensity
     }) {
-      const renderScale = Math.min(1.35, dpr * 0.9)
-      const targetW = Math.max(1, Math.floor(width * renderScale))
-      const targetH = Math.max(1, Math.floor(height * renderScale))
+      const renderScale = Math.min(2.0, Math.max(1.0, dpr))
+      const targetW = Math.max(1, Math.ceil(width * renderScale))
+      const targetH = Math.max(1, Math.ceil(height * renderScale))
 
       if (canvas.width !== targetW || canvas.height !== targetH) {
         canvas.width = targetW

@@ -460,14 +460,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
     if (rect.width === 0 || rect.height === 0) return
     const dpr = window.devicePixelRatio || 1
 
-    overlay.width = rect.width * dpr
-    overlay.height = rect.height * dpr
-    overlay.style.width = `${rect.width}px`
-    overlay.style.height = `${rect.height}px`
+    overlay.width = Math.ceil(rect.width * dpr)
+    overlay.height = Math.ceil(rect.height * dpr)
+    overlay.style.width = '100%'
+    overlay.style.height = '100%'
 
     if (glCanvas) {
-      glCanvas.style.width = `${rect.width}px`
-      glCanvas.style.height = `${rect.height}px`
+      glCanvas.style.width = '100%'
+      glCanvas.style.height = '100%'
     }
   }, [])
 
@@ -1127,7 +1127,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     <div
       ref={containerRef}
       onContextMenu={e => e.preventDefault()}
-      className="relative w-full h-full bg-[#010103] overflow-hidden flex flex-col select-none graph-view-container"
+      className="relative w-full h-full bg-[#010103] overflow-hidden select-none graph-view-container"
     >
       {/* 1. TOP HUD CONTROL BAR */}
       <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-[#0c0c0e]/95 backdrop-blur-2xl border border-zinc-800 rounded-2xl p-1.5 shadow-2xl">
@@ -1167,9 +1167,17 @@ export const GraphView: React.FC<GraphViewProps> = ({
           onClick={() => setIsLocalMode(m => !m)}
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
             isLocalMode
-              ? 'bg-[var(--accent)] text-zinc-950 shadow-md'
+              ? 'shadow-xs'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
           }`}
+          style={
+            isLocalMode
+              ? {
+                  backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                  color: 'var(--accent, #d4af37)'
+                }
+              : undefined
+          }
           title="Alternar entre Galáxia Completa e Órbita Local"
         >
           <Focus className="w-3.5 h-3.5" />
@@ -1180,9 +1188,17 @@ export const GraphView: React.FC<GraphViewProps> = ({
           onClick={() => setShowSettingsDrawer(d => !d)}
           className={`p-1.5 rounded-xl transition-all cursor-pointer ${
             showSettingsDrawer
-              ? 'bg-[var(--accent)] text-zinc-950 font-bold'
+              ? 'shadow-xs'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
           }`}
+          style={
+            showSettingsDrawer
+              ? {
+                  backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                  color: 'var(--accent, #d4af37)'
+                }
+              : undefined
+          }
           title="Parâmetros Astronômicos"
         >
           <Sliders className="w-3.5 h-3.5" />
@@ -1448,7 +1464,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
       {/* 6. LAYER 1: WEBGL HUBBLE DEEP-FIELD & GARGANTUA SHADER CANVAS */}
       <canvas
         ref={webglCanvasRef}
-        className="absolute inset-0 w-full h-full pointer-events-none opacity-100"
+        className="absolute inset-0 block w-full h-full pointer-events-none opacity-100"
       />
 
       {/* 7. LAYER 2: ADDITIVE OPTICAL STARLIGHT & ORBITAL PARTICLES CANVAS */}
@@ -1459,7 +1475,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
         onMouseUp={handleMouseUp}
         onDoubleClick={handleDoubleClick}
         onWheel={handleWheel}
-        className="relative z-10 w-full h-full cursor-default outline-none bg-transparent"
+        className="absolute inset-0 block z-10 w-full h-full cursor-default outline-none bg-transparent"
       />
     </div>
   )

@@ -341,10 +341,15 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
 
   // Check if any node with children is currently collapsed
   const hasAnyCollapsed = useMemo(() => {
-    return Object.values(doc.nodes).some(n => n.children && n.children.length > 0 && !!n.collapsed)
-  }, [doc.nodes])
+    return Object.entries(doc.nodes).some(([id, n]) => {
+      const isRoot = id === doc.rootId || !n.parentId
+      return (isRoot && !!n.collapsed) || (!isRoot && n.children && n.children.length > 0 && !!n.collapsed)
+    })
+  }, [doc.nodes, doc.rootId])
 
   // Toggle expand / collapse all nodes in the mind map
+  // When collapsing: do NOT collapse root node. Keep root node and all 1st-stage (level 1) nodes visible,
+  // while collapsing all branches from level 1 down so their badges (+N) are shown (matching user reference).
   const handleToggleExpandCollapseAll = useCallback(() => {
     const nodesWithChildren = Object.values(doc.nodes).filter(n => n.children && n.children.length > 0)
     if (nodesWithChildren.length === 0) return
@@ -354,7 +359,8 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
     const nextNodes: Record<string, MindMapNode> = {}
     for (const [id, node] of Object.entries(doc.nodes)) {
       if (node.children && node.children.length > 0) {
-        nextNodes[id] = { ...node, collapsed: shouldCollapse }
+        const isRoot = id === doc.rootId || !node.parentId
+        nextNodes[id] = { ...node, collapsed: shouldCollapse ? (isRoot ? false : true) : false }
       } else {
         nextNodes[id] = node
       }

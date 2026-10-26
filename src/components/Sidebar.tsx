@@ -698,7 +698,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className="flex items-center gap-2 truncate flex-1 min-w-0 p-1 -ml-0.5 rounded-lg hover:bg-zinc-800/60 cursor-pointer transition-colors group"
           title="Clique para alternar ou gerenciar cofres (Vault Switcher)"
         >
-          <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs text-zinc-950 shadow-sm shrink-0" style={{ backgroundColor: 'var(--accent)' }}>
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs shadow-xs shrink-0"
+            style={{
+              backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+              color: 'var(--accent, #d4af37)'
+            }}
+          >
             Py
           </div>
           <div className="truncate flex-1 min-w-0">
@@ -730,8 +736,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => setIsCreateMenuOpen(v => !v)}
-              className="flex items-center justify-center w-6 h-6 rounded-md text-zinc-950 font-bold transition-all shadow-sm cursor-pointer hover:opacity-90 hover:scale-105 active:scale-95"
-              style={{ backgroundColor: 'var(--accent)' }}
+              className="flex items-center justify-center w-6 h-6 rounded-md font-bold transition-all shadow-xs cursor-pointer hover:bg-[var(--accent-glow)] hover:scale-105 active:scale-95"
+              style={{
+                backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                color: 'var(--accent, #d4af37)'
+              }}
               title="Criar nova nota, draw, mapa mental ou pasta"
             >
               <Plus className={`w-3.5 h-3.5 stroke-[2.5] transition-transform duration-200 ${isCreateMenuOpen ? 'rotate-45' : ''}`} />
@@ -861,8 +870,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
           <button
             type="submit"
-            className="px-2 py-1 rounded-md text-xs font-semibold cursor-pointer transition-opacity hover:opacity-90"
-            style={{ backgroundColor: 'var(--accent)', color: '#09090b' }}
+            className="px-2 py-1 rounded-md text-xs font-semibold cursor-pointer transition-all hover:bg-[var(--accent-glow)] shadow-xs"
+            style={{
+              backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+              color: 'var(--accent, #d4af37)'
+            }}
           >
             Criar
           </button>
