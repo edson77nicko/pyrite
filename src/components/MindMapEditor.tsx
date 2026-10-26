@@ -229,10 +229,31 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   const cachedViewport = mindMapViewportCache.get(note.id)
 
   // Viewport (Pan & Zoom) - restore immediately if cached so tab switches stay exactly where the user was!
+  // If not cached (e.g. app startup), calculate initial centered viewport from window dimensions so it NEVER opens off-center at (0, 0)!
   const [viewport, setViewportState] = useState<{ panX: number; panY: number; zoom: number }>(() => {
     if (cachedViewport) return cachedViewport
-    if (doc.viewport) return doc.viewport
-    return { panX: 0, panY: 0, zoom: 1 }
+    try {
+      const initialLayout = calculateMindMapLayout(doc)
+      const bounds = initialLayout.bounds
+      const mapWidth = Math.max(80, bounds.maxX - bounds.minX)
+      const mapHeight = Math.max(80, bounds.maxY - bounds.minY)
+      const estWidth = typeof window !== 'undefined' ? Math.max(400, window.innerWidth - 240) : 1000
+      const estHeight = typeof window !== 'undefined' ? Math.max(300, window.innerHeight - 50) : 700
+      const scaleX = (estWidth - 100) / mapWidth
+      const scaleY = (estHeight - 100) / mapHeight
+      const targetZoom = Math.max(0.35, Math.min(1.15, Math.min(scaleX, scaleY)))
+      const centerX = (bounds.minX + bounds.maxX) / 2
+      const centerY = (bounds.minY + bounds.maxY) / 2
+      const initialVp = {
+        zoom: targetZoom,
+        panX: estWidth / 2 - centerX * targetZoom,
+        panY: estHeight / 2 - centerY * targetZoom
+      }
+      mindMapViewportCache.set(note.id, initialVp)
+      return initialVp
+    } catch {
+      return { panX: 0, panY: 0, zoom: 1 }
+    }
   })
 
   // Synchronize viewport changes to the in-memory cache so switching tabs preserves position
@@ -325,73 +346,96 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   }, [doc])
 
   // Center on node or fit view
-  const fitView = useCallback((customBounds?: { minX: number; maxX: number; minY: number; maxY: number } | unknown) => {
-    if (!containerRef.current) return
-    const rect = containerRef.current.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return
-    const hasBounds = customBounds && typeof customBounds === 'object' && 'minX' in customBounds
-    const bounds = hasBounds
-      ? (customBounds as { minX: number; maxX: number; minY: number; maxY: number })
-      : layoutResult.bounds
-    const mapWidth = Math.max(80, bounds.maxX - bounds.minX)
-    const mapHeight = Math.max(80, bounds.maxY - bounds.minY)
+  const centerOnContainer = useCallback(
+    (customBounds?: { minX: number; maxX: number; minY: number; maxY: number }) => {
+      if (!containerRef.current) return false
+      const rect = containerRef.current.getBoundingClientRect()
+      if (rect.width < 50 || rect.height < 50) return false
 
-    const scaleX = (rect.width - 100) / mapWidth
-    const scaleY = (rect.height - 100) / mapHeight
-    const targetZoom = Math.max(0.35, Math.min(1.15, Math.min(scaleX, scaleY)))
+      const bounds = customBounds || layoutResult.bounds
+      const mapWidth = Math.max(80, bounds.maxX - bounds.minX)
+      const mapHeight = Math.max(80, bounds.maxY - bounds.minY)
 
-    const centerX = (bounds.minX + bounds.maxX) / 2
-    const centerY = (bounds.minY + bounds.maxY) / 2
-
-    const newViewport = {
-      zoom: targetZoom,
-      panX: rect.width / 2 - centerX * targetZoom,
-      panY: rect.height / 2 - centerY * targetZoom
-    }
-    setViewport(newViewport)
-  }, [layoutResult, setViewport])
-
-  // When switching back to an already open mind map tab, keep the position where the user was!
-  // Only center automatically if opened for the first time without a cached position.
-  const hasInitialPositionRef = useRef<boolean>(!!cachedViewport || !!doc.viewport)
-  const [isCanvasReady, setIsCanvasReady] = useState<boolean>(() => hasInitialPositionRef.current)
-
-  useLayoutEffect(() => {
-    if (hasInitialPositionRef.current) {
-      if (!isCanvasReady) setIsCanvasReady(true)
-      return
-    }
-
-    if (!containerRef.current) return
-    const rect = containerRef.current.getBoundingClientRect()
-    if (rect.width > 0 && rect.height > 0) {
-      const { minX, maxX, minY, maxY } = layoutResult.bounds
-      const mapWidth = Math.max(80, maxX - minX)
-      const mapHeight = Math.max(80, maxY - minY)
       const scaleX = (rect.width - 100) / mapWidth
       const scaleY = (rect.height - 100) / mapHeight
       const targetZoom = Math.max(0.35, Math.min(1.15, Math.min(scaleX, scaleY)))
 
-      const centerX = (minX + maxX) / 2
-      const centerY = (minY + maxY) / 2
+      const centerX = (bounds.minX + bounds.maxX) / 2
+      const centerY = (bounds.minY + bounds.maxY) / 2
 
-      const initialVp = {
+      const newViewport = {
         zoom: targetZoom,
         panX: rect.width / 2 - centerX * targetZoom,
         panY: rect.height / 2 - centerY * targetZoom
       }
-      setViewport(initialVp)
-      hasInitialPositionRef.current = true
-      setIsCanvasReady(true)
-    } else {
-      const timer = window.setTimeout(() => {
-        fitView()
-        hasInitialPositionRef.current = true
-        setIsCanvasReady(true)
-      }, 40)
-      return () => window.clearTimeout(timer)
+      setViewport(newViewport)
+      return true
+    },
+    [layoutResult, setViewport]
+  )
+
+  const fitView = useCallback(
+    (customBounds?: { minX: number; maxX: number; minY: number; maxY: number } | unknown) => {
+      const hasBounds = customBounds && typeof customBounds === 'object' && 'minX' in customBounds
+      const bounds = hasBounds
+        ? (customBounds as { minX: number; maxX: number; minY: number; maxY: number })
+        : layoutResult.bounds
+      centerOnContainer(bounds)
+    },
+    [centerOnContainer, layoutResult.bounds]
+  )
+
+  // Track if this note has been refined to actual container bounds
+  const hasRefinedContainerRef = useRef<string | null>(cachedViewport ? note.id : null)
+
+  useLayoutEffect(() => {
+    // If switching back to an already open mind map tab, keep the position where the user was!
+    if (hasRefinedContainerRef.current === note.id) return
+
+    // If container already has real dimensions, refine centering to exact pixel bounds
+    if (centerOnContainer()) {
+      hasRefinedContainerRef.current = note.id
+      return
     }
-  }, [layoutResult, fitView, setViewport, isCanvasReady])
+
+    // Otherwise (e.g. app startup before layout pass), observe container resize or retry
+    let attempts = 0
+    let timerId: number
+
+    const tryRefine = () => {
+      attempts++
+      if (centerOnContainer()) {
+        hasRefinedContainerRef.current = note.id
+        return
+      }
+      if (attempts < 20) {
+        timerId = window.setTimeout(tryRefine, 50)
+      }
+    }
+
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 50 && entry.contentRect.height > 50) {
+          if (hasRefinedContainerRef.current !== note.id) {
+            if (centerOnContainer()) {
+              hasRefinedContainerRef.current = note.id
+            }
+          }
+        }
+      }
+    })
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current)
+    }
+
+    timerId = window.setTimeout(tryRefine, 30)
+
+    return () => {
+      observer.disconnect()
+      window.clearTimeout(timerId)
+    }
+  }, [note.id, centerOnContainer])
 
   // Check if any node with children is currently collapsed
   const hasAnyCollapsed = useMemo(() => {
@@ -891,9 +935,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       onMouseMove={handleMouseMoveCanvas}
       onMouseUp={handleMouseUpCanvas}
       style={{
-        backgroundColor: currentCanvasBg,
-        opacity: isCanvasReady ? 1 : 0,
-        transition: isCanvasReady ? 'opacity 0.12s ease' : 'none'
+        backgroundColor: currentCanvasBg
       }}
       className="relative w-full h-full overflow-hidden select-none font-sans text-zinc-100 flex flex-col"
     >

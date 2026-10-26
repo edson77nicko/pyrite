@@ -373,8 +373,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
           const hubPull = Math.min(0.28, connections * 0.04)
           const jitterR = (((idxInFolder * 37) % 100) / 100) * 0.11
           const orbitRadius = Math.max(
-            0.68,
-            Math.min(2.35, 0.70 + Math.pow(t, 0.85) * 1.55 - hubPull + jitterR)
+            0.40,
+            Math.min(2.35, 0.44 + Math.pow(t, 0.85) * 1.80 - hubPull + jitterR)
           )
 
           const spiralWind = Math.log(orbitRadius * 2.5) * 1.75
@@ -624,7 +624,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
         }
 
         const nodeMap = new Map<string, SimNode>()
-        const shadowScreenRadius = baseUnit * 0.130
+        const shadowScreenRadius = baseUnit * 0.185
 
         // Update 3D Keplerian Orbital Positions
         for (const n of nodes) {
@@ -916,7 +916,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
   )
 
   const spawnRipple = useCallback((node?: SimNode) => {
-    const r = node ? node.orbitRadius : 0.70
+    const r = node ? node.orbitRadius : 0.44
     const a = node ? node.orbitAngle : Math.random() * Math.PI * 2
     ripplesRef.current.push({
       x3d: Math.cos(a) * r,
@@ -980,7 +980,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
       const baseUnit = Math.min(rect.width, rect.height) * 0.42 * transform.scale
       const dx = (sx - centerX) / Math.max(1, baseUnit)
       const dy = (centerY - sy) / Math.max(1, baseUnit) / Math.max(0.25, Math.sin(tiltRef.current))
-      const newR = Math.max(0.68, Math.min(2.35, Math.hypot(dx, dy) * 2.1))
+      const newR = Math.max(0.40, Math.min(2.35, Math.hypot(dx, dy) * 2.1))
       const newAngle = Math.atan2(dy, dx)
       draggedNodeRef.current.orbitRadius = newR
       draggedNodeRef.current.orbitAngle = newAngle

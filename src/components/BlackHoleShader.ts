@@ -148,8 +148,8 @@ void main() {
   vec3 rd = normalize(forward * 1.65 + right * pr.x + up * pr.y);
 
   // Schwarzschild & Thin Relativistic Accretion Disk parameters
-  float rs = 0.20;               // Event horizon shadow radius (matching reference image)
-  float diskInner = 0.65;        // Innermost Stable Circular Orbit (ISCO framing the shadow)
+  float rs = 0.32;               // Event horizon shadow radius (larger, deep black void matching user request)
+  float diskInner = 0.36;        // Innermost Stable Circular Orbit (tightly framing the shadow and photon ring)
   float diskOuter = 2.45;        // Outer filamentous edge
 
   vec3 pos = ro;
@@ -209,7 +209,7 @@ void main() {
         float filamentStructure = dustGaps * (0.45 + 0.55 * ringlets1 * ringlets2) * (0.6 + 0.4 * fineStreaks);
 
         // Smooth inner ISCO rim and outer exponential falloff
-        float innerEdge = smoothstep(diskInner, diskInner + 0.055, rad);
+        float innerEdge = smoothstep(diskInner, diskInner + 0.040, rad);
         float outerEdge = pow(1.0 - smoothstep(0.08, 1.0, normR), 2.35);
         float vertProfile = exp(-abs(hitPos.y) / (diskHalfH * 0.45));
 
