@@ -160,8 +160,8 @@ void main() {
   bool hitHorizon = false;
   float minRadius = 100.0;
 
-  // Geodesic Raymarching (58 steps for complete convergence into the Event Horizon)
-  for (int i = 0; i < 58; i++) {
+  // Geodesic Raymarching (50 steps for complete convergence into the Event Horizon)
+  for (int i = 0; i < 50; i++) {
     float r = length(pos);
     minRadius = min(minRadius, r);
 
@@ -175,17 +175,17 @@ void main() {
     vec3 gravity = -pos * (0.102 / (r2 * r + 0.0015));
 
     float planeDist = abs(pos.y);
-    // Adaptive step size: rapid traversal through empty cosmos, ultra-fine near horizon & disk plane
-    float dt = (r > 2.2) ? min(0.28, r * 0.09) : clamp(r * 0.065, 0.015, 0.16);
-    dt = min(dt, max(0.010, planeDist * 0.42));
+    float dt = clamp(r * 0.07, 0.018, 0.20);
+    dt = min(dt, max(0.014, planeDist * 0.48));
 
     vec3 nextPos = pos + dir * dt + 0.5 * gravity * dt * dt;
     dir = normalize(dir + gravity * dt);
 
-    // Exact equatorial plane crossing (y = 0)
-    if (pos.y * nextPos.y <= 0.0) {
+    // Check intersection with the thin equatorial accretion disk plane (y = 0)
+    float diskHalfH = 0.028 + 0.022 * smoothstep(diskInner, diskOuter, r);
+    if (abs(nextPos.y) < diskHalfH || (pos.y * nextPos.y < 0.0)) {
       // Exact linear interpolation of the plane crossing for razor-sharp ring detail
-      float crossT = clamp(abs(pos.y) / (abs(pos.y - nextPos.y) + 0.00001), 0.0, 1.0);
+      float crossT = clamp(abs(pos.y) / (abs(pos.y - nextPos.y) + 0.0001), 0.0, 1.0);
       vec3 hitPos = mix(pos, nextPos, crossT);
       float rad = length(hitPos.xz);
 
@@ -209,10 +209,11 @@ void main() {
         float filamentStructure = dustGaps * (0.45 + 0.55 * ringlets1 * ringlets2) * (0.6 + 0.4 * fineStreaks);
 
         // Smooth inner ISCO rim and outer exponential falloff
-        float innerEdge = smoothstep(diskInner, diskInner + 0.045, rad);
+        float innerEdge = smoothstep(diskInner, diskInner + 0.055, rad);
         float outerEdge = pow(1.0 - smoothstep(0.08, 1.0, normR), 2.35);
+        float vertProfile = exp(-abs(hitPos.y) / (diskHalfH * 0.45));
 
-        float density = filamentStructure * innerEdge * outerEdge * 0.42;
+        float density = filamentStructure * innerEdge * outerEdge * vertProfile * 0.36;
 
         if (density > 0.001) {
           // Subtle, realistic relativistic Doppler beaming (never blows out to flat grey-white)
@@ -222,8 +223,8 @@ void main() {
 
           // Authentic Blackbody Temperature Gradient:
           // Warm ivory inner rim -> Golden Amber -> Burnt Copper / Deep Rust outer dust
-          vec3 innerHot = vec3(1.0, 0.94, 0.82);
-          vec3 midGold = mix(vec3(0.95, 0.62, 0.22), u_accentColor, 0.28);
+          vec3 innerHot = vec3(1.0, 0.91, 0.72);
+          vec3 midGold = mix(vec3(0.92, 0.56, 0.20), u_accentColor, 0.28);
           vec3 outerCopper = vec3(0.38, 0.13, 0.05);
 
           vec3 col = mix(innerHot, midGold, smoothstep(0.0, 0.26, normR));
@@ -232,11 +233,7 @@ void main() {
           // Carve dark dust absorption veins inside the disk for photographic contrast
           col *= mix(0.25, 1.15, filamentStructure);
 
-          // Incandescent ISCO thermal emission boost right at the inner edge
-          float innerISCOPeak = exp(-normR * 10.0) * 2.8;
-          vec3 iscoGlow = vec3(1.0, 0.96, 0.90) * innerISCOPeak;
-
-          vec3 emission = (col * (1.25 + (1.0 - normR) * 1.1) + iscoGlow) * beaming * u_intensity;
+          vec3 emission = col * beaming * (1.25 + (1.0 - normR) * 1.1) * u_intensity;
 
           accumDisk += transmittance * emission * density;
           transmittance *= (1.0 - clamp(density * 0.82, 0.0, 0.88));
@@ -253,8 +250,8 @@ void main() {
 
   if (hitHorizon) {
     // Pure pitch-black Event Horizon shadow (#000000 void)
-    // Only foreground accretion plasma passing strictly in front of the black hole is visible
-    finalColor = accumDisk;
+    // Deep black central void with zero overlapping stripes or haze
+    finalColor = vec3(0.0);
   } else {
     // Ray escaped into deep space: sample lensed Hubble background + razor-thin Photon Ring
     vec2 lensedUV = dir.xy / (abs(dir.z) + 0.55) + vec2(u_rotation * 0.06, 0.0);
