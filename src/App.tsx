@@ -17,7 +17,7 @@ import { Sidebar } from './components/Sidebar'
 import { RightSidebar } from './components/RightSidebar'
 import { Editor } from './components/Editor'
 import { DrawEditor } from './components/DrawEditor'
-import { MindMapEditor } from './components/MindMapEditor'
+import { MindMapEditor, mindMapViewportCache } from './components/MindMapEditor'
 import { GraphView } from './components/GraphView'
 import { CanvasView } from './components/CanvasView'
 import { TasksView } from './components/TasksView'
@@ -338,6 +338,10 @@ export const App: React.FC = () => {
   }
 
   const handleCloseTab = (tabId: string) => {
+    const tabToClose = tabs.find(t => t.id === tabId)
+    if (tabToClose?.noteId) {
+      mindMapViewportCache.delete(tabToClose.noteId)
+    }
     const remaining = tabs.filter(t => t.id !== tabId)
     setTabs(remaining)
     if (remaining.length === 0) {
@@ -650,6 +654,7 @@ export const App: React.FC = () => {
   }
 
   const handleDeleteNote = (noteId: string) => {
+    mindMapViewportCache.delete(noteId)
     const noteToDelete = notes.find(n => n.id === noteId)
     const updated = notes.filter(n => n.id !== noteId)
     setNotes(updated)

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Note } from '../types'
 import type {
   ComputedNode,
@@ -105,6 +105,9 @@ const ICON_PRESETS: { id: string; label: string; icon: React.ReactNode; color: s
   { id: 'rocket', label: 'Ação / Sprint', icon: <Rocket className="w-3.5 h-3.5" />, color: '#8b5cf6' },
   { id: 'help', label: 'Dúvida', icon: <HelpCircle className="w-3.5 h-3.5" />, color: '#06b6d4' }
 ]
+
+// In-memory cache to preserve viewport across tab switches while the note tab is still open
+export const mindMapViewportCache = new Map<string, { panX: number; panY: number; zoom: number }>()
 
 export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   note,
@@ -222,8 +225,27 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   // Minimap
   const [showMinimap, setShowMinimap] = useState(true)
 
-  // Viewport (Pan & Zoom)
-  const [viewport, setViewport] = useState(() => doc.viewport || { panX: 0, panY: 0, zoom: 1 })
+  // Check if we have a cached viewport from before switching tabs
+  const cachedViewport = mindMapViewportCache.get(note.id)
+
+  // Viewport (Pan & Zoom) - restore immediately if cached so tab switches stay exactly where the user was!
+  const [viewport, setViewportState] = useState<{ panX: number; panY: number; zoom: number }>(() => {
+    if (cachedViewport) return cachedViewport
+    if (doc.viewport) return doc.viewport
+    return { panX: 0, panY: 0, zoom: 1 }
+  })
+
+  // Synchronize viewport changes to the in-memory cache so switching tabs preserves position
+  const setViewport = useCallback(
+    (updater: React.SetStateAction<{ panX: number; panY: number; zoom: number }>) => {
+      setViewportState(prev => {
+        const next = typeof updater === 'function' ? updater(prev) : updater
+        mindMapViewportCache.set(note.id, next)
+        return next
+      })
+    },
+    [note.id]
+  )
   const isDraggingCanvas = useRef(false)
   const dragStartPos = useRef({ x: 0, y: 0 })
   const initialPan = useRef({ panX: 0, panY: 0 })
@@ -303,20 +325,23 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   }, [doc])
 
   // Center on node or fit view
-  const fitView = useCallback(() => {
+  const fitView = useCallback((customBounds?: { minX: number; maxX: number; minY: number; maxY: number } | unknown) => {
     if (!containerRef.current) return
     const rect = containerRef.current.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return
-    const { minX, maxX, minY, maxY } = layoutResult.bounds
-    const mapWidth = Math.max(100, maxX - minX)
-    const mapHeight = Math.max(100, maxY - minY)
+    const hasBounds = customBounds && typeof customBounds === 'object' && 'minX' in customBounds
+    const bounds = hasBounds
+      ? (customBounds as { minX: number; maxX: number; minY: number; maxY: number })
+      : layoutResult.bounds
+    const mapWidth = Math.max(80, bounds.maxX - bounds.minX)
+    const mapHeight = Math.max(80, bounds.maxY - bounds.minY)
 
-    const scaleX = (rect.width - 120) / mapWidth
-    const scaleY = (rect.height - 120) / mapHeight
-    const targetZoom = Math.max(0.3, Math.min(1.2, Math.min(scaleX, scaleY)))
+    const scaleX = (rect.width - 100) / mapWidth
+    const scaleY = (rect.height - 100) / mapHeight
+    const targetZoom = Math.max(0.35, Math.min(1.15, Math.min(scaleX, scaleY)))
 
-    const centerX = (minX + maxX) / 2
-    const centerY = (minY + maxY) / 2
+    const centerX = (bounds.minX + bounds.maxX) / 2
+    const centerY = (bounds.minY + bounds.maxY) / 2
 
     const newViewport = {
       zoom: targetZoom,
@@ -324,20 +349,49 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       panY: rect.height / 2 - centerY * targetZoom
     }
     setViewport(newViewport)
-  }, [layoutResult])
+  }, [layoutResult, setViewport])
 
-  // Automatically center and fit view whenever a mindmap is opened or loaded
-  const initialFitDoneRef = useRef<string | null>(null)
+  // When switching back to an already open mind map tab, keep the position where the user was!
+  // Only center automatically if opened for the first time without a cached position.
+  const hasInitialPositionRef = useRef<boolean>(!!cachedViewport || !!doc.viewport)
+  const [isCanvasReady, setIsCanvasReady] = useState<boolean>(() => hasInitialPositionRef.current)
 
-  useEffect(() => {
-    if (initialFitDoneRef.current !== note.id && containerRef.current) {
+  useLayoutEffect(() => {
+    if (hasInitialPositionRef.current) {
+      if (!isCanvasReady) setIsCanvasReady(true)
+      return
+    }
+
+    if (!containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      const { minX, maxX, minY, maxY } = layoutResult.bounds
+      const mapWidth = Math.max(80, maxX - minX)
+      const mapHeight = Math.max(80, maxY - minY)
+      const scaleX = (rect.width - 100) / mapWidth
+      const scaleY = (rect.height - 100) / mapHeight
+      const targetZoom = Math.max(0.35, Math.min(1.15, Math.min(scaleX, scaleY)))
+
+      const centerX = (minX + maxX) / 2
+      const centerY = (minY + maxY) / 2
+
+      const initialVp = {
+        zoom: targetZoom,
+        panX: rect.width / 2 - centerX * targetZoom,
+        panY: rect.height / 2 - centerY * targetZoom
+      }
+      setViewport(initialVp)
+      hasInitialPositionRef.current = true
+      setIsCanvasReady(true)
+    } else {
       const timer = window.setTimeout(() => {
         fitView()
-        initialFitDoneRef.current = note.id
-      }, 60)
+        hasInitialPositionRef.current = true
+        setIsCanvasReady(true)
+      }, 40)
       return () => window.clearTimeout(timer)
     }
-  }, [note.id, fitView])
+  }, [layoutResult, fitView, setViewport, isCanvasReady])
 
   // Check if any node with children is currently collapsed
   const hasAnyCollapsed = useMemo(() => {
@@ -366,15 +420,41 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       }
     }
 
-    commitDoc({
+    const nextDoc: MindMapDocument = {
       ...doc,
       nodes: nextNodes
-    })
+    }
+    commitDoc(nextDoc)
 
-    setTimeout(() => {
-      fitView()
-    }, 60)
-  }, [doc, hasAnyCollapsed, commitDoc, fitView])
+    // Synchronously compute the exact layout of the new state and center the view!
+    const nextLayout = calculateMindMapLayout(nextDoc)
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        const { minX, maxX, minY, maxY } = nextLayout.bounds
+        const mapWidth = Math.max(80, maxX - minX)
+        const mapHeight = Math.max(80, maxY - minY)
+        const scaleX = (rect.width - 100) / mapWidth
+        const scaleY = (rect.height - 100) / mapHeight
+
+        // When collapsing, keep a comfortable readable zoom (0.85 to 1.1) so it doesn't zoom out into the distance!
+        // When expanding, fit all branches comfortably into view.
+        const targetZoom = shouldCollapse
+          ? Math.max(0.85, Math.min(1.10, Math.min(scaleX, scaleY)))
+          : Math.max(0.35, Math.min(1.10, Math.min(scaleX, scaleY)))
+
+        const centerX = (minX + maxX) / 2
+        const centerY = (minY + maxY) / 2
+
+        const newViewport = {
+          zoom: targetZoom,
+          panX: rect.width / 2 - centerX * targetZoom,
+          panY: rect.height / 2 - centerY * targetZoom
+        }
+        setViewport(newViewport)
+      }
+    }
+  }, [doc, hasAnyCollapsed, commitDoc, setViewport])
 
   // Node editing handlers
   const startEditing = useCallback(
@@ -810,7 +890,11 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       ref={containerRef}
       onMouseMove={handleMouseMoveCanvas}
       onMouseUp={handleMouseUpCanvas}
-      style={{ backgroundColor: currentCanvasBg }}
+      style={{
+        backgroundColor: currentCanvasBg,
+        opacity: isCanvasReady ? 1 : 0,
+        transition: isCanvasReady ? 'opacity 0.12s ease' : 'none'
+      }}
       className="relative w-full h-full overflow-hidden select-none font-sans text-zinc-100 flex flex-col"
     >
       {/* 1. TOP HEADER TOOLBAR (Styled in Pyrita Dark/Gold Design System) */}

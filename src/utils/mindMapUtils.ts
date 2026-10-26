@@ -1019,13 +1019,29 @@ export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
     }
   })
 
-  // Calculate layout bounds
-  let minX = -400, maxX = 400, minY = -300, maxY = 300
+  // Calculate layout bounds accurately based on rendered nodes & boundaries
+  if (computedNodes.length === 0) {
+    return {
+      nodes: computedNodes,
+      edges: computedEdges,
+      boundaries: computedBoundaries,
+      bounds: { minX: -200, maxX: 200, minY: -150, maxY: 150 }
+    }
+  }
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
   computedNodes.forEach(cn => {
-    minX = Math.min(minX, cn.x - cn.width / 2 - 100)
-    maxX = Math.max(maxX, cn.x + cn.width / 2 + 100)
-    minY = Math.min(minY, cn.y - cn.height / 2 - 80)
-    maxY = Math.max(maxY, cn.y + cn.height / 2 + 80)
+    minX = Math.min(minX, cn.x - cn.width / 2 - 40)
+    maxX = Math.max(maxX, cn.x + cn.width / 2 + 40)
+    minY = Math.min(minY, cn.y - cn.height / 2 - 40)
+    maxY = Math.max(maxY, cn.y + cn.height / 2 + 40)
+  })
+
+  computedBoundaries.forEach(cb => {
+    minX = Math.min(minX, cb.rect.x - 20)
+    maxX = Math.max(maxX, cb.rect.x + cb.rect.width + 20)
+    minY = Math.min(minY, cb.rect.y - 20)
+    maxY = Math.max(maxY, cb.rect.y + cb.rect.height + 20)
   })
 
   return {
