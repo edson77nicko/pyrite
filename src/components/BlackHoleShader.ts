@@ -148,9 +148,9 @@ void main() {
   vec3 rd = normalize(forward * 1.65 + right * pr.x + up * pr.y);
 
   // Schwarzschild & Thin Relativistic Accretion Disk parameters
-  float rs = 0.235;              // Event horizon shadow radius
-  float diskInner = 0.35;        // Innermost Stable Circular Orbit (ISCO)
-  float diskOuter = 2.40;        // Outer filamentous edge
+  float rs = 0.20;               // Event horizon shadow radius (matching reference image)
+  float diskInner = 0.65;        // Innermost Stable Circular Orbit (ISCO framing the shadow)
+  float diskOuter = 2.45;        // Outer filamentous edge
 
   vec3 pos = ro;
   vec3 dir = rd;
@@ -246,35 +246,32 @@ void main() {
     if (r > 4.6 && dot(pos, dir) > 0.0) break;
   }
 
-  vec3 finalColor = vec3(0.0);
+  // Deep space background & razor-thin relativistic Photon Ring
+  vec2 lensedUV = dir.xy / (abs(dir.z) + 0.55) + vec2(u_rotation * 0.06, 0.0);
+  vec3 deepSpace = renderHubbleDeepSpace(lensedUV);
 
-  if (hitHorizon) {
-    // Pure pitch-black Event Horizon shadow (#000000 void)
-    finalColor = vec3(0.0);
-  } else {
-    // Ray escaped into deep space: sample lensed Hubble background + razor-thin Photon Ring
-    vec2 lensedUV = dir.xy / (abs(dir.z) + 0.55) + vec2(u_rotation * 0.06, 0.0);
-    vec3 deepSpace = renderHubbleDeepSpace(lensedUV);
+  // Brilliant, incandescent razor-thin Photon Ring framing the event horizon shadow
+  float distFromShadow = max(0.0, minRadius - rs);
+  float sharpRing = exp(-distFromShadow * 140.0) * 4.2;
+  float innerHalo = exp(-distFromShadow * 36.0) * 1.8;
+  float coronaGlow = exp(-distFromShadow * 12.0) * 0.5;
 
-    // Brilliant, incandescent razor-thin Photon Ring framing the event horizon shadow
-    float distFromShadow = max(0.0, minRadius - rs);
-    float sharpRing = exp(-distFromShadow * 140.0) * 4.2;
-    float innerHalo = exp(-distFromShadow * 36.0) * 1.8;
-    float coronaGlow = exp(-distFromShadow * 12.0) * 0.5;
+  vec3 ringCore = vec3(1.0, 0.98, 0.94) * sharpRing;
+  vec3 ringHalo = vec3(1.0, 0.84, 0.48) * innerHalo;
+  vec3 ringCorona = mix(vec3(1.0, 0.70, 0.30), u_accentColor, 0.25) * coronaGlow;
 
-    vec3 ringCore = vec3(1.0, 0.98, 0.94) * sharpRing;
-    vec3 ringHalo = vec3(1.0, 0.84, 0.48) * innerHalo;
-    vec3 ringCorona = mix(vec3(1.0, 0.70, 0.30), u_accentColor, 0.25) * coronaGlow;
+  // Smooth optical sub-pixel antialiasing at the shadow boundary to eliminate serrated edge
+  float pixelDist = 3.2 / max(1.0, baseUnit * 0.45);
+  float edgeRamp = smoothstep(0.0, pixelDist, distFromShadow);
 
-    // Smooth optical sub-pixel antialiasing at the shadow boundary to eliminate serrated edge
-    float pixelDist = 3.2 / max(1.0, baseUnit * 0.45);
-    float edgeRamp = smoothstep(0.0, pixelDist, distFromShadow);
+  vec3 photonCol = (ringCore + ringHalo + ringCorona) * u_intensity;
+  vec3 escapedBg = transmittance * (deepSpace + photonCol);
 
-    vec3 photonCol = (ringCore + ringHalo + ringCorona) * edgeRamp * u_intensity;
+  // Pitch-black Event Horizon void inside the central aperture (#000000 void, zero milky fill)
+  // Seamlessly frames the deep black void while preserving any foreground disk plasma
+  vec3 visibleBg = hitHorizon ? vec3(0.0) : (escapedBg * edgeRamp);
 
-    vec3 escapedLight = accumDisk + transmittance * (deepSpace + photonCol);
-    finalColor = mix(vec3(0.0), escapedLight, edgeRamp);
-  }
+  vec3 finalColor = accumDisk + visibleBg;
 
   // Smooth photographic filmic tone mapping (preserves rich golden highlights without washing out)
   finalColor = 1.0 - exp(-finalColor * 1.15);
