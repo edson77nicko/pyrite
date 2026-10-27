@@ -26,7 +26,8 @@ import {
   ChevronDownCircle,
   List,
   Loader,
-  Link2
+  Link2,
+  Maximize2
 } from 'lucide-react'
 
 const CUSTOM_PROP_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -48,6 +49,7 @@ interface TaskDetailSidebarProps {
   onDeleteTask: (taskId: string) => void
   onOpenNote: (noteId: string) => void
   onClose: () => void
+  onToggleFullView?: () => void
 }
 
 export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
@@ -57,7 +59,8 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   onUpdateTask,
   onDeleteTask,
   onOpenNote,
-  onClose
+  onClose,
+  onToggleFullView
 }) => {
   const [isContextPickerOpen, setIsContextPickerOpen] = useState(false)
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
@@ -338,6 +341,16 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
         </div>
 
         <div className="flex items-center gap-1">
+          {onToggleFullView && (
+            <button
+              type="button"
+              onClick={onToggleFullView}
+              className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-[#1b1b20] rounded-md transition-colors cursor-pointer"
+              title="Expandir para documento em tela inteira"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             onClick={() => setIsDeletingTask(true)}
             className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-[#1b1b20] rounded-md transition-colors cursor-pointer"
@@ -386,15 +399,27 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
             )}
           </button>
 
-          <input
-            type="text"
-            value={task.title}
-            onChange={e => handleTitleChange(e.target.value)}
-            placeholder="Nome da tarefa..."
-            className={`w-full bg-transparent font-bold text-lg text-zinc-100 placeholder-zinc-600 focus:outline-none transition-colors ${
-              task.completed ? 'line-through text-zinc-500' : ''
-            }`}
-          />
+          <div className="flex-1 min-w-0 flex items-center gap-1.5">
+            <input
+              type="text"
+              value={task.title}
+              onChange={e => handleTitleChange(e.target.value)}
+              placeholder="Nome da tarefa..."
+              className={`w-full bg-transparent font-bold text-lg text-zinc-100 placeholder-zinc-600 focus:outline-none transition-colors ${
+                task.completed ? 'line-through text-zinc-500' : ''
+              }`}
+            />
+            {onToggleFullView && (
+              <button
+                type="button"
+                onClick={onToggleFullView}
+                className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-[#1b1b20] rounded-md transition-colors cursor-pointer shrink-0"
+                title="Expandir para documento em tela inteira"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tags */}

@@ -6,6 +6,7 @@ import { getPropertyItems, isBuiltinProperty, isOptionProperty, type PropertyIte
 import { Pill } from './TaskCustomPropertyField'
 import { TaskSettingsModal } from './TaskSettingsModal'
 import { TaskDocumentView } from './TaskDocumentView'
+import { TaskDetailSidebar } from './TaskDetailSidebar'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import {
   StatusBadge,
@@ -475,11 +476,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setAddingInColumnId(null)
   }
 
+  // User can switch between 'sidebar' (recuada, default) and 'full' (documento em tela cheia)
+  const [taskDetailMode, setTaskDetailMode] = useState<'sidebar' | 'full'>('sidebar')
+
   const selectedTask = useMemo(() => {
     return selectedTaskId ? tasks.find(t => t.id === selectedTaskId) || null : null
   }, [tasks, selectedTaskId])
 
-  if (selectedTask) {
+  if (selectedTask && taskDetailMode === 'full') {
     return (
       <TaskDocumentView
         task={selectedTask}
@@ -490,13 +494,15 @@ export const TasksView: React.FC<TasksViewProps> = ({
         onDeleteTask={onDeleteTask}
         onClose={() => onSelectTask(null)}
         onOpenNote={onOpenNote}
+        onToggleSidebarView={() => setTaskDetailMode('sidebar')}
       />
     )
   }
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#121214] text-zinc-100 select-none overflow-hidden">
-      {/* 1. Header Toolbar - Seamless with Notes and Agent */}
+    <div className="w-full h-full flex overflow-hidden">
+      <div className="flex-1 min-w-0 h-full flex flex-col bg-[#121214] text-zinc-100 select-none overflow-hidden">
+        {/* 1. Header Toolbar - Seamless with Notes and Agent */}
       <div className="h-12 px-5 bg-[#0e0e11] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
         {/* Left: Title & Counters */}
         <div className="flex items-center gap-2.5">
@@ -1635,6 +1641,21 @@ export const TasksView: React.FC<TasksViewProps> = ({
         settings={settings}
         onUpdateSettings={onUpdateSettings}
       />
+      </div>
+
+      {/* 4. Task Detail Drawer when in 'sidebar' (recuada) mode */}
+      {selectedTask && taskDetailMode === 'sidebar' && (
+        <TaskDetailSidebar
+          task={selectedTask}
+          settings={settings}
+          allNotes={_allNotes}
+          onUpdateTask={onUpdateTask}
+          onDeleteTask={onDeleteTask}
+          onOpenNote={onOpenNote}
+          onClose={() => onSelectTask(null)}
+          onToggleFullView={() => setTaskDetailMode('full')}
+        />
+      )}
     </div>
   )
 }

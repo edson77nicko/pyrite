@@ -541,6 +541,7 @@ html.light #root {
 .light .bg-\[\#101117\] { background-color: #ffffff !important; }
 .light .bg-\[\#101117\]\/80 { background-color: #ffffff !important; }
 .light .bg-\[\#101117\]\/60 { background-color: #ffffff !important; }
+.light .bg-\[\#111113\] { background-color: #f8f8fb !important; }
 .light .bg-\[\#111114\] { background-color: #f4f4f6 !important; }
 .light .bg-\[\#121214\] { background-color: #f0f0f3 !important; }
 .light .bg-\[\#121215\] { background-color: #e8e8ea !important; }
@@ -548,13 +549,16 @@ html.light #root {
 .light .bg-\[\#121216\]\/95 { background-color: #ffffff !important; }
 .light .bg-\[\#121216\]\/98 { background-color: #ffffff !important; }
 .light .bg-\[\#13141a\] { background-color: #ffffff !important; }
+.light .bg-\[\#141416\] { background-color: #ffffff !important; }
 .light .bg-\[\#141418\] { background-color: #ffffff !important; }
 .light .bg-\[\#14151b\] { background-color: #ffffff !important; }
 .light .bg-\[\#151519\] { background-color: #ebebed !important; }
+.light .bg-\[\#161619\] { background-color: #ffffff !important; }
 .light .bg-\[\#16161a\] { background-color: #ffffff !important; }
 .light .bg-\[\#16161c\] { background-color: #ffffff !important; }
 .light .bg-\[\#161722\] { background-color: #e4e4e7 !important; }
 .light .bg-\[\#18181b\] { background-color: #ffffff !important; }
+.light .bg-\[\#18181c\] { background-color: #ebebed !important; }
 .light .bg-\[\#18181e\] { background-color: #f4f4f6 !important; }
 .light .bg-\[\#181921\] { background-color: #ffffff !important; }
 .light .bg-\[\#181922\] { background-color: #f4f4f6 !important; }
@@ -564,9 +568,12 @@ html.light #root {
 .light .bg-\[\#1b1b1f\] { background-color: #ffffff !important; }
 .light .bg-\[\#1b1b20\] { background-color: #ffffff !important; }
 .light .bg-\[\#1b1b20\]\/40 { background-color: rgba(255, 255, 255, 0.6) !important; }
+.light .bg-\[\#1c1c20\] { background-color: #f0f0f3 !important; }
 .light .bg-\[\#1e1e26\] { background-color: #e8e8ea !important; }
+.light .bg-\[\#1f1f23\] { background-color: #ebebed !important; }
 .light .bg-\[\#1f1f24\] { background-color: #e8e8ea !important; }
 .light .bg-\[\#202024\] { background-color: #e8e8ea !important; }
+.light .bg-\[\#222226\] { background-color: #ececf0 !important; }
 .light .bg-\[\#242427\] { background-color: #f0f0f3 !important; }
 .light .bg-zinc-950 { background-color: #dedee2 !important; }
 .light .bg-zinc-950\/30 { background-color: rgba(220, 221, 224, 0.4) !important; }
@@ -644,8 +651,13 @@ html.light #root {
 .light .hover\:bg-\[\#181921\]:hover,
 .light .hover\:bg-\[\#181922\]:hover,
 .light .hover\:bg-\[\#1b1b20\]:hover,
-.light .hover\:bg-\[\#222228\]:hover {
-  background-color: #ffffff !important;
+.light .hover\:bg-\[\#222228\]:hover,
+.light .hover\:bg-\[\#18181c\]:hover,
+.light .hover\:bg-\[\#1c1c20\]:hover,
+.light .group:hover .group-hover\:bg-\[\#1a1a1e\],
+.light .group-hover\:bg-\[\#1a1a1e\],
+.light tr:hover .group-hover\:bg-\[\#1a1a1e\] {
+  background-color: #f4f4f7 !important;
   color: #18181b !important;
 }
 .light .hover\:text-white:hover { color: #09090b !important; }
@@ -1018,6 +1030,61 @@ html.light #root {
 }
 .light .task-quick-add-row:hover {
   background-color: #f9f9fb !important;
+}
+
+/* Modo Lista / Tabela de Tarefas no Modo Claro */
+.light thead.bg-\[\#18181b\],
+.light th.bg-\[\#18181b\] {
+  background-color: #ebebed !important;
+  color: #52525b !important;
+  border-color: #dcdde0 !important;
+}
+.light td.border-zinc-800\/60,
+.light th.border-zinc-800\/60 {
+  border-color: #e4e4e7 !important;
+}
+.light tr.bg-\[\#141416\] {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+}
+.light tr.bg-\[\#222226\] {
+  background-color: #ededf2 !important;
+  color: #18181b !important;
+}
+.light tr.bg-\[\#111113\] {
+  background-color: #f8f8fb !important;
+  color: #18181b !important;
+}
+.light tr:hover td.group-hover\:bg-\[\#1a1a1e\],
+.light tr:hover td.hover\:bg-\[\#1a1a1e\],
+.light tr:hover td {
+  background-color: #f7f7fa !important;
+}
+.light tr.bg-\[\#222226\] td {
+  background-color: #ededf2 !important;
+}
+
+/* Página de Tarefa em Documento no Modo Claro */
+.light .task-document-body {
+  background-color: #ffffff !important;
+}
+.light .task-document-page {
+  background-color: #ffffff !important;
+}
+.light .task-document-rail {
+  background-color: #f0f0f3 !important;
+  border-color: #dcdde0 !important;
+}
+.light .task-document-rail:hover {
+  background-color: #e8e8ea !important;
+}
+.light .task-document-header {
+  background-color: #f0f0f3 !important;
+  border-color: #dcdde0 !important;
+}
+.light .task-properties-card {
+  background-color: #f7f7fa !important;
+  border-color: #e4e4e7 !important;
 }
 
 /* =========================================================================
