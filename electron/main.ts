@@ -238,13 +238,13 @@ function scanVaultDirectory(dir: string, baseDir: string): VaultFileResult[] {
 
     if (entry.isDirectory()) {
       results.push(...scanVaultDirectory(fullPath, baseDir))
-    } else if (entry.isFile() && (entry.name.endsWith('.md') || entry.name.endsWith('.markdown') || entry.name.endsWith('.txt') || entry.name.endsWith('.draw.json') || entry.name.endsWith('.draw.md') || entry.name.endsWith('.mindmap.json') || entry.name.endsWith('.mindmap.md'))) {
+    } else if (entry.isFile() && (entry.name.endsWith('.md') || entry.name.endsWith('.markdown') || entry.name.endsWith('.txt') || entry.name.endsWith('.draw.json') || entry.name.endsWith('.draw.md') || entry.name.endsWith('.mindmap.json') || entry.name.endsWith('.mindmap.md') || entry.name.endsWith('.html') || entry.name.endsWith('.htm'))) {
       try {
         const stats = fs.statSync(fullPath)
         const content = fs.readFileSync(fullPath, 'utf-8')
         const relDir = path.relative(baseDir, dir)
         const folder = relDir && relDir !== '.' ? relDir.replace(/\\/g, '/') : 'Início'
-        const title = entry.name.replace(/\.(mindmap\.json|mindmap\.md|draw\.json|draw\.md|md|markdown|txt)$/i, '')
+        const title = entry.name.replace(/\.(mindmap\.json|mindmap\.md|draw\.json|draw\.md|md|markdown|txt|html|htm)$/i, '')
 
         results.push({
           title,
@@ -267,7 +267,7 @@ ipcMain.handle('vault:readVault', (_event, vaultPath: string) => {
   return scanVaultDirectory(vaultPath, vaultPath)
 })
 
-ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content, exclusive }: { vaultPath: string; folder: string; title: string; content: string; exclusive?: boolean }) => {
+ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content, exclusive, type, filePath: explicitFilePath }: { vaultPath: string; folder: string; title: string; content: string; exclusive?: boolean; type?: string; filePath?: string }) => {
   try {
     const safeTitle = title.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Sem título'
     const targetDir = folder && folder !== 'Início' ? path.join(vaultPath, folder.replace(/\//g, path.sep)) : vaultPath
@@ -276,7 +276,15 @@ ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content, e
       fs.mkdirSync(targetDir, { recursive: true })
     }
 
-    const filePath = path.join(targetDir, `${safeTitle}.md`)
+    let filePath = explicitFilePath
+    if (!filePath) {
+      const isHtml = type === 'html' || safeTitle.toLowerCase().endsWith('.html') || safeTitle.toLowerCase().endsWith('.htm')
+      const baseName = isHtml
+        ? (safeTitle.toLowerCase().endsWith('.html') || safeTitle.toLowerCase().endsWith('.htm') ? safeTitle : `${safeTitle}.html`)
+        : `${safeTitle}.md`
+      filePath = path.join(targetDir, baseName)
+    }
+
     fs.writeFileSync(filePath, content, { encoding: 'utf-8', flag: exclusive ? 'wx' : 'w' })
     const stats = fs.statSync(filePath)
     return { success: true, filePath, updatedAt: stats.mtimeMs }

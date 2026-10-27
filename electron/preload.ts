@@ -32,7 +32,7 @@ const electronAPI = {
   getDefaultPath: () => ipcRenderer.invoke('vault:getDefaultPath') as Promise<string>,
   selectFolder: () => ipcRenderer.invoke('vault:selectFolder') as Promise<string | null>,
   readVault: (vaultPath: string) => ipcRenderer.invoke('vault:readVault', vaultPath) as Promise<VaultFileItem[]>,
-  saveFile: (params: { vaultPath: string; folder: string; title: string; content: string; exclusive?: boolean }) =>
+  saveFile: (params: { vaultPath: string; folder: string; title: string; content: string; exclusive?: boolean; type?: string; filePath?: string }) =>
     ipcRenderer.invoke('vault:saveFile', params) as Promise<{ success: boolean; filePath?: string; updatedAt?: number; error?: string }>,
   deleteFile: (filePath: string) =>
     ipcRenderer.invoke('vault:deleteFile', filePath) as Promise<{ success: boolean; error?: string }>,

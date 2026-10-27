@@ -26,6 +26,8 @@ export interface ElectronAPI {
     title: string
     content: string
     exclusive?: boolean
+    type?: string
+    filePath?: string
   }) => Promise<{ success: boolean; filePath?: string; updatedAt?: number; error?: string }>
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
   createFolder: (params: { vaultPath: string; folderPath: string }) => Promise<{ success: boolean; error?: string }>

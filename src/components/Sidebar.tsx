@@ -28,7 +28,8 @@ import {
   Briefcase,
   MoreVertical,
   Pencil,
-  Brain
+  Brain,
+  CodeXml
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -581,6 +582,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onDragStart={e => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation()
+                  onCreateNote(node.fullPath, undefined, 'html')
+                }}
+                className="p-0.5 hover:text-white rounded"
+                title={`Novo Arquivo HTML em ${node.fullPath}`}
+              >
+                <CodeXml className="w-3 h-3 text-orange-500 hover:text-orange-400" />
+              </button>
+              <button
+                draggable={false}
+                onDragStart={e => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
                   handleStartCreateFolder(node.fullPath)
                 }}
                 className="p-0.5 hover:text-white rounded"
@@ -618,7 +631,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               const isActive = note.id === currentNoteId
               const isDraw = note.type === 'draw'
               const isMindMap = note.type === 'mindmap'
-              const NoteIcon = isMindMap ? Brain : isDraw ? Palette : FileText
+              const isHtml = note.type === 'html'
+              const NoteIcon = isMindMap ? Brain : isDraw ? Palette : isHtml ? CodeXml : FileText
               const isNoteDragged = draggedItem?.type === 'note' && draggedItem.note.id === note.id
               return (
                 <div
@@ -631,7 +645,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onDrop={(e) => handleNoteDrop(e, note)}
                   onContextMenu={e => openContext(e, { note })}
                   onClick={() => onSelectNote(note.id)}
-                  title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : 'Nota'})`}
+                  title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : isHtml ? 'Arquivo HTML' : 'Nota'})`}
                   className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
                     isNoteDragged
                       ? 'opacity-40 scale-[0.98] border-dashed border-zinc-600'
@@ -642,7 +656,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   style={isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
                 >
                   <div className="flex items-center gap-1.5 truncate min-w-0">
-                    <NoteIcon className="w-3.5 h-3.5 shrink-0" style={isActive || isDraw || isMindMap ? { color: 'var(--accent)' } : { color: '#71717a' }} />
+                    <NoteIcon
+                      className="w-3.5 h-3.5 shrink-0"
+                      style={
+                        isHtml
+                          ? { color: '#f97316' }
+                          : (isActive || isDraw || isMindMap)
+                          ? { color: 'var(--accent)' }
+                          : { color: '#71717a' }
+                      }
+                    />
                     <span className="truncate">{note.title}</span>
                   </div>
 
@@ -795,6 +818,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     setIsCreateMenuOpen(false)
+                    onCreateNote(undefined, undefined, 'html')
+                  }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                >
+                  <CodeXml className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                  <span className="font-medium text-xs">Novo Arquivo HTML</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateMenuOpen(false)
                     onOpenDailyNote()
                   }}
                   className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
@@ -853,6 +888,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         if (action === 'new-note') onCreateNote(context.folder, undefined, 'note')
         else if (action === 'new-draw') onCreateNote(context.folder, undefined, 'draw')
         else if (action === 'new-mindmap') onCreateNote(context.folder, undefined, 'mindmap')
+        else if (action === 'new-html') onCreateNote(context.folder, undefined, 'html')
         else if (action === 'new-folder') handleStartCreateFolder(vaultPath && context.folder === 'Início' ? undefined : context.folder)
         else if (action === 'search') { setFolderFilter(context.folder!); setSearch('') }
         else await onManage(action, context, value)
@@ -1239,7 +1275,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 const isActive = note.id === currentNoteId
                 const isDraw = note.type === 'draw'
                 const isMindMap = note.type === 'mindmap'
-                const NoteIcon = isMindMap ? Brain : isDraw ? Palette : FileText
+                const isHtml = note.type === 'html'
+                const NoteIcon = isMindMap ? Brain : isDraw ? Palette : isHtml ? CodeXml : FileText
                 const isNoteDragged = draggedItem?.type === 'note' && draggedItem.note.id === note.id
                 return (
                   <div
@@ -1252,7 +1289,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onDrop={(e) => handleNoteDrop(e, note)}
                     onContextMenu={e => openContext(e, { note })}
                     onClick={() => onSelectNote(note.id)}
-                    title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : 'Nota'})`}
+                    title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : isHtml ? 'Arquivo HTML' : 'Nota'})`}
                     className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
                       isNoteDragged
                         ? 'opacity-40 scale-[0.98] border-dashed border-zinc-600'
@@ -1263,7 +1300,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     style={isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
                   >
                     <div className="flex items-center gap-1.5 truncate min-w-0">
-                      <NoteIcon className="w-3.5 h-3.5 shrink-0" style={isActive || isDraw || isMindMap ? { color: 'var(--accent)' } : { color: '#71717a' }} />
+                      <NoteIcon
+                        className="w-3.5 h-3.5 shrink-0"
+                        style={
+                          isHtml
+                            ? { color: '#f97316' }
+                            : (isActive || isDraw || isMindMap)
+                            ? { color: 'var(--accent)' }
+                            : { color: '#71717a' }
+                        }
+                      />
                       <span className="truncate">{note.title}</span>
                     </div>
 

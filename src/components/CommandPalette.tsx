@@ -12,7 +12,8 @@ import {
   Palette,
   CheckCircle2,
   Brain,
-  Sun
+  Sun,
+  CodeXml
 } from 'lucide-react'
 
 interface CommandPaletteProps {
@@ -86,6 +87,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       subtitle: 'Criar novo mapa mental com conexões visuais e ramos',
       icon: <Brain className="w-4 h-4 text-[var(--accent,#c59b27)]" />,
       action: () => onCreateNote(undefined, undefined, 'mindmap')
+    },
+    {
+      id: 'cmd-new-html',
+      title: 'Criar Novo Arquivo HTML',
+      subtitle: 'Criar página HTML interativa com renderização e código',
+      icon: <CodeXml className="w-4 h-4 text-orange-400" />,
+      action: () => onCreateNote(undefined, undefined, 'html')
     },
     {
       id: 'cmd-open-graph',

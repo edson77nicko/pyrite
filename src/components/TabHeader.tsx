@@ -19,7 +19,8 @@ import {
   Palette,
   CheckCircle2,
   Pin,
-  Brain
+  Brain,
+  CodeXml
 } from 'lucide-react'
 
 interface TabHeaderProps {
@@ -108,7 +109,8 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           const isTasksTab = tab.noteId === '__tasks__'
           const isDrawTab = tab.type === 'draw'
           const isMindMapTab = tab.type === 'mindmap'
-          const TabIcon = isGraphTab ? Share2 : isTasksTab ? CheckCircle2 : isMindMapTab ? Brain : (isCanvasTab || isDrawTab) ? Palette : FileText
+          const isHtmlTab = tab.type === 'html'
+          const TabIcon = isGraphTab ? Share2 : isTasksTab ? CheckCircle2 : isMindMapTab ? Brain : isHtmlTab ? CodeXml : (isCanvasTab || isDrawTab) ? Palette : FileText
           const isBeingDragged = draggedTabId === tab.id
           const isDragTarget = dragOverTabId === tab.id && draggedTabId !== tab.id
 
@@ -164,7 +166,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
               }`}
               style={isActive ? { borderTopColor: 'var(--accent)' } : undefined}
             >
-              <TabIcon className="w-3.5 h-3.5 shrink-0" style={isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
+              <TabIcon className="w-3.5 h-3.5 shrink-0" style={isHtmlTab ? { color: '#f97316' } : isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
               <span className="truncate">{tab.title || 'Sem título'}</span>
 
               {/* If Pinned: Show ONLY the Gold Pin icon (click to unpin) */}

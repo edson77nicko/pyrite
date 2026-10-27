@@ -18,6 +18,7 @@ import { RightSidebar } from './components/RightSidebar'
 import { Editor } from './components/Editor'
 import { DrawEditor } from './components/DrawEditor'
 import { MindMapEditor, mindMapViewportCache } from './components/MindMapEditor'
+import { HtmlEditor } from './components/HtmlEditor'
 import { GraphView } from './components/GraphView'
 import { CanvasView } from './components/CanvasView'
 import { TasksView } from './components/TasksView'
@@ -75,6 +76,8 @@ export const App: React.FC = () => {
               ? 'mindmap'
               : (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md'))
               ? 'draw'
+              : (f.filePath?.endsWith('.html') || f.filePath?.endsWith('.htm'))
+              ? 'html'
               : 'note',
             createdAt: f.createdAt,
             updatedAt: f.updatedAt
@@ -542,19 +545,50 @@ export const App: React.FC = () => {
     const targetFolder = folder || currentNote?.folder || 'Início'
     const mindMapCount = notes.filter(n => n.type === 'mindmap').length
     const drawCount = notes.filter(n => n.type === 'draw').length
-    const noteCount = notes.filter(n => n.type !== 'draw' && n.type !== 'mindmap').length
+    const htmlCount = notes.filter(n => n.type === 'html').length
+    const noteCount = notes.filter(n => n.type !== 'draw' && n.type !== 'mindmap' && n.type !== 'html').length
     const title = initialTitle || (
       type === 'mindmap'
         ? `Mapa Mental ${mindMapCount + 1}`
         : type === 'draw'
         ? `Desenho ${drawCount + 1}`
+        : type === 'html'
+        ? `Página ${htmlCount + 1}.html`
         : `Nota ${noteCount + 1}`
     )
+
+    const defaultHtmlStarter = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#0e0e12] text-zinc-100 min-h-screen p-8 flex flex-col items-center justify-center font-sans antialiased">
+  <div class="max-w-md w-full bg-[#16161d] border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-xs font-semibold">
+      ⚡ Pyrita HTML
+    </div>
+    <h1 class="text-2xl font-bold tracking-tight text-white">${title}</h1>
+    <p class="text-sm text-zinc-400 leading-relaxed">
+      Esta é uma página HTML interativa renderizada no Pyrita. Você pode editar o código diretamente ou pedir ao <strong>Assistente IA</strong> para criar novas seções, estilos e funcionalidades!
+    </p>
+    <div class="pt-2 flex gap-3">
+      <button class="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-semibold text-xs rounded-xl shadow-md transition-all active:scale-95">
+        Botão de Exemplo
+      </button>
+    </div>
+  </div>
+</body>
+</html>`
 
     const content = type === 'mindmap'
       ? serializeMindMapDocument(createEmptyMindMapDocument(title))
       : type === 'draw'
       ? serializeDrawDocument(createEmptyDrawDocument(title))
+      : type === 'html'
+      ? defaultHtmlStarter
       : `Escreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`
 
     const newNote: Note = {
@@ -562,7 +596,7 @@ export const App: React.FC = () => {
       title,
       content,
       folder: targetFolder,
-      tags: type === 'mindmap' ? ['mindmap', 'mapa-mental'] : type === 'draw' ? ['draw', 'desenho'] : [],
+      tags: type === 'mindmap' ? ['mindmap', 'mapa-mental'] : type === 'draw' ? ['draw', 'desenho'] : type === 'html' ? ['html', 'web'] : [],
       type,
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -578,7 +612,9 @@ export const App: React.FC = () => {
         vaultPath,
         folder: targetFolder,
         title: newNote.title,
-        content: newNote.content
+        content: newNote.content,
+        type: newNote.type,
+        filePath: newNote.filePath
       }).then(res => {
         if (res.success && res.filePath) {
           newNote.filePath = res.filePath
@@ -686,7 +722,9 @@ export const App: React.FC = () => {
         vaultPath,
         folder: finalNote.folder || 'Início',
         title: finalNote.title,
-        content: finalNote.content
+        content: finalNote.content,
+        type: finalNote.type,
+        filePath: finalNote.filePath
       }).then(res => {
         if (res.success && res.filePath) {
           finalNote.filePath = res.filePath
@@ -694,19 +732,19 @@ export const App: React.FC = () => {
       })
     }
 
-    setTabs(prev => prev.map(t => t.noteId === finalNote.id ? { ...t, title: finalNote.title } : t))
+    setTabs(prev => prev.map(t => t.noteId === finalNote.id ? { ...t, title: finalNote.title, type: finalNote.type } : t))
   }
 
   const handleSidebarAction = async (action: SidebarAction, target: { note?: Note; folder?: string }, value?: string) => {
     const note = target.note
     const folder = target.folder || ''
     const inside = (f: string) => f === folder || f.startsWith(folder + '/')
-    const relative = note ? [note.folder === 'Início' ? '' : note.folder, note.filePath?.split(/[/\\]/).pop() || note.title + '.md'].filter(Boolean).join('/') : vaultPath && folder === 'Início' ? '' : folder
+    const relative = note ? [note.folder === 'Início' ? '' : note.folder, note.filePath?.split(/[/\\]/).pop() || (note.type === 'html' ? note.title + '.html' : note.title + '.md')].filter(Boolean).join('/') : vaultPath && folder === 'Início' ? '' : folder
     const absolute = note?.filePath || (vaultPath ? vaultPath.replace(/[\\/]$/, '') + '/' + relative : relative)
     const api = window.electronAPI?.isElectron && vaultPath ? window.electronAPI : null
     const check = (result: { success: boolean; error?: string }) => { if (!result.success) throw new Error(result.error || 'Não foi possível alterar o arquivo.') }
     if (action === 'open' && note) {
-      const tab = { id: `tab_${crypto.randomUUID()}`, noteId: note.id, title: note.title }
+      const tab = { id: `tab_${crypto.randomUUID()}`, noteId: note.id, title: note.title, type: note.type }
       setTabs(prev => [...prev, tab]); setActiveTabId(tab.id)
       setCurrentNoteId(note.id); setCurrentView('editor'); return
     }
@@ -799,18 +837,20 @@ export const App: React.FC = () => {
     const collectedFolders: string[] = []
 
     for await (const entry of dirHandle.values()) {
-      if (entry.kind === 'file' && (entry.name.endsWith('.md') || entry.name.endsWith('.draw.json') || entry.name.endsWith('.draw.md'))) {
+      if (entry.kind === 'file' && (entry.name.endsWith('.md') || entry.name.endsWith('.draw.json') || entry.name.endsWith('.draw.md') || entry.name.endsWith('.mindmap.json') || entry.name.endsWith('.mindmap.md') || entry.name.endsWith('.html') || entry.name.endsWith('.htm'))) {
         const file = await entry.getFile()
         const text = await file.text()
-        const title = entry.name.replace(/\.(draw\.json|draw\.md|md)$/i, '')
+        const title = entry.name.replace(/\.(draw\.json|draw\.md|mindmap\.json|mindmap\.md|html|htm|md)$/i, '')
+        const isMindMap = isMindMapContent(text) || entry.name.endsWith('.mindmap.json') || entry.name.endsWith('.mindmap.md')
         const isDraw = isDrawContent(text) || entry.name.endsWith('.draw.json') || entry.name.endsWith('.draw.md')
+        const isHtml = entry.name.endsWith('.html') || entry.name.endsWith('.htm')
         collectedNotes.push({
           id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           title,
           content: text,
           folder: currentPath || dirHandle.name,
-          tags: isDraw ? ['draw', 'desenho'] : extractTags(text),
-          type: isDraw ? 'draw' : 'note',
+          tags: isMindMap ? ['mindmap', 'mapa-mental'] : isDraw ? ['draw', 'desenho'] : isHtml ? ['html', 'web'] : extractTags(text),
+          type: isMindMap ? 'mindmap' : isDraw ? 'draw' : isHtml ? 'html' : 'note',
           createdAt: file.lastModified,
           updatedAt: file.lastModified
         })
@@ -854,6 +894,8 @@ export const App: React.FC = () => {
               ? 'mindmap'
               : (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md'))
               ? 'draw'
+              : (f.filePath?.endsWith('.html') || f.filePath?.endsWith('.htm'))
+              ? 'html'
               : 'note',
               createdAt: f.createdAt,
               updatedAt: f.updatedAt
@@ -925,6 +967,8 @@ export const App: React.FC = () => {
               ? 'mindmap'
               : (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md'))
               ? 'draw'
+              : (f.filePath?.endsWith('.html') || f.filePath?.endsWith('.htm'))
+              ? 'html'
               : 'note',
             createdAt: f.createdAt,
             updatedAt: f.updatedAt
@@ -1057,13 +1101,15 @@ export const App: React.FC = () => {
             onConnectNote={handleConnectNote}
             onAddTag={handleAddTag}
             onInsertSnippet={handleInsertSnippet}
-            onCreateNote={(folder, initialTitle, initialContent) => {
-              const isMind = isMindMapContent(initialContent)
+            onCreateNote={(folder, initialTitle, initialContent, forcedType) => {
+              const isHtml = forcedType === 'html' || initialTitle?.toLowerCase().endsWith('.html') || initialTitle?.toLowerCase().endsWith('.htm') || /<!DOCTYPE\s+html|<html/i.test(initialContent || '')
+              const isMind = !isHtml && (forcedType === 'mindmap' || isMindMapContent(initialContent))
               const targetFolder = folder || currentNote?.folder || 'Início'
               const mindMapCount = notes.filter(n => n.type === 'mindmap').length
-              const noteCount = notes.filter(n => n.type !== 'draw' && n.type !== 'mindmap').length
-              const title = initialTitle || (isMind ? `Mapa Mental ${mindMapCount + 1}` : `Nota ${noteCount + 1}`)
-              const type: NoteType = isMind ? 'mindmap' : 'note'
+              const htmlCount = notes.filter(n => n.type === 'html').length
+              const noteCount = notes.filter(n => n.type !== 'draw' && n.type !== 'mindmap' && n.type !== 'html').length
+              const title = initialTitle || (isMind ? `Mapa Mental ${mindMapCount + 1}` : isHtml ? `Página ${htmlCount + 1}.html` : `Nota ${noteCount + 1}`)
+              const type: NoteType = isHtml ? 'html' : isMind ? 'mindmap' : 'note'
               const content = isMind
                 ? serializeMindMapDocument(parseMindMapDocument(initialContent, title))
                 : (initialContent || `Escreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`)
@@ -1073,7 +1119,7 @@ export const App: React.FC = () => {
                 title,
                 content,
                 folder: targetFolder,
-                tags: isMind ? ['mindmap', 'mapa-mental'] : [],
+                tags: isHtml ? ['html', 'web'] : isMind ? ['mindmap', 'mapa-mental'] : [],
                 type,
                 createdAt: Date.now(),
                 updatedAt: Date.now()
@@ -1088,7 +1134,9 @@ export const App: React.FC = () => {
                   vaultPath,
                   folder: targetFolder,
                   title: newNote.title,
-                  content: newNote.content
+                  content: newNote.content,
+                  type: newNote.type,
+                  filePath: newNote.filePath
                 }).then(res => {
                   if (res.success && res.filePath) {
                     newNote.filePath = res.filePath
@@ -1175,6 +1223,12 @@ export const App: React.FC = () => {
                   />
                 ) : currentNote.type === 'draw' ? (
                   <DrawEditor
+                    key={currentNote.id}
+                    note={currentNote}
+                    onUpdateNote={handleUpdateNote}
+                  />
+                ) : currentNote.type === 'html' ? (
+                  <HtmlEditor
                     key={currentNote.id}
                     note={currentNote}
                     onUpdateNote={handleUpdateNote}

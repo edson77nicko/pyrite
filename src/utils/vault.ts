@@ -274,6 +274,9 @@ export function loadNotes(): Note[] {
         if (n.type === 'draw' || isDrawContent(n.content)) {
           return { ...n, type: 'draw' as const }
         }
+        if (n.type === 'html' || n.filePath?.endsWith('.html') || n.filePath?.endsWith('.htm')) {
+          return { ...n, type: 'html' as const }
+        }
         const stripped = stripDuplicateTitleFromContent(n.content, n.title)
         if (stripped !== n.content) {
           modified = true

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import type { Note } from '../types'
+import type { Note, NoteType } from '../types'
 import type { TaskItem, TaskSettings, SubTask, TaskBoard } from '../types/tasks'
 import { extractWikiLinks } from '../utils/vault'
 import { mindMapToMarkdownOutline, parseMindMapDocument, serializeMindMapDocument, isMindMapContent, cleanNodeTitle } from '../utils/mindMapUtils'
@@ -271,7 +271,7 @@ interface AiAssistantProps {
   onConnectNote: (targetTitle: string) => void
   onAddTag: (tag: string) => void
   onInsertSnippet?: (snippet: string) => void
-  onCreateNote?: (folder?: string, initialTitle?: string, initialContent?: string) => void
+  onCreateNote?: (folder?: string, initialTitle?: string, initialContent?: string, type?: NoteType) => void
   onUpdateNote?: (note: Note) => void
   tasks?: TaskItem[]
   taskSettings?: TaskSettings
@@ -948,6 +948,27 @@ ${outline}
   * NUNCA misture traço com hashtag (ex: NUNCA faça '- ### Título' ou '* ### Título'). Se usar traço, escreva texto limpo: '- Título'.
   * NUNCA use asteriscos para definir etapas (ex: NUNCA faça '** Etapa' ou '*** Detalhe') e NUNCA use negrito ('**Título**').
   * Mantenha o '# Tópico Central' e a estrutura que o usuário já tinha, anexando as novas etapas nos ramos corretos.\n`
+          } else if (effectiveNote.type === 'html' || effectiveNote.filePath?.endsWith('.html') || effectiveNote.filePath?.endsWith('.htm')) {
+            contextBlock += `\n### ARQUIVO HTML ATIVO EM CONTEXTO (DOCUMENTO WEB INTERATIVO):
+Título: "${effectiveNote.title}"
+Arquivo: ${effectiveNote.filePath || `${effectiveNote.title}.html`}
+Pasta: ${effectiveNote.folder || 'Início'}
+Tags: ${effectiveNote.tags?.join(', ') || 'html, web'}
+Tipo: Documento HTML5 (Renderizado em tempo real no app)
+Código-Fonte Atual:
+---
+${effectiveNote.content || '<!-- Documento HTML vazio -->'}
+---
+🚨 INSTRUÇÃO OBRIGATÓRIA PARA EDIÇÃO DESTE CÓDIGO HTML:
+- O usuário está com este arquivo HTML aberto na tela do Pyrita com visualização ao vivo e editor de código.
+- Quando ele solicitar para adicionar elementos, alterar estilos CSS/Tailwind, modificar cores, adicionar seções, criar formulários, incluir scripts JavaScript, gráficos ou reformular o código, você DEVE gerar o código HTML completo atualizado dentro do bloco:
+  <<<REPLACE_NOTE>>>
+  <!DOCTYPE html>
+  <html lang="pt-BR">
+  ... (todo o código HTML completo com as modificações)
+  </html>
+  <<<END_REPLACE_NOTE>>>
+- O Pyrita irá detectar o bloco <<<REPLACE_NOTE>>> e atualizar o código e a pré-visualização ao vivo do usuário instantaneamente!\n`
           } else {
             contextBlock += `\n### NOTA ATIVA PRINCIPAL EM CONTEXTO:\nTítulo: "${effectiveNote.title}"\nPasta: ${effectiveNote.folder || 'Início'}\nTags: ${effectiveNote.tags?.join(', ') || 'nenhuma'}\nConteúdo da nota:\n---\n${effectiveNote.content || '(nota vazia)'}\n---\n`
           }
@@ -1044,7 +1065,9 @@ ${outline}
        - [ ] Testes e Validação
          - Testes de Usabilidade
          - Homologação em Produção
-- REGRA CRÍTICA PARA CRIAÇÃO DE NOVAS NOTAS OU MAPAS MENTAIS:
+- PARA ARQUIVOS DO TIPO HTML (html):
+  Dentro do bloco <<<REPLACE_NOTE>>>, forneça o código HTML completo atualizado com <!DOCTYPE html>, tags semânticas, estilos <style> ou Tailwind CDN e scripts <script>. Não use explicações ou marcações markdown dentro do bloco <<<REPLACE_NOTE>>>, apenas o código HTML puro que será executado e renderizado no app.
+- REGRA CRÍTICA PARA CRIAÇÃO DE NOVAS NOTAS, MAPAS MENTAIS OU ARQUIVOS HTML:
   Sempre que o usuário pedir para CRIAR, GERAR, SALVAR ou MONTAR uma nova nota, novo documento ou novo mapa mental (ex: "crie uma nota sobre...", "criar nova nota...", "crie um novo mapa sobre...", "gere uma nota...", "salve essa ideia em uma nota..."):
   Você DEVE OBRIGATORIAMENTE emitir o bloco executável delimitado no formato exato:
   <<<CREATE_NOTE>>>
@@ -1204,8 +1227,9 @@ Diretrizes gerais:
             const replaceMatch = responseText.match(/<<<REPLACE_NOTE>>>([\s\S]*?)<<<END_REPLACE_NOTE>>>/)
             if (replaceMatch && replaceMatch[1]) {
               const revisedContent = replaceMatch[1].trim()
-              const isMind = effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content) || isMindMapContent(revisedContent)
-              const baseDoc = (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content))
+              const isHtml = effectiveNote.type === 'html' || effectiveNote.filePath?.endsWith('.html') || effectiveNote.filePath?.endsWith('.htm') || /<!DOCTYPE\s+html|<html/i.test(revisedContent)
+              const isMind = !isHtml && (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content) || isMindMapContent(revisedContent))
+              const baseDoc = (!isHtml && (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content)))
                 ? parseMindMapDocument(effectiveNote.content, effectiveNote.title)
                 : undefined
               const finalContent = isMind
@@ -1215,15 +1239,16 @@ Diretrizes gerais:
               onUpdateNote({
                 ...effectiveNote,
                 content: finalContent,
-                type: isMind ? 'mindmap' : effectiveNote.type,
+                type: isHtml ? 'html' : isMind ? 'mindmap' : effectiveNote.type,
                 updatedAt: Date.now()
               })
-              setToastNotice(`✨ ${isMind ? 'Mapa Mental' : 'Nota'} "${effectiveNote.title}" atualizado pelo Agente!`)
+              const label = isHtml ? 'Arquivo HTML' : isMind ? 'Mapa Mental' : 'Nota'
+              setToastNotice(`✨ ${label} "${effectiveNote.title}" atualizado pelo Agente!`)
               setTimeout(() => setToastNotice(null), 4000)
 
               responseText = responseText.replace(
                 /<<<REPLACE_NOTE>>>[\s\S]*?<<<END_REPLACE_NOTE>>>/,
-                `> ✨ **${isMind ? 'Mapa Mental' : 'Nota'} [[${effectiveNote.title}]] atualizado com sucesso no seu cofre!**\n`
+                `> ✨ **${label} [[${effectiveNote.title}]] atualizado com sucesso no seu cofre!**\n`
               ).trim()
             }
           }
@@ -1289,22 +1314,24 @@ Diretrizes gerais:
 
               title = title.replace(/[\[\]]/g, '').trim() || 'Nova Nota'
 
-              const isMind = type === 'mindmap' || isMindMapContent(content)
+              const isHtml = type === 'html' || title.toLowerCase().endsWith('.html') || title.toLowerCase().endsWith('.htm') || /<!DOCTYPE\s+html|<html/i.test(content)
+              const isMind = !isHtml && (type === 'mindmap' || isMindMapContent(content))
               const finalContent = isMind
                 ? serializeMindMapDocument(parseMindMapDocument(content, title))
                 : content
 
-              onCreateNote(folder, title, finalContent)
-              setToastNotice(`✨ ${isMind ? 'Mapa Mental' : 'Nota'} "${title}" criada com sucesso!`)
+              onCreateNote(folder, title, finalContent, isHtml ? 'html' : isMind ? 'mindmap' : 'note')
+              const label = isHtml ? 'Arquivo HTML' : isMind ? 'Mapa Mental' : 'Nota'
+              setToastNotice(`✨ ${label} "${title}" criada com sucesso!`)
               setTimeout(() => setToastNotice(null), 4000)
 
               if (matchedRaw) {
                 responseText = responseText.replace(
                   matchedRaw,
-                  `> ✨ **${isMind ? 'Mapa Mental' : 'Nota'} [[${title}]] criada com sucesso no seu cofre!**\n`
+                  `> ✨ **${label} [[${title}]] criada com sucesso no seu cofre!**\n`
                 ).trim()
               } else {
-                responseText = `> ✨ **${isMind ? 'Mapa Mental' : 'Nota'} [[${title}]] criada com sucesso no seu cofre!**\n\n` + responseText
+                responseText = `> ✨ **${label} [[${title}]] criada com sucesso no seu cofre!**\n\n` + responseText
               }
             }
           }
@@ -2142,8 +2169,39 @@ Diretrizes gerais:
           </div>
         )}
 
-        {/* Dynamic Specialty Prompt Chips */}
-        {activeSpecialty.presets.length > 0 && (
+        {/* Dynamic HTML / Specialty Prompt Chips */}
+        {(effectiveNote.type === 'html' || effectiveNote.filePath?.endsWith('.html') || effectiveNote.filePath?.endsWith('.htm')) ? (
+          <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10px]">
+            <button
+              type="button"
+              onClick={() => handleSelectSlashItem('Melhore e modernize o design deste arquivo HTML utilizando Tailwind CSS via CDN, paleta elegante no tema escuro, tipografia refinada e espaçamentos perfeitos.')}
+              className="px-2 py-0.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 whitespace-nowrap cursor-pointer transition-colors"
+            >
+              🎨 Estilizar Tailwind
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectSlashItem('Torne este código HTML 100% responsivo para mobile, tablet e desktop, com classes Tailwind e layouts flexíveis.')}
+              className="px-2 py-0.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 whitespace-nowrap cursor-pointer transition-colors"
+            >
+              📱 Tornar Responsivo
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectSlashItem('Adicione uma seção com gráfico interativo ou dashboard de dados usando a biblioteca Chart.js via CDN neste arquivo HTML.')}
+              className="px-2 py-0.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 whitespace-nowrap cursor-pointer transition-colors"
+            >
+              📊 Gráfico Chart.js
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectSlashItem('Adicione interatividade dinâmica com JavaScript moderno nesta página HTML (animações, eventos de clique, feedback visual).')}
+              className="px-2 py-0.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 whitespace-nowrap cursor-pointer transition-colors"
+            >
+              ⚡ Interatividade JS
+            </button>
+          </div>
+        ) : activeSpecialty.presets.length > 0 && (
           <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10px]">
             {activeSpecialty.presets.map((pr, idx) => (
               <button

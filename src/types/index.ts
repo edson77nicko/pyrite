@@ -1,4 +1,4 @@
-export type NoteType = 'note' | 'draw' | 'mindmap'
+export type NoteType = 'note' | 'draw' | 'mindmap' | 'html'
 
 export interface Note {
   id: string
