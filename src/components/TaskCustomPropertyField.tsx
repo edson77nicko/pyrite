@@ -2,28 +2,39 @@ import React, { useState, useRef, useEffect } from 'react'
 import { ChevronDown, Check, X } from 'lucide-react'
 import type { TaskPropertyConfig, TaskItem } from '../types/tasks'
 import { STATUS_GROUPS, type PropertyItem } from '../utils/taskProperties'
+import { StatusBadge, computeStatusProgress, type StatusIndicatorStyle } from './StatusIndicator'
 
 interface Props {
   prop: TaskPropertyConfig
   task: TaskItem
   items: PropertyItem[]
+  indicatorStyle?: StatusIndicatorStyle
   onChange: (value: any) => void
 }
 
 const inputCls =
   'w-full bg-[#1b1b20] hover:bg-[#222228] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none transition-colors'
 
-export const Pill: React.FC<{ item: PropertyItem }> = ({ item }) => (
-  <span
-    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10.5px] font-medium max-w-full"
-    style={{ backgroundColor: `${item.color}20`, color: item.color }}
-  >
-    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-    <span className="truncate">{item.name}</span>
-  </span>
-)
+export const Pill: React.FC<{
+  item: PropertyItem
+  indicatorStyle?: StatusIndicatorStyle
+  progress?: number
+}> = ({ item, indicatorStyle, progress }) => {
+  if (indicatorStyle && progress !== undefined) {
+    return <StatusBadge name={item.name} color={item.color} progress={progress} indicatorStyle={indicatorStyle} />
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10.5px] font-medium max-w-full"
+      style={{ backgroundColor: `${item.color}20`, color: item.color }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+      <span className="truncate">{item.name}</span>
+    </span>
+  )
+}
 
-export const TaskCustomPropertyField: React.FC<Props> = ({ prop, task, items, onChange }) => {
+export const TaskCustomPropertyField: React.FC<Props> = ({ prop, task, items, indicatorStyle, onChange }) => {
   const value = task.customValues?.[prop.id]
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -90,6 +101,9 @@ export const TaskCustomPropertyField: React.FC<Props> = ({ prop, task, items, on
     case 'select':
     case 'status': {
       const current = items.find(i => i.id === value)
+      const currentProgress = prop.type === 'status' ? computeStatusProgress(value, items) : undefined
+      const effectiveIndicator = prop.type === 'status' ? (indicatorStyle || 'circle') : undefined
+
       return (
         <div ref={ref} className="relative">
           <button
@@ -97,7 +111,11 @@ export const TaskCustomPropertyField: React.FC<Props> = ({ prop, task, items, on
             onClick={() => setOpen(o => !o)}
             className="w-full flex items-center justify-between bg-[#1b1b20] hover:bg-[#222228] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors cursor-pointer"
           >
-            {current ? <Pill item={current} /> : <span className="text-zinc-600">Vazio</span>}
+            {current ? (
+              <Pill item={current} indicatorStyle={effectiveIndicator} progress={currentProgress} />
+            ) : (
+              <span className="text-zinc-600">Vazio</span>
+            )}
             <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
           </button>
           {open && (
@@ -121,22 +139,25 @@ export const TaskCustomPropertyField: React.FC<Props> = ({ prop, task, items, on
                     return (
                       <div key={g.id}>
                         <div className="px-2.5 pt-1 pb-0.5 text-[10px] text-zinc-500">{g.label}</div>
-                        {gi.map(it => (
-                          <button
-                            key={it.id}
-                            type="button"
-                            onClick={() => {
-                              onChange(it.id)
-                              setOpen(false)
-                            }}
-                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer ${
-                              it.id === value ? 'bg-zinc-800/80' : 'hover:bg-zinc-800/40'
-                            }`}
-                          >
-                            <Pill item={it} />
-                            {it.id === value && <Check className="w-3.5 h-3.5 text-zinc-400" />}
-                          </button>
-                        ))}
+                        {gi.map(it => {
+                          const itemProg = computeStatusProgress(it.id, items)
+                          return (
+                            <button
+                              key={it.id}
+                              type="button"
+                              onClick={() => {
+                                onChange(it.id)
+                                setOpen(false)
+                              }}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer ${
+                                it.id === value ? 'bg-zinc-800/80' : 'hover:bg-zinc-800/40'
+                              }`}
+                            >
+                              <Pill item={it} indicatorStyle={effectiveIndicator} progress={itemProg} />
+                              {it.id === value && <Check className="w-3.5 h-3.5 text-zinc-400" />}
+                            </button>
+                          )
+                        })}
                       </div>
                     )
                   })

@@ -16,12 +16,15 @@ export interface TaskBoard {
 
 export type TaskStatusGroup = 'todo' | 'in_progress' | 'done'
 
+export type StatusIndicatorStyle = 'circle' | 'bar' | 'dot'
+
 export interface TaskStatusOption {
   id: string
   name: string
   color: string
   isCompleted?: boolean
   group?: TaskStatusGroup
+  progress?: number
 }
 
 export type TaskPropertyType = 'text' | 'select' | 'date' | 'number' | 'context' | 'priority' | 'status' | 'multiselect' | 'checkbox' | 'url'
@@ -32,6 +35,7 @@ export interface TaskPropertyOption {
   color: string
   icon?: string
   group?: TaskStatusGroup
+  progress?: number
 }
 
 export interface TaskPropertyConfig {
@@ -73,4 +77,5 @@ export interface TaskSettings {
   priorities?: TaskPriorityOption[]
   properties: TaskPropertyConfig[]
   boards?: TaskBoard[]
+  statusIndicatorStyle?: StatusIndicatorStyle
 }

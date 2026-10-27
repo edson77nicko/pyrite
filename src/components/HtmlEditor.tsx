@@ -83,15 +83,115 @@ const DEVICE_CONFIGS: Record<DevicePreset, DeviceConfig> = {
 export const HtmlEditor: React.FC<HtmlEditorProps> = ({ note, onUpdateNote, themeMode }) => {
   const isLight = themeMode === 'light'
   const [content, setContent] = useState(note.content)
-  const [viewMode, setViewMode] = useState<ViewMode>('split')
-  const [device, setDevice] = useState<DevicePreset>('iphone-16')
+
+  // Persist View Mode ('preview' | 'split' | 'code')
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    try {
+      const saved = localStorage.getItem('pyrita_html_view_mode')
+      if (saved === 'preview' || saved === 'split' || saved === 'code') {
+        return saved
+      }
+    } catch (_) {}
+    return 'preview'
+  })
+
+  // Persist Device Preset
+  const [device, setDevice] = useState<DevicePreset>(() => {
+    try {
+      const saved = localStorage.getItem('pyrita_html_device_preset')
+      if (saved && saved in DEVICE_CONFIGS) {
+        return saved as DevicePreset
+      }
+    } catch (_) {}
+    return 'desktop'
+  })
+
+  // Persist Resizable Split View State
+  const [splitRatio, setSplitRatio] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('pyrita_html_split_ratio')
+      if (saved) {
+        const parsed = parseFloat(saved)
+        if (!isNaN(parsed) && parsed >= 15 && parsed <= 85) {
+          return parsed
+        }
+      }
+    } catch (_) {}
+    return 50
+  })
+
+  // Persist Word Wrap
+  const [wordWrap, setWordWrap] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('pyrita_html_word_wrap')
+      if (saved !== null) return saved === 'true'
+    } catch (_) {}
+    return true
+  })
+
   const [isDeviceMenuOpen, setIsDeviceMenuOpen] = useState(false)
-  const [wordWrap, setWordWrap] = useState(true)
   const [copied, setCopied] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // Resizable Split View State
-  const [splitRatio, setSplitRatio] = useState(50) // percentage for code pane (15% to 85%)
+  // Save states to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('pyrita_html_view_mode', viewMode)
+    } catch (_) {}
+  }, [viewMode])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pyrita_html_device_preset', device)
+    } catch (_) {}
+  }, [device])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pyrita_html_split_ratio', splitRatio.toString())
+    } catch (_) {}
+  }, [splitRatio])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pyrita_html_word_wrap', String(wordWrap))
+    } catch (_) {}
+  }, [wordWrap])
+
+  // Injected theme scrollbar style into iframe preview
+  const renderedContent = React.useMemo(() => {
+    const scrollbarCss = `<style id="pyrita-theme-scrollbars">
+  :root {
+    color-scheme: ${isLight ? 'light' : 'dark'};
+  }
+  ::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: ${isLight ? '#cbd5e1' : '#3f3f46'};
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: ${isLight ? '#94a3b8' : '#52525b'};
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: ${isLight ? '#cbd5e1 transparent' : '#3f3f46 transparent'};
+  }
+</style>`
+    if (!content) return scrollbarCss
+    if (/<\/head>/i.test(content)) {
+      return content.replace(/<\/head>/i, `${scrollbarCss}</head>`)
+    }
+    if (/<body/i.test(content)) {
+      return content.replace(/<body/i, `${scrollbarCss}<body`)
+    }
+    return scrollbarCss + content
+  }, [content, isLight])
   const [isDraggingSplit, setIsDraggingSplit] = useState(false)
   const splitContainerRef = useRef<HTMLDivElement>(null)
 
@@ -540,40 +640,53 @@ export const HtmlEditor: React.FC<HtmlEditorProps> = ({ note, onUpdateNote, them
               isLight ? 'bg-zinc-200/60' : 'bg-[#09090c]'
             }`}
           >
-            <div
-              className={`flex items-center justify-between px-3 py-1 border-b text-[11px] shrink-0 ${
-                isLight ? 'bg-zinc-50 border-zinc-200 text-zinc-600' : 'bg-[#14141a] border-[#22222a] text-zinc-400'
-              }`}
-            >
-              <span className="flex items-center gap-1.5 font-medium">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Renderização ao Vivo
-              </span>
-              <span className="text-[11px] font-mono opacity-80">
-                {activeDeviceConfig.name}
-              </span>
-            </div>
+            {/* Sub-bar: Renderização ao Vivo - shown only in split mode */}
+            {viewMode === 'split' && (
+              <div
+                className={`flex items-center justify-between px-3 py-1 border-b text-[11px] shrink-0 ${
+                  isLight ? 'bg-zinc-50 border-zinc-200 text-zinc-600' : 'bg-[#14141a] border-[#22222a] text-zinc-400'
+                }`}
+              >
+                <span className="flex items-center gap-1.5 font-medium">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Renderização ao Vivo
+                </span>
+                <span className="text-[11px] font-mono opacity-80">
+                  {activeDeviceConfig.name}
+                </span>
+              </div>
+            )}
 
             {/* Container with Scroll and Device Frame */}
-            <div className="flex-1 flex items-center justify-center p-2 sm:p-6 overflow-auto relative">
+            <div
+              className={`flex-1 flex items-center justify-center relative ${
+                viewMode === 'preview' && activeDeviceConfig.id === 'desktop'
+                  ? 'p-0 m-0 w-full h-full overflow-hidden'
+                  : 'p-2 sm:p-6 overflow-auto'
+              }`}
+            >
               {/* Invisible overlay during divider drag to prevent iframe from intercepting mouse */}
               {isDraggingSplit && (
                 <div className="absolute inset-0 z-50 cursor-col-resize" />
               )}
 
               {activeDeviceConfig.id === 'desktop' ? (
-                // Full Desktop View
+                // Full Desktop View (edge-to-edge in preview mode)
                 <div
-                  className={`w-full h-full shadow-2xl rounded-lg overflow-hidden border bg-white ${
-                    isLight ? 'border-zinc-300 shadow-zinc-300/50' : 'border-[#2b2b36] shadow-black/80'
+                  className={`w-full h-full overflow-hidden bg-white ${
+                    viewMode === 'preview'
+                      ? 'border-0 rounded-none shadow-none m-0 p-0'
+                      : isLight
+                      ? 'shadow-2xl rounded-lg border border-zinc-300 shadow-zinc-300/50'
+                      : 'shadow-2xl rounded-lg border border-[#2b2b36] shadow-black/80'
                   }`}
                 >
                   <iframe
                     key={refreshKey}
-                    srcDoc={content}
+                    srcDoc={renderedContent}
                     title="HTML Preview Desktop"
                     sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups"
-                    className="w-full h-full border-none bg-white"
+                    className="w-full h-full border-0 rounded-none m-0 p-0 block bg-white"
                   />
                 </div>
               ) : (
@@ -608,7 +721,7 @@ export const HtmlEditor: React.FC<HtmlEditorProps> = ({ note, onUpdateNote, them
                   <div className="flex-1 w-full h-full overflow-hidden bg-white">
                     <iframe
                       key={refreshKey}
-                      srcDoc={content}
+                      srcDoc={renderedContent}
                       title={`HTML Preview ${activeDeviceConfig.shortName}`}
                       sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups"
                       className="w-full h-full border-none bg-white"
@@ -621,23 +734,25 @@ export const HtmlEditor: React.FC<HtmlEditorProps> = ({ note, onUpdateNote, them
         )}
       </div>
 
-      {/* Bottom Status / AI Hint bar */}
-      <footer
-        className={`flex items-center justify-between px-3 py-1 border-t shrink-0 text-[11px] transition-colors ${
-          isLight ? 'bg-white border-zinc-200 text-zinc-600' : 'bg-[#0f0f14] border-[#1f1f28] text-zinc-500'
-        }`}
-      >
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-3 h-3 text-amber-500" />
-          <span>Peça ao <strong>Assistente IA</strong> para alterar o código, adicionar seções, estilizar ou criar interatividade.</span>
-        </div>
-        <div className="flex items-center gap-3 font-mono text-[10px]">
-          {viewMode === 'split' && (
-            <span className="opacity-70">Divisão: {Math.round(splitRatio)}% / {Math.round(100 - splitRatio)}%</span>
-          )}
-          <span>{content.length} caracteres</span>
-        </div>
-      </footer>
+      {/* Bottom Status / AI Hint bar - Hidden in preview mode so content takes 100% of the area */}
+      {viewMode !== 'preview' && (
+        <footer
+          className={`flex items-center justify-between px-3 py-1 border-t shrink-0 text-[11px] transition-colors ${
+            isLight ? 'bg-white border-zinc-200 text-zinc-600' : 'bg-[#0f0f14] border-[#1f1f28] text-zinc-500'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-3 h-3 text-amber-500" />
+            <span>Peça ao <strong>Assistente IA</strong> para alterar o código, adicionar seções, estilizar ou criar interatividade.</span>
+          </div>
+          <div className="flex items-center gap-3 font-mono text-[10px]">
+            {viewMode === 'split' && (
+              <span className="opacity-70">Divisão: {Math.round(splitRatio)}% / {Math.round(100 - splitRatio)}%</span>
+            )}
+            <span>{content.length} caracteres</span>
+          </div>
+        </footer>
+      )}
     </div>
   )
 }

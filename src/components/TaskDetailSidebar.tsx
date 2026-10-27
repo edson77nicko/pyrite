@@ -6,6 +6,7 @@ import { getPropertyItems, isBuiltinProperty } from '../utils/taskProperties'
 import { TaskCustomPropertyField } from './TaskCustomPropertyField'
 import { TaskContextPicker } from './TaskContextPicker'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
+import { StatusBadge, computeStatusProgress } from './StatusIndicator'
 import { LivePreviewEditor } from './LivePreviewEditor'
 import {
   CheckCircle2,
@@ -454,16 +455,21 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                 className="w-full flex items-center justify-between bg-[#1b1b20] hover:bg-[#222228] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: activeStatus.color }} />
-                  <span className="truncate">{activeStatus.name}</span>
+                  <StatusBadge
+                    name={activeStatus.name}
+                    color={activeStatus.color}
+                    progress={computeStatusProgress(activeStatus.id, settings.statuses)}
+                    indicatorStyle={settings.statusIndicatorStyle || 'circle'}
+                  />
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
               </button>
 
               {isStatusDropdownOpen && (
-                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#1a1a1f] border border-zinc-700/60 rounded-xl shadow-md p-1 space-y-0.5 animate-in fade-in duration-100">
+                <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#1a1a1f] border border-zinc-700/60 rounded-xl shadow-md p-1 space-y-0.5 animate-in fade-in duration-100 max-h-60 overflow-y-auto custom-chat-scrollbar">
                   {settings.statuses.map(st => {
                     const isSelected = st.id === activeStatus.id
+                    const prog = computeStatusProgress(st.id, settings.statuses)
                     return (
                       <button
                         type="button"
@@ -474,8 +480,12 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: st.color }} />
-                          <span>{st.name}</span>
+                          <StatusBadge
+                            name={st.name}
+                            color={st.color}
+                            progress={prog}
+                            indicatorStyle={settings.statusIndicatorStyle || 'circle'}
+                          />
                         </div>
                         {isSelected && <Check className="w-3.5 h-3.5 text-zinc-400" />}
                       </button>

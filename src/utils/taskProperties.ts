@@ -13,6 +13,7 @@ export interface PropertyItem {
   color: string
   icon?: string
   group?: TaskStatusGroup
+  progress?: number
 }
 
 export const STATUS_GROUPS: { id: TaskStatusGroup; label: string; color: string }[] = [
@@ -37,7 +38,7 @@ export const isOptionProperty = (p: TaskPropertyConfig) =>
 export const getPropertyItems = (settings: TaskSettings, prop: TaskPropertyConfig): PropertyItem[] => {
   if (prop.id === 'prop_status') {
     const list = Array.isArray(settings.statuses) && settings.statuses.length ? settings.statuses : DEFAULT_TASK_SETTINGS.statuses
-    return list.map(s => ({ id: s.id, name: s.name, color: s.color, group: statusGroupOf(s) }))
+    return list.map(s => ({ id: s.id, name: s.name, color: s.color, group: statusGroupOf(s), progress: s.progress }))
   }
   if (prop.id === 'prop_priority') {
     const list = Array.isArray(settings.priorities) && settings.priorities.length ? settings.priorities : DEFAULT_PRIORITIES
@@ -60,7 +61,8 @@ export const setPropertyItems = (settings: TaskSettings, prop: TaskPropertyConfi
         name: it.name,
         color: it.color,
         group: it.group || 'todo',
-        isCompleted: (it.group || 'todo') === 'done'
+        isCompleted: (it.group || 'todo') === 'done',
+        progress: it.progress
       }))
     return { ...settings, statuses }
   }

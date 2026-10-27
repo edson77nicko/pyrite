@@ -40,6 +40,12 @@ import {
   CheckCircle2
 } from 'lucide-react'
 import { CustomColorPickerPopover } from './CustomColorPickerPopover'
+import {
+  StatusProgressCircle,
+  StatusBarProgress,
+  computeStatusProgress,
+  type StatusIndicatorStyle
+} from './StatusIndicator'
 
 interface TaskSettingsModalProps {
   isOpen: boolean
@@ -140,9 +146,11 @@ const typeLabel = (prop: TaskPropertyConfig) => {
 const ItemRow: React.FC<{
   item: PropertyItem
   withIcon?: boolean
+  statusProgress?: number
+  indicatorStyle?: StatusIndicatorStyle
   onChange: (next: PropertyItem) => void
   onDelete: () => void
-}> = ({ item, withIcon, onChange, onDelete }) => {
+}> = ({ item, withIcon, statusProgress, indicatorStyle, onChange, onDelete }) => {
   const [pickerOpen, setPickerOpen] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
 
@@ -164,6 +172,16 @@ const ItemRow: React.FC<{
           {renderPriorityIcon(item.icon, item.color)}
         </button>
       )}
+      {statusProgress !== undefined && indicatorStyle === 'circle' && (
+        <div className="shrink-0 flex items-center" title={`Progresso calculado: ${statusProgress}%`}>
+          <StatusProgressCircle progress={statusProgress} color={item.color} size={15} />
+        </div>
+      )}
+      {statusProgress !== undefined && indicatorStyle === 'bar' && (
+        <div className="shrink-0 flex items-center" title={`Progresso: ${statusProgress}%`}>
+          <StatusBarProgress progress={statusProgress} color={item.color} showText={false} />
+        </div>
+      )}
       <button
         ref={btnRef}
         type="button"
@@ -178,6 +196,11 @@ const ItemRow: React.FC<{
         className="flex-1 min-w-0 bg-transparent text-xs text-zinc-100 outline-none rounded px-1.5 py-1 focus:bg-[#121215]"
         spellCheck={false}
       />
+      {statusProgress !== undefined && (
+        <span className="text-[10px] font-mono text-zinc-500 font-medium px-1 shrink-0">
+          {statusProgress}%
+        </span>
+      )}
       <button
         type="button"
         onClick={onDelete}
@@ -317,6 +340,61 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
 
           {prop.type === 'status' && (
             <div className="space-y-3">
+              {/* Indicator Style Selector */}
+              <div className="bg-[#1b1b20] p-2.5 rounded-xl space-y-2 border border-zinc-800/60">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-medium text-zinc-300">Ícone de Progresso</span>
+                  <span className="text-[10px] text-zinc-500 font-mono">Modo Lista & Kanban</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 bg-[#14151b] p-1 rounded-lg border border-zinc-800/50">
+                  <button
+                    type="button"
+                    onClick={() => save({ ...settings, statusIndicatorStyle: 'circle' })}
+                    className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
+                      (settings.statusIndicatorStyle || 'circle') === 'circle'
+                        ? 'bg-zinc-800 text-white shadow-xs font-semibold'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                    style={(settings.statusIndicatorStyle || 'circle') === 'circle' ? { color: 'var(--accent, #c59b27)' } : undefined}
+                    title="Círculo de progresso proporcional à quantidade de opções"
+                  >
+                    <StatusProgressCircle progress={65} color="var(--accent, #c59b27)" size={13} />
+                    <span>Círculo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => save({ ...settings, statusIndicatorStyle: 'bar' })}
+                    className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
+                      settings.statusIndicatorStyle === 'bar'
+                        ? 'bg-zinc-800 text-white shadow-xs font-semibold'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                    style={settings.statusIndicatorStyle === 'bar' ? { color: 'var(--accent, #c59b27)' } : undefined}
+                    title="Barra horizontal de progresso com porcentagem"
+                  >
+                    <StatusBarProgress progress={65} color="var(--accent, #c59b27)" showText={false} />
+                    <span>Barra (%)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => save({ ...settings, statusIndicatorStyle: 'dot' })}
+                    className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
+                      settings.statusIndicatorStyle === 'dot'
+                        ? 'bg-zinc-800 text-white shadow-xs font-semibold'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                    style={settings.statusIndicatorStyle === 'dot' ? { color: 'var(--accent, #c59b27)' } : undefined}
+                    title="Ponto circular colorido tradicional"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-[var(--accent,#c59b27)] shrink-0" />
+                    <span>Ponto</span>
+                  </button>
+                </div>
+                <div className="text-[10.5px] text-zinc-500 leading-tight">
+                  Adapta a porcentagem automaticamente conforme a quantidade e sequência de etapas.
+                </div>
+              </div>
+
               {STATUS_GROUPS.map(g => {
                 const groupItems = items.filter(i => (i.group || 'todo') === g.id)
                 return (
@@ -335,9 +413,19 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                     {groupItems.length === 0 ? (
                       <div className="px-2 py-1 text-[11px] text-zinc-600">Vazio</div>
                     ) : (
-                      groupItems.map(it => (
-                        <ItemRow key={it.id} item={it} onChange={patchItem} onDelete={() => removeItem(it.id)} />
-                      ))
+                      groupItems.map(it => {
+                        const prog = computeStatusProgress(it.id, items)
+                        return (
+                          <ItemRow
+                            key={it.id}
+                            item={it}
+                            statusProgress={prog}
+                            indicatorStyle={settings.statusIndicatorStyle || 'circle'}
+                            onChange={patchItem}
+                            onDelete={() => removeItem(it.id)}
+                          />
+                        )
+                      })
                     )}
                   </div>
                 )

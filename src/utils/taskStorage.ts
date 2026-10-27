@@ -16,6 +16,7 @@ export const DEFAULT_BOARDS: TaskBoard[] = [
 ]
 
 export const DEFAULT_TASK_SETTINGS: TaskSettings = {
+  statusIndicatorStyle: 'circle',
   statuses: [
     { id: 'inbox', name: 'Inbox', color: '#71717a', group: 'todo' },
     { id: 'in_progress', name: 'Em Andamento', color: '#3b82f6', group: 'in_progress' },
