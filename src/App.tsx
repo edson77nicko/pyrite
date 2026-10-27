@@ -22,7 +22,6 @@ import { HtmlEditor } from './components/HtmlEditor'
 import { GraphView } from './components/GraphView'
 import { CanvasView } from './components/CanvasView'
 import { TasksView } from './components/TasksView'
-import { TaskDetailSidebar } from './components/TaskDetailSidebar'
 import { CommandPalette } from './components/CommandPalette'
 import { AiAssistant } from './components/AiAssistant'
 import { StatusBar } from './components/StatusBar'
@@ -175,7 +174,6 @@ export const App: React.FC = () => {
   const [taskSettings, setTaskSettings] = useState<TaskSettings>(() => loadTaskSettings(vaultPath || 'default'))
   const [activeBoardId, setActiveBoardId] = useState<string>('default')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
-  const selectedTask = tasks.find(t => t.id === selectedTaskId) || null
 
   const taskBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
 
@@ -1389,19 +1387,6 @@ export const App: React.FC = () => {
                 />
               )}
             </div>
-
-            {/* Task Detail Drawer when in Tasks view */}
-            {currentView === 'tasks' && selectedTask && (
-              <TaskDetailSidebar
-                task={selectedTask}
-                settings={taskSettings}
-                allNotes={notes}
-                onUpdateTask={handleUpdateTask}
-                onDeleteTask={handleDeleteTask}
-                onClose={() => setSelectedTaskId(null)}
-                onOpenNote={(noteId: string) => handleSelectNote(noteId)}
-              />
-            )}
 
             {/* Right Sidebar (Backlinks, Outline, Tags) - Height limited to page below header */}
             {currentView !== 'tasks' && (

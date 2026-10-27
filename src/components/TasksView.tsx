@@ -5,6 +5,7 @@ import { DEFAULT_TASK_SETTINGS, DEFAULT_PRIORITIES } from '../utils/taskStorage'
 import { getPropertyItems, isBuiltinProperty, isOptionProperty, type PropertyItem } from '../utils/taskProperties'
 import { Pill } from './TaskCustomPropertyField'
 import { TaskSettingsModal } from './TaskSettingsModal'
+import { TaskDocumentView } from './TaskDocumentView'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import {
   StatusBadge,
@@ -474,10 +475,29 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setAddingInColumnId(null)
   }
 
+  const selectedTask = useMemo(() => {
+    return selectedTaskId ? tasks.find(t => t.id === selectedTaskId) || null : null
+  }, [tasks, selectedTaskId])
+
+  if (selectedTask) {
+    return (
+      <TaskDocumentView
+        task={selectedTask}
+        settings={settings}
+        allNotes={_allNotes}
+        boardName={currentBoard?.name || 'Tarefas'}
+        onUpdateTask={onUpdateTask}
+        onDeleteTask={onDeleteTask}
+        onClose={() => onSelectTask(null)}
+        onOpenNote={onOpenNote}
+      />
+    )
+  }
+
   return (
-    <div className="w-full h-full flex flex-col bg-[#121215] text-zinc-100 select-none overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-[#121214] text-zinc-100 select-none overflow-hidden">
       {/* 1. Header Toolbar - Seamless with Notes and Agent */}
-      <div className="h-12 px-5 bg-[#0c0c0f] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
+      <div className="h-12 px-5 bg-[#0e0e11] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
         {/* Left: Title & Counters */}
         <div className="flex items-center gap-2.5">
           <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
@@ -500,7 +520,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
         {/* Center: View Mode Switcher (Lista vs Kanban) + Grouping Options */}
         <div className="flex items-center gap-2">
           {/* View switcher buttons */}
-          <div className="flex items-center gap-0.5 bg-[#14151b] border border-zinc-800/60 p-0.5 rounded-lg">
+          <div className="flex items-center gap-0.5 bg-[#161619] border border-zinc-800/60 p-0.5 rounded-lg">
             <button
               onClick={() => setViewMode('list')}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
@@ -549,7 +569,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             <div className="relative">
               <button
                 onClick={() => setIsGroupingMenuOpen(!isGroupingMenuOpen)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-[#14151b] border border-zinc-800/60 hover:bg-[#181922] text-zinc-300 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-[#161619] border border-zinc-800/60 hover:bg-[#1a1a1e] text-zinc-300 transition-colors cursor-pointer"
                 title="Configurar qual propriedade define as colunas do Kanban"
               >
                 <SlidersHorizontal className="w-3 h-3 text-zinc-400" />
@@ -562,7 +582,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
               {isGroupingMenuOpen && (
                 <div
-                  className="absolute top-full mt-1.5 left-0 z-30 w-44 rounded-xl bg-[#13141a] shadow-lg p-1.5 space-y-0.5 animate-in fade-in-50 border border-zinc-800"
+                  className="absolute top-full mt-1.5 left-0 z-30 w-44 rounded-xl bg-[#18181b] shadow-lg p-1.5 space-y-0.5 animate-in fade-in-50 border border-zinc-800"
                   onMouseLeave={() => setIsGroupingMenuOpen(false)}
                 >
                   <div className="text-[10px] font-semibold text-zinc-500 px-2 py-1 uppercase tracking-wider">
@@ -603,14 +623,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Buscar tarefas..."
-              className="w-36 md:w-44 pl-7 pr-2.5 py-1 bg-[#14151b] border border-zinc-800/60 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-all"
+              className="w-36 md:w-44 pl-7 pr-2.5 py-1 bg-[#161619] border border-zinc-800/60 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-all"
             />
           </div>
 
           {/* Settings Gear Button */}
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-[#14151b] light:hover:bg-zinc-200 light:hover:text-zinc-950 border border-transparent hover:border-zinc-800/60 light:hover:border-zinc-300 rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-[#161619] light:hover:bg-zinc-200 light:hover:text-zinc-950 border border-transparent hover:border-zinc-800/60 light:hover:border-zinc-300 rounded-lg transition-colors cursor-pointer"
             title="Configurações das Tarefas (Propriedades e Status)"
           >
             <Settings className="w-3.5 h-3.5" />
@@ -634,658 +654,656 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {/* 2. Main Content: Lista or Kanban */}
       {viewMode === 'list' ? (
         /* LIST / TABLE VIEW - Refined, subtle selection & expandable subtasks */
-        <div className="flex-1 overflow-x-auto overflow-y-auto custom-chat-scrollbar px-5 py-3">
-          <div className="border border-zinc-800/80 rounded-[4px] overflow-hidden bg-[#13141a] shadow-xs inline-block min-w-full align-top">
-            <table className="w-full text-left text-xs border-separate border-spacing-0 table-fixed">
-              <thead className="sticky top-0 z-20 bg-[#181922] shadow-[0_1px_0_rgba(255,255,255,0.06)]">
-                <tr className="text-zinc-300 uppercase text-[10.5px] tracking-wider font-semibold border-b border-zinc-800/80">
-                  {/* Checkbox column */}
-                  <th
-                    style={{ width: columnWidths.col_select || 44 }}
-                    className="w-11 px-3 py-2.5 text-center border-r border-zinc-800/60 bg-[#181922] select-none"
-                  >
-                    <CheckSquare className="w-3.5 h-3.5 mx-auto text-zinc-500 opacity-70" />
-                  </th>
+        <div className="flex-1 overflow-x-auto overflow-y-auto custom-chat-scrollbar p-0 bg-[#121214] rounded-bl-2xl">
+          <table className="w-full text-left text-xs border-separate border-spacing-0 table-fixed min-w-full">
+            <thead className="sticky top-0 z-20 bg-[#18181b] shadow-[0_1px_0_rgba(255,255,255,0.04)]">
+              <tr className="text-zinc-300 uppercase text-[10.5px] tracking-wider font-semibold border-b border-zinc-800/80">
+                {/* Checkbox column */}
+                <th
+                  style={{ width: columnWidths.col_select || 44 }}
+                  className="w-11 px-3 py-2.5 text-center border-r border-zinc-800/60 bg-[#18181b] select-none"
+                >
+                  <CheckSquare className="w-3.5 h-3.5 mx-auto text-zinc-500 opacity-70" />
+                </th>
 
-                  {/* Task Title */}
+                {/* Task Title */}
+                <th
+                  style={{ width: columnWidths.col_title || 320 }}
+                  className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#18181b] select-none text-zinc-300"
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span>Tarefa</span>
+                  </div>
+                  {/* Resizer */}
+                  <div
+                    onMouseDown={e => handleResizeStart('col_title', e)}
+                    onDoubleClick={() => handleResetColWidth('col_title')}
+                    className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
+                    title="Arraste para redimensionar (clique duplo para redefinir)"
+                  >
+                    <div className={`w-[2px] transition-all ${activeResizingCol === 'col_title' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
+                  </div>
+                </th>
+
+                {/* Status */}
+                {!isColumnHidden('prop_status') && (
                   <th
-                    style={{ width: columnWidths.col_title || 320 }}
-                    className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#181922] select-none text-zinc-300"
+                    style={{ width: columnWidths.prop_status || 170 }}
+                    className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#18181b] select-none text-zinc-300"
                   >
                     <div className="flex items-center justify-between gap-1">
-                      <span>Tarefa</span>
+                      <span>Status</span>
+                      <button
+                        type="button"
+                        onClick={cycleStatusIndicatorStyle}
+                        className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/50 transition-colors cursor-pointer"
+                        title={`Estilo do indicador: ${indicatorStyle === 'circle' ? 'Círculo de progresso' : indicatorStyle === 'bar' ? 'Barra de progresso (%)' : 'Ponto colorido'}. Clique para alternar.`}
+                      >
+                        {indicatorStyle === 'circle' && (
+                          <StatusProgressCircle progress={65} color="var(--accent, #c59b27)" size={12} />
+                        )}
+                        {indicatorStyle === 'bar' && (
+                          <StatusBarProgress progress={65} color="var(--accent, #c59b27)" showText={false} />
+                        )}
+                        {indicatorStyle === 'dot' && (
+                          <span className="w-2 h-2 rounded-full bg-[var(--accent,#c59b27)] inline-block" />
+                        )}
+                      </button>
                     </div>
                     {/* Resizer */}
                     <div
-                      onMouseDown={e => handleResizeStart('col_title', e)}
-                      onDoubleClick={() => handleResetColWidth('col_title')}
+                      onMouseDown={e => handleResizeStart('prop_status', e)}
+                      onDoubleClick={() => handleResetColWidth('prop_status')}
                       className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
                       title="Arraste para redimensionar (clique duplo para redefinir)"
                     >
-                      <div className={`w-[2px] transition-all ${activeResizingCol === 'col_title' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
+                      <div className={`w-[2px] transition-all ${activeResizingCol === 'prop_status' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
                     </div>
                   </th>
+                )}
 
-                  {/* Status */}
-                  {!isColumnHidden('prop_status') && (
-                    <th
-                      style={{ width: columnWidths.prop_status || 170 }}
-                      className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#181922] select-none text-zinc-300"
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span>Status</span>
-                        <button
-                          type="button"
-                          onClick={cycleStatusIndicatorStyle}
-                          className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/50 transition-colors cursor-pointer"
-                          title={`Estilo do indicador: ${indicatorStyle === 'circle' ? 'Círculo de progresso' : indicatorStyle === 'bar' ? 'Barra de progresso (%)' : 'Ponto colorido'}. Clique para alternar.`}
-                        >
-                          {indicatorStyle === 'circle' && (
-                            <StatusProgressCircle progress={65} color="var(--accent, #c59b27)" size={12} />
-                          )}
-                          {indicatorStyle === 'bar' && (
-                            <StatusBarProgress progress={65} color="var(--accent, #c59b27)" showText={false} />
-                          )}
-                          {indicatorStyle === 'dot' && (
-                            <span className="w-2 h-2 rounded-full bg-[var(--accent,#c59b27)] inline-block" />
-                          )}
-                        </button>
-                      </div>
-                      {/* Resizer */}
-                      <div
-                        onMouseDown={e => handleResizeStart('prop_status', e)}
-                        onDoubleClick={() => handleResetColWidth('prop_status')}
-                        className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
-                        title="Arraste para redimensionar (clique duplo para redefinir)"
-                      >
-                        <div className={`w-[2px] transition-all ${activeResizingCol === 'prop_status' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
-                      </div>
-                    </th>
-                  )}
-
-                  {/* Priority */}
-                  {!isColumnHidden('prop_priority') && (
-                    <th
-                      style={{ width: columnWidths.prop_priority || 130 }}
-                      className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#181922] select-none text-zinc-300"
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span>Prioridade</span>
-                      </div>
-                      {/* Resizer */}
-                      <div
-                        onMouseDown={e => handleResizeStart('prop_priority', e)}
-                        onDoubleClick={() => handleResetColWidth('prop_priority')}
-                        className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
-                        title="Arraste para redimensionar (clique duplo para redefinir)"
-                      >
-                        <div className={`w-[2px] transition-all ${activeResizingCol === 'prop_priority' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
-                      </div>
-                    </th>
-                  )}
-
-                  {/* Deadline */}
-                  {!isColumnHidden('prop_deadline') && (
-                    <th
-                      style={{ width: columnWidths.prop_deadline || 160 }}
-                      className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#181922] select-none text-zinc-300"
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span>Prazo</span>
-                      </div>
-                      {/* Resizer */}
-                      <div
-                        onMouseDown={e => handleResizeStart('prop_deadline', e)}
-                        onDoubleClick={() => handleResetColWidth('prop_deadline')}
-                        className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
-                        title="Arraste para redimensionar (clique duplo para redefinir)"
-                      >
-                        <div className={`w-[2px] transition-all ${activeResizingCol === 'prop_deadline' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
-                      </div>
-                    </th>
-                  )}
-
-                  {/* Context */}
-                  {!isColumnHidden('prop_context') && (
-                    <th
-                      style={{ width: columnWidths.prop_context || 170 }}
-                      className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#181922] select-none text-zinc-300"
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span>Contexto (Nota)</span>
-                      </div>
-                      {/* Resizer */}
-                      <div
-                        onMouseDown={e => handleResizeStart('prop_context', e)}
-                        onDoubleClick={() => handleResetColWidth('prop_context')}
-                        className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
-                        title="Arraste para redimensionar (clique duplo para redefinir)"
-                      >
-                        <div className={`w-[2px] transition-all ${activeResizingCol === 'prop_context' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
-                      </div>
-                    </th>
-                  )}
-
-                  {/* Tags */}
-                  {!isColumnHidden('prop_tags') && (
-                    <th
-                      style={{ width: columnWidths.prop_tags || 150 }}
-                      className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#181922] select-none text-zinc-300"
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span>Tags</span>
-                      </div>
-                      {/* Resizer */}
-                      <div
-                        onMouseDown={e => handleResizeStart('prop_tags', e)}
-                        onDoubleClick={() => handleResetColWidth('prop_tags')}
-                        className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
-                        title="Arraste para redimensionar (clique duplo para redefinir)"
-                      >
-                        <div className={`w-[2px] transition-all ${activeResizingCol === 'prop_tags' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
-                      </div>
-                    </th>
-                  )}
-
-                  {/* Custom properties */}
-                  {customListProps.map(cp => (
-                    <th
-                      key={cp.id}
-                      style={{ width: columnWidths[cp.id] || 150 }}
-                      className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#181922] select-none text-zinc-300"
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span>{cp.name}</span>
-                      </div>
-                      {/* Resizer */}
-                      <div
-                        onMouseDown={e => handleResizeStart(cp.id, e)}
-                        onDoubleClick={() => handleResetColWidth(cp.id)}
-                        className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
-                        title="Arraste para redimensionar (clique duplo para redefinir)"
-                      >
-                        <div className={`w-[2px] transition-all ${activeResizingCol === cp.id ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
-                      </div>
-                    </th>
-                  ))}
-
-                  {/* Actions column */}
+                {/* Priority */}
+                {!isColumnHidden('prop_priority') && (
                   <th
-                    style={{ width: columnWidths.col_actions || 44 }}
-                    className="w-11 px-3 py-2.5 text-right bg-[#181922] select-none"
-                  ></th>
+                    style={{ width: columnWidths.prop_priority || 130 }}
+                    className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#18181b] select-none text-zinc-300"
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span>Prioridade</span>
+                    </div>
+                    {/* Resizer */}
+                    <div
+                      onMouseDown={e => handleResizeStart('prop_priority', e)}
+                      onDoubleClick={() => handleResetColWidth('prop_priority')}
+                      className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
+                      title="Arraste para redimensionar (clique duplo para redefinir)"
+                    >
+                      <div className={`w-[2px] transition-all ${activeResizingCol === 'prop_priority' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
+                    </div>
+                  </th>
+                )}
+
+                {/* Deadline */}
+                {!isColumnHidden('prop_deadline') && (
+                  <th
+                    style={{ width: columnWidths.prop_deadline || 160 }}
+                    className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#18181b] select-none text-zinc-300"
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span>Prazo</span>
+                    </div>
+                    {/* Resizer */}
+                    <div
+                      onMouseDown={e => handleResizeStart('prop_deadline', e)}
+                      onDoubleClick={() => handleResetColWidth('prop_deadline')}
+                      className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
+                      title="Arraste para redimensionar (clique duplo para redefinir)"
+                    >
+                      <div className={`w-[2px] transition-all ${activeResizingCol === 'prop_deadline' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
+                    </div>
+                  </th>
+                )}
+
+                {/* Context */}
+                {!isColumnHidden('prop_context') && (
+                  <th
+                    style={{ width: columnWidths.prop_context || 170 }}
+                    className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#18181b] select-none text-zinc-300"
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span>Contexto (Nota)</span>
+                    </div>
+                    {/* Resizer */}
+                    <div
+                      onMouseDown={e => handleResizeStart('prop_context', e)}
+                      onDoubleClick={() => handleResetColWidth('prop_context')}
+                      className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
+                      title="Arraste para redimensionar (clique duplo para redefinir)"
+                    >
+                      <div className={`w-[2px] transition-all ${activeResizingCol === 'prop_context' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
+                    </div>
+                  </th>
+                )}
+
+                {/* Tags */}
+                {!isColumnHidden('prop_tags') && (
+                  <th
+                    style={{ width: columnWidths.prop_tags || 150 }}
+                    className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#18181b] select-none text-zinc-300"
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span>Tags</span>
+                    </div>
+                    {/* Resizer */}
+                    <div
+                      onMouseDown={e => handleResizeStart('prop_tags', e)}
+                      onDoubleClick={() => handleResetColWidth('prop_tags')}
+                      className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
+                      title="Arraste para redimensionar (clique duplo para redefinir)"
+                    >
+                      <div className={`w-[2px] transition-all ${activeResizingCol === 'prop_tags' ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
+                    </div>
+                  </th>
+                )}
+
+                {/* Custom properties */}
+                {customListProps.map(cp => (
+                  <th
+                    key={cp.id}
+                    style={{ width: columnWidths[cp.id] || 150 }}
+                    className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#18181b] select-none text-zinc-300"
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span>{cp.name}</span>
+                    </div>
+                    {/* Resizer */}
+                    <div
+                      onMouseDown={e => handleResizeStart(cp.id, e)}
+                      onDoubleClick={() => handleResetColWidth(cp.id)}
+                      className="absolute top-0 right-0 bottom-0 w-2.5 translate-x-1/2 cursor-col-resize z-30 group/resizer flex items-center justify-center select-none"
+                      title="Arraste para redimensionar (clique duplo para redefinir)"
+                    >
+                      <div className={`w-[2px] transition-all ${activeResizingCol === cp.id ? 'h-full bg-[var(--accent,#c59b27)] shadow-[0_0_6px_var(--accent,#c59b27)]' : 'h-3.5 bg-zinc-600/40 group-hover/resizer:h-full group-hover/resizer:bg-[var(--accent,#c59b27)]'}`} />
+                    </div>
+                  </th>
+                ))}
+
+                {/* Actions column */}
+                <th
+                  style={{ width: columnWidths.col_actions || 44 }}
+                  className="w-11 px-3 py-2.5 text-right bg-[#18181b] select-none"
+                ></th>
+              </tr>
+            </thead>
+            <tbody className="font-normal">
+              {filteredTasks.length === 0 ? (
+                <tr>
+                  <td colSpan={visibleColumnCount} className="text-center py-12 text-zinc-500 text-xs">
+                    Nenhuma tarefa encontrada.
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="font-normal">
-                {filteredTasks.length === 0 ? (
-                  <tr>
-                    <td colSpan={visibleColumnCount} className="text-center py-12 text-zinc-500 text-xs">
-                      Nenhuma tarefa encontrada.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredTasks.map(task => {
-                    const isSelected = selectedTaskId === task.id
-                    const statusObj = safeStatuses.find(s => s.id === task.statusId) || safeStatuses[0]
-                    const priorityInfo = getPriorityBadge(task.priority)
-                    const isExpanded = expandedTaskIds.has(task.id)
-                    const subtasksCount = task.subtasks?.length || 0
-                    const completedSubtasksCount = task.subtasks?.filter(s => s.completed).length || 0
-                    const rowBg = isSelected ? 'bg-[#1a1b24]' : 'bg-[#13141a] group-hover:bg-[#181921]'
+              ) : (
+                filteredTasks.map(task => {
+                  const isSelected = selectedTaskId === task.id
+                  const statusObj = safeStatuses.find(s => s.id === task.statusId) || safeStatuses[0]
+                  const priorityInfo = getPriorityBadge(task.priority)
+                  const isExpanded = expandedTaskIds.has(task.id)
+                  const subtasksCount = task.subtasks?.length || 0
+                  const completedSubtasksCount = task.subtasks?.filter(s => s.completed).length || 0
+                  const rowBg = isSelected ? 'bg-[#222226]' : 'bg-[#141416] group-hover:bg-[#1a1a1e]'
 
-                    return (
-                      <React.Fragment key={task.id}>
-                        <tr
-                          data-task-item="true"
-                          onClick={() => onSelectTask(task)}
-                          className="group transition-all cursor-pointer"
+                  return (
+                    <React.Fragment key={task.id}>
+                      <tr
+                        data-task-item="true"
+                        onClick={() => onSelectTask(task)}
+                        className="group transition-all cursor-pointer"
+                      >
+                        {/* Checkbox */}
+                        <td
+                          style={{ width: columnWidths.col_select || 44 }}
+                          className={`px-3 py-2 text-center border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${
+                            isSelected
+                              ? 'bg-[#222226] border-l-[3px] border-l-[var(--accent,#c59b27)]'
+                              : 'bg-[#141416] group-hover:bg-[#1a1a1e] border-l-[3px] border-l-transparent'
+                          }`}
                         >
-                          {/* Checkbox */}
-                          <td
-                            style={{ width: columnWidths.col_select || 44 }}
-                            className={`px-3 py-2 text-center border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${
-                              isSelected
-                                ? 'bg-[#1a1b24] border-l-[3px] border-l-[var(--accent,#c59b27)]'
-                                : 'bg-[#13141a] group-hover:bg-[#181921] border-l-[3px] border-l-transparent'
-                            }`}
+                          <button
+                            type="button"
+                            onClick={e => handleToggleComplete(task, e)}
+                            className="relative cursor-pointer flex items-center justify-center p-0.5 mx-auto"
+                            title={task.completed ? 'Marcar como pendente' : 'Marcar como concluída'}
                           >
-                            <button
-                              type="button"
-                              onClick={e => handleToggleComplete(task, e)}
-                              className="relative cursor-pointer flex items-center justify-center p-0.5 mx-auto"
-                              title={task.completed ? 'Marcar como pendente' : 'Marcar como concluída'}
+                            <div
+                              className={`w-4 h-4 rounded-[4px] flex items-center justify-center transition-all ${
+                                task.completed
+                                  ? 'bg-emerald-500 border border-emerald-500 text-zinc-950 shadow-xs affine-check-pop'
+                                  : 'border border-zinc-700/80 hover:border-zinc-500 bg-transparent'
+                              }`}
                             >
-                              <div
-                                className={`w-4 h-4 rounded-[4px] flex items-center justify-center transition-all ${
-                                  task.completed
-                                    ? 'bg-emerald-500 border border-emerald-500 text-zinc-950 shadow-xs affine-check-pop'
-                                    : 'border border-zinc-700/80 hover:border-zinc-500 bg-transparent'
-                                }`}
-                              >
-                                {task.completed && <Check className="w-3 h-3 stroke-[3]" />}
+                              {task.completed && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
+
+                            {/* Affine 4-Dot Cardinal Burst */}
+                            {burstingTaskId === task.id && (
+                              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-top" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-bottom" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-left" />
+                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
                               </div>
+                            )}
+                          </button>
+                        </td>
 
-                              {/* Affine 4-Dot Cardinal Burst */}
-                              {burstingTaskId === task.id && (
-                                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                                  <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-top" />
-                                  <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-bottom" />
-                                  <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-left" />
-                                  <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
-                                </div>
-                              )}
-                            </button>
-                          </td>
+                        {/* Task Title + Subtasks expander + quick action */}
+                        <td
+                          style={{ width: columnWidths.col_title || 320 }}
+                          className={`px-3 py-2 font-medium text-zinc-100 text-[12.5px] border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={`truncate ${task.completed ? 'line-through text-zinc-500' : ''}`}>
+                              {task.title}
+                            </span>
 
-                          {/* Task Title + Subtasks expander + quick action */}
-                          <td
-                            style={{ width: columnWidths.col_title || 320 }}
-                            className={`px-3 py-2 font-medium text-zinc-100 text-[12.5px] border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className={`truncate ${task.completed ? 'line-through text-zinc-500' : ''}`}>
-                                {task.title}
-                              </span>
-
-                              {/* Subtasks expand toggle badge if task has subtasks */}
-                              {subtasksCount > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={e => {
-                                    e.stopPropagation()
-                                    toggleTaskExpand(task.id)
-                                  }}
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#161722] hover:bg-zinc-800 text-[10px] text-zinc-400 font-mono transition-colors shrink-0 cursor-pointer border-0"
-                                  title={isExpanded ? 'Ocultar subtarefas' : 'Ver subtarefas'}
-                                >
-                                  <ChevronRight
-                                    className={`w-3 h-3 text-zinc-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                                  />
-                                  <span>
-                                    {completedSubtasksCount}/{subtasksCount}
-                                  </span>
-                                </button>
-                              )}
-
-                              {/* Hover action to add subtask */}
+                            {/* Subtasks expand toggle badge if task has subtasks */}
+                            {subtasksCount > 0 && (
                               <button
                                 type="button"
                                 onClick={e => {
                                   e.stopPropagation()
                                   toggleTaskExpand(task.id)
                                 }}
-                                className="opacity-0 group-hover:opacity-100 text-[10px] text-zinc-500 hover:text-zinc-300 transition-opacity shrink-0 cursor-pointer"
-                                title="Adicionar subtarefas"
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#18181b] hover:bg-zinc-800 text-[10px] text-zinc-400 font-mono transition-colors shrink-0 cursor-pointer border-0"
+                                title={isExpanded ? 'Ocultar subtarefas' : 'Ver subtarefas'}
                               >
-                                + subtarefa
+                                <ChevronRight
+                                  className={`w-3 h-3 text-zinc-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                />
+                                <span>
+                                  {completedSubtasksCount}/{subtasksCount}
+                                </span>
                               </button>
+                            )}
+
+                            {/* Hover action to add subtask */}
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation()
+                                toggleTaskExpand(task.id)
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-[10px] text-zinc-500 hover:text-zinc-300 transition-opacity shrink-0 cursor-pointer"
+                              title="Adicionar subtarefas"
+                            >
+                              + subtarefa
+                            </button>
+                          </div>
+                        </td>
+
+                        {/* Status Pill */}
+                        {!isColumnHidden('prop_status') && (
+                          <td
+                            style={{ width: columnWidths.prop_status || 170 }}
+                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                          >
+                            <div className="relative inline-block">
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setInlineStatusTaskId(inlineStatusTaskId === task.id ? null : task.id)
+                                }}
+                                className="cursor-pointer text-left"
+                                title="Clique para alterar status"
+                              >
+                                <StatusBadge
+                                  name={statusObj.name}
+                                  color={statusObj.color}
+                                  progress={computeStatusProgress(task.statusId, safeStatuses)}
+                                  indicatorStyle={indicatorStyle}
+                                />
+                              </button>
+
+                              {inlineStatusTaskId === task.id && (
+                                <div
+                                  onClick={e => e.stopPropagation()}
+                                  className="absolute top-full left-0 mt-1 z-40 w-48 rounded-xl bg-[#18181b] shadow-2xl p-1.5 space-y-0.5 border border-zinc-700/80 animate-in fade-in-50"
+                                >
+                                  <div className="text-[10px] font-semibold text-zinc-400 px-2 py-0.5 uppercase tracking-wider">
+                                    Status da Tarefa
+                                  </div>
+                                  {safeStatuses.map(st => {
+                                    const isCur = st.id === task.statusId
+                                    const prog = computeStatusProgress(st.id, safeStatuses)
+                                    return (
+                                      <button
+                                        key={st.id}
+                                        type="button"
+                                        onClick={e => {
+                                          e.stopPropagation()
+                                          onUpdateTask({
+                                            ...task,
+                                            statusId: st.id,
+                                            completed: Boolean(st.isCompleted),
+                                            updatedAt: Date.now()
+                                          })
+                                          setInlineStatusTaskId(null)
+                                        }}
+                                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                                          isCur ? 'bg-zinc-800 text-white font-medium' : 'hover:bg-zinc-800/50 text-zinc-300'
+                                        }`}
+                                      >
+                                        <StatusBadge
+                                          name={st.name}
+                                          color={st.color}
+                                          progress={prog}
+                                          indicatorStyle={indicatorStyle}
+                                        />
+                                        {isCur && <Check className="w-3.5 h-3.5 text-zinc-400 shrink-0" />}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              )}
                             </div>
                           </td>
+                        )}
 
-                          {/* Status Pill */}
-                          {!isColumnHidden('prop_status') && (
-                            <td
-                              style={{ width: columnWidths.prop_status || 170 }}
-                              className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
-                            >
-                              <div className="relative inline-block">
+                        {/* Priority Pill */}
+                        {!isColumnHidden('prop_priority') && (
+                          <td
+                            style={{ width: columnWidths.prop_priority || 130 }}
+                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                          >
+                            {task.priority !== 'none' ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-medium"
+                                style={{
+                                  backgroundColor: priorityInfo.bg,
+                                  color: priorityInfo.color
+                                }}
+                              >
+                                <Flag className="w-2.5 h-2.5" />
+                                <span>{priorityInfo.label}</span>
+                              </span>
+                            ) : (
+                              <span className="text-zinc-600">-</span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* Deadline Pill - Never wraps */}
+                        {!isColumnHidden('prop_deadline') && (
+                          <td
+                            style={{ width: columnWidths.prop_deadline || 160 }}
+                            className={`px-3 py-2 text-zinc-300 relative whitespace-nowrap border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                          >
+                            <div className="inline-block">
+                              {task.deadline ? (
+                                <div
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-zinc-800/40 transition-colors cursor-pointer whitespace-nowrap"
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    if (editingDeadlineTaskId === task.id) {
+                                      setEditingDeadlineTaskId(null)
+                                      setDeadlineAnchorEl(null)
+                                    } else {
+                                      setDeadlineAnchorEl(e.currentTarget)
+                                      setEditingDeadlineTaskId(task.id)
+                                    }
+                                  }}
+                                >
+                                  <Hourglass className="w-3 h-3 text-zinc-500 shrink-0" />
+                                  <span className="text-[11px] font-mono shrink-0 whitespace-nowrap">{task.deadline}</span>
+                                  {task.deadline.slice(0, 10) === todayStr && (
+                                    <span
+                                      className="text-[9.5px] px-1.5 py-0.2 rounded font-medium shrink-0 whitespace-nowrap leading-none"
+                                      style={{
+                                        backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
+                                        color: 'var(--accent, #c59b27)'
+                                      }}
+                                    >
+                                      Hoje
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
                                 <button
                                   type="button"
                                   onClick={e => {
                                     e.stopPropagation()
-                                    setInlineStatusTaskId(inlineStatusTaskId === task.id ? null : task.id)
+                                    setDeadlineAnchorEl(e.currentTarget)
+                                    setEditingDeadlineTaskId(task.id)
                                   }}
-                                  className="cursor-pointer text-left"
-                                  title="Clique para alterar status"
+                                  className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity whitespace-nowrap cursor-pointer"
                                 >
-                                  <StatusBadge
-                                    name={statusObj.name}
-                                    color={statusObj.color}
-                                    progress={computeStatusProgress(task.statusId, safeStatuses)}
-                                    indicatorStyle={indicatorStyle}
-                                  />
+                                  + prazo
                                 </button>
-
-                                {inlineStatusTaskId === task.id && (
-                                  <div
-                                    onClick={e => e.stopPropagation()}
-                                    className="absolute top-full left-0 mt-1 z-40 w-48 rounded-xl bg-[#181922] shadow-2xl p-1.5 space-y-0.5 border border-zinc-700/80 animate-in fade-in-50"
-                                  >
-                                    <div className="text-[10px] font-semibold text-zinc-400 px-2 py-0.5 uppercase tracking-wider">
-                                      Status da Tarefa
-                                    </div>
-                                    {safeStatuses.map(st => {
-                                      const isCur = st.id === task.statusId
-                                      const prog = computeStatusProgress(st.id, safeStatuses)
-                                      return (
-                                        <button
-                                          key={st.id}
-                                          type="button"
-                                          onClick={e => {
-                                            e.stopPropagation()
-                                            onUpdateTask({
-                                              ...task,
-                                              statusId: st.id,
-                                              completed: Boolean(st.isCompleted),
-                                              updatedAt: Date.now()
-                                            })
-                                            setInlineStatusTaskId(null)
-                                          }}
-                                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                                            isCur ? 'bg-zinc-800 text-white font-medium' : 'hover:bg-zinc-800/50 text-zinc-300'
-                                          }`}
-                                        >
-                                          <StatusBadge
-                                            name={st.name}
-                                            color={st.color}
-                                            progress={prog}
-                                            indicatorStyle={indicatorStyle}
-                                          />
-                                          {isCur && <Check className="w-3.5 h-3.5 text-zinc-400 shrink-0" />}
-                                        </button>
-                                      )
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                          )}
-
-                          {/* Priority Pill */}
-                          {!isColumnHidden('prop_priority') && (
-                            <td
-                              style={{ width: columnWidths.prop_priority || 130 }}
-                              className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
-                            >
-                              {task.priority !== 'none' ? (
-                                <span
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-medium"
-                                  style={{
-                                    backgroundColor: priorityInfo.bg,
-                                    color: priorityInfo.color
-                                  }}
-                                >
-                                  <Flag className="w-2.5 h-2.5" />
-                                  <span>{priorityInfo.label}</span>
-                                </span>
-                              ) : (
-                                <span className="text-zinc-600">-</span>
                               )}
-                            </td>
-                          )}
+                            </div>
 
-                          {/* Deadline Pill - Never wraps */}
-                          {!isColumnHidden('prop_deadline') && (
-                            <td
-                              style={{ width: columnWidths.prop_deadline || 160 }}
-                              className={`px-3 py-2 text-zinc-300 relative whitespace-nowrap border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
-                            >
-                              <div className="inline-block">
-                                {task.deadline ? (
-                                  <div
-                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-zinc-800/40 transition-colors cursor-pointer whitespace-nowrap"
-                                    onClick={e => {
-                                      e.stopPropagation()
-                                      if (editingDeadlineTaskId === task.id) {
-                                        setEditingDeadlineTaskId(null)
-                                        setDeadlineAnchorEl(null)
-                                      } else {
-                                        setDeadlineAnchorEl(e.currentTarget)
-                                        setEditingDeadlineTaskId(task.id)
-                                      }
-                                    }}
-                                  >
-                                    <Hourglass className="w-3 h-3 text-zinc-500 shrink-0" />
-                                    <span className="text-[11px] font-mono shrink-0 whitespace-nowrap">{task.deadline}</span>
-                                    {task.deadline.slice(0, 10) === todayStr && (
-                                      <span
-                                        className="text-[9.5px] px-1.5 py-0.2 rounded font-medium shrink-0 whitespace-nowrap leading-none"
-                                        style={{
-                                          backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
-                                          color: 'var(--accent, #c59b27)'
-                                        }}
-                                      >
-                                        Hoje
-                                      </span>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={e => {
-                                      e.stopPropagation()
-                                      setDeadlineAnchorEl(e.currentTarget)
-                                      setEditingDeadlineTaskId(task.id)
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity whitespace-nowrap cursor-pointer"
-                                  >
-                                    + prazo
-                                  </button>
-                                )}
-                              </div>
-
-                              {editingDeadlineTaskId === task.id && deadlineAnchorEl && (
-                                <CustomDatePickerPopover
-                                  value={task.deadline}
-                                  anchorEl={deadlineAnchorEl}
-                                  onChange={newDeadline => {
-                                    onUpdateTask({ ...task, deadline: newDeadline, updatedAt: Date.now() })
-                                    setEditingDeadlineTaskId(null)
-                                    setDeadlineAnchorEl(null)
-                                  }}
-                                  onClose={() => {
-                                    setEditingDeadlineTaskId(null)
-                                    setDeadlineAnchorEl(null)
-                                  }}
-                                  align="left"
-                                />
-                              )}
-                            </td>
-                          )}
-
-                          {/* Context (Nota vinculada) */}
-                          {!isColumnHidden('prop_context') && (
-                            <td
-                              style={{ width: columnWidths.prop_context || 170 }}
-                              className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
-                            >
-                              {task.contextNoteId ? (
-                                <span
-                                  onClick={e => {
-                                    e.stopPropagation()
-                                    onOpenNote(task.contextNoteId!)
-                                  }}
-                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#161722] hover:bg-zinc-800 transition-colors text-[11px] font-medium max-w-[190px] truncate cursor-pointer"
-                                  style={{ color: 'var(--accent, #c59b27)' }}
-                                  title="Abrir nota vinculada no editor"
-                                >
-                                  <Compass className="w-3 h-3 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
-                                  <span className="truncate">{task.contextNoteTitle || 'Nota'}</span>
-                                </span>
-                              ) : (
-                                <span className="text-zinc-600">-</span>
-                              )}
-                            </td>
-                          )}
-
-                          {/* Tags */}
-                          {!isColumnHidden('prop_tags') && (
-                            <td
-                              style={{ width: columnWidths.prop_tags || 150 }}
-                              className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
-                            >
-                              <div className="flex items-center gap-1 flex-wrap">
-                                {task.tags.map(tag => (
-                                  <span
-                                    key={tag}
-                                    className="px-1.5 py-0.2 rounded bg-zinc-850/80 text-[10px] text-zinc-400 font-mono"
-                                  >
-                                    #{tag}
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
-                          )}
-
-                          {/* Custom property cells */}
-                          {customListProps.map(cp => (
-                            <td
-                              key={cp.id}
-                              style={{ width: columnWidths[cp.id] || 150 }}
-                              className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
-                            >
-                              {renderCustomCell(task, cp)}
-                            </td>
-                          ))}
-
-                          {/* Row Action */}
-                          <td
-                            style={{ width: columnWidths.col_actions || 44 }}
-                            className={`px-3 py-2 text-right border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
-                          >
-                            <button
-                              onClick={e => {
-                                e.stopPropagation()
-                                setTaskToDelete(task)
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition-opacity cursor-pointer"
-                              title="Excluir tarefa"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {editingDeadlineTaskId === task.id && deadlineAnchorEl && (
+                              <CustomDatePickerPopover
+                                value={task.deadline}
+                                anchorEl={deadlineAnchorEl}
+                                onChange={newDeadline => {
+                                  onUpdateTask({ ...task, deadline: newDeadline, updatedAt: Date.now() })
+                                  setEditingDeadlineTaskId(null)
+                                  setDeadlineAnchorEl(null)
+                                }}
+                                onClose={() => {
+                                  setEditingDeadlineTaskId(null)
+                                  setDeadlineAnchorEl(null)
+                                }}
+                                align="left"
+                              />
+                            )}
                           </td>
-                        </tr>
+                        )}
 
-                        {/* Expandable Subtasks Row in List View */}
-                        {isExpanded && (
-                          <tr key={`${task.id}_subtasks_row`} className="bg-[#101116] border-b border-zinc-800/60 transition-all animate-in fade-in duration-150">
-                            <td
-                              colSpan={visibleColumnCount}
-                              className="px-3 py-1.5 bg-[#101116] border-b border-zinc-800/60 rounded-none"
-                            >
-                              <div className="ml-7 pl-3 border-l border-zinc-800/70 space-y-0.5 my-1">
-                                {task.subtasks && task.subtasks.length > 0 ? (
-                                  task.subtasks.map(sub => (
-                                    <div
-                                      key={sub.id}
-                                      className="flex items-center justify-between py-0.5 px-2 rounded hover:bg-zinc-800/20 group/sub transition-colors"
-                                    >
-                                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                                        <button
-                                          type="button"
-                                          onClick={e => handleToggleSubtask(task, sub.id, e)}
-                                          className="cursor-pointer transition-transform shrink-0 relative flex items-center justify-center p-0.5"
-                                        >
-                                          <div
-                                            className={`w-3.5 h-3.5 rounded-[4px] flex items-center justify-center transition-all ${
-                                              sub.completed
-                                                ? 'bg-emerald-500 text-zinc-950 shadow-xs affine-check-pop'
-                                                : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
-                                            }`}
-                                          >
-                                            {sub.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                                          </div>
-                                          {burstingSubtaskId === sub.id && (
-                                            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                                              <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-top" />
-                                              <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-bottom" />
-                                              <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-left" />
-                                              <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
-                                            </div>
-                                          )}
-                                        </button>
-                                        {editingSubtaskId === sub.id ? (
-                                          <input
-                                            autoFocus
-                                            type="text"
-                                            value={editingSubtaskTitle}
-                                            onChange={e => setEditingSubtaskTitle(e.target.value)}
-                                            onKeyDown={e => {
-                                              if (e.key === 'Enter') handleSaveSubtaskTitle(task, sub.id)
-                                              if (e.key === 'Escape') setEditingSubtaskId(null)
-                                            }}
-                                            onBlur={() => handleSaveSubtaskTitle(task, sub.id)}
-                                            onClick={e => e.stopPropagation()}
-                                            className="text-xs bg-zinc-800/80 text-zinc-100 border border-zinc-700 rounded px-1.5 py-0.5 outline-none flex-1 min-w-0"
-                                          />
-                                        ) : (
-                                          <span
-                                            onClick={e => handleStartEditSubtask(sub, e)}
-                                            className={`text-xs truncate cursor-text hover:text-zinc-100 transition-colors ${
-                                              sub.completed ? 'line-through text-zinc-500' : 'text-zinc-200'
-                                            }`}
-                                            title="Clique para editar o texto da subtarefa"
-                                          >
-                                            {sub.title}
-                                          </span>
-                                        )}
-                                      </div>
+                        {/* Context (Nota vinculada) */}
+                        {!isColumnHidden('prop_context') && (
+                          <td
+                            style={{ width: columnWidths.prop_context || 170 }}
+                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                          >
+                            {task.contextNoteId ? (
+                              <span
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  onOpenNote(task.contextNoteId!)
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#18181b] hover:bg-zinc-800 transition-colors text-[11px] font-medium max-w-[190px] truncate cursor-pointer"
+                                style={{ color: 'var(--accent, #c59b27)' }}
+                                title="Abrir nota vinculada no editor"
+                              >
+                                <Compass className="w-3 h-3 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
+                                <span className="truncate">{task.contextNoteTitle || 'Nota'}</span>
+                              </span>
+                            ) : (
+                              <span className="text-zinc-600">-</span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* Tags */}
+                        {!isColumnHidden('prop_tags') && (
+                          <td
+                            style={{ width: columnWidths.prop_tags || 150 }}
+                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                          >
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {task.tags.map(tag => (
+                                <span
+                                  key={tag}
+                                  className="px-1.5 py-0.2 rounded bg-zinc-850/80 text-[10px] text-zinc-400 font-mono"
+                                >
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                        )}
+
+                        {/* Custom property cells */}
+                        {customListProps.map(cp => (
+                          <td
+                            key={cp.id}
+                            style={{ width: columnWidths[cp.id] || 150 }}
+                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                          >
+                            {renderCustomCell(task, cp)}
+                          </td>
+                        ))}
+
+                        {/* Row Action */}
+                        <td
+                          style={{ width: columnWidths.col_actions || 44 }}
+                          className={`px-3 py-2 text-right border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                        >
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              setTaskToDelete(task)
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition-opacity cursor-pointer"
+                            title="Excluir tarefa"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+
+                      {/* Expandable Subtasks Row in List View */}
+                      {isExpanded && (
+                        <tr key={`${task.id}_subtasks_row`} className="bg-[#111113] border-b border-zinc-800/60 transition-all animate-in fade-in duration-150">
+                          <td
+                            colSpan={visibleColumnCount}
+                            className="px-3 py-1.5 bg-[#111113] border-b border-zinc-800/60 rounded-none"
+                          >
+                            <div className="ml-7 pl-3 border-l border-zinc-800/70 space-y-0.5 my-1">
+                              {task.subtasks && task.subtasks.length > 0 ? (
+                                task.subtasks.map(sub => (
+                                  <div
+                                    key={sub.id}
+                                    className="flex items-center justify-between py-0.5 px-2 rounded hover:bg-zinc-800/20 group/sub transition-colors"
+                                  >
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
                                       <button
                                         type="button"
-                                        onClick={e => handleDeleteSubtask(task, sub.id, e)}
-                                        className="opacity-0 group-hover/sub:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition-opacity cursor-pointer shrink-0"
-                                        title="Excluir subtarefa"
+                                        onClick={e => handleToggleSubtask(task, sub.id, e)}
+                                        className="cursor-pointer transition-transform shrink-0 relative flex items-center justify-center p-0.5"
                                       >
-                                        <Trash2 className="w-3 h-3" />
+                                        <div
+                                          className={`w-3.5 h-3.5 rounded-[4px] flex items-center justify-center transition-all ${
+                                            sub.completed
+                                              ? 'bg-emerald-500 text-zinc-950 shadow-xs affine-check-pop'
+                                              : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
+                                          }`}
+                                        >
+                                          {sub.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                        </div>
+                                        {burstingSubtaskId === sub.id && (
+                                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                            <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-top" />
+                                            <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-bottom" />
+                                            <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-left" />
+                                            <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
+                                          </div>
+                                        )}
                                       </button>
+                                      {editingSubtaskId === sub.id ? (
+                                        <input
+                                          autoFocus
+                                          type="text"
+                                          value={editingSubtaskTitle}
+                                          onChange={e => setEditingSubtaskTitle(e.target.value)}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Enter') handleSaveSubtaskTitle(task, sub.id)
+                                            if (e.key === 'Escape') setEditingSubtaskId(null)
+                                          }}
+                                          onBlur={() => handleSaveSubtaskTitle(task, sub.id)}
+                                          onClick={e => e.stopPropagation()}
+                                          className="text-xs bg-zinc-800/80 text-zinc-100 border border-zinc-700 rounded px-1.5 py-0.5 outline-none flex-1 min-w-0"
+                                        />
+                                      ) : (
+                                        <span
+                                          onClick={e => handleStartEditSubtask(sub, e)}
+                                          className={`text-xs truncate cursor-text hover:text-zinc-100 transition-colors ${
+                                            sub.completed ? 'line-through text-zinc-500' : 'text-zinc-200'
+                                          }`}
+                                          title="Clique para editar o texto da subtarefa"
+                                        >
+                                          {sub.title}
+                                        </span>
+                                      )}
                                     </div>
-                                  ))
-                                ) : (
-                                  <div className="text-[11px] text-zinc-600 py-0.5 px-1">Nenhuma subtarefa criada ainda.</div>
-                                )}
+                                    <button
+                                      type="button"
+                                      onClick={e => handleDeleteSubtask(task, sub.id, e)}
+                                      className="opacity-0 group-hover/sub:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition-opacity cursor-pointer shrink-0"
+                                      title="Excluir subtarefa"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-[11px] text-zinc-600 py-0.5 px-1">Nenhuma subtarefa criada ainda.</div>
+                              )}
 
-                                {/* Inline quick add for subtask */}
-                                <form
-                                  onSubmit={e => handleAddSubtask(task, newSubtaskTitle[task.id] || '', e)}
-                                  className="flex items-center gap-2 py-0.5 px-1"
-                                >
-                                  <CornerDownRight className="w-3 h-3 text-zinc-600 shrink-0" />
-                                  <input
-                                    type="text"
-                                    value={newSubtaskTitle[task.id] || ''}
-                                    onChange={e =>
-                                      setNewSubtaskTitle(prev => ({ ...prev, [task.id]: e.target.value }))
-                                    }
-                                    placeholder="+ Nova subtarefa... e pressione Enter"
-                                    className="flex-1 bg-transparent border-0 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none transition-colors py-0.5"
-                                  />
-                                </form>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    )
-                  })
-                )}
+                              {/* Inline quick add for subtask */}
+                              <form
+                                onSubmit={e => handleAddSubtask(task, newSubtaskTitle[task.id] || '', e)}
+                                className="flex items-center gap-2 py-0.5 px-1"
+                              >
+                                <CornerDownRight className="w-3 h-3 text-zinc-600 shrink-0" />
+                                <input
+                                  type="text"
+                                  value={newSubtaskTitle[task.id] || ''}
+                                  onChange={e =>
+                                    setNewSubtaskTitle(prev => ({ ...prev, [task.id]: e.target.value }))
+                                  }
+                                  placeholder="+ Nova subtarefa... e pressione Enter"
+                                  className="flex-1 bg-transparent border-0 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none transition-colors py-0.5"
+                                />
+                              </form>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })
+              )}
 
-                {/* Inline Quick Add Row */}
-                <tr className="bg-[#14151c] hover:bg-[#181922] transition-colors rounded-none border-b border-zinc-800/60 task-quick-add-row">
-                  <td
-                    style={{ width: columnWidths.col_select || 44 }}
-                    className="px-3 py-2.5 text-center border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-zinc-500 mx-auto" />
-                  </td>
-                  <td colSpan={visibleColumnCount - 1} className="px-3 py-2.5 border-b border-zinc-800/60 rounded-none">
-                    <form onSubmit={handleQuickAddInList} className="flex items-center">
-                      <input
-                        type="text"
-                        value={newTaskInput}
-                        onChange={e => setNewTaskInput(e.target.value)}
-                        placeholder="+ Adicionar nova tarefa e pressionar Enter..."
-                        className="w-full bg-transparent text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none"
-                      />
-                    </form>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+              {/* Inline Quick Add Row */}
+              <tr className="bg-[#141416] hover:bg-[#1a1a1e] transition-colors rounded-none border-b border-zinc-800/60 task-quick-add-row">
+                <td
+                  style={{ width: columnWidths.col_select || 44 }}
+                  className="px-3 py-2.5 text-center border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none"
+                >
+                  <Plus className="w-3.5 h-3.5 text-zinc-500 mx-auto" />
+                </td>
+                <td colSpan={visibleColumnCount - 1} className="px-3 py-2.5 border-b border-zinc-800/60 rounded-none">
+                  <form onSubmit={handleQuickAddInList} className="flex items-center">
+                    <input
+                      type="text"
+                      value={newTaskInput}
+                      onChange={e => setNewTaskInput(e.target.value)}
+                      placeholder="+ Adicionar nova tarefa e pressionar Enter..."
+                      className="w-full bg-transparent text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none"
+                    />
+                  </form>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       ) : (
         /* KANBAN BOARD VIEW - Distinct Contrast, Refined Header & Cards */
-        <div className="flex-1 overflow-x-auto overflow-y-hidden custom-chat-scrollbar p-5 flex gap-4 items-start bg-[#121215]">
+        <div className="flex-1 overflow-x-auto overflow-y-hidden custom-chat-scrollbar p-5 flex gap-4 items-start bg-[#121214] rounded-bl-2xl">
           {kanbanColumns.map(statusCol => {
                 const colTasks = filteredTasks.filter(t => getTaskColumnId(t) === statusCol.id)
                 const isAdding = addingInColumnId === statusCol.id
@@ -1311,12 +1329,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       setDraggedTaskId(null)
                       setDragOverColumnId(null)
                     }}
-                    className={`w-76 shrink-0 flex flex-col max-h-full rounded-2xl bg-[#0e0e11] border-0 overflow-hidden transition-all ${
-                      isDragTarget ? 'ring-1 ring-[var(--accent)]/50 bg-[#111114]' : ''
+                    className={`w-76 shrink-0 flex flex-col max-h-full rounded-2xl bg-[#0f0f12] border-0 overflow-hidden transition-all ${
+                      isDragTarget ? 'ring-1 ring-[var(--accent)]/50 bg-[#141416]' : ''
                     }`}
                   >
                     {/* Differentiated Column Header */}
-                    <div className="flex items-center justify-between mx-1.5 mt-1.5 px-3 py-2 rounded-xl bg-[#1b1b1f] shadow-[0_2px_6px_rgba(0,0,0,0.45)] shrink-0">
+                    <div className="flex items-center justify-between mx-1.5 mt-1.5 px-3 py-2 rounded-xl bg-[#18181b] shadow-[0_2px_6px_rgba(0,0,0,0.45)] shrink-0">
                       <div className="flex items-center gap-2 min-w-0">
                         {groupProp.id === 'prop_status' && indicatorStyle === 'circle' ? (
                           <StatusProgressCircle
@@ -1339,7 +1357,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <span className="text-xs font-semibold text-zinc-100 truncate tracking-wide">
                           {statusCol.name}
                         </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-medium bg-[#0e0e11] text-zinc-400 shrink-0">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-medium bg-[#121214] text-zinc-400 shrink-0">
                           {colTasks.length}
                         </span>
                       </div>
