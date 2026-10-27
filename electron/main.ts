@@ -262,9 +262,99 @@ function scanVaultDirectory(dir: string, baseDir: string): VaultFileResult[] {
   return results
 }
 
+let vaultWatcher: fs.FSWatcher | null = null
+let watchDebounceTimer: NodeJS.Timeout | null = null
+
+function setupVaultWatcher(vaultPath: string) {
+  if (vaultWatcher) {
+    try { vaultWatcher.close() } catch {}
+    vaultWatcher = null
+  }
+  if (!vaultPath || !fs.existsSync(vaultPath)) return
+
+  try {
+    vaultWatcher = fs.watch(vaultPath, { recursive: true }, (_eventType, filename) => {
+      if (!filename) return
+      // Ignore git, node_modules, dist, builds, temp files
+      if (
+        filename.includes('.git') ||
+        filename.includes('node_modules') ||
+        filename.includes('dist') ||
+        filename.includes('release') ||
+        filename.endsWith('.tmp') ||
+        filename.startsWith('.')
+      ) return
+
+      if (watchDebounceTimer) clearTimeout(watchDebounceTimer)
+      watchDebounceTimer = setTimeout(() => {
+        win?.webContents.send('vault:changed', { filename })
+      }, 350)
+    })
+  } catch (err) {
+    console.error('Failed to setup vault watcher:', err)
+  }
+}
+
 ipcMain.handle('vault:readVault', (_event, vaultPath: string) => {
   if (!vaultPath || !fs.existsSync(vaultPath)) return []
+  setupVaultWatcher(vaultPath)
   return scanVaultDirectory(vaultPath, vaultPath)
+})
+
+ipcMain.handle('vault:importHtml', async (_event, { vaultPath, targetFolder }: { vaultPath: string; targetFolder?: string }) => {
+  if (!win) return { success: false, error: 'Janela indisponível' }
+  const result = await dialog.showOpenDialog(win, {
+    title: 'Importar Arquivo HTML para o Cofre',
+    buttonLabel: 'Importar HTML',
+    filters: [
+      { name: 'Arquivos HTML', extensions: ['html', 'htm'] },
+      { name: 'Todos os Arquivos', extensions: ['*'] }
+    ],
+    properties: ['openFile', 'multiSelections']
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, canceled: true }
+  }
+
+  const destFolder = targetFolder || 'Início'
+  const destDir = destFolder && destFolder !== 'Início'
+    ? path.join(vaultPath, destFolder.replace(/\//g, path.sep))
+    : vaultPath
+
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true })
+  }
+
+  const imported: VaultFileResult[] = []
+
+  for (const srcPath of result.filePaths) {
+    try {
+      const baseName = path.basename(srcPath)
+      const title = baseName.replace(/\.(html|htm)$/i, '')
+      const targetName = baseName.toLowerCase().endsWith('.html') || baseName.toLowerCase().endsWith('.htm')
+        ? baseName
+        : `${baseName}.html`
+      const destPath = path.join(destDir, targetName)
+
+      fs.copyFileSync(srcPath, destPath)
+      const stats = fs.statSync(destPath)
+      const content = fs.readFileSync(destPath, 'utf-8')
+
+      imported.push({
+        title,
+        folder: destFolder,
+        filePath: destPath,
+        content,
+        createdAt: stats.birthtimeMs || stats.ctimeMs,
+        updatedAt: stats.mtimeMs
+      })
+    } catch (err: any) {
+      console.error('Erro ao importar arquivo:', srcPath, err)
+    }
+  }
+
+  return { success: true, files: imported }
 })
 
 ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content, exclusive, type, filePath: explicitFilePath }: { vaultPath: string; folder: string; title: string; content: string; exclusive?: boolean; type?: string; filePath?: string }) => {

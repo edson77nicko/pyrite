@@ -49,6 +49,63 @@ export const App: React.FC = () => {
     return typeof localStorage !== 'undefined' ? localStorage.getItem('pyrite_electron_vault_path') : null
   })
 
+  const handleRefreshVault = async (targetPath?: string, keepSelection = true) => {
+    if (typeof window === 'undefined' || !window.electronAPI?.isElectron) return
+    const api = window.electronAPI
+    const currentPath = targetPath || vaultPath || localStorage.getItem('pyrite_electron_vault_path')
+    if (!currentPath) return
+
+    try {
+      const files = await api.readVault(currentPath)
+      if (files.length > 0) {
+        setNotes(prevNotes => {
+          const existingMap = new Map(prevNotes.map(n => [n.filePath || `${n.folder}/${n.title}`, n]))
+          const loadedNotes: Note[] = files.map((f, i) => {
+            const key = f.filePath || `${f.folder}/${f.title}`
+            const existing = existingMap.get(key)
+            return {
+              id: existing ? existing.id : `note_disk_${i}_${Date.now()}`,
+              title: f.title,
+              folder: f.folder,
+              content: f.content,
+              filePath: f.filePath,
+              tags: extractTags(f.content),
+              type: (isMindMapContent(f.content) || f.filePath?.endsWith('.mindmap.json') || f.filePath?.endsWith('.mindmap.md'))
+                ? 'mindmap'
+                : (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md'))
+                ? 'draw'
+                : (f.filePath?.endsWith('.html') || f.filePath?.endsWith('.htm'))
+                ? 'html'
+                : 'note',
+              createdAt: f.createdAt,
+              updatedAt: f.updatedAt,
+              isFavorite: existing?.isFavorite
+            }
+          })
+          const loadedFolders = Array.from(new Set(loadedNotes.map(n => n.folder).filter(Boolean)))
+          setFolders(loadedFolders)
+          saveNotes(loadedNotes)
+          saveFolders(loadedFolders)
+          if (!keepSelection && loadedNotes[0]) {
+            setCurrentNoteId(loadedNotes[0].id)
+            setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title, type: loadedNotes[0].type }])
+            setActiveTabId(`tab_${loadedNotes[0].id}`)
+          }
+          return loadedNotes
+        })
+        setTasks(loadTasks(currentPath))
+        setTaskSettings(loadTaskSettings(currentPath))
+      } else {
+        setNotes([])
+        setFolders([])
+        saveNotes([])
+        saveFolders([])
+      }
+    } catch (err) {
+      console.error('Error refreshing vault:', err)
+    }
+  }
+
   // Electron Local Vault Auto-initialization (Phase 2)
   useEffect(() => {
     if (typeof window === 'undefined' || !window.electronAPI?.isElectron) return
@@ -62,54 +119,29 @@ export const App: React.FC = () => {
           localStorage.setItem('pyrite_electron_vault_path', currentPath)
         }
         setVaultPath(currentPath)
-
-        const files = await api.readVault(currentPath)
-        if (files.length > 0) {
-          const loadedNotes: Note[] = files.map((f, i) => ({
-            id: `note_disk_${i}_${Date.now()}`,
-            title: f.title,
-            folder: f.folder,
-            content: f.content,
-            filePath: f.filePath,
-            tags: extractTags(f.content),
-            type: (isMindMapContent(f.content) || f.filePath?.endsWith('.mindmap.json') || f.filePath?.endsWith('.mindmap.md'))
-              ? 'mindmap'
-              : (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md'))
-              ? 'draw'
-              : (f.filePath?.endsWith('.html') || f.filePath?.endsWith('.htm'))
-              ? 'html'
-              : 'note',
-            createdAt: f.createdAt,
-            updatedAt: f.updatedAt
-          }))
-          const loadedFolders = Array.from(new Set(loadedNotes.map(n => n.folder).filter(Boolean)))
-          setNotes(loadedNotes)
-          setFolders(loadedFolders)
-          saveNotes(loadedNotes)
-          saveFolders(loadedFolders)
-          setTasks(loadTasks(currentPath))
-          setTaskSettings(loadTaskSettings(currentPath))
-          if (loadedNotes[0]) {
-            setCurrentNoteId(loadedNotes[0].id)
-            setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title, type: loadedNotes[0].type }])
-            setActiveTabId(`tab_${loadedNotes[0].id}`)
-          }
-        } else {
-          // Clean empty vault: do not create unwanted notes or folders
-          setNotes([])
-          setFolders([])
-          saveNotes([])
-          saveFolders([])
-          setCurrentNoteId('')
-          setTabs([])
-          setActiveTabId('')
-        }
+        await handleRefreshVault(currentPath, false)
       } catch (err) {
         console.error('Error initializing Electron vault:', err)
       }
     }
 
     initLocalVault()
+
+    // File change listener (fs.watch in main process)
+    const unlistenWatch = api.onVaultChanged?.(() => {
+      handleRefreshVault(undefined, true)
+    })
+
+    // Window focus listener (when switching from Windows Explorer / Browser back to Pyrita)
+    const handleFocus = () => {
+      handleRefreshVault(undefined, true)
+    }
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      unlistenWatch?.()
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [])
 
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -623,6 +655,73 @@ export const App: React.FC = () => {
     }
   }
 
+  // Import external HTML file(s) into vault
+  const handleImportHtml = async (targetFolder?: string) => {
+    const destFolder = targetFolder || currentNote?.folder || 'Início'
+    if (window.electronAPI?.isElectron && vaultPath) {
+      try {
+        const res = await window.electronAPI.importHtml({
+          vaultPath,
+          targetFolder: destFolder
+        })
+        if (res.success && res.files && res.files.length > 0) {
+          const newNotes: Note[] = res.files.map((f, i) => ({
+            id: `html_import_${Date.now()}_${i}`,
+            title: f.title,
+            folder: f.folder,
+            content: f.content,
+            filePath: f.filePath,
+            tags: ['html', 'importado'],
+            type: 'html',
+            createdAt: f.createdAt,
+            updatedAt: f.updatedAt
+          }))
+          const updated = [...newNotes, ...notes]
+          setNotes(updated)
+          saveNotes(updated)
+          if (newNotes[0]) {
+            handleSelectNote(newNotes[0].id, newNotes[0])
+          }
+        }
+      } catch (err) {
+        console.error('Failed to import HTML in Electron:', err)
+      }
+      return
+    }
+
+    // Web Fallback: HTML File Input
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.html,.htm'
+    input.multiple = true
+    input.onchange = async () => {
+      if (!input.files || input.files.length === 0) return
+      const importedNotes: Note[] = []
+      for (let i = 0; i < input.files.length; i++) {
+        const file = input.files[i]
+        const text = await file.text()
+        const title = file.name.replace(/\.(html|htm)$/i, '')
+        importedNotes.push({
+          id: `html_import_${Date.now()}_${i}`,
+          title: title || 'Página Importada',
+          folder: destFolder,
+          content: text,
+          tags: ['html', 'importado'],
+          type: 'html',
+          createdAt: file.lastModified || Date.now(),
+          updatedAt: file.lastModified || Date.now()
+        })
+      }
+      if (importedNotes.length > 0) {
+        const updated = [...importedNotes, ...notes]
+        setNotes(updated)
+        saveNotes(updated)
+        handleSelectNote(importedNotes[0].id, importedNotes[0])
+      }
+    }
+    input.click()
+  }
+
   // Open or Create Today's Daily Note
   const handleOpenDailyNote = () => {
     const today = new Date().toLocaleDateString('pt-BR')
@@ -1084,6 +1183,8 @@ export const App: React.FC = () => {
           onOpenInExplorer={handleOpenInExplorer}
           onOpenVaultSwitcher={() => setIsVaultSwitcherOpen(true)}
           onOpenTasks={handleOpenTasks}
+          onRefreshVault={() => handleRefreshVault()}
+          onImportHtml={handleImportHtml}
           onSelectTaskBoard={handleSelectTaskBoard}
           onCreateTaskBoard={handleCreateTaskBoard}
           onRenameTaskBoard={handleRenameTaskBoard}
@@ -1232,6 +1333,7 @@ export const App: React.FC = () => {
                     key={currentNote.id}
                     note={currentNote}
                     onUpdateNote={handleUpdateNote}
+                    themeMode={settings.themeMode}
                   />
                 ) : (
                   <Editor

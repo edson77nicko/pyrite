@@ -38,6 +38,8 @@ export interface ElectronAPI {
   duplicateVault: (params: { sourcePath: string; vaultName: string }) => Promise<{ success: boolean; vaultPath?: string; error?: string }>
   getKnownVaults: () => Promise<{ id: string; name: string; path: string; lastOpened: number }[]>
   createVault: (params: { parentPath: string; vaultName: string }) => Promise<{ success: boolean; vaultPath?: string; error?: string }>
+  importHtml: (params: { vaultPath: string; targetFolder?: string }) => Promise<{ success: boolean; canceled?: boolean; files?: VaultFileItem[]; error?: string }>
+  onVaultChanged: (callback: (data: { filename?: string }) => void) => () => void
 
   // Auto Updater
   checkForUpdates: () => Promise<void>

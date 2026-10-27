@@ -46,6 +46,15 @@ const electronAPI = {
   getKnownVaults: () => ipcRenderer.invoke('vault:getKnownVaults') as Promise<{ id: string; name: string; path: string; lastOpened: number }[]>,
   createVault: (params: { parentPath: string; vaultName: string }) =>
     ipcRenderer.invoke('vault:createVault', params) as Promise<{ success: boolean; vaultPath?: string; error?: string }>,
+  importHtml: (params: { vaultPath: string; targetFolder?: string }) =>
+    ipcRenderer.invoke('vault:importHtml', params) as Promise<{ success: boolean; canceled?: boolean; files?: VaultFileItem[]; error?: string }>,
+  onVaultChanged: (callback: (data: { filename?: string }) => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('vault:changed', handler)
+    return () => {
+      ipcRenderer.removeListener('vault:changed', handler)
+    }
+  },
 
   // Auto Updater
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),

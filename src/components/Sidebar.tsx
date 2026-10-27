@@ -29,7 +29,9 @@ import {
   MoreVertical,
   Pencil,
   Brain,
-  CodeXml
+  CodeXml,
+  RotateCw,
+  FileInput
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -51,6 +53,8 @@ interface SidebarProps {
   onOpenInExplorer?: () => void
   onOpenVaultSwitcher?: () => void
   onOpenTasks?: () => void
+  onRefreshVault?: () => void
+  onImportHtml?: (targetFolder?: string) => void
   onSelectTaskBoard?: (boardId: string) => void
   onCreateTaskBoard?: (name: string, icon?: string) => void
   onRenameTaskBoard?: (boardId: string, newName: string) => void
@@ -108,6 +112,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenInExplorer: _onOpenInExplorer,
   onOpenVaultSwitcher,
   onOpenTasks,
+  onRefreshVault,
+  onImportHtml,
   onSelectTaskBoard,
   onCreateTaskBoard,
   onRenameTaskBoard,
@@ -117,6 +123,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onManage
 }) => {
+  const [isSyncing, setIsSyncing] = useState(false)
+  const handleSyncClick = async () => {
+    if (!onRefreshVault || isSyncing) return
+    setIsSyncing(true)
+    try {
+      await onRefreshVault()
+    } finally {
+      setTimeout(() => setIsSyncing(false), 500)
+    }
+  }
   const [context, setContext] = useState<{ x: number; y: number; note?: Note; folder?: string } | null>(null)
   const [folderFilter, setFolderFilter] = useState<string | null>(null)
   const scope = `${vaultPath || ''}:${isOpen}`
@@ -589,6 +605,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <CodeXml className="w-3 h-3 text-orange-500 hover:text-orange-400" />
               </button>
+              {onImportHtml && (
+                <button
+                  draggable={false}
+                  onDragStart={e => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onImportHtml(node.fullPath)
+                  }}
+                  className="p-0.5 hover:text-white rounded"
+                  title={`Importar HTML para ${node.fullPath}`}
+                >
+                  <FileInput className="w-3 h-3 text-orange-400 hover:text-orange-300" />
+                </button>
+              )}
               <button
                 draggable={false}
                 onDragStart={e => e.stopPropagation()}
@@ -826,6 +856,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="font-medium text-xs">Novo Arquivo HTML</span>
                 </button>
 
+                {onImportHtml && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreateMenuOpen(false)
+                      onImportHtml()
+                    }}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
+                  >
+                    <FileInput className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                    <span className="font-medium text-xs">Importar Arquivo HTML...</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
@@ -869,18 +913,43 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* 2. Search Bar - Clean, without extra border-b */}
-      <div className="p-2">
-        <div className="relative flex items-center">
+      {/* 2. Search Bar & Quick Tools */}
+      <div className="p-2 flex items-center gap-1.5">
+        <div className="relative flex-1 flex items-center">
           <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filtrar notas..."
-            className="w-full pl-7 pr-2 py-1 bg-zinc-900/90 border border-zinc-800/80 rounded-md text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[#c59b27]/60 transition-colors"
+            className="w-full pl-7 pr-2 py-1 bg-zinc-900/90 border border-zinc-800/80 rounded-md text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--accent)] transition-colors"
           />
         </div>
+
+        {/* Sync/Refresh Vault (sem texto, just icon) */}
+        {onRefreshVault && (
+          <button
+            type="button"
+            onClick={handleSyncClick}
+            disabled={isSyncing}
+            className={`p-1.5 rounded-md border border-zinc-800/80 bg-zinc-900/90 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-all shrink-0 cursor-pointer ${isSyncing ? 'animate-spin text-[var(--accent)]' : ''}`}
+            title="Sincronizar cofre e atualizar pastas"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+          </button>
+        )}
+
+        {/* Import HTML (sem texto, just icon) */}
+        {onImportHtml && (
+          <button
+            type="button"
+            onClick={() => onImportHtml()}
+            className="p-1.5 rounded-md border border-zinc-800/80 bg-zinc-900/90 text-orange-400/90 hover:text-orange-400 hover:bg-orange-500/10 transition-all shrink-0 cursor-pointer"
+            title="Importar arquivo HTML para o cofre"
+          >
+            <FileInput className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {folderFilter && <button className="px-3 py-1 text-left" style={{ color: 'var(--accent)' }} onClick={() => setFolderFilter(null)}>Pesquisa em {folderFilter} · Limpar ×</button>}
@@ -889,6 +958,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         else if (action === 'new-draw') onCreateNote(context.folder, undefined, 'draw')
         else if (action === 'new-mindmap') onCreateNote(context.folder, undefined, 'mindmap')
         else if (action === 'new-html') onCreateNote(context.folder, undefined, 'html')
+        else if (action === 'import-html') onImportHtml?.(context.folder)
         else if (action === 'new-folder') handleStartCreateFolder(vaultPath && context.folder === 'Início' ? undefined : context.folder)
         else if (action === 'search') { setFolderFilter(context.folder!); setSearch('') }
         else await onManage(action, context, value)
