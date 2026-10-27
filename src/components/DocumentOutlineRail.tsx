@@ -229,14 +229,14 @@ export const DocumentOutlineRail: React.FC<DocumentOutlineRailProps> = ({
 
               {/* The Dash / Line mark */}
               <div
-                className={`h-[2px] rounded-full transition-all duration-200 ${tickWidth} ${
+                className={`editor-outline-tick h-[2px] rounded-full transition-all duration-200 ${tickWidth} ${
                   isActive
-                    ? 'h-[3px]'
+                    ? 'h-[3px] active'
                     : isHovered
                     ? 'bg-zinc-200'
                     : 'bg-zinc-700/80 group-hover:bg-zinc-400'
                 }`}
-                style={isActive ? { backgroundColor: 'var(--accent)', boxShadow: '0 0 8px var(--accent)' } : undefined}
+                style={isActive ? { backgroundColor: 'var(--accent)', boxShadow: 'var(--accent-tick-glow, 0 0 8px var(--accent))' } : undefined}
               />
             </div>
           )

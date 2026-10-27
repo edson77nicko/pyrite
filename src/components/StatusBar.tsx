@@ -22,7 +22,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   const backlinks = currentNote ? getBacklinks(currentNote, allNotes) : []
 
   return (
-    <footer className="h-6 bg-[#0c0c0e] border-t border-zinc-800/80 px-3 flex items-center justify-between text-[11px] text-zinc-500 select-none shrink-0 font-sans">
+    <footer className="app-status-bar h-6 bg-[#0c0c0e] border-t border-zinc-800/80 px-3 flex items-center justify-between text-[11px] text-zinc-500 select-none shrink-0 font-sans">
       {/* Left status: Vault stats */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1.5 text-zinc-400">

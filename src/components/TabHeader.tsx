@@ -99,7 +99,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
   const handleClose = () => window.electronAPI?.close()
 
   return (
-    <div className="h-9 bg-[#0c0c0e] border-b border-zinc-800/80 flex items-center justify-between px-2 select-none shrink-0 z-10 text-xs app-drag">
+    <div className="app-tab-header h-9 bg-[#0c0c0e] border-b border-zinc-800/80 flex items-center justify-between px-2 select-none shrink-0 z-10 text-xs app-drag">
       {/* Left: Tabs List (Max 5 tabs) + New Tab Button */}
       <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-1 app-no-drag">
         {tabs.map((tab) => {
@@ -166,7 +166,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
               }`}
               style={isActive ? { borderTopColor: 'var(--accent)' } : undefined}
             >
-              <TabIcon className="w-3.5 h-3.5 shrink-0" style={isHtmlTab ? { color: '#f97316' } : isActive ? { color: 'var(--accent)' } : { color: '#71717a' }} />
+              <TabIcon className="w-3.5 h-3.5 shrink-0" style={isHtmlTab ? { color: '#f97316' } : isActive ? { color: 'var(--accent-icon, var(--accent))' } : { color: '#71717a' }} />
               <span className="truncate">{tab.title || 'Sem título'}</span>
 
               {/* If Pinned: Show ONLY the Gold Pin icon (click to unpin) */}

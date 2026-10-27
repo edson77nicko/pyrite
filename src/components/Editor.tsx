@@ -91,12 +91,12 @@ export const Editor: React.FC<EditorProps> = ({
   }[settings.fontSize]
 
   return (
-    <div className="flex flex-col h-full bg-[#121215] overflow-hidden relative">
+    <div className="app-editor-pane flex flex-col h-full bg-[#121215] overflow-hidden relative">
       {/* Top Editor Toolbar (Breadcrumb + In-editor formatting tools) */}
-      <div className="flex items-center justify-between px-6 py-2 bg-zinc-900/40 border-b border-zinc-800/60 text-xs text-zinc-400 shrink-0">
+      <div className="app-editor-toolbar flex items-center justify-between px-6 py-2 bg-zinc-900/40 border-b border-zinc-800/60 text-xs text-zinc-400 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-zinc-300 font-medium">
-            <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
+            <Folder className="w-3.5 h-3.5 shrink-0 editor-folder-icon" style={{ color: 'var(--accent)' }} />
             <span>{note.folder}</span>
           </div>
           <span className="text-zinc-700">/</span>
@@ -198,7 +198,7 @@ export const Editor: React.FC<EditorProps> = ({
       />
 
       {/* 4. Bottom Footer Info Bar */}
-      <div className="flex items-center justify-between px-6 py-1.5 bg-[#0c0c0e] border-t border-zinc-800/80 text-[11px] text-zinc-500 shrink-0">
+      <div className="app-editor-footer flex items-center justify-between px-6 py-1.5 bg-[#0c0c0e] border-t border-zinc-800/80 text-[11px] text-zinc-500 shrink-0">
         <div className="flex items-center gap-4">
           <span>{words} palavras</span>
           <span>•</span>

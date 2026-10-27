@@ -198,8 +198,59 @@ export const App: React.FC = () => {
       g = parseInt(hex.slice(3, 5), 16)
       b = parseInt(hex.slice(5, 7), 16)
     }
-    document.documentElement.style.setProperty('--accent-glow', `rgba(${r}, ${g}, ${b}, 0.22)`)
-    document.documentElement.style.setProperty('--accent-glow-subtle', `rgba(${r}, ${g}, ${b}, 0.12)`)
+
+    // Convert to HSL for precise derived light-mode shades
+    const rn = r / 255
+    const gn = g / 255
+    const bn = b / 255
+    const max = Math.max(rn, gn, bn)
+    const min = Math.min(rn, gn, bn)
+    const diff = max - min
+
+    let h = 0
+    if (diff > 0) {
+      if (max === rn) h = ((gn - bn) / diff) % 6
+      else if (max === gn) h = (bn - rn) / diff + 2
+      else h = (rn - gn) / diff + 4
+      h = Math.round(h * 60)
+      if (h < 0) h += 360
+    }
+    const l = (max + min) / 2
+    const s = diff === 0 ? 0 : diff / (1 - Math.abs(2 * l - 1))
+
+    // 1. Preenchimento suave (8-12%, set at 9% as required: "Cor do usuário a 8–12%")
+    const subtleBg = `rgba(${r}, ${g}, ${b}, 0.09)`
+    const subtleHover = `rgba(${r}, ${g}, ${b}, 0.14)`
+    const glow = `rgba(${r}, ${g}, ${b}, 0.20)`
+
+    // 2. Ícone / Texto para modo claro: contraste equilibrado sobre branco (#FFFFFF) sem tom berrante
+    const textLightL = Math.min(l, 0.36)
+    const textLightS = Math.min(Math.max(s, 0.60), 0.85)
+    const accentTextLight = `hsl(${h}, ${Math.round(textLightS * 100)}%, ${Math.round(textLightL * 100)}%)`
+
+    const iconLightL = Math.min(l, 0.40)
+    const iconLightS = Math.min(Math.max(s, 0.65), 0.85)
+    const accentIconLight = `hsl(${h}, ${Math.round(iconLightS * 100)}%, ${Math.round(iconLightL * 100)}%)`
+
+    // 3. Botão para modo claro: tom sólido, confortável e estável
+    const btnLightL = Math.min(Math.max(l, 0.38), 0.46)
+    const btnLightHoverL = Math.max(btnLightL - 0.06, 0.30)
+    const accentBtnBgLight = `hsl(${h}, ${Math.round(s * 100)}%, ${Math.round(btnLightL * 100)}%)`
+    const accentBtnHoverLight = `hsl(${h}, ${Math.round(s * 100)}%, ${Math.round(btnLightHoverL * 100)}%)`
+
+    // Set dynamic properties on documentElement
+    document.documentElement.style.setProperty('--accent-rgb', `${r}, ${g}, ${b}`)
+    document.documentElement.style.setProperty('--accent-glow', glow)
+    document.documentElement.style.setProperty('--accent-glow-subtle', subtleBg)
+    document.documentElement.style.setProperty('--accent-subtle', subtleBg)
+    document.documentElement.style.setProperty('--accent-subtle-hover', subtleHover)
+
+    // Derived light mode variables
+    document.documentElement.style.setProperty('--accent-text-light', accentTextLight)
+    document.documentElement.style.setProperty('--accent-icon-light', accentIconLight)
+    document.documentElement.style.setProperty('--accent-btn-bg-light', accentBtnBgLight)
+    document.documentElement.style.setProperty('--accent-btn-hover-light', accentBtnHoverLight)
+    document.documentElement.style.setProperty('--accent-btn-text-light', '#ffffff')
   }
 
   const handleUpdateSettings = (newSettings: AppSettings) => {
@@ -1131,12 +1182,12 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className={`flex flex-col w-screen h-screen ${settings.themeMode === 'light' ? 'light' : ''} bg-[#0f0f12] text-zinc-100 overflow-hidden font-sans relative`}>
+    <div className={`app-outer-shell flex flex-col w-screen h-screen ${settings.themeMode === 'light' ? 'light' : ''} bg-[#0f0f12] text-zinc-100 overflow-hidden font-sans relative`}>
       {/* Global Tactile Noise Texture Layer (Present by default in both Dark and Light modes) */}
       <div className="pyrita-noise-layer pointer-events-none" />
 
       {/* 1. Main Workspace Layout */}
-      <div className="flex flex-1 overflow-hidden relative bg-[#09090b]">
+      <div className="app-workspace-layout flex flex-1 overflow-hidden relative bg-[#09090b]">
         {/* Leftmost Ribbon Bar (Icon-only navigation like Obsidian) */}
         <Ribbon
           currentView={currentView}
@@ -1260,7 +1311,7 @@ export const App: React.FC = () => {
 
         {/* Central View Area with Workspace Tab Header */}
         <main
-          className={`flex-1 my-2 overflow-hidden relative flex flex-col ${
+          className={`app-main-pane flex-1 my-2 overflow-hidden relative flex flex-col ${
             currentView === 'graph'
               ? 'bg-[#010103] rounded-tl-2xl rounded-bl-none border-t border-l border-b-0 shadow-none'
               : 'bg-[#0f0f12] rounded-l-2xl border-y border-l shadow-lg'

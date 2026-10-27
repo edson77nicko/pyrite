@@ -544,9 +544,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <div className="flex items-center gap-1.5 truncate min-w-0">
             {isCollapsed ? (
-              <Folder className="w-3.5 h-3.5 opacity-80 shrink-0" style={{ color: 'var(--accent)' }} />
+              <Folder className="w-3.5 h-3.5 opacity-80 shrink-0 folder-icon-common" style={isTargetFolder ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
             ) : (
-              <FolderOpen className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
+              <FolderOpen className="w-3.5 h-3.5 shrink-0 folder-icon-common" style={isTargetFolder ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
             )}
             <span className="truncate">{node.name}</span>
           </div>
@@ -680,7 +680,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     isNoteDragged
                       ? 'opacity-40 scale-[0.98] border-dashed border-zinc-600'
                       : isActive
-                      ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
+                      ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs app-sidebar-note-active'
                       : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                   }`}
                   style={isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
@@ -691,8 +691,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       style={
                         isHtml
                           ? { color: '#f97316' }
-                          : (isActive || isDraw || isMindMap)
-                          ? { color: 'var(--accent)' }
+                          : isActive
+                          ? { color: 'var(--accent-icon, var(--accent))' }
                           : { color: '#71717a' }
                       }
                     />
@@ -742,10 +742,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <div
       style={{ width: `${sidebarWidth}px` }}
-      className="relative my-2 bg-[#121215] rounded-r-2xl border-y border-r border-zinc-800 flex flex-col select-none shrink-0 text-xs overflow-hidden shadow-lg"
+      className="app-sidebar relative my-2 bg-[#121215] rounded-r-2xl border-y border-r border-zinc-800 flex flex-col select-none shrink-0 text-xs overflow-hidden shadow-lg"
     >
       {/* 1. Vault Header */}
-      <div className="p-2 border-b border-zinc-800/60 bg-[#0f0f12] flex items-center justify-between gap-1">
+      <div className="app-sidebar-header p-2 border-b border-zinc-800/60 bg-[#0f0f12] flex items-center justify-between gap-1">
         <div
           onClick={onOpenVaultSwitcher || onOpenLocalFolder}
           className="flex items-center gap-2 truncate flex-1 min-w-0 p-1 -ml-0.5 rounded-lg hover:bg-zinc-800/60 cursor-pointer transition-colors group"
@@ -1296,13 +1296,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       isNoteDragged
                         ? 'opacity-40 scale-[0.98] border-dashed border-zinc-600'
                         : isActive
-                        ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
+                        ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs app-sidebar-note-active'
                         : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                     }`}
                     style={isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
                   >
                     <div className="flex items-center gap-1.5 truncate min-w-0">
-                      <Star className="w-3 h-3 shrink-0" style={{ fill: 'var(--accent)', color: 'var(--accent)' }} />
+                      <Star className="w-3 h-3 shrink-0" style={{ fill: 'var(--accent-icon, var(--accent))', color: 'var(--accent-icon, var(--accent))' }} />
                       <span className="truncate">{n.title}</span>
                     </div>
                   </div>
@@ -1364,7 +1364,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       isNoteDragged
                         ? 'opacity-40 scale-[0.98] border-dashed border-zinc-600'
                         : isActive
-                        ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
+                        ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs app-sidebar-note-active'
                         : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                     }`}
                     style={isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
@@ -1375,8 +1375,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         style={
                           isHtml
                             ? { color: '#f97316' }
-                            : (isActive || isDraw || isMindMap)
-                            ? { color: 'var(--accent)' }
+                            : isActive
+                            ? { color: 'var(--accent-icon, var(--accent))' }
                             : { color: '#71717a' }
                         }
                       />

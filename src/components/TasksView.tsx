@@ -501,9 +501,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   return (
     <div className="w-full h-full flex overflow-hidden">
-      <div className="flex-1 min-w-0 h-full flex flex-col bg-[#121214] text-zinc-100 select-none overflow-hidden">
+      <div className="app-tasks-pane flex-1 min-w-0 h-full flex flex-col bg-[#121214] text-zinc-100 select-none overflow-hidden">
         {/* 1. Header Toolbar - Seamless with Notes and Agent */}
-      <div className="h-12 px-5 bg-[#0e0e11] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
+      <div className="app-tasks-header h-12 px-5 bg-[#0e0e11] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
         {/* Left: Title & Counters */}
         <div className="flex items-center gap-2.5">
           <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
@@ -1335,12 +1335,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       setDraggedTaskId(null)
                       setDragOverColumnId(null)
                     }}
-                    className={`w-76 shrink-0 flex flex-col max-h-full rounded-2xl bg-[#0f0f12] border-0 overflow-hidden transition-all ${
+                    className={`kanban-column-card w-76 shrink-0 flex flex-col max-h-full rounded-2xl bg-[#0f0f12] border-0 overflow-hidden transition-all ${
                       isDragTarget ? 'ring-1 ring-[var(--accent)]/50 bg-[#141416]' : ''
                     }`}
                   >
                     {/* Differentiated Column Header */}
-                    <div className="flex items-center justify-between mx-1.5 mt-1.5 px-3 py-2 rounded-xl bg-[#18181b] shadow-[0_2px_6px_rgba(0,0,0,0.45)] shrink-0">
+                    <div className="kanban-column-header flex items-center justify-between mx-1.5 mt-1.5 px-3 py-2 rounded-xl bg-[#18181b] shadow-[0_2px_6px_rgba(0,0,0,0.45)] shrink-0">
                       <div className="flex items-center gap-2 min-w-0">
                         {groupProp.id === 'prop_status' && indicatorStyle === 'circle' ? (
                           <StatusProgressCircle
@@ -1406,11 +1406,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               setDragOverColumnId(null)
                             }}
                             onClick={() => onSelectTask(task)}
-                            className={`group relative rounded-xl p-3 transition-all cursor-grab active:cursor-grabbing select-none ${
+                            className={`kanban-task-card group relative rounded-xl p-3 transition-all cursor-grab active:cursor-grabbing select-none ${
                               isDragging ? 'opacity-40 scale-95' : 'opacity-100'
                             } ${
                               isSelected
-                                ? 'bg-[#1a1a1e] ring-1 ring-[var(--accent)]/70 border-0'
+                                ? 'is-selected bg-[#1a1a1e] ring-1 ring-[var(--accent)]/70 border-0'
                                 : 'bg-[#161619] hover:bg-[#1a1a1e] border-0'
                             }`}
                           >
