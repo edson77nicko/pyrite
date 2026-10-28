@@ -558,17 +558,50 @@ html.light #root,
 .light .app-outer-shell,
 .light .app-workspace-layout,
 .light .app-ribbon,
+.light .app-tasks-pane,
+.light .bg-\[\#010103\],
 .light .bg-\[\#09090b\],
+.light .bg-\[\#09090c\],
+.light .bg-\[\#090a0d\],
 .light .bg-\[\#0a0a0c\],
 .light .bg-\[\#0a0a0d\],
-.light .bg-\[\#0f0f12\] {
+.light .bg-\[\#0f0f12\],
+.light .bg-\[\#0f0f14\],
+.light .bg-\[\#121214\],
+.light .bg-zinc-950,
+.light .bg-zinc-950\/30,
+.light .bg-zinc-950\/40,
+.light .bg-zinc-950\/60,
+.light .bg-zinc-950\/90 {
   background-color: #EEF0F3 !important;
 }
 
 /* 2. Sidebar (#F6F7F9, quase branca) */
 .light .app-sidebar,
 .light .app-right-sidebar,
-.light .chat-conversations-drawer {
+.light .chat-conversations-drawer,
+.light .kanban-column-card,
+.light .task-document-rail,
+.light .bg-\[\#101013\],
+.light .bg-\[\#101015\],
+.light .bg-\[\#111114\],
+.light .bg-\[\#18181e\],
+.light .bg-\[\#181922\],
+.light .bg-\[\#1c1c20\],
+.light .bg-\[\#1e1e26\],
+.light .bg-\[\#1f1f23\],
+.light .bg-\[\#1f1f24\],
+.light .bg-\[\#202024\],
+.light .bg-\[\#242427\],
+.light .bg-zinc-900,
+.light .bg-zinc-900\/40,
+.light .bg-zinc-900\/50,
+.light .bg-zinc-900\/60,
+.light .bg-zinc-900\/70,
+.light .bg-zinc-850,
+.light .bg-zinc-850\/50,
+.light .bg-zinc-850\/80,
+.light .bg-zinc-850\/90 {
   background-color: #F6F7F9 !important;
   border-color: #E2E4E8 !important;
 }
@@ -577,29 +610,61 @@ html.light #root,
   border-bottom: 1px solid #E5E7EB !important;
 }
 
-/* 3. Editor (#FFFFFF, sem véu cinza) */
+/* 3. Editor & Cards (#FFFFFF, sem véu cinza) */
 .light .app-main-pane,
 .light .app-editor-pane,
 .light .pyrita-editor-surface,
-.light .app-tasks-pane,
-.light .bg-\[\#121215\],
-.light .bg-\[\#141416\],
-.light .bg-\[\#141418\],
+.light .task-document-page,
+.light .task-document-body,
+.light .kanban-task-card,
+.light .task-quick-add-row,
 .light .bg-\[\#101117\],
-.light .bg-\[\#111114\],
+.light .bg-\[\#111216\],
+.light .bg-\[\#121215\],
 .light .bg-\[\#121216\],
+.light .bg-\[\#121217\],
+.light .bg-\[\#121317\],
+.light .bg-\[\#121318\],
+.light .bg-\[\#12131a\],
+.light .bg-\[\#12141a\],
 .light .bg-\[\#13141a\],
+.light .bg-\[\#13151c\],
+.light .bg-\[\#141416\],
+.light .bg-\[\#141417\],
+.light .bg-\[\#141418\],
+.light .bg-\[\#14141a\],
 .light .bg-\[\#14151b\],
+.light .bg-\[\#15171d\],
+.light .bg-\[\#15171e\],
 .light .bg-\[\#161619\],
 .light .bg-\[\#16161a\],
 .light .bg-\[\#16161c\],
+.light .bg-\[\#16161d\],
+.light .bg-\[\#161722\],
+.light .bg-\[\#161820\],
 .light .bg-\[\#18181b\],
+.light .bg-\[\#181820\],
+.light .bg-\[\#181822\],
 .light .bg-\[\#181921\],
+.light .bg-\[\#181b21\],
+.light .bg-\[\#181b22\],
+.light .bg-\[\#191920\],
+.light .bg-\[\#1a1711\],
 .light .bg-\[\#1a1a1e\],
 .light .bg-\[\#1a1a1f\],
+.light .bg-\[\#1a1a22\],
 .light .bg-\[\#1a1b24\],
 .light .bg-\[\#1b1b1f\],
 .light .bg-\[\#1b1b20\],
+.light .bg-\[\#1c1912\],
+.light .bg-\[\#1c1913\],
+.light .bg-\[\#1c1c24\],
+.light .bg-\[\#1e1e27\],
+.light .bg-\[\#1e1e28\],
+.light .bg-\[\#1f1f28\],
+.light .bg-\[\#222228\],
+.light .bg-\[\#252532\],
+.light .bg-\[\#2a2a36\],
 .light .bg-zinc-900\/90,
 .light .bg-zinc-800,
 .light .bg-zinc-800\/80,
@@ -626,14 +691,19 @@ html.light #root,
 }
 
 /* 4. Barras Superiores (#FAFBFC, com borda inferior discreta) */
-.light .app-tab-header,
 .light .app-editor-toolbar,
 .light .app-tasks-header,
 .light .app-editor-footer,
 .light .app-status-bar,
+.light .task-document-header,
+.light .kanban-column-header,
 .light .bg-\[\#0c0c0e\],
 .light .bg-\[\#0c0c0e\]\/95,
 .light .bg-\[\#0c0c0f\],
+.light .bg-\[\#0c0d10\],
+.light .bg-\[\#0c0d11\],
+.light .bg-\[\#0d0d11\],
+.light .bg-\[\#0d0d12\],
 .light .bg-\[\#0e0e11\],
 .light .bg-\[\#0e0e12\],
 .light .bg-\[\#0e0f14\],
@@ -727,32 +797,45 @@ html.light {
   color: #252830 !important;
 }
 
-/* Abas Superiores */
-.light .app-tab-header .tab-item-active {
-  background-color: #FFFFFF !important;
-  border-top: 2px solid var(--accent) !important;
-  border-left: 1px solid #E2E4E8 !important;
-  border-right: 1px solid #E2E4E8 !important;
-  box-shadow: none !important;
-  color: #252830 !important;
-  font-weight: 500 !important;
+/* Abas Superiores: Inativas em cinza suave, ativa pura branca */
+.light .app-tab-header {
+  background-color: #EEF0F3 !important;
+  border-bottom: 1px solid #E2E4E8 !important;
 }
-.light .app-tab-header .tab-item-active svg {
-  color: var(--accent-icon) !important;
-}
+.light .tab-item-inactive,
 .light .app-tab-header .tab-item-inactive {
+  background-color: #E2E5E9 !important;
+  border: 1px solid #D1D5DB !important;
+  border-bottom-color: #E2E4E8 !important;
   color: #68707D !important;
-  border-color: transparent !important;
 }
+.light .tab-item-inactive:hover,
+.light .app-tab-header .tab-item-inactive:hover {
+  background-color: #ECEEF2 !important;
+  color: #252830 !important;
+}
+.light .tab-item-inactive svg,
 .light .app-tab-header .tab-item-inactive svg {
   color: #68707D !important;
 }
-.light .app-tab-header .tab-item-inactive:hover {
-  background-color: #F0F2F5 !important;
-  color: #252830 !important;
-}
+.light .tab-item-inactive:hover svg,
 .light .app-tab-header .tab-item-inactive:hover svg {
   color: #252830 !important;
+}
+.light .tab-item-active,
+.light .app-tab-header .tab-item-active {
+  background-color: #FFFFFF !important;
+  border-top: 2px solid var(--accent) !important;
+  border-left: 1px solid #D8DCE2 !important;
+  border-right: 1px solid #D8DCE2 !important;
+  border-bottom: 1px solid #FFFFFF !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  color: #252830 !important;
+  font-weight: 600 !important;
+}
+.light .tab-item-active svg,
+.light .app-tab-header .tab-item-active svg {
+  color: var(--accent-icon) !important;
 }
 
 /* 9. Ícones (Neutros nos itens comuns; cor nos ativos e ações principais) */
@@ -820,30 +903,58 @@ html.light {
   border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
-/* Hovers */
+/* Hovers universais em modo claro */
 .light .hover\:bg-zinc-800:hover,
+.light .hover\:bg-zinc-800\/20:hover,
 .light .hover\:bg-zinc-800\/40:hover,
 .light .hover\:bg-zinc-800\/50:hover,
 .light .hover\:bg-zinc-800\/60:hover,
 .light .hover\:bg-zinc-800\/70:hover,
 .light .hover\:bg-zinc-800\/80:hover,
+.light .hover\:bg-zinc-800\/90:hover,
+.light .hover\:bg-zinc-850:hover,
+.light .hover\:bg-zinc-850\/50:hover,
+.light .hover\:bg-zinc-850\/80:hover,
+.light .hover\:bg-zinc-750:hover,
 .light .hover\:bg-zinc-700:hover,
-.light .hover\:bg-\[\#1a1a1e\]:hover,
+.light .hover\:bg-zinc-700\/40:hover,
+.light .hover\:bg-zinc-700\/50:hover,
+.light .hover\:bg-\[\#141418\]:hover,
+.light .hover\:bg-\[\#161619\]:hover,
+.light .hover\:bg-\[\#16161a\]:hover,
+.light .hover\:bg-\[\#18181c\]:hover,
 .light .hover\:bg-\[\#181921\]:hover,
 .light .hover\:bg-\[\#181922\]:hover,
+.light .hover\:bg-\[\#1a1a1e\]:hover,
+.light .hover\:bg-\[\#1a1a22\]:hover,
 .light .hover\:bg-\[\#1b1b20\]:hover,
-.light .hover\:bg-\[\#222228\]:hover,
-.light .hover\:bg-\[\#18181c\]:hover,
 .light .hover\:bg-\[\#1c1c20\]:hover,
+.light .hover\:bg-\[\#1c1c24\]:hover,
+.light .hover\:bg-\[\#1f1f23\]:hover,
+.light .hover\:bg-\[\#1f1f24\]:hover,
+.light .hover\:bg-\[\#1f1f28\]:hover,
+.light .hover\:bg-\[\#222228\]:hover,
+.light .hover\:bg-\[\#252532\]:hover,
 .light .group:hover .group-hover\:bg-\[\#1a1a1e\],
 .light .group-hover\:bg-\[\#1a1a1e\],
 .light tr:hover .group-hover\:bg-\[\#1a1a1e\] {
-  background-color: #F0F2F5 !important;
+  background-color: #E8EBF0 !important;
   color: #252830 !important;
 }
 .light .hover\:text-white:hover { color: #252830 !important; }
 .light .hover\:text-zinc-200:hover { color: #252830 !important; }
 .light .hover\:text-zinc-100:hover { color: #252830 !important; }
+
+/* Máscaras de Backdrops e Modais (Substitui máscara preta pesada por véu suave) */
+.light .command-palette-backdrop,
+.light .bg-black\/60,
+.light .bg-black\/70,
+.light .bg-black\/80,
+.light .bg-black\/50,
+.light .bg-black\/40 {
+  background-color: rgba(15, 23, 42, 0.28) !important;
+  backdrop-filter: blur(4px) !important;
+}
 
 /* Inputs & Forms */
 .light input[type="text"],
@@ -1177,73 +1288,268 @@ html.light {
 /* =========================================================================
    TAREFAS & KANBAN EM MODO CLARO
    ========================================================================= */
-.light .task-tag-badge,
-.light [data-task-item="true"] .task-tag-badge {
-  background-color: #e4e4e7 !important;
-  color: #27272a !important;
+.light .app-tasks-pane,
+.light .app-tasks-pane .bg-\[\#121214\] {
+  background-color: #EEF0F3 !important;
+}
+.light .app-tasks-header {
+  background-color: #FAFBFC !important;
+  border-bottom: 1px solid #E5E7EB !important;
 }
 
-.light .task-quick-add-row {
-  background-color: #ffffff !important;
-  border-color: #dcdde0 !important;
+/* Kanban Header & Colunas */
+.light .kanban-column-card {
+  background-color: #F6F7F9 !important;
+  border: 1px solid #E5E7EB !important;
+  box-shadow: none !important;
 }
-.light .task-quick-add-row:hover {
-  background-color: #f9f9fb !important;
+.light .kanban-column-header {
+  box-shadow: none !important;
+  background-color: #FAFBFC !important;
+  border: 1px solid #E2E4E8 !important;
+}
+.light .kanban-column-header span.bg-\[\#121214\],
+.light span.bg-\[\#121214\] {
+  background-color: #E2E5E9 !important;
+  color: #68707D !important;
+  border: 1px solid #D8DCE2 !important;
+}
+
+/* Kanban Cards de Tarefas */
+.light .kanban-task-card,
+.light .kanban-task-card.bg-\[\#161619\] {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E4E8 !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04) !important;
+  color: #252830 !important;
+}
+.light .kanban-task-card:hover,
+.light .kanban-task-card.hover\:bg-\[\#1a1a1e\]:hover {
+  background-color: #FFFFFF !important;
+  border-color: #D1D5DB !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06) !important;
+}
+.light .kanban-task-card.is-selected {
+  background-color: var(--accent-subtle) !important;
+  border: 1px solid transparent !important;
+  border-left: 3px solid var(--accent) !important;
+  border-radius: 2px 10px 10px 2px !important;
+  box-shadow: none !important;
+  color: #252830 !important;
+}
+
+/* Badge de contagem de subtarefas no Kanban */
+.light .kanban-task-card .bg-zinc-800\/50,
+.light .bg-zinc-800\/50 {
+  background-color: #EEF0F3 !important;
+  color: #68707D !important;
+  border: 1px solid #E2E4E8 !important;
+}
+
+/* Botão e Input de Nova Tarefa no Kanban */
+.light input.bg-\[\#161619\],
+.light .kanban-column-card input {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E4E8 !important;
+  color: #252830 !important;
+}
+.light .kanban-column-card .hover\:bg-\[\#161619\]:hover,
+.light .hover\:bg-\[\#161619\]:hover {
+  background-color: #E8EBF0 !important;
+  color: #252830 !important;
 }
 
 /* Modo Lista / Tabela de Tarefas no Modo Claro */
 .light thead.bg-\[\#18181b\],
-.light th.bg-\[\#18181b\] {
-  background-color: #ebebed !important;
-  color: #52525b !important;
-  border-color: #dcdde0 !important;
+.light th.bg-\[\#18181b\],
+.light th {
+  background-color: #F6F7F9 !important;
+  color: #68707D !important;
+  border-color: #E2E4E8 !important;
 }
 .light td.border-zinc-800\/60,
-.light th.border-zinc-800\/60 {
-  border-color: #e4e4e7 !important;
+.light th.border-zinc-800\/60,
+.light td.border-zinc-800\/40 {
+  border-color: #E5E7EB !important;
 }
-.light tr.bg-\[\#141416\] {
-  background-color: #ffffff !important;
-  color: #18181b !important;
+.light tr.bg-\[\#141416\],
+.light td.bg-\[\#141416\] {
+  background-color: #FFFFFF !important;
+  color: #252830 !important;
 }
-.light tr.bg-\[\#222226\] {
-  background-color: #ededf2 !important;
-  color: #18181b !important;
+.light tr.bg-\[\#222226\],
+.light td.bg-\[\#222226\],
+.light tr.bg-\[\#222226\] td {
+  background-color: var(--accent-subtle) !important;
+  color: #252830 !important;
 }
-.light tr.bg-\[\#111113\] {
-  background-color: #f8f8fb !important;
-  color: #18181b !important;
+.light tr.bg-\[\#222226\] td:first-child {
+  border-left: 3px solid var(--accent) !important;
 }
 .light tr:hover td.group-hover\:bg-\[\#1a1a1e\],
 .light tr:hover td.hover\:bg-\[\#1a1a1e\],
 .light tr:hover td {
-  background-color: #f7f7fa !important;
+  background-color: #F8F9FB !important;
+  color: #252830 !important;
 }
-.light tr.bg-\[\#222226\] td {
-  background-color: #ededf2 !important;
+
+/* Botãozinho de contagem de subtarefas na tabela */
+.light button.bg-\[\#18181b\] {
+  background-color: #EEF0F3 !important;
+  color: #68707D !important;
+  border: 1px solid #E2E4E8 !important;
+}
+.light button.bg-\[\#18181b\]:hover {
+  background-color: #E2E5E9 !important;
+  color: #252830 !important;
+}
+
+/* Linha de Quick Add na Lista de Tarefas */
+.light .task-quick-add-row {
+  background-color: #FFFFFF !important;
+  border-color: #E2E4E8 !important;
+}
+.light .task-quick-add-row:hover,
+.light .task-quick-add-row:hover td {
+  background-color: #F8F9FB !important;
+}
+.light .task-quick-add-row input {
+  color: #252830 !important;
+}
+.light .task-tag-badge,
+.light [data-task-item="true"] .task-tag-badge {
+  background-color: #EEF0F3 !important;
+  color: #353842 !important;
+  border: 1px solid #E2E4E8 !important;
 }
 
 /* Página de Tarefa em Documento no Modo Claro */
 .light .task-document-body {
-  background-color: #ffffff !important;
+  background-color: #FFFFFF !important;
 }
 .light .task-document-page {
-  background-color: #ffffff !important;
+  background-color: #FFFFFF !important;
 }
 .light .task-document-rail {
-  background-color: #f0f0f3 !important;
-  border-color: #dcdde0 !important;
+  background-color: #F6F7F9 !important;
+  border-right: 1px solid #E2E4E8 !important;
 }
-.light .task-document-rail:hover {
-  background-color: #e8e8ea !important;
+.light .task-document-rail:hover,
+.light .task-document-rail.hover\:bg-\[\#141418\]:hover {
+  background-color: #EEF0F3 !important;
+}
+.light .task-document-rail .hover\:bg-\[\#1f1f24\]:hover,
+.light .hover\:bg-\[\#1f1f24\]:hover {
+  background-color: #E4E7EB !important;
+  color: #252830 !important;
 }
 .light .task-document-header {
-  background-color: #f0f0f3 !important;
-  border-color: #dcdde0 !important;
+  background-color: #FAFBFC !important;
+  border-bottom: 1px solid #E5E7EB !important;
 }
 .light .task-properties-card {
-  background-color: #f7f7fa !important;
-  border-color: #e4e4e7 !important;
+  background-color: #F8F9FB !important;
+  border-color: #E2E4E8 !important;
+}
+.light .task-document-page .hover\:bg-\[\#161619\]:hover,
+.light .group\/sub:hover {
+  background-color: #F0F2F5 !important;
+  color: #252830 !important;
+}
+.light .task-document-page input.bg-\[\#18181b\],
+.light input.bg-\[\#18181b\] {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E4E8 !important;
+  color: #252830 !important;
+}
+
+/* TaskContextPicker Dropdown & Popups */
+.light .task-context-picker-popup {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E4E8 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1) !important;
+  color: #252830 !important;
+}
+.light .task-context-picker-popup .bg-\[\#0f0f12\] {
+  background-color: #FAFBFC !important;
+  border-bottom: 1px solid #E5E7EB !important;
+}
+.light .task-context-picker-popup input {
+  color: #252830 !important;
+  background-color: transparent !important;
+}
+.light .task-context-picker-popup input::placeholder {
+  color: #8F96A3 !important;
+}
+.light .task-context-picker-popup .hover\:bg-zinc-850\/50:hover {
+  background-color: #F0F2F5 !important;
+  color: #252830 !important;
+}
+.light .task-context-picker-popup .bg-zinc-800\/70 {
+  background-color: var(--accent-subtle) !important;
+  color: #252830 !important;
+}
+.light .task-context-picker-popup .bg-zinc-900,
+.light .task-context-picker-popup .border-zinc-700 {
+  background-color: #FFFFFF !important;
+  border-color: #CBD0D8 !important;
+}
+.light .task-context-picker-popup .group:hover .border-zinc-500 {
+  border-color: #8F96A3 !important;
+}
+
+/* Command Palette (Ctrl+P) & Backdrop Máscara */
+.light .command-palette-modal,
+.light .command-palette-modal.bg-zinc-900 {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E4E8 !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12) !important;
+  color: #252830 !important;
+}
+.light .command-palette-modal .bg-\[\#0c0c0e\] {
+  background-color: #FAFBFC !important;
+  border-bottom: 1px solid #E5E7EB !important;
+}
+.light .command-palette-modal input {
+  color: #252830 !important;
+}
+.light .command-palette-modal input::placeholder {
+  color: #8F96A3 !important;
+}
+.light .command-palette-modal kbd,
+.light kbd {
+  background-color: #EEF0F3 !important;
+  border: 1px solid #E2E4E8 !important;
+  color: #68707D !important;
+}
+.light .command-palette-modal .bg-amber-500\/15 {
+  background-color: var(--accent-subtle) !important;
+  border-color: var(--accent) !important;
+  color: #252830 !important;
+}
+.light .command-palette-modal .text-amber-200,
+.light .command-palette-modal .text-zinc-100 {
+  color: #252830 !important;
+}
+.light .command-palette-modal .hover\:bg-zinc-800\/60:hover {
+  background-color: #F0F2F5 !important;
+  color: #252830 !important;
+}
+
+/* Barra de Status Inferior */
+.light .app-status-bar {
+  background-color: #FAFBFC !important;
+  border-top: 1px solid #E5E7EB !important;
+  color: #68707D !important;
+}
+.light .app-status-bar .bg-zinc-900 {
+  background-color: #EEF0F3 !important;
+  border: 1px solid #E2E4E8 !important;
+  color: #68707D !important;
+}
+.light .app-status-bar .bg-zinc-900:hover {
+  background-color: #E2E5E9 !important;
+  color: #252830 !important;
 }
 
 /* =========================================================================

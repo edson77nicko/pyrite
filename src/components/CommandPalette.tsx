@@ -204,11 +204,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-24"
+      className="command-palette-backdrop fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-24"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+        className="command-palette-modal w-full max-w-xl bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl overflow-hidden flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Search Header */}
