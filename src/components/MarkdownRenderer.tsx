@@ -195,30 +195,32 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       const codeString = codeLines.join('\n')
 
       blocks.push(
-        <div key={`code-${i}`} className="chat-code-block my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/90 text-xs font-mono shadow-lg">
-          <div className="chat-code-header flex items-center justify-between px-3.5 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400">
-            <span className="uppercase font-semibold tracking-wider text-[11px] text-zinc-300 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              {lang || 'código'}
-            </span>
+        <div key={`code-${i}`} className="chat-code-block relative group my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/90 text-xs font-mono shadow-lg">
+          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity select-none">
+            {lang && (
+              <span className="uppercase font-semibold tracking-wider text-[10px] text-zinc-400 px-1.5 py-0.5 rounded bg-zinc-800/80">
+                {lang}
+              </span>
+            )}
             <button
               onClick={() => copyToClipboard(codeString, currentCodeIndex)}
-              className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 transition-colors"
+              className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-850 hover:bg-zinc-750 text-zinc-300 hover:text-zinc-100 transition-colors shadow-xs cursor-pointer text-[11px]"
+              title="Copiar código"
             >
               {copiedCodeIndex === currentCodeIndex ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-400 text-[11px]">Copiado</span>
+                  <span className="text-emerald-400">Copiado</span>
                 </>
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5" />
-                  <span className="text-[11px]">Copiar</span>
+                  <span>Copiar</span>
                 </>
               )}
             </button>
           </div>
-          <pre className="chat-code-pre p-4 overflow-x-auto text-zinc-300 leading-relaxed selectable-text">
+          <pre className="chat-code-pre p-4 pt-4 overflow-x-auto text-zinc-300 leading-relaxed selectable-text">
             <code>{codeString}</code>
           </pre>
         </div>

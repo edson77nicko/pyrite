@@ -178,10 +178,10 @@ function formatInlineHtml(text: string, allNotes: Note[] = []): string {
       const exists = allNotes.some(n => n.title.toLowerCase().trim() === destination.toLowerCase().trim())
 
       const pillClass = exists
-        ? 'text-[var(--accent)] hover:opacity-90 bg-[var(--accent-glow-subtle)] border border-[var(--accent)]/30'
-        : 'text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
+        ? 'wiki-link-exists text-[var(--accent)] hover:opacity-90 bg-[var(--accent-glow-subtle)] border border-[var(--accent)]/30'
+        : 'wiki-link-unresolved text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
 
-      return `<span class="wiki-link inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" title="${exists ? `Abrir nota: &quot;${destination}&quot;` : `Criar nota: &quot;${destination}&quot;`}"><span class="underline decoration-[var(--accent)]/40 hover:decoration-[var(--accent)] underline-offset-2">${escapeHtml(displayName)}</span></span>`
+      return `<span class="wiki-link ${exists ? 'wiki-link-exists' : 'wiki-link-unresolved'} inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" title="${exists ? `Abrir nota: &quot;${destination}&quot;` : `Criar nota: &quot;${destination}&quot;`}"><span class="underline ${exists ? 'decoration-[var(--accent)]/40 hover:decoration-[var(--accent)]' : 'decoration-zinc-500/50 hover:decoration-zinc-400'} underline-offset-2">${escapeHtml(displayName)}</span></span>`
     }
 
     // 2. Markdown Image ![alt](src)
@@ -287,7 +287,7 @@ interface EmbeddedHost {
 function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): string {
   const cleanMd = stripDuplicateTitleFromContent(md, noteTitle)
   if (!cleanMd.trim()) {
-    return '<p class="my-1.5 text-[13px] md:text-sm text-zinc-300 leading-relaxed"><br></p>'
+    return '<p class="my-1.5 text-zinc-300 leading-relaxed"><br></p>'
   }
 
   const lines = cleanMd.split('\n')
@@ -425,7 +425,7 @@ function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): strin
         i++
       }
       htmlParts.push(`
-        <ul class="list-disc pl-5 my-1.5 space-y-0.5 text-zinc-300 text-[13px] md:text-sm">
+        <ul class="list-disc pl-5 my-1.5 space-y-0.5 text-zinc-300">
           ${listItems.map(item => `<li>${formatInlineHtml(item, allNotes)}</li>`).join('')}
         </ul>
       `)
@@ -441,7 +441,7 @@ function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): strin
         i++
       }
       htmlParts.push(`
-        <ol class="list-decimal pl-5 my-1.5 space-y-0.5 text-zinc-300 text-[13px] md:text-sm">
+        <ol class="list-decimal pl-5 my-1.5 space-y-0.5 text-zinc-300">
           ${listItems.map(item => `<li>${formatInlineHtml(item, allNotes)}</li>`).join('')}
         </ol>
       `)
@@ -457,13 +457,13 @@ function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): strin
 
     // Empty line
     if (!line.trim()) {
-      htmlParts.push(`<p class="my-1 text-[13px] md:text-sm text-zinc-300 leading-relaxed"><br></p>`)
+      htmlParts.push(`<p class="my-1 text-zinc-300 leading-relaxed"><br></p>`)
       i++
       continue
     }
 
     // Standard Paragraph
-    htmlParts.push(`<p class="my-1.5 text-[13px] md:text-sm text-zinc-300 leading-relaxed">${formatInlineHtml(line, allNotes)}</p>`)
+    htmlParts.push(`<p class="my-1.5 text-zinc-300 leading-relaxed">${formatInlineHtml(line, allNotes)}</p>`)
     i++
   }
 

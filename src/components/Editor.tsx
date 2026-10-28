@@ -85,9 +85,9 @@ export const Editor: React.FC<EditorProps> = ({
   }[settings.editorWidth]
 
   const fontClasses = {
-    small: 'text-xs leading-relaxed',
-    medium: 'text-sm leading-relaxed',
-    large: 'text-base leading-relaxed'
+    small: 'text-xs font-size-small leading-relaxed',
+    medium: 'text-sm font-size-medium leading-relaxed',
+    large: 'text-base font-size-large leading-relaxed'
   }[settings.fontSize]
 
   return (

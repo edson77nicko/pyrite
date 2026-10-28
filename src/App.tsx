@@ -33,7 +33,10 @@ const MAX_TABS = 8
 
 const DEFAULT_SETTINGS: AppSettings = {
   accentColor: '#c59b27', // Pyrita: Ouro Queimado
+  accentColorDark: '#c59b27',
+  accentColorLight: '#c59b27',
   fontSize: 'medium',
+  fontFamily: 'sans',
   editorWidth: 'standard',
   themeMode: 'dark'
 }
@@ -150,10 +153,15 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(saved)
         // Sanitizar e remover qualquer cor azul salva
         const blueTones = ['blue', 'sky', '#3b82f6', '#0ea5e9', '#0284c7', '#2563eb', '#009dea', '#0004ff']
+        if (parsed.accentColorDark && blueTones.includes(String(parsed.accentColorDark).toLowerCase())) parsed.accentColorDark = '#c59b27'
+        if (parsed.accentColorLight && blueTones.includes(String(parsed.accentColorLight).toLowerCase())) parsed.accentColorLight = '#c59b27'
         if (blueTones.includes(String(parsed.accentColor).toLowerCase())) {
           parsed.accentColor = '#c59b27'
-          localStorage.setItem('pyrite_app_settings', JSON.stringify(parsed))
         }
+        if (!parsed.accentColorDark) parsed.accentColorDark = parsed.accentColor || '#c59b27'
+        if (!parsed.accentColorLight) parsed.accentColorLight = parsed.accentColor || '#c59b27'
+        if (!parsed.fontFamily) parsed.fontFamily = 'sans'
+        localStorage.setItem('pyrite_app_settings', JSON.stringify(parsed))
         return parsed
       }
       return DEFAULT_SETTINGS
@@ -267,15 +275,49 @@ export const App: React.FC = () => {
     document.documentElement.style.setProperty('--accent-btn-text-light', '#ffffff')
   }
 
-  const handleUpdateSettings = (newSettings: AppSettings) => {
-    setSettings(newSettings)
-    localStorage.setItem('pyrite_app_settings', JSON.stringify(newSettings))
-    applyAccentColor(newSettings.accentColor)
+  const applyTypography = (size: AppSettings['fontSize'], family?: AppSettings['fontFamily']) => {
+    const fontSizeMap: Record<string, string> = {
+      small: '13px',
+      medium: '15px',
+      large: '17px'
+    }
+    const px = fontSizeMap[size] || '15px'
+    document.documentElement.style.setProperty('--editor-font-size', px)
+
+    const fontFamilies: Record<string, string> = {
+      sans: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      serif: "'Lora', Georgia, 'Times New Roman', serif",
+      mono: "'Fira Code', 'Cascadia Code', 'JetBrains Mono', Consolas, monospace",
+      humanist: "'Plus Jakarta Sans', system-ui, sans-serif"
+    }
+    const fontStr = fontFamilies[family || 'sans'] || fontFamilies.sans
+    document.documentElement.style.setProperty('--app-font-family', fontStr)
   }
 
-  // Ensure accent and theme mode are applied on mount and update
+  const handleUpdateSettings = (newSettings: AppSettings) => {
+    // Determinar a cor de destaque atual com base no modo
+    const isLight = newSettings.themeMode === 'light'
+    let currentAccent = isLight
+      ? (newSettings.accentColorLight || newSettings.accentColor)
+      : (newSettings.accentColorDark || newSettings.accentColor)
+
+    const sanitizedSettings: AppSettings = {
+      ...newSettings,
+      accentColor: currentAccent,
+      accentColorLight: isLight ? (newSettings.accentColorLight || currentAccent) : (newSettings.accentColorLight || '#c59b27'),
+      accentColorDark: !isLight ? (newSettings.accentColorDark || currentAccent) : (newSettings.accentColorDark || '#c59b27')
+    }
+
+    setSettings(sanitizedSettings)
+    localStorage.setItem('pyrite_app_settings', JSON.stringify(sanitizedSettings))
+    applyAccentColor(sanitizedSettings.accentColor)
+    applyTypography(sanitizedSettings.fontSize, sanitizedSettings.fontFamily)
+  }
+
+  // Ensure accent, theme mode and typography are applied on mount and update
   useEffect(() => {
     applyAccentColor(settings.accentColor)
+    applyTypography(settings.fontSize, settings.fontFamily)
     if (settings.themeMode === 'light') {
       document.documentElement.classList.add('light')
       document.documentElement.classList.remove('dark')
@@ -283,7 +325,7 @@ export const App: React.FC = () => {
       document.documentElement.classList.remove('light')
       document.documentElement.classList.add('dark')
     }
-  }, [settings.accentColor, settings.themeMode])
+  }, [settings.accentColor, settings.themeMode, settings.fontSize, settings.fontFamily])
 
   // Global Keyboard Shortcuts (Ctrl+P, Ctrl+O, Ctrl+G, Ctrl+N)
   useEffect(() => {

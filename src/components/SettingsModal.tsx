@@ -43,7 +43,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   if (!isOpen) return null
 
-  // Normalize current accent color (support legacy named keys if present)
+  const isLightMode = settings.themeMode === 'light'
+
+  // Normalize current accent color for the active mode
+  const rawCurrentAccent = isLightMode
+    ? (settings.accentColorLight || settings.accentColor || '#c59b27')
+    : (settings.accentColorDark || settings.accentColor || '#c59b27')
+
   const legacyMap: Record<string, string> = {
     amber: '#c59b27',
     violet: '#8b5cf6',
@@ -51,12 +57,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     cyan: '#06b6d4',
     rose: '#ec4899'
   }
-  let currentAccent = legacyMap[settings.accentColor] || settings.accentColor || '#c59b27'
+  let currentAccent = legacyMap[rawCurrentAccent] || rawCurrentAccent || '#c59b27'
   const blueTones = ['blue', 'sky', '#3b82f6', '#0ea5e9', '#0284c7', '#2563eb', '#009dea', '#0004ff']
   if (blueTones.includes(currentAccent.toLowerCase())) {
     currentAccent = '#c59b27'
   }
   const isCustomSelected = !ACCENT_COLORS.some(c => c.toLowerCase() === currentAccent.toLowerCase())
+
+  const handleSelectColor = (color: string) => {
+    setIsCustomColorOpen(false)
+    if (isLightMode) {
+      onUpdateSettings({
+        ...settings,
+        accentColor: color,
+        accentColorLight: color
+      })
+    } else {
+      onUpdateSettings({
+        ...settings,
+        accentColor: color,
+        accentColorDark: color
+      })
+    }
+  }
+
+  const handleToggleTheme = (mode: 'dark' | 'light') => {
+    const nextAccent = mode === 'light'
+      ? (settings.accentColorLight || settings.accentColor || '#c59b27')
+      : (settings.accentColorDark || settings.accentColor || '#c59b27')
+
+    onUpdateSettings({
+      ...settings,
+      themeMode: mode,
+      accentColor: nextAccent
+    })
+  }
 
   return (
     <>
@@ -80,10 +115,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   key={color}
                   type="button"
-                  onClick={() => {
-                    setIsCustomColorOpen(false)
-                    onUpdateSettings({ ...settings, accentColor: color })
-                  }}
+                  onClick={() => handleSelectColor(color)}
                   className="flex items-center justify-center p-0.5 group cursor-pointer focus:outline-none"
                   title={color}
                 >
@@ -123,7 +155,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {isCustomColorOpen && (
                 <CustomColorPickerPopover
                   currentColor={currentAccent}
-                  onChange={newColor => onUpdateSettings({ ...settings, accentColor: newColor })}
+                  onChange={newColor => handleSelectColor(newColor)}
                   onClose={() => setIsCustomColorOpen(false)}
                   anchorEl={customColorBtnRef.current}
                   align="right"
@@ -135,8 +167,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Section 2: Typography (Icon only, 13px / 15px / 17px only) */}
         <div className="space-y-1.5 border-t border-zinc-800/80 pt-2.5">
-          <div className="flex items-center text-zinc-400">
-            <Type className="w-3.5 h-3.5" />
+          <div className="flex items-center justify-between text-zinc-400">
+            <div className="flex items-center gap-1.5">
+              <Type className="w-3.5 h-3.5" />
+              <span className="text-[11px] font-medium">Tamanho da Fonte</span>
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-1.5">
             {[
@@ -158,6 +193,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   style={isActive ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
                 >
                   {opt.px}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Section 2b: Font Family */}
+        <div className="space-y-1.5 border-t border-zinc-800/80 pt-2.5">
+          <div className="flex items-center justify-between text-zinc-400">
+            <span className="text-[11px] font-medium">Fonte</span>
+            <span className="text-[10px] text-zinc-500 font-mono capitalize">{settings.fontFamily || 'sans'}</span>
+          </div>
+          <div className="grid grid-cols-4 gap-1">
+            {[
+              { id: 'sans', label: 'Inter', desc: 'Sans' },
+              { id: 'serif', label: 'Lora', desc: 'Serif' },
+              { id: 'mono', label: 'Fira', desc: 'Mono' },
+              { id: 'humanist', label: 'Jakarta', desc: 'Moderna' },
+            ].map(opt => {
+              const isActive = (settings.fontFamily || 'sans') === opt.id
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => onUpdateSettings({ ...settings, fontFamily: opt.id as any })}
+                  className={`py-1 rounded-md border text-center text-[10px] transition-all cursor-pointer ${
+                    isActive
+                      ? 'border-zinc-600 bg-zinc-800/80 text-white font-semibold shadow-sm'
+                      : 'border-zinc-800/80 bg-zinc-900/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                  }`}
+                  style={isActive ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+                  title={`${opt.label} (${opt.desc})`}
+                >
+                  {opt.label}
                 </button>
               )
             })}
@@ -213,7 +282,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
-              onClick={() => onUpdateSettings({ ...settings, themeMode: 'dark' })}
+              onClick={() => handleToggleTheme('dark')}
               className={`py-1.5 px-2 rounded-lg border flex items-center justify-center gap-1.5 text-xs transition-all cursor-pointer ${
                 settings.themeMode !== 'light'
                   ? 'border-zinc-600 bg-zinc-800/80 text-white font-semibold shadow-sm'
@@ -226,7 +295,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => onUpdateSettings({ ...settings, themeMode: 'light' })}
+              onClick={() => handleToggleTheme('light')}
               className={`py-1.5 px-2 rounded-lg border flex items-center justify-center gap-1.5 text-xs transition-all cursor-pointer ${
                 settings.themeMode === 'light'
                   ? 'border-zinc-600 bg-zinc-800/80 text-white font-semibold shadow-sm'

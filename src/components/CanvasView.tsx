@@ -39,8 +39,8 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   // If there are no draw notes yet, show a welcoming hero screen
   if (drawNotes.length === 0) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center bg-[#111114] text-zinc-100 p-8 select-none">
-        <div className="max-w-md w-full flex flex-col items-center text-center p-8 bg-[#18181d]/80 border border-zinc-800 rounded-2xl shadow-2xl backdrop-blur-md">
+      <div className="draw-empty-state-wrapper w-full h-full flex flex-col items-center justify-center bg-[#111114] text-zinc-100 p-8 select-none">
+        <div className="draw-empty-state-card max-w-md w-full flex flex-col items-center text-center p-8 bg-[#18181d] border border-zinc-800 rounded-2xl shadow-2xl backdrop-blur-md">
           <div
             className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5 shadow-lg"
             style={{ backgroundColor: 'var(--accent-glow)', borderColor: 'var(--accent)', borderWidth: 1 }}

@@ -87,9 +87,14 @@ export type EditorDisplayMode = 'live' | 'reading'
 
 export type AccentColor = string
 
+export type AppFontFamily = 'sans' | 'serif' | 'mono' | 'humanist'
+
 export interface AppSettings {
   accentColor: AccentColor
+  accentColorDark?: AccentColor
+  accentColorLight?: AccentColor
   fontSize: 'small' | 'medium' | 'large'
+  fontFamily?: AppFontFamily
   editorWidth: 'compact' | 'standard' | 'wide'
   themeMode?: 'dark' | 'light'
 }
