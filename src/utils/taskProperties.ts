@@ -18,7 +18,7 @@ export interface PropertyItem {
 
 export const STATUS_GROUPS: { id: TaskStatusGroup; label: string; color: string }[] = [
   { id: 'todo', label: 'A fazer', color: '#71717a' },
-  { id: 'in_progress', label: 'Em andamento', color: '#3b82f6' },
+  { id: 'in_progress', label: 'Em andamento', color: '#f59e0b' },
   { id: 'done', label: 'Concluídos', color: '#10b981' }
 ]
 
@@ -90,6 +90,6 @@ export const setPropertyItems = (settings: TaskSettings, prop: TaskPropertyConfi
 
 export const defaultStatusItems = (): PropertyItem[] => [
   { id: `opt_${Date.now()}_a`, name: 'Não iniciada', color: '#71717a', group: 'todo' },
-  { id: `opt_${Date.now()}_b`, name: 'Em andamento', color: '#3b82f6', group: 'in_progress' },
+  { id: `opt_${Date.now()}_b`, name: 'Em andamento', color: '#f59e0b', group: 'in_progress' },
   { id: `opt_${Date.now()}_c`, name: 'Concluído', color: '#10b981', group: 'done' }
 ]

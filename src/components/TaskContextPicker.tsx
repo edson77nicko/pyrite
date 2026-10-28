@@ -50,7 +50,7 @@ export const TaskContextPicker: React.FC<TaskContextPickerProps> = ({
       return <Palette className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
     }
     if (note.title.toLowerCase().includes('why') || note.title.toLowerCase().includes('web') || note.title.toLowerCase().includes('site')) {
-      return <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+      return <Globe className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
     }
     return <FileText className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
   }

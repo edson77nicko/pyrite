@@ -146,7 +146,17 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
       const saved = localStorage.getItem('pyrite_app_settings')
-      return saved ? JSON.parse(saved) : DEFAULT_SETTINGS
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        // Sanitizar e remover qualquer cor azul salva
+        const blueTones = ['blue', 'sky', '#3b82f6', '#0ea5e9', '#0284c7', '#2563eb', '#009dea', '#0004ff']
+        if (blueTones.includes(String(parsed.accentColor).toLowerCase())) {
+          parsed.accentColor = '#c59b27'
+          localStorage.setItem('pyrite_app_settings', JSON.stringify(parsed))
+        }
+        return parsed
+      }
+      return DEFAULT_SETTINGS
     } catch {
       return DEFAULT_SETTINGS
     }
@@ -189,7 +199,11 @@ export const App: React.FC = () => {
       cyan: '#06b6d4',
       rose: '#ec4899'
     }
-    const hex = legacyMap[accent] || accent || '#c59b27'
+    let hex = legacyMap[accent] || accent || '#c59b27'
+    const blueTones = ['blue', 'sky', '#3b82f6', '#0ea5e9', '#0284c7', '#2563eb', '#009dea', '#0004ff']
+    if (blueTones.includes(hex.toLowerCase())) {
+      hex = '#c59b27'
+    }
     document.documentElement.style.setProperty('--accent', hex)
 
     let r = 197, g = 155, b = 39

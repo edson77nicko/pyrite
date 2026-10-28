@@ -323,7 +323,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   return (
     <aside
       ref={sidebarRef}
-      className="w-[420px] max-w-[460px] my-2 mr-2 ml-1.5 bg-[#121215] border border-zinc-800/80 rounded-2xl flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl shadow-black/50 overflow-hidden animate-in slide-in-from-right-4 duration-150"
+      className="task-detail-sidebar w-[420px] max-w-[460px] my-2 mr-2 ml-1.5 bg-[#121215] border border-zinc-800/80 rounded-2xl flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl shadow-black/50 overflow-hidden animate-in slide-in-from-right-4 duration-150"
     >
       {/* 1. Header Toolbar - Sober without harsh white divider */}
       <div className="h-10 px-4 bg-[#151519] border-b border-zinc-800/50 flex items-center justify-between shrink-0">
@@ -651,7 +651,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
 
             <div className="relative">
               {task.contextNoteId ? (
-                <div className="flex items-center justify-between p-1.5 bg-[#1b1b20] rounded-lg">
+                <div className="task-context-active-box flex items-center justify-between p-1.5 bg-[#1b1b20] rounded-lg">
                   <button
                     onClick={() => setIsContextPickerOpen(true)}
                     className="flex items-center gap-1.5 truncate text-left font-medium hover:underline max-w-[190px] cursor-pointer"
@@ -682,7 +682,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               ) : (
                 <button
                   onClick={() => setIsContextPickerOpen(true)}
-                  className="w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-dashed border-zinc-750 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 bg-[#1b1b20]/40 transition-colors text-left cursor-pointer"
+                  className="task-context-empty-btn w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-dashed border-zinc-750 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 bg-[#1b1b20]/40 transition-colors text-left cursor-pointer"
                 >
                   <Plus className="w-3 h-3" />
                   <span>Vincular nota do cofre...</span>

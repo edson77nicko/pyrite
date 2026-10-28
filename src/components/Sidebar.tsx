@@ -816,7 +816,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }}
                   className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-200 hover:text-white hover:bg-zinc-800 transition-colors text-left cursor-pointer group"
                 >
-                  <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
                   <span className="font-medium text-xs">Nova Nota</span>
                 </button>
 

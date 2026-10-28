@@ -1440,7 +1440,7 @@ Diretrizes gerais:
   return (
     <div
       style={{ width: `${panelWidth}px` }}
-      className="my-2 mx-1.5 bg-[#0e0e12] border border-zinc-800/80 rounded-2xl flex flex-col select-none shrink-0 text-xs z-10 relative overflow-hidden shadow-2xl shadow-black/50"
+      className="app-ai-assistant-panel my-2 mx-1.5 bg-[#0e0e12] border border-zinc-800/80 rounded-2xl flex flex-col select-none shrink-0 text-xs z-10 relative overflow-hidden shadow-2xl shadow-black/50"
     >
       {/* Toast Notification Banner (e.g. Note updated as canvas) */}
       {toastNotice && (

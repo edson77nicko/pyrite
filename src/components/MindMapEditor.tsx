@@ -863,8 +863,8 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
         id: 'boundary_' + crypto.randomUUID().slice(0, 8),
         rootNodeId: nodeId,
         label: 'Grupo: ' + (doc.nodes[nodeId]?.title || 'Tópico'),
-        fillColor: 'rgba(59, 130, 246, 0.08)',
-        strokeColor: '#3b82f6',
+        fillColor: 'rgba(197, 155, 39, 0.08)',
+        strokeColor: '#c59b27',
         shape: 'rounded'
       }
       commitDoc({
@@ -1577,7 +1577,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                   }}
                   className="w-full text-left px-2 py-1.5 rounded hover:bg-zinc-800 text-xs flex items-center gap-2 text-zinc-200 cursor-pointer"
                 >
-                  <FileText className="w-3.5 h-3.5 text-blue-400" />
+                  <FileText className="w-3.5 h-3.5 text-zinc-400" />
                   <span>Exportar Markdown (.md)</span>
                 </button>
                 <button
@@ -1824,7 +1824,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
           <button
             onClick={() => setConnectingFromId(selectedComputed.id)}
             className={`p-1 rounded hover:bg-zinc-800 ${
-              connectingFromId === selectedComputed.id ? 'bg-blue-600 text-white animate-pulse' : 'text-zinc-300'
+              connectingFromId === selectedComputed.id ? 'bg-[var(--accent,#c59b27)] text-zinc-950 font-bold animate-pulse' : 'text-zinc-300'
             }`}
             title="Conectar com outro nó (Relação)"
           >
@@ -1876,12 +1876,12 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
 
       {/* 3. RELATIONSHIP CREATION NOTICE */}
       {connectingFromId && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 px-3 py-1.5 bg-blue-600/90 text-white text-xs rounded-full shadow-lg flex items-center gap-2 backdrop-blur-xs">
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 px-3 py-1.5 bg-[var(--accent,#c59b27)] text-zinc-950 font-medium text-xs rounded-full shadow-lg flex items-center gap-2 backdrop-blur-xs">
           <Share2 className="w-3.5 h-3.5 animate-bounce" />
           <span>Clique no tópico de destino para criar a conexão</span>
           <button
             onClick={() => setConnectingFromId(null)}
-            className="ml-2 hover:bg-blue-700 rounded-full p-0.5"
+            className="ml-2 hover:opacity-75 rounded-full p-0.5"
           >
             <X className="w-3 h-3" />
           </button>
@@ -1941,8 +1941,8 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                   height={b.rect.height}
                   rx="16"
                   ry="16"
-                  fill={b.boundary.fillColor || 'rgba(59, 130, 246, 0.08)'}
-                  stroke={b.boundary.strokeColor || '#3b82f6'}
+                  fill={b.boundary.fillColor || 'rgba(197, 155, 39, 0.08)'}
+                  stroke={b.boundary.strokeColor || '#c59b27'}
                   strokeWidth="1.5"
                   strokeDasharray="4 4"
                 />
@@ -1950,7 +1950,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
                   <text
                     x={b.rect.x + 12}
                     y={b.rect.y + 16}
-                    fill={b.boundary.strokeColor || '#3b82f6'}
+                    fill={b.boundary.strokeColor || '#c59b27'}
                     fontSize="11"
                     fontWeight="600"
                     opacity="0.9"

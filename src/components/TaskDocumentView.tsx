@@ -80,7 +80,7 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
         { id: 'urgent', label: 'Urgente', color: '#ef4444' },
         { id: 'high', label: 'Alta', color: '#f97316' },
         { id: 'medium', label: 'Média', color: '#eab308' },
-        { id: 'low', label: 'Baixa', color: '#3b82f6' },
+        { id: 'low', label: 'Baixa', color: '#14b8a6' },
         { id: 'none', label: 'Nenhuma', color: '#71717a' }
       ]
     )

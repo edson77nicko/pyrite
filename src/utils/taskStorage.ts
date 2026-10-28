@@ -7,7 +7,7 @@ export const DEFAULT_PRIORITIES: TaskPriorityOption[] = [
   { id: 'urgent', label: 'Urgente', color: '#ef4444', icon: 'Flame' },
   { id: 'high', label: 'Alta', color: '#f97316', icon: 'AlertCircle' },
   { id: 'medium', label: 'Média', color: '#eab308', icon: 'Flag' },
-  { id: 'low', label: 'Baixa', color: '#3b82f6', icon: 'Zap' },
+  { id: 'low', label: 'Baixa', color: '#14b8a6', icon: 'Zap' },
   { id: 'none', label: 'Sem prioridade', color: '#71717a', icon: 'Minus' }
 ]
 
@@ -19,9 +19,9 @@ export const DEFAULT_TASK_SETTINGS: TaskSettings = {
   statusIndicatorStyle: 'circle',
   statuses: [
     { id: 'inbox', name: 'Inbox', color: '#71717a', group: 'todo' },
-    { id: 'in_progress', name: 'Em Andamento', color: '#3b82f6', group: 'in_progress' },
+    { id: 'in_progress', name: 'Em Andamento', color: '#f59e0b', group: 'in_progress' },
     { id: 'scheduled', name: 'Agendado', color: '#8b5cf6', group: 'todo' },
-    { id: 'review', name: 'Revisão', color: '#f59e0b', group: 'in_progress' },
+    { id: 'review', name: 'Revisão', color: '#d97706', group: 'in_progress' },
     { id: 'completed', name: 'Concluído', color: '#10b981', isCompleted: true, group: 'done' }
   ],
   priorities: DEFAULT_PRIORITIES,

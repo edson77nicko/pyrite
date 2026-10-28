@@ -113,7 +113,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       id: 'cmd-open-canvas',
       title: 'Abrir Canvas Visual / Draws',
       subtitle: 'Quadros infinitos e desenhos livres',
-      icon: <Layout className="w-4 h-4 text-cyan-400" />,
+      icon: <Layout className="w-4 h-4 text-purple-400" />,
       action: () => onChangeViewMode('canvas')
     },
     {
@@ -127,7 +127,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       id: 'cmd-open-local',
       title: 'Conectar Pasta Local do PC',
       subtitle: 'Usa uma pasta real do seu computador como Vault',
-      icon: <HardDrive className="w-4 h-4 text-blue-400" />,
+      icon: <HardDrive className="w-4 h-4 text-amber-400" />,
       action: () => onOpenLocalFolder()
     },
     ...(onOpenVaultSwitcher ? [{

@@ -12,6 +12,7 @@ interface SettingsModalProps {
 
 const ACCENT_COLORS: string[] = [
   '#c59b27', // Pirita Gold (Padrão)
+  '#d4af37', // Metallic Gold
   '#eab308', // Yellow
   '#f59e0b', // Amber
   '#f97316', // Orange
@@ -22,11 +23,8 @@ const ACCENT_COLORS: string[] = [
   '#d946ef', // Fuchsia
   '#a855f7', // Purple
   '#8b5cf6', // Violet
-  '#6366f1', // Indigo
-  '#3b82f6', // Blue
-  '#0ea5e9', // Sky
-  '#06b6d4', // Cyan
   '#10b981', // Emerald
+  '#14b8a6', // Teal
   '#22c55e', // Green
   '#84cc16', // Lime
   '#78716c', // Stone
@@ -53,7 +51,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     cyan: '#06b6d4',
     rose: '#ec4899'
   }
-  const currentAccent = legacyMap[settings.accentColor] || settings.accentColor || '#c59b27'
+  let currentAccent = legacyMap[settings.accentColor] || settings.accentColor || '#c59b27'
+  const blueTones = ['blue', 'sky', '#3b82f6', '#0ea5e9', '#0284c7', '#2563eb', '#009dea', '#0004ff']
+  if (blueTones.includes(currentAccent.toLowerCase())) {
+    currentAccent = '#c59b27'
+  }
   const isCustomSelected = !ACCENT_COLORS.some(c => c.toLowerCase() === currentAccent.toLowerCase())
 
   return (

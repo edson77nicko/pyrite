@@ -576,9 +576,14 @@ html.light #root,
   background-color: #EEF0F3 !important;
 }
 
-/* 2. Sidebar (#F6F7F9, quase branca) */
+/* 2. Sidebar e Painel da IA (#F6F7F9, quase branca) */
 .light .app-sidebar,
+.light .app-sidebar.bg-\[\#121215\],
+.light div.app-sidebar,
 .light .app-right-sidebar,
+.light .app-ai-assistant-panel,
+.light .app-ai-assistant-panel.bg-\[\#0e0e12\],
+.light div.app-ai-assistant-panel,
 .light .chat-conversations-drawer,
 .light .kanban-column-card,
 .light .task-document-rail,
@@ -605,7 +610,8 @@ html.light #root,
   background-color: #F6F7F9 !important;
   border-color: #E2E4E8 !important;
 }
-.light .app-sidebar-header {
+.light .app-sidebar-header,
+.light .app-ai-assistant-panel .border-b.border-zinc-800\/80 {
   background-color: #FAFBFC !important;
   border-bottom: 1px solid #E5E7EB !important;
 }
@@ -670,6 +676,17 @@ html.light #root,
 .light .bg-zinc-800\/80,
 .light .bg-zinc-800\/90 {
   background-color: #FFFFFF !important;
+}
+
+/* Garantir contraste: Sidebar e Painel IA sempre em #F6F7F9 contra o Editor #FFFFFF */
+.light .app-sidebar,
+.light .app-sidebar.bg-\[\#121215\],
+.light div.app-sidebar,
+.light .app-ai-assistant-panel,
+.light .app-ai-assistant-panel.bg-\[\#0e0e12\],
+.light div.app-ai-assistant-panel {
+  background-color: #F6F7F9 !important;
+  border-color: #E2E4E8 !important;
 }
 
 .light .pyrita-editor-surface {
@@ -934,10 +951,7 @@ html.light {
 .light .hover\:bg-\[\#1f1f24\]:hover,
 .light .hover\:bg-\[\#1f1f28\]:hover,
 .light .hover\:bg-\[\#222228\]:hover,
-.light .hover\:bg-\[\#252532\]:hover,
-.light .group:hover .group-hover\:bg-\[\#1a1a1e\],
-.light .group-hover\:bg-\[\#1a1a1e\],
-.light tr:hover .group-hover\:bg-\[\#1a1a1e\] {
+.light .hover\:bg-\[\#252532\]:hover {
   background-color: #E8EBF0 !important;
   color: #252830 !important;
 }
@@ -1386,10 +1400,18 @@ html.light {
 .light tr.bg-\[\#222226\] td:first-child {
   border-left: 3px solid var(--accent) !important;
 }
+/* Hover suave nas linhas de tarefas (modo lista) */
+.light tr[data-task-item="true"]:hover td,
+.light tr[data-task-item="true"]:hover td.group-hover\:bg-\[\#1a1a1e\],
+.light tr[data-task-item="true"].group:hover td,
+.light tr[data-task-item="true"].group:hover td.group-hover\:bg-\[\#1a1a1e\],
 .light tr:hover td.group-hover\:bg-\[\#1a1a1e\],
 .light tr:hover td.hover\:bg-\[\#1a1a1e\],
-.light tr:hover td {
-  background-color: #F8F9FB !important;
+.light tr:hover td,
+.light tr:hover .group-hover\:bg-\[\#1a1a1e\],
+.light .group:hover .group-hover\:bg-\[\#1a1a1e\],
+.light .group-hover\:bg-\[\#1a1a1e\] {
+  background-color: #F8F9FA !important;
   color: #252830 !important;
 }
 
@@ -1461,6 +1483,55 @@ html.light {
   background-color: #FFFFFF !important;
   border: 1px solid #E2E4E8 !important;
   color: #252830 !important;
+}
+
+/* Painel Lateral de Tarefas (TaskDetailSidebar) e Input de Contexto */
+.light .task-detail-sidebar,
+.light aside.task-detail-sidebar,
+.light .task-detail-sidebar.bg-\[\#121215\] {
+  background-color: #FFFFFF !important;
+  border-color: #E2E4E8 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05) !important;
+}
+.light .task-detail-sidebar .bg-\[\#151519\] {
+  background-color: #FAFBFC !important;
+  border-bottom: 1px solid #E5E7EB !important;
+}
+.light .task-detail-sidebar .bg-\[\#16161a\] {
+  background-color: #FAFBFC !important;
+  border: 1px solid #E5E7EB !important;
+}
+.light .task-detail-sidebar .bg-\[\#1b1b20\],
+.light .task-detail-sidebar .bg-\[\#1b1b20\]\/40,
+.light .task-context-empty-btn,
+.light .task-context-active-box,
+.light .bg-\[\#1b1b20\]\/40 {
+  background-color: #FFFFFF !important;
+  border: 1px dashed #CBD5E1 !important;
+  color: #68707D !important;
+}
+.light .task-context-active-box {
+  border-style: solid !important;
+  border-color: #E2E4E8 !important;
+  background-color: #F8F9FA !important;
+}
+.light .task-detail-sidebar .bg-\[\#1b1b20\]:hover,
+.light .task-detail-sidebar .bg-\[\#1b1b20\]\/40:hover,
+.light .task-context-empty-btn:hover,
+.light .task-context-active-box:hover {
+  background-color: #F0F2F5 !important;
+  border-color: #94A3B8 !important;
+  color: #252830 !important;
+}
+.light .task-detail-sidebar .bg-\[\#1a1a1f\] {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E4E8 !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08) !important;
+  color: #252830 !important;
+}
+.light .task-detail-sidebar .bg-\[\#121215\] {
+  background-color: #FFFFFF !important;
+  border-color: #E2E4E8 !important;
 }
 
 /* TaskContextPicker Dropdown & Popups */
