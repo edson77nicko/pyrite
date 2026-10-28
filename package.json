@@ -47,7 +47,6 @@
   "build": {
     "appId": "com.pyrite.app",
     "productName": "Pyrite",
-    "maxKeptReleases": 5,
     "publish": {
       "provider": "github",
       "owner": "edson77nicko",
