@@ -1697,7 +1697,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             zIndex: 9999
           }}
           onMouseDown={e => e.preventDefault()}
-          className="w-72 bg-[#141418] border border-amber-500/40 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
+          className="editor-wikilink-menu w-72 bg-[#141418] border border-amber-500/40 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
         >
           <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-400 border-b border-zinc-800 flex items-center justify-between">
             <span className="flex items-center gap-1">

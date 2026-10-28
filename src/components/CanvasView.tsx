@@ -59,8 +59,8 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
 
           <button
             onClick={() => onCreateDraw()}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-zinc-950 font-semibold text-sm transition-all shadow-md hover:opacity-95 hover:scale-[1.02] cursor-pointer"
-            style={{ backgroundColor: 'var(--accent)' }}
+            className="draw-create-btn flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md hover:opacity-95 hover:scale-[1.02] cursor-pointer"
+            style={{ backgroundColor: 'var(--accent)', color: '#ffffff' }}
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <span>Criar Primeiro Draw</span>

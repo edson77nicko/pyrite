@@ -1846,6 +1846,152 @@ html.light {
 .light .draw-empty-state-card p {
   color: #68707D !important;
 }
+.light .draw-create-btn {
+  background-color: var(--accent-btn-bg-light, var(--accent)) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12) !important;
+}
+.light .draw-create-btn:hover {
+  filter: brightness(0.92);
+}
+
+/* Popovers e Controles Rápidos no Modo Claro */
+.light .editor-selection-toolbar {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E4E8 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
+  color: #252830 !important;
+}
+.light .editor-selection-toolbar > div.w-\[1px\] {
+  background-color: #E2E4E8 !important;
+}
+.light .editor-selection-toolbar button {
+  color: #64748B !important;
+}
+.light .editor-selection-toolbar button:hover {
+  background-color: #F1F3F5 !important;
+  color: #1E293B !important;
+}
+.light .editor-selection-toolbar button:first-child {
+  background-color: var(--accent-subtle) !important;
+  color: var(--accent-text-light, var(--accent)) !important;
+  border-color: var(--accent) !important;
+}
+.light .editor-selection-toolbar button:first-child:hover {
+  background-color: var(--accent-subtle-hover) !important;
+}
+
+/* Slash Command (/) Menu Popover */
+.light .editor-command-menu {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E4E8 !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1) !important;
+  color: #252830 !important;
+}
+.light .editor-command-menu > div,
+.light .editor-command-menu [role="option"],
+.light .editor-command-menu .text-zinc-200,
+.light .editor-command-menu .text-zinc-300 {
+  color: #252830 !important;
+}
+.light .editor-command-menu [role="option"]:hover,
+.light .editor-command-menu [role="option"][aria-selected="true"],
+.light .editor-command-menu .bg-amber-500\/15 {
+  background-color: var(--accent-subtle) !important;
+  color: #252830 !important;
+}
+
+/* Wikilink ([[) Autocomplete Menu Popover */
+.light .editor-wikilink-menu {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E4E8 !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1) !important;
+  color: #252830 !important;
+}
+.light .editor-wikilink-menu .border-b {
+  background-color: #FAFBFC !important;
+  border-bottom: 1px solid #E5E7EB !important;
+}
+.light .editor-wikilink-menu .text-zinc-100 {
+  color: #252830 !important;
+}
+.light .editor-wikilink-menu .hover\:bg-zinc-800\/60:hover {
+  background-color: #F1F3F5 !important;
+}
+
+/* Custom Color Picker Popover */
+.light .custom-color-picker-popover {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E4E8 !important;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.12) !important;
+  color: #252830 !important;
+}
+.light .custom-color-picker-popover input {
+  background-color: #FAFBFC !important;
+  border-color: #E2E4E8 !important;
+  color: #252830 !important;
+}
+.light .custom-color-picker-popover input:focus {
+  border-color: var(--accent) !important;
+}
+
+/* Custom Date Picker Popover */
+.light .custom-datepicker-popover {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E4E8 !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12) !important;
+  color: #252830 !important;
+}
+.light .custom-datepicker-popover .bg-\[\#191920\],
+.light .custom-datepicker-popover .bg-\[\#16161c\],
+.light .custom-datepicker-popover .bg-\[\#121217\] {
+  background-color: #FAFBFC !important;
+  border: 1px solid #E5E7EB !important;
+  color: #252830 !important;
+}
+.light .custom-datepicker-popover button:hover {
+  background-color: #F1F3F5 !important;
+  color: #1E293B !important;
+}
+.light .custom-datepicker-popover .text-zinc-100,
+.light .custom-datepicker-popover .text-zinc-200 {
+  color: #252830 !important;
+}
+
+/* Checkbox e Listas Fluidas: texto subsequente inicia no começo da página */
+.pyrita-editor-surface .task-item {
+  display: block !important;
+  margin-top: 0.35rem !important;
+  margin-bottom: 0.35rem !important;
+  line-height: 1.625 !important;
+  clear: both !important;
+}
+
+.pyrita-editor-surface .task-item .task-checkbox {
+  float: left !important;
+  margin-top: 0.22rem !important;
+  margin-right: 0.55rem !important;
+  margin-bottom: 0.1rem !important;
+  vertical-align: middle !important;
+}
+
+.pyrita-editor-surface .task-item .task-text {
+  display: inline !important;
+  word-break: break-word !important;
+}
+
+.pyrita-editor-surface ul,
+.pyrita-editor-surface ol {
+  list-style-position: inside !important;
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+}
+
+.pyrita-editor-surface li {
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+  text-indent: 0 !important;
+}
 
 /* Wikilinks para notas inexistentes / a criar */
 .light .wiki-link-unresolved,

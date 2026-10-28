@@ -64,8 +64,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }
   const isCustomSelected = !ACCENT_COLORS.some(c => c.toLowerCase() === currentAccent.toLowerCase())
 
-  const handleSelectColor = (color: string) => {
-    setIsCustomColorOpen(false)
+  const applySelectedColor = (color: string) => {
     if (isLightMode) {
       onUpdateSettings({
         ...settings,
@@ -79,6 +78,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         accentColorDark: color
       })
     }
+  }
+
+  const handleSelectPresetColor = (color: string) => {
+    setIsCustomColorOpen(false)
+    applySelectedColor(color)
   }
 
   const handleToggleTheme = (mode: 'dark' | 'light') => {
@@ -115,7 +119,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   key={color}
                   type="button"
-                  onClick={() => handleSelectColor(color)}
+                  onClick={() => handleSelectPresetColor(color)}
                   className="flex items-center justify-center p-0.5 group cursor-pointer focus:outline-none"
                   title={color}
                 >
@@ -155,7 +159,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {isCustomColorOpen && (
                 <CustomColorPickerPopover
                   currentColor={currentAccent}
-                  onChange={newColor => handleSelectColor(newColor)}
+                  onChange={newColor => applySelectedColor(newColor)}
                   onClose={() => setIsCustomColorOpen(false)}
                   anchorEl={customColorBtnRef.current}
                   align="right"

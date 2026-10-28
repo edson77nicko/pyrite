@@ -303,7 +303,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
     <div
       ref={containerRef}
       data-popover-portal="true"
-      className="fixed z-[99999] bg-[#121216] rounded-2xl shadow-md border border-zinc-800/80 p-4 text-xs select-none animate-in fade-in duration-75"
+      className="custom-datepicker-popover fixed z-[99999] bg-[#121216] rounded-2xl shadow-md border border-zinc-800/80 p-4 text-xs select-none animate-in fade-in duration-75"
       style={{
         top: coords.top,
         left: coords.left,
