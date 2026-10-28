@@ -31,7 +31,7 @@ export const MINDMAP_PALETTES: Record<MindMapPaletteId, { name: string; colors: 
     colors: ['#2563eb', '#ea580c', '#10b981', '#9333ea', '#db2777', '#06b6d4', '#eab308']
   },
   gold: {
-    name: 'Pyrita Âmbar Gold',
+    name: 'Pyrite Âmbar Gold',
     colors: ['#c59b27', '#eab308', '#f59e0b', '#d97706', '#ca8a04', '#b45309']
   },
   ocean: {
@@ -53,9 +53,35 @@ export const MINDMAP_PALETTES: Record<MindMapPaletteId, { name: string; colors: 
 }
 
 export const MINDMAP_THEMES: Record<string, ThemeConfig> = {
+  'pyrite-classic': {
+    id: 'pyrite-classic',
+    name: 'Pyrite Clássico',
+    bg: '#0f172a',
+    rootBg: '#2563eb',
+    rootBorder: '#3b82f6',
+    rootText: '#ffffff',
+    branchColors: MINDMAP_PALETTES.rainbow.colors,
+    subtopicBg: '#1e293b',
+    subtopicBorder: '#334155',
+    subtopicText: '#f1f5f9',
+    lineStyle: 'curved'
+  },
+  'pyrite-gold': {
+    id: 'pyrite-gold',
+    name: 'Pyrite Ouro',
+    bg: '#09090b',
+    rootBg: '#c59b27',
+    rootBorder: '#eab308',
+    rootText: '#000000',
+    branchColors: MINDMAP_PALETTES.gold.colors,
+    subtopicBg: '#18181b',
+    subtopicBorder: '#27272a',
+    subtopicText: '#fafafa',
+    lineStyle: 'curved'
+  },
   'pyrita-classic': {
-    id: 'pyrita-classic',
-    name: 'Pyrita Clássico',
+    id: 'pyrite-classic',
+    name: 'Pyrite Clássico',
     bg: '#0f172a',
     rootBg: '#2563eb',
     rootBorder: '#3b82f6',
@@ -67,8 +93,8 @@ export const MINDMAP_THEMES: Record<string, ThemeConfig> = {
     lineStyle: 'curved'
   },
   'pyrita-gold': {
-    id: 'pyrita-gold',
-    name: 'Pyrita Ouro',
+    id: 'pyrite-gold',
+    name: 'Pyrite Ouro',
     bg: '#09090b',
     rootBg: '#c59b27',
     rootBorder: '#eab308',
@@ -137,6 +163,10 @@ export function isMindMapContent(content?: string): boolean {
   if (!content) return false
   const trimmed = content.trim()
   return (
+    trimmed.startsWith('{"type":"pyrite-mindmap"') ||
+    trimmed.startsWith('{\n  "type": "pyrite-mindmap"') ||
+    trimmed.includes('"type": "pyrite-mindmap"') ||
+    trimmed.includes('"type":"pyrite-mindmap"') ||
     trimmed.startsWith('{"type":"pyrita-mindmap"') ||
     trimmed.startsWith('{\n  "type": "pyrita-mindmap"') ||
     trimmed.includes('"type": "pyrita-mindmap"') ||
@@ -190,13 +220,13 @@ export function createEmptyMindMapDocument(initialTitle?: string): MindMapDocume
   }
 
   return {
-    type: 'pyrita-mindmap',
+    type: 'pyrite-mindmap',
     version: 1,
     rootId,
     nodes,
     relations: [],
     boundaries: [],
-    theme: 'pyrita-classic',
+    theme: 'pyrite-classic',
     layout: 'radial',
     canvasBg: '#0f172a',
     lineStyle: 'tapered',
@@ -400,13 +430,13 @@ export function parseMarkdownToMindMap(content: string, fallbackTitle?: string, 
   }
 
   return {
-    type: 'pyrita-mindmap',
+    type: 'pyrite-mindmap',
     version: 1,
     rootId,
     nodes,
     relations: baseDoc?.relations || [],
     boundaries: baseDoc?.boundaries || [],
-    theme: baseDoc?.theme || 'pyrita-classic',
+    theme: baseDoc?.theme || 'pyrite-classic',
     layout: baseDoc?.layout || 'radial',
     canvasBg: baseDoc?.canvasBg || '#0f172a',
     lineStyle: baseDoc?.lineStyle || 'tapered',
@@ -473,11 +503,11 @@ export function parseMindMapDocument(content?: string, fallbackTitle?: string, b
   try {
     if (jsonCandidate.startsWith('{') && jsonCandidate.endsWith('}')) {
       const parsed = JSON.parse(jsonCandidate)
-      if (parsed && (parsed.type === 'pyrita-mindmap' || parsed.rootId || parsed.nodes)) {
+      if (parsed && (parsed.type === 'pyrite-mindmap' || parsed.type === 'pyrita-mindmap' || parsed.rootId || parsed.nodes)) {
         const rootId = parsed.rootId || Object.keys(parsed.nodes || {})[0] || 'root'
-        const theme = parsed.theme && MINDMAP_THEMES[parsed.theme as MindMapThemeId] ? parsed.theme : (baseDoc?.theme || 'pyrita-classic')
+        const theme = parsed.theme && MINDMAP_THEMES[parsed.theme as MindMapThemeId] ? parsed.theme : (baseDoc?.theme || 'pyrite-classic')
         return {
-          type: 'pyrita-mindmap',
+          type: 'pyrite-mindmap',
           version: parsed.version || 1,
           rootId,
           nodes: parsed.nodes || {},
@@ -654,7 +684,7 @@ export function createEdgePath(
 
 export function calculateMindMapLayout(doc: MindMapDocument): ComputedLayout {
   const { rootId, nodes, layout, theme: themeId, boundaries = [], paletteId = 'rainbow', lineStyle = 'tapered' } = doc
-  const theme = MINDMAP_THEMES[themeId] || MINDMAP_THEMES['pyrita-classic']
+  const theme = MINDMAP_THEMES[themeId] || MINDMAP_THEMES['pyrite-classic']
   const allPalettes: Record<string, { name: string; colors: string[] }> = {
     ...MINDMAP_PALETTES,
     ...(doc.customPalettes || {})

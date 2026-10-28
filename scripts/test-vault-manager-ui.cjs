@@ -27,10 +27,10 @@ async function main() {
       window.electronAPI = {
         isElectron: false,
         getKnownVaults: async () => [original],
-        getVaultSettings: async () => ({ rootPath: localStorage.getItem('test-root') || 'D:/Pyrita/Cofres' }),
+        getVaultSettings: async () => ({ rootPath: localStorage.getItem('test-root') || 'D:/Pyrite/Cofres' }),
         setVaultRoot: async rootPath => { localStorage.setItem('test-root', rootPath); return { success: true, rootPath } },
         selectFolder: async () => window.nextFolder,
-        duplicateVault: async params => { localStorage.setItem('test-copy', JSON.stringify(params)); return { success: true, vaultPath: (localStorage.getItem('test-root') || 'D:/Pyrita/Cofres') + '/' + params.vaultName } },
+        duplicateVault: async params => { localStorage.setItem('test-copy', JSON.stringify(params)); return { success: true, vaultPath: (localStorage.getItem('test-root') || 'D:/Pyrite/Cofres') + '/' + params.vaultName } },
         createVault: async params => ({ success: true, vaultPath: params.parentPath + '/' + params.vaultName })
       }
     })

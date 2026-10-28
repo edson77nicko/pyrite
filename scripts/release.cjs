@@ -40,7 +40,7 @@ async function publish() {
 
   // Load release notes if available
   const notesPath = path.join(__dirname, '..', 'releases', `${tag}.md`);
-  let releaseBody = `### Novidades no Pyrita ${tag}`;
+  let releaseBody = `### Novidades no Pyrite ${tag}`;
   if (fs.existsSync(notesPath)) {
     releaseBody = fs.readFileSync(notesPath, 'utf-8');
   }
@@ -49,7 +49,7 @@ async function publish() {
   const listRes = await fetch('https://api.github.com/repos/edson77nicko/pyrite/releases', {
     headers: {
       Authorization: `token ${token}`,
-      'User-Agent': 'Pyrita-Release-Agent',
+      'User-Agent': 'Pyrite-Release-Agent',
       Accept: 'application/vnd.github.v3+json'
     }
   });
@@ -63,13 +63,13 @@ async function publish() {
       method: 'PATCH',
       headers: {
         Authorization: `token ${token}`,
-        'User-Agent': 'Pyrita-Release-Agent',
+        'User-Agent': 'Pyrite-Release-Agent',
         Accept: 'application/vnd.github.v3+json',
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         draft: false,
-        name: `Pyrita ${tag}`,
+        name: `Pyrite ${tag}`,
         body: releaseBody
       })
     });
@@ -81,10 +81,13 @@ async function publish() {
 
   // 3. Verify public release
   const checkRes = await fetch('https://api.github.com/repos/edson77nicko/pyrite/releases/latest', {
-    headers: { 'User-Agent': 'Pyrita-Check' }
+    headers: { 'User-Agent': 'Pyrite-Check' }
   });
   const latest = await checkRes.json();
   console.log('Public Latest Release:', latest.tag_name, '| Assets:', latest.assets ? latest.assets.map(a => a.name).join(', ') : 'none');
+
+  const { cleanupReleases } = require('./cleanup-releases.cjs');
+  cleanupReleases();
 }
 
 publish().catch(err => {

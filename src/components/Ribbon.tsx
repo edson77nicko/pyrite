@@ -157,7 +157,7 @@ export const Ribbon: React.FC<RibbonProps> = ({
               ? 'app-ribbon-active shadow-none'
               : 'text-zinc-400 hover:text-[var(--accent-icon,var(--accent))] hover:bg-zinc-800/50'
           }`}
-          title="Agente Pyrita"
+          title="Agente Pyrite"
         >
           <Bot className="w-4 h-4" />
         </button>

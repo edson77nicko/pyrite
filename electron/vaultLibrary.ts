@@ -83,7 +83,7 @@ export function createVaultLibrary({ settingsPath, defaultRootPath }: LibraryOpt
       return Promise.all(entries.filter(entry => entry.isDirectory() && !entry.name.startsWith('.')).map(async entry => {
         const vaultPath = path.join(rootPath, entry.name)
         const stat = await fs.stat(vaultPath)
-        return { id: `pyrita-${entry.name}`, name: entry.name, path: vaultPath, lastOpened: stat.birthtimeMs || stat.mtimeMs }
+        return { id: `pyrite-${entry.name}`, name: entry.name, path: vaultPath, lastOpened: stat.birthtimeMs || stat.mtimeMs }
       }))
     },
     async createVault(parentPath: string, vaultName: string) {
@@ -116,7 +116,7 @@ export function createVaultLibrary({ settingsPath, defaultRootPath }: LibraryOpt
         const destination = path.join(managedRoot, name)
         if (inside(source, destination)) throw new Error('A cópia deve ficar fora da pasta do cofre original.')
         if (await exists(destination)) throw new Error('Já existe uma pasta com esse nome. Escolha outro nome para a cópia.')
-        staging = await fs.mkdtemp(path.join(managedRoot, '.pyrita-copy-'))
+        staging = await fs.mkdtemp(path.join(managedRoot, '.pyrite-copy-'))
         await copyDirectory(source, staging, source, new Set())
         if (await exists(destination)) throw new Error('Uma pasta com esse nome foi criada durante a cópia. Escolha outro nome.')
         await fs.rename(staging, destination)
@@ -124,7 +124,7 @@ export function createVaultLibrary({ settingsPath, defaultRootPath }: LibraryOpt
         return { vaultPath: destination }
       } finally {
         // Only discard this operation's private staging folder inside the managed root.
-        if (staging && managedRoot && path.dirname(staging) === managedRoot && path.basename(staging).startsWith('.pyrita-copy-')) await fs.rm(staging, { recursive: true, force: true })
+        if (staging && managedRoot && path.dirname(staging) === managedRoot && (path.basename(staging).startsWith('.pyrite-copy-') || path.basename(staging).startsWith('.pyrita-copy-'))) await fs.rm(staging, { recursive: true, force: true })
         pending.delete(key)
       }
     }

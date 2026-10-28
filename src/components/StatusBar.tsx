@@ -79,7 +79,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
         <span
           className="font-mono text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors select-none"
-          title={`Pyrita v${APP_VERSION}`}
+          title={`Pyrite v${APP_VERSION}`}
         >
           v{APP_VERSION}
         </span>

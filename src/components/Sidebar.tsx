@@ -338,7 +338,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Resizable sidebar width with localStorage persistence
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_sidebar_width')
+      const saved = localStorage.getItem('pyrite_sidebar_width') || localStorage.getItem('pyrita_sidebar_width')
       return saved ? Number(saved) : 260
     } catch {
       return 260
@@ -364,7 +364,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       const deltaX = upEvent.clientX - startX
       const finalWidth = Math.min(650, Math.max(200, startWidth + deltaX))
       try {
-        localStorage.setItem('pyrita_sidebar_width', String(finalWidth))
+        localStorage.setItem('pyrite_sidebar_width', String(finalWidth))
       } catch {}
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
@@ -763,7 +763,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="truncate flex-1 min-w-0">
             <div className="flex items-center gap-1">
               <span className="font-semibold text-zinc-100 text-xs tracking-wide truncate block group-hover:text-white transition-colors">
-                {vaultPath ? vaultPath.split(/[/\\]/).filter(Boolean).pop() : 'Pyrita Vault'}
+                {vaultPath ? vaultPath.split(/[/\\]/).filter(Boolean).pop() : 'Pyrite Vault'}
               </span>
               <ChevronDown className="w-3 h-3 text-zinc-500 group-hover:text-white shrink-0" />
             </div>

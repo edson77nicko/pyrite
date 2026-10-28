@@ -5,7 +5,23 @@ const queues = new Map<string, Promise<unknown>>()
 async function location(vaultPath: string, create: boolean) {
   if (!path.isAbsolute(vaultPath)) throw new Error('Cofre inválido.')
   const root = await fs.realpath(vaultPath)
-  const directory = path.join(root, '.pyrita')
+  const pyriteDir = path.join(root, '.pyrite')
+  const pyritaDir = path.join(root, '.pyrita')
+
+  let directory = pyriteDir
+  if (!create) {
+    try {
+      await fs.access(path.join(pyriteDir, 'canvas.json'))
+    } catch {
+      try {
+        await fs.access(path.join(pyritaDir, 'canvas.json'))
+        directory = pyritaDir
+      } catch {
+        directory = pyriteDir
+      }
+    }
+  }
+
   if (create) await fs.mkdir(directory, { recursive: true })
   const realDirectory = await fs.realpath(directory)
   if (path.dirname(realDirectory) !== root) throw new Error('A pasta de quadros deve ficar dentro do cofre.')

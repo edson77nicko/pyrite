@@ -4,6 +4,10 @@ export function isDrawContent(content?: string): boolean {
   if (!content) return false
   const trimmed = content.trim()
   return (
+    trimmed.startsWith('{"type":"pyrite-draw"') ||
+    trimmed.startsWith('{\n  "type": "pyrite-draw"') ||
+    trimmed.includes('"type": "pyrite-draw"') ||
+    trimmed.includes('"type":"pyrite-draw"') ||
     trimmed.startsWith('{"type":"pyrita-draw"') ||
     trimmed.startsWith('{\n  "type": "pyrita-draw"') ||
     trimmed.includes('"type": "pyrita-draw"') ||
@@ -35,7 +39,7 @@ export function createEmptyDrawDocument(initialTitle?: string): DrawDocument {
   }
 
   return {
-    type: 'pyrita-draw',
+    type: 'pyrite-draw',
     version: 1,
     elements,
     viewport: {
@@ -53,9 +57,9 @@ export function parseDrawDocument(content?: string, fallbackTitle?: string): Dra
 
   try {
     const parsed = JSON.parse(content)
-    if (parsed && parsed.type === 'pyrita-draw' && Array.isArray(parsed.elements)) {
+    if (parsed && (parsed.type === 'pyrite-draw' || parsed.type === 'pyrita-draw') && Array.isArray(parsed.elements)) {
       return {
-        type: 'pyrita-draw',
+        type: 'pyrite-draw',
         version: 1,
         elements: parsed.elements || [],
         viewport: parsed.viewport || { panX: 0, panY: 0, zoom: 1 }

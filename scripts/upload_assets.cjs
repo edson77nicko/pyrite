@@ -28,7 +28,7 @@ async function uploadFile(token, releaseId, filePath, assetName, contentType) {
     method: 'POST',
     headers: {
       Authorization: `token ${token}`,
-      'User-Agent': 'Pyrita-Uploader',
+      'User-Agent': 'Pyrite-Uploader',
       'Content-Type': contentType || 'application/octet-stream',
       'Content-Length': String(stats.size)
     },
@@ -61,7 +61,7 @@ async function run() {
   const relRes = await fetch(`https://api.github.com/repos/edson77nicko/pyrite/releases/tags/${tag}`, {
     headers: {
       Authorization: `token ${token}`,
-      'User-Agent': 'Pyrita-Uploader'
+      'User-Agent': 'Pyrite-Uploader'
     }
   });
 
@@ -78,7 +78,9 @@ async function run() {
 
   // Files to upload
   const releaseDir = path.join(__dirname, '..', 'release');
-  const exeCandidate = path.join(releaseDir, `Pyrita Setup ${version}.exe`);
+  const exeCandidate = fs.existsSync(path.join(releaseDir, `Pyrite Setup ${version}.exe`))
+    ? path.join(releaseDir, `Pyrite Setup ${version}.exe`)
+    : path.join(releaseDir, `Pyrita Setup ${version}.exe`);
 
   const filesToUpload = [
     {
@@ -88,7 +90,7 @@ async function run() {
     },
     {
       file: exeCandidate,
-      name: `Pyrita-Setup-${version}.exe`,
+      name: `Pyrite-Setup-${version}.exe`,
       type: 'application/vnd.microsoft.portable-executable'
     }
   ];
@@ -107,7 +109,7 @@ async function run() {
         method: 'DELETE',
         headers: {
           Authorization: `token ${token}`,
-          'User-Agent': 'Pyrita-Uploader'
+          'User-Agent': 'Pyrite-Uploader'
         }
       });
     }
@@ -117,7 +119,7 @@ async function run() {
 
   // Verify final assets
   const finalCheck = await fetch('https://api.github.com/repos/edson77nicko/pyrite/releases/latest', {
-    headers: { 'User-Agent': 'Pyrita-Check' }
+    headers: { 'User-Agent': 'Pyrite-Check' }
   });
   const finalData = await finalCheck.json();
   console.log('\nFinal release assets:');

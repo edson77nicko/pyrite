@@ -160,7 +160,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   // Recent Colors queue (max 4 colors)
   const [recentColors, setRecentColors] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_mindmap_recent_colors')
+      const saved = localStorage.getItem('pyrite_mindmap_recent_colors') || localStorage.getItem('pyrita_mindmap_recent_colors')
       if (saved) {
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(0, 4)
@@ -174,7 +174,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
     setRecentColors(prev => {
       const next = [color, ...prev.filter(c => c.toLowerCase() !== color.toLowerCase())].slice(0, 4)
       try {
-        localStorage.setItem('pyrita_mindmap_recent_colors', JSON.stringify(next))
+        localStorage.setItem('pyrite_mindmap_recent_colors', JSON.stringify(next))
       } catch {}
       return next
     })
@@ -272,7 +272,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
   const initialPan = useRef({ panX: 0, panY: 0 })
 
   // Current Theme definition
-  const currentTheme = MINDMAP_THEMES[doc.theme] || MINDMAP_THEMES['pyrita-classic']
+  const currentTheme = MINDMAP_THEMES[doc.theme] || MINDMAP_THEMES['pyrite-classic']
   const currentCanvasBg = doc.canvasBg || currentTheme.bg || '#0f172a'
   const isCanvasLight = currentCanvasBg === '#ffffff' || currentCanvasBg === '#f4f4f5'
 
@@ -939,7 +939,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
       }}
       className="relative w-full h-full overflow-hidden select-none font-sans text-zinc-100 flex flex-col"
     >
-      {/* 1. TOP HEADER TOOLBAR (Styled in Pyrita Dark/Gold Design System) */}
+      {/* 1. TOP HEADER TOOLBAR (Styled in Pyrite Dark/Gold Design System) */}
       <header
         onMouseDown={e => e.stopPropagation()}
         className="mindmap-interactive-control z-40 h-10 px-3 bg-[#0c0c0e]/95 backdrop-blur-md border-b border-zinc-800/80 flex items-center justify-between shrink-0 text-xs shadow-xs"
@@ -2287,7 +2287,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
         </div>
       </div>
 
-      {/* 5. SIDE DRAWER: TOPIC NOTES (Styled in Pyrita Design System) */}
+      {/* 5. SIDE DRAWER: TOPIC NOTES (Styled in Pyrite Design System) */}
       {activeSideDrawer === 'note' && selectedComputed && (
         <div
           onMouseDown={e => e.stopPropagation()}

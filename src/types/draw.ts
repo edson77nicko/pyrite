@@ -53,7 +53,7 @@ export interface DrawViewport {
 }
 
 export interface DrawDocument {
-  type: 'pyrita-draw'
+  type: 'pyrite-draw' | 'pyrita-draw'
   version: 1
   elements: DrawElement[]
   viewport: DrawViewport

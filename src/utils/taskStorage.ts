@@ -48,7 +48,7 @@ export const INITIAL_TASKS: TaskItem[] = [
     date: tomorrow,
     deadline: todayStr,
     contextNoteId: 'note-welcome',
-    contextNoteTitle: 'Bem-vindo ao Pyrita',
+    contextNoteTitle: 'Bem-vindo ao Pyrite',
     tags: ['planejamento', 'foco'],
     description: '### Objetivos desta tarefa\n- [ ] Levantar requisitos principais\n- [ ] Conectar com a nota de contexto vinculada\n- [ ] Definir entregáveis da semana\n\nEssa tarefa foi estruturada com suporte a propriedades e vinculação de notas locais.',
     createdAt: Date.now() - 3600000 * 5,

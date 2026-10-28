@@ -77,7 +77,7 @@ async function main() {
     assert.equal(await selector.locator('option:checked').innerText(),'Planejamento real')
     assert.equal(await canvas.getByLabel('Conteúdo da ideia').inputValue(),'Ler a pesquisa e definir a próxima entrega.')
     await canvas.getByTitle('Abrir nota no editor',{exact:true}).click()
-    await page.locator('.pyrita-editor-surface').waitFor()
+    await page.locator('.pyrite-editor-surface').waitFor()
     await open()
     // Failed native writes keep a recoverable local document and can be retried.
     await page.evaluate(()=>{window.failSave=true})

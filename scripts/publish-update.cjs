@@ -27,7 +27,7 @@ async function publish() {
   const api = async (endpoint, options = {}) => {
     const response = await fetch(endpoint.startsWith('https://') ? endpoint : `https://api.github.com/repos/${repository}${endpoint}`, {
       ...options,
-      headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'Pyrita-Release', Accept: 'application/vnd.github+json', ...options.headers }
+      headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'Pyrite-Release', Accept: 'application/vnd.github+json', ...options.headers }
     })
     if (!response.ok) throw new Error(`GitHub HTTP ${response.status}: ${(await response.json()).message || response.statusText}`)
     return response.status === 204 ? null : response.json()
@@ -59,7 +59,7 @@ async function publish() {
   ]
   for (const asset of assets) if (!fs.existsSync(asset.file)) throw new Error(`Artefato ausente: ${asset.name}`)
   const json = body => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!release) release = await api('/releases', { method: 'POST', ...json({ tag_name: tag, target_commitish: commit, name: `Pyrita ${tag}`, body: notes, draft: true, prerelease: false }) })
+  if (!release) release = await api('/releases', { method: 'POST', ...json({ tag_name: tag, target_commitish: commit, name: `Pyrite ${tag}`, body: notes, draft: true, prerelease: false }) })
   console.log(`Preparando ${tag}: instalador e metadata validados. Enviando arquivos ao rascunho...`)
   for (const asset of assets) {
     const existing = release.assets.find(item => item.name === asset.name)
@@ -75,17 +75,20 @@ async function publish() {
   for (const asset of assets) {
     if (!draft.assets.some(item => item.name === asset.name && item.state === 'uploaded' && item.size === fs.statSync(asset.file).size)) throw new Error(`Verificação final falhou: ${asset.name}`)
   }
-  await api(`/releases/${release.id}`, { method: 'PATCH', ...json({ draft: false, prerelease: false, make_latest: 'true', name: `Pyrita ${tag}`, body: notes }) })
-  const publicResponse = await fetch(`https://api.github.com/repos/${repository}/releases/latest`, { headers: { 'User-Agent': 'Pyrita-Release-Verify' } })
+  await api(`/releases/${release.id}`, { method: 'PATCH', ...json({ draft: false, prerelease: false, make_latest: 'true', name: `Pyrite ${tag}`, body: notes }) })
+  const publicResponse = await fetch(`https://api.github.com/repos/${repository}/releases/latest`, { headers: { 'User-Agent': 'Pyrite-Release-Verify' } })
   if (!publicResponse.ok) throw new Error(`Não foi possível verificar a release pública: HTTP ${publicResponse.status}`)
   const latest = await publicResponse.json()
   if (latest.tag_name !== tag || latest.draft || latest.prerelease) throw new Error('A versão publicada não está marcada como latest estável.')
   const metadataAsset = latest.assets.find(asset => asset.name === 'latest.yml')
-  const remoteMetadata = await fetch(metadataAsset.browser_download_url, { headers: { 'User-Agent': 'Pyrita-Release-Verify' } })
+  const remoteMetadata = await fetch(metadataAsset.browser_download_url, { headers: { 'User-Agent': 'Pyrite-Release-Verify' } })
   const normalizeYaml = s => s.replace(/\r\n/g, '\n').trim()
   if (!remoteMetadata.ok || normalizeYaml(await remoteMetadata.text()) !== normalizeYaml(metadata)) throw new Error('A metadata pública não corresponde ao instalador publicado.')
   console.log(`Publicada e verificada: ${latest.html_url}`)
   console.log(`Atualização automática disponível: ${tag}. Assets: ${latest.assets.map(asset => asset.name).join(', ')}`)
+
+  const { cleanupReleases } = require('./cleanup-releases.cjs')
+  cleanupReleases()
 }
 
 publish().catch(error => { console.error(`Publicação interrompida: ${error.message}`); process.exitCode = 1 })

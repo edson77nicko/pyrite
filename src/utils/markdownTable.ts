@@ -7,7 +7,7 @@ export interface MarkdownTable {
 }
 
 export const DEFAULT_TABLE = '| Coluna 1 | Coluna 2 | Coluna 3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |'
-export const TABLE_METADATA = /^<!-- pyrita-table:(.*?) -->$/
+export const TABLE_METADATA = /^<!-- (?:pyrite|pyrita)-table:(.*?) -->$/
 export const clampColumnWidth = (width: number) => Math.max(120, Math.min(640, width))
 
 /** Split actual delimiters, preserving escaped pipes, wikilink aliases and code. */
@@ -80,7 +80,7 @@ export function serializeMarkdownTable(table: MarkdownTable): string {
   const row = (cells: string[]) => `| ${cells.map(escapeCell).join(' | ')} |`
   const separators = table.columns.map((_, index) => table.alignments[index] === 'center' ? ':---:' : table.alignments[index] === 'right' ? '---:' : '---')
   const lines = [row(table.columns), row(separators), ...table.rows.map(cells => row(table.columns.map((_, index) => cells[index] || '')))]
-  if (table.widths.some(width => width !== 180)) lines.push(`<!-- pyrita-table:${JSON.stringify({ widths: table.widths })} -->`)
+  if (table.widths.some(width => width !== 180)) lines.push(`<!-- pyrite-table:${JSON.stringify({ widths: table.widths })} -->`)
   return lines.join('\n')
 }
 

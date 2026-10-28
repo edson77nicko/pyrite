@@ -134,7 +134,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
   // Tab 3: Custom Skills State with localStorage persistence
   const [customSkills, setCustomSkills] = useState<CustomAgentSkill[]>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_agent_custom_skills_v1')
+      const saved = localStorage.getItem('pyrite_agent_custom_skills_v1') || localStorage.getItem('pyrita_agent_custom_skills_v1')
       if (saved) {
         return JSON.parse(saved)
       }
@@ -276,6 +276,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
   const saveCustomSkills = (newSkills: CustomAgentSkill[]) => {
     setCustomSkills(newSkills)
     try {
+      localStorage.setItem('pyrite_agent_custom_skills_v1', JSON.stringify(newSkills))
       localStorage.setItem('pyrita_agent_custom_skills_v1', JSON.stringify(newSkills))
     } catch (err) {
       console.error('Failed to save custom skills to localStorage', err)
@@ -284,7 +285,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
 
   const handleImportSkillFolder = async () => {
     if (!window.electronAPI?.selectFolder || !window.electronAPI?.readVault) {
-      alert('Esta funcionalidade requer a execução do Pyrita no Electron.')
+      alert('Esta funcionalidade requer a execução do Pyrite no Electron.')
       return
     }
 
@@ -375,7 +376,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
   }
 
   const handleDeleteCustomSkill = (skillId: string) => {
-    if (confirm('Tem certeza que deseja remover esta skill do Pyrita? Seus arquivos em disco continuarão intactos.')) {
+    if (confirm('Tem certeza que deseja remover esta skill do Pyrite? Seus arquivos em disco continuarão intactos.')) {
       const updated = customSkills.filter(s => s.id !== skillId)
       saveCustomSkills(updated)
       if (expandedSkillId === skillId) setExpandedSkillId(null)
@@ -792,6 +793,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                             onClick={() => {
                               onSelectSpecialty(s.id)
                               try {
+                                localStorage.setItem('pyrite_ai_specialty', s.id)
                                 localStorage.setItem('pyrita_ai_specialty', s.id)
                               } catch {}
                             }}
@@ -1005,7 +1007,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                                 type="button"
                                 onClick={() => handleDeleteCustomSkill(skill.id)}
                                 className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-950/30 transition-colors cursor-pointer"
-                                title="Remover Skill do Pyrita"
+                                title="Remover Skill do Pyrite"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>

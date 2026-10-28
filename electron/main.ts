@@ -30,7 +30,7 @@ let win: BrowserWindow | null = null
 
 function createWindow() {
   win = new BrowserWindow({
-    title: 'Pyrita',
+    title: 'Pyrite',
     width: 1300,
     height: 820,
     minWidth: 920,
@@ -136,7 +136,12 @@ ipcMain.handle('canvas:write', async (_event, vaultPath: string, document) => {
   catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
 })
 
-const vaultLibrary = createVaultLibrary({ settingsPath: path.join(app.getPath('userData'), 'vault-library.json'), defaultRootPath: path.join(app.getPath('documents'), 'Pyrita', 'Cofres') })
+const defaultDocumentsDir = app.getPath('documents')
+const pyritaCofres = path.join(defaultDocumentsDir, 'Pyrita', 'Cofres')
+const pyriteCofres = path.join(defaultDocumentsDir, 'Pyrite', 'Cofres')
+const defaultVaultsRoot = fs.existsSync(pyritaCofres) && !fs.existsSync(pyriteCofres) ? pyritaCofres : pyriteCofres
+
+const vaultLibrary = createVaultLibrary({ settingsPath: path.join(app.getPath('userData'), 'vault-library.json'), defaultRootPath: defaultVaultsRoot })
 ipcMain.handle('vault:getSettings', () => vaultLibrary.getSettings())
 ipcMain.handle('vault:setRoot', async (_event, rootPath: string) => {
   try { return { success: true, ...await vaultLibrary.setRoot(rootPath) } }
@@ -158,7 +163,7 @@ ipcMain.handle('vault:getKnownVaults', async () => {
     if (fs.existsSync(defaultVault)) {
       vaults.push({
         id: 'default-pyrite-vault',
-        name: 'Pyrita Vault',
+        name: 'Pyrite Vault',
         path: defaultVault,
         lastOpened: Date.now()
       })
@@ -658,7 +663,7 @@ ipcMain.handle('ai:chat', async (_event, params: {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'HTTP-Referer': 'https://pyrite.app',
-        'X-Title': 'Pyrita'
+        'X-Title': 'Pyrite'
       }
     },
     openai: {

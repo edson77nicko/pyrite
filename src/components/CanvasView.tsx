@@ -49,7 +49,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
           </div>
 
           <h2 className="text-xl font-bold tracking-tight text-white mb-2">
-            Pyrita Draw
+            Pyrite Draw
           </h2>
 
           <p className="text-sm text-zinc-400 leading-relaxed mb-6">

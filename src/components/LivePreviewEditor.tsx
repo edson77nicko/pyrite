@@ -1541,7 +1541,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         onMouseUp={handleSelectionCheck}
         onKeyUp={handleSelectionCheck}
         onClick={handleEditorClick}
-        className={`pyrita-editor-surface w-full min-h-[400px] focus:outline-none font-sans text-zinc-300 leading-relaxed ${fontSizeClass} select-text`}
+        className={`pyrite-editor-surface w-full min-h-[400px] focus:outline-none font-sans text-zinc-300 leading-relaxed ${fontSizeClass} select-text`}
       />
 
       {blockHosts.map(block => createPortal(block.kind === 'table'

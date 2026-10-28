@@ -41,7 +41,7 @@ const STROKE_COLORS = [
   '#a1a1aa', // Gray / Zinc 400
   '#ef4444', // Red
   '#f59e0b', // Amber
-  '#c59b27', // Pyrita Gold
+  '#c59b27', // Pyrite Gold
   '#10b981', // Emerald
   '#06b6d4', // Cyan
   '#3b82f6', // Blue
@@ -54,7 +54,7 @@ const BG_COLORS = [
   '#27272a', // Zinc 800
   '#7f1d1d', // Dark Red
   '#78350f', // Dark Amber
-  '#59420b', // Dark Pyrita Gold
+  '#59420b', // Dark Pyrite Gold
   '#064e3b', // Dark Emerald
   '#164e63', // Dark Cyan
   '#1e3a8a', // Dark Blue
@@ -991,7 +991,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     ctx.restore()
 
     const link = document.createElement('a')
-    link.download = `${note.title.replace(/[/\\?%*:|"<>]/g, '_') || 'pyrita-draw'}.png`
+    link.download = `${note.title.replace(/[/\\?%*:|"<>]/g, '_') || 'pyrite-draw'}.png`
     link.href = offscreen.toDataURL('image/png')
     link.click()
   }

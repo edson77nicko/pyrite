@@ -31,7 +31,7 @@ async function main() {
     })
     await page.goto(`http://127.0.0.1:${server.address().port}`)
     const openNote = () => page.locator('[title="Blocos de validação"]').click()
-    const surface = page.locator('.pyrita-editor-surface')
+    const surface = page.locator('.pyrite-editor-surface')
     const code = page.locator('.editor-code-block').first()
     const callout = page.locator('.editor-callout').first()
     const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('pyrite_vault_notes')).find(note => note.id === 'blocks-test').content)

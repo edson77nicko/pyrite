@@ -67,7 +67,7 @@ export function EditableTable({ markdown, readOnly, onChange, onDelete, onExit, 
     if (!wikiSuggest) return
     const dismiss = (event: PointerEvent) => {
       const target = event.target as HTMLElement
-      if (!target.closest('.pyrita-table-wiki-suggest')) {
+      if (!target.closest('.pyrite-table-wiki-suggest')) {
         setWikiSuggest(null)
       }
     }
@@ -317,7 +317,7 @@ export function EditableTable({ markdown, readOnly, onChange, onDelete, onExit, 
 
     return (
       <div
-        className="pyrita-table-value group/cell relative cursor-text select-text"
+        className="pyrite-table-value group/cell relative cursor-text select-text"
         tabIndex={readOnly ? undefined : 0}
         onClick={event => handleValueClick(event, cell)}
         onDoubleClick={() => !readOnly && focusCell(cell)}
@@ -334,23 +334,23 @@ export function EditableTable({ markdown, readOnly, onChange, onDelete, onExit, 
     )
   }
 
-  return <div ref={root} className={`pyrita-table ${readOnly ? 'is-reading' : ''}`} contentEditable={false} onInput={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()} onPaste={event => event.stopPropagation()}>
-    {!readOnly && <div className="pyrita-table-toolbar"><span><TableLabel />{table.rows.length} {table.rows.length === 1 ? 'linha' : 'linhas'} · {table.columns.length} colunas</span><div><button aria-label="Adicionar coluna" onClick={() => { commit(insertTableColumn(table, table.columns.length)); focusCell({ row: -1, column: table.columns.length }) }}><Plus size={13} />Coluna</button><button aria-label="Excluir tabela" title="Excluir tabela" onClick={() => setDeletePending(true)}><Trash2 size={14} /></button></div></div>}
-    {!readOnly && filter && <div className="pyrita-table-filter"><label>Filtrar {table.columns[filter.column]}<input autoFocus placeholder="Buscar nesta coluna…" value={filter.value} onChange={event => setFilter({ ...filter, value: event.target.value })} /></label><button title="Limpar filtro" onClick={() => setFilter(null)}><X size={14} /></button></div>}
-    <div className="pyrita-table-scroll"><table aria-label="Tabela da nota" style={{ width: '100%', minWidth: table.widths.reduce((sum, width) => sum + width, 0) + (readOnly ? 0 : 38) }}>
+  return <div ref={root} className={`pyrite-table ${readOnly ? 'is-reading' : ''}`} contentEditable={false} onInput={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()} onPaste={event => event.stopPropagation()}>
+    {!readOnly && <div className="pyrite-table-toolbar"><span><TableLabel />{table.rows.length} {table.rows.length === 1 ? 'linha' : 'linhas'} · {table.columns.length} colunas</span><div><button aria-label="Adicionar coluna" onClick={() => { commit(insertTableColumn(table, table.columns.length)); focusCell({ row: -1, column: table.columns.length }) }}><Plus size={13} />Coluna</button><button aria-label="Excluir tabela" title="Excluir tabela" onClick={() => setDeletePending(true)}><Trash2 size={14} /></button></div></div>}
+    {!readOnly && filter && <div className="pyrite-table-filter"><label>Filtrar {table.columns[filter.column]}<input autoFocus placeholder="Buscar nesta coluna…" value={filter.value} onChange={event => setFilter({ ...filter, value: event.target.value })} /></label><button title="Limpar filtro" onClick={() => setFilter(null)}><X size={14} /></button></div>}
+    <div className="pyrite-table-scroll"><table aria-label="Tabela da nota" style={{ width: '100%', minWidth: table.widths.reduce((sum, width) => sum + width, 0) + (readOnly ? 0 : 38) }}>
       <colgroup>{!readOnly && <col style={{ width: 38 }} />}{table.widths.map((width, index) => <col key={index} style={{ width }} />)}</colgroup>
-      <thead><tr>{!readOnly && <th className="pyrita-table-gutter" aria-label="Linhas" />}{table.columns.map((text, column) => <th key={column} style={{ textAlign: table.alignments[column] }}>
-        <div className="pyrita-table-heading">{renderCell(text, { row: -1, column })}{!readOnly && <button aria-label={`Opções da coluna ${column + 1}`} title="Opções da coluna" onClick={event => openMenu(event, 'column', column)}><ChevronDown size={14} /></button>}</div>
-        {!readOnly && <span className="pyrita-table-resize" role="separator" aria-label={`Redimensionar coluna ${column + 1}`} aria-orientation="vertical" aria-valuenow={table.widths[column]} aria-valuemin={120} aria-valuemax={640} tabIndex={0} onPointerDown={event => resize(event, column)} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); commit({ ...table, widths: table.widths.map((width, index) => index === column ? clampColumnWidth(width + (event.key === 'ArrowRight' ? 16 : -16)) : width) }) } }} />}
+      <thead><tr>{!readOnly && <th className="pyrite-table-gutter" aria-label="Linhas" />}{table.columns.map((text, column) => <th key={column} style={{ textAlign: table.alignments[column] }}>
+        <div className="pyrite-table-heading">{renderCell(text, { row: -1, column })}{!readOnly && <button aria-label={`Opções da coluna ${column + 1}`} title="Opções da coluna" onClick={event => openMenu(event, 'column', column)}><ChevronDown size={14} /></button>}</div>
+        {!readOnly && <span className="pyrite-table-resize" role="separator" aria-label={`Redimensionar coluna ${column + 1}`} aria-orientation="vertical" aria-valuenow={table.widths[column]} aria-valuemin={120} aria-valuemax={640} tabIndex={0} onPointerDown={event => resize(event, column)} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); commit({ ...table, widths: table.widths.map((width, index) => index === column ? clampColumnWidth(width + (event.key === 'ArrowRight' ? 16 : -16)) : width) }) } }} />}
       </th>)}</tr></thead>
       <tbody>{table.rows.map((row, rowIndex) => {
         if (!readOnly && filter?.value && !row[filter.column].toLocaleLowerCase().includes(filter.value.toLocaleLowerCase())) return null
-        return <tr key={rowIndex}>{!readOnly && <td className="pyrita-table-gutter"><button aria-label={`Opções da linha ${rowIndex + 1}`} title="Opções da linha" onClick={event => openMenu(event, 'row', rowIndex)}>{rowIndex + 1}</button></td>}{row.map((text, column) => <td key={column} className={active?.row === rowIndex && active.column === column ? 'is-active' : ''} style={{ textAlign: table.alignments[column] }}>{renderCell(text, { row: rowIndex, column })}</td>)}</tr>
+        return <tr key={rowIndex}>{!readOnly && <td className="pyrite-table-gutter"><button aria-label={`Opções da linha ${rowIndex + 1}`} title="Opções da linha" onClick={event => openMenu(event, 'row', rowIndex)}>{rowIndex + 1}</button></td>}{row.map((text, column) => <td key={column} className={active?.row === rowIndex && active.column === column ? 'is-active' : ''} style={{ textAlign: table.alignments[column] }}>{renderCell(text, { row: rowIndex, column })}</td>)}</tr>
       })}</tbody>
     </table></div>
-    {!readOnly && <div className="pyrita-table-footer"><button aria-label="Adicionar linha" onClick={() => addRow(table.rows.length)}><Plus size={15} />Nova linha</button><span>Tab para navegar · Shift+Enter para quebra de linha</span></div>}
-    {!readOnly && deletePending && <div className="pyrita-table-confirm" role="alert"><span>Excluir esta tabela e todo o seu conteúdo?</span><button className="danger" onClick={onDelete}>Excluir tabela</button><button onClick={() => setDeletePending(false)}>Cancelar</button></div>}
-    {!readOnly && menu && createPortal(<div ref={popup} role="menu" aria-label={menu.kind === 'column' ? 'Gerenciar coluna' : 'Gerenciar linha'} className="pyrita-table-menu" style={{ left: menu.left, top: menu.top }} onClick={event => { if ((event.target as HTMLElement).closest('button')) setMenu(null) }} onKeyDown={event => {
+    {!readOnly && <div className="pyrite-table-footer"><button aria-label="Adicionar linha" onClick={() => addRow(table.rows.length)}><Plus size={15} />Nova linha</button><span>Tab para navegar · Shift+Enter para quebra de linha</span></div>}
+    {!readOnly && deletePending && <div className="pyrite-table-confirm" role="alert"><span>Excluir esta tabela e todo o seu conteúdo?</span><button className="danger" onClick={onDelete}>Excluir tabela</button><button onClick={() => setDeletePending(false)}>Cancelar</button></div>}
+    {!readOnly && menu && createPortal(<div ref={popup} role="menu" aria-label={menu.kind === 'column' ? 'Gerenciar coluna' : 'Gerenciar linha'} className="pyrite-table-menu" style={{ left: menu.left, top: menu.top }} onClick={event => { if ((event.target as HTMLElement).closest('button')) setMenu(null) }} onKeyDown={event => {
       event.stopPropagation()
       if (event.key === 'Escape') { setMenu(null); focusCell({ row: menu.kind === 'column' ? -1 : menu.index, column: menu.kind === 'column' ? menu.index : 0 }) }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -387,7 +387,7 @@ export function EditableTable({ markdown, readOnly, onChange, onDelete, onExit, 
           zIndex: 9999
         }}
         onMouseDown={e => e.preventDefault()}
-        className="pyrita-table-wiki-suggest w-72 bg-[#141418] border border-[var(--accent)]/40 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
+        className="pyrite-table-wiki-suggest w-72 bg-[#141418] border border-[var(--accent)]/40 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
       >
         <div className="wiki-suggest-header px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)] border-b border-zinc-800 flex items-center justify-between">
           <span className="flex items-center gap-1">
@@ -428,5 +428,5 @@ export function EditableTable({ markdown, readOnly, onChange, onDelete, onExit, 
 }
 
 function TableLabel() {
-  return <span className="pyrita-table-label">Tabela</span>
+  return <span className="pyrite-table-label">Tabela</span>
 }

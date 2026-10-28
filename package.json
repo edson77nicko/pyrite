@@ -1,9 +1,9 @@
 {
   "name": "pyrite",
   "private": true,
-  "version": "1.0.65",
-  "description": "Pyrita - Local-First Knowledge Management & Thinking Environment",
-  "author": "Pyrita Team",
+  "version": "1.0.66",
+  "description": "Pyrite - Local-First Knowledge Management & Thinking Environment",
+  "author": "Pyrite Team",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -11,10 +11,15 @@
     "dev:web": "vite --mode web",
     "build": "tsc -b && vite build",
     "build:win": "npm run build && electron-builder --win --x64",
+    "postbuild:win": "node scripts/cleanup-releases.cjs",
     "publish:win": "npm run release",
     "release": "node --dns-result-order=ipv4first scripts/publish-update.cjs",
+    "clean:releases": "node scripts/cleanup-releases.cjs",
     "lint": "oxlint",
     "preview": "vite preview"
+  },
+  "releaseSettings": {
+    "maxKeptReleases": 5
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -41,7 +46,8 @@
   },
   "build": {
     "appId": "com.pyrite.app",
-    "productName": "Pyrita",
+    "productName": "Pyrite",
+    "maxKeptReleases": 5,
     "publish": {
       "provider": "github",
       "owner": "edson77nicko",

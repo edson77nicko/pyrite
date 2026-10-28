@@ -32,7 +32,7 @@ import { FileText, Plus } from 'lucide-react'
 const MAX_TABS = 8
 
 const DEFAULT_SETTINGS: AppSettings = {
-  accentColor: '#c59b27', // Pyrita: Ouro Queimado
+  accentColor: '#c59b27', // Pyrite: Ouro Queimado
   accentColorDark: '#c59b27',
   accentColorLight: '#c59b27',
   fontSize: 'medium',
@@ -134,7 +134,7 @@ export const App: React.FC = () => {
       handleRefreshVault(undefined, true)
     })
 
-    // Window focus listener (when switching from Windows Explorer / Browser back to Pyrita)
+    // Window focus listener (when switching from Windows Explorer / Browser back to Pyrite)
     const handleFocus = () => {
       handleRefreshVault(undefined, true)
     }
@@ -705,11 +705,11 @@ export const App: React.FC = () => {
 <body class="bg-[#0e0e12] text-zinc-100 min-h-screen p-8 flex flex-col items-center justify-center font-sans antialiased">
   <div class="max-w-md w-full bg-[#16161d] border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4">
     <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-xs font-semibold">
-      ⚡ Pyrita HTML
+      ⚡ Pyrite HTML
     </div>
     <h1 class="text-2xl font-bold tracking-tight text-white">${title}</h1>
     <p class="text-sm text-zinc-400 leading-relaxed">
-      Esta é uma página HTML interativa renderizada no Pyrita. Você pode editar o código diretamente ou pedir ao <strong>Assistente IA</strong> para criar novas seções, estilos e funcionalidades!
+      Esta é uma página HTML interativa renderizada no Pyrite. Você pode editar o código diretamente ou pedir ao <strong>Assistente IA</strong> para criar novas seções, estilos e funcionalidades!
     </p>
     <div class="pt-2 flex gap-3">
       <button class="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-semibold text-xs rounded-xl shadow-md transition-all active:scale-95">
@@ -1240,7 +1240,7 @@ export const App: React.FC = () => {
   return (
     <div className={`app-outer-shell flex flex-col w-screen h-screen ${settings.themeMode === 'light' ? 'light' : ''} bg-[#0f0f12] text-zinc-100 overflow-hidden font-sans relative`}>
       {/* Global Tactile Noise Texture Layer (Present by default in both Dark and Light modes) */}
-      <div className="pyrita-noise-layer pointer-events-none" />
+      <div className="pyrite-noise-layer pointer-events-none" />
 
       {/* 1. Main Workspace Layout */}
       <div className="app-workspace-layout flex flex-1 overflow-hidden relative bg-[#09090b]">

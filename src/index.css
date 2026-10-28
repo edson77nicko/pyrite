@@ -206,7 +206,7 @@ input[type="checkbox"]:focus-visible,
 }
 
 /* Editable Markdown tables: compact controls around a horizontally scrolling grid. */
-.pyrita-table {
+.pyrite-table {
   border: 1px solid #3f3f46;
   border-radius: 10px;
   background: #18181b;
@@ -216,54 +216,54 @@ input[type="checkbox"]:focus-visible,
   line-height: 1.5;
   min-width: 0;
 }
-.pyrita-table button { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; border-radius: 4px; padding: 4px 6px; }
-.pyrita-table button:hover { background: #3f3f46; color: #fafafa; }
-.pyrita-table button:focus-visible, .pyrita-table-menu button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-.pyrita-table-toolbar, .pyrita-table-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px; font-size: 11px; color: #a1a1aa; }
-.pyrita-table-toolbar { border-bottom: 1px solid #3f3f46; background: #202024; }
-.pyrita-table-toolbar > span, .pyrita-table-toolbar > div { display: flex; align-items: center; gap: 10px; }
-.pyrita-table-label { color: #e4e4e7; font-weight: 600; }
-.pyrita-table-scroll { overflow-x: auto; max-width: 100%; }
-.pyrita-table table { border-collapse: separate; border-spacing: 0; table-layout: fixed; margin: 0; font-size: 12px; max-width: none; }
-.pyrita-table th, .pyrita-table td { position: relative; padding: 0; vertical-align: top; border-right: 1px solid #3f3f46; border-bottom: 1px solid #3f3f46; background: transparent; }
-.pyrita-table th:last-child, .pyrita-table td:last-child { border-right: 0; }
-.pyrita-table tbody tr:last-child td { border-bottom: 0; }
-.pyrita-table th { background: #242427; color: #f4f4f5; font-weight: 600; }
-.pyrita-table tr:hover td { background: #222225; }
-.pyrita-table td:focus-within, .pyrita-table th:focus-within { box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-glow-subtle); }
-.pyrita-table textarea { display: block; width: 100%; min-width: 0; resize: none; field-sizing: content; min-height: 42px; max-height: 320px; padding: 11px 12px; border: 0; border-radius: 0; outline: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; line-height: 1.6; overflow-wrap: anywhere; }
-.pyrita-table-heading { display: flex; align-items: flex-start; text-align: inherit; }
-.pyrita-table-heading textarea { flex: 1; font-weight: 600; }
-.pyrita-table-heading .pyrita-table-value { flex: 1; font-weight: 600; }
-.pyrita-table-heading > button { flex-shrink: 0; margin: 9px 5px 0 0; padding: 4px; color: #a1a1aa; }
-.pyrita-table .pyrita-table-gutter { width: 38px; min-width: 38px; color: #71717a; text-align: center; background: #202023; }
-.pyrita-table-gutter button { width: 100%; justify-content: center; min-height: 42px; padding: 11px 2px; border-radius: 0; font-size: 10px; }
-.pyrita-table-resize { position: absolute; top: 0; bottom: 0; right: -3px; width: 6px; cursor: col-resize; z-index: 1; touch-action: none; }
-.pyrita-table-resize:hover, .pyrita-table-resize:focus-visible { background: var(--accent); outline: none; }
-.pyrita-table-footer { border-top: 1px solid #3f3f46; flex-wrap: wrap; }
-.pyrita-table-footer > button { color: #d4d4d8; }
-.pyrita-table-footer > span { font-size: 10px; color: #71717a; }
-.pyrita-table-filter, .pyrita-table-confirm { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 9px 12px; border-bottom: 1px solid #3f3f46; font-size: 11px; }
-.pyrita-table-filter label { display: flex; align-items: center; gap: 10px; flex: 1; }
-.pyrita-table-filter input { min-width: 100px; flex: 1; padding: 5px 8px; background: #09090b; border: 1px solid #3f3f46; border-radius: 5px; outline-color: var(--accent); }
-.pyrita-table-confirm { border-top: 1px solid #3f3f46; border-bottom: 0; }
-.pyrita-table .danger, .pyrita-table-menu .danger { color: #fb7185; }
-.pyrita-table-value { display: block; width: 100%; min-width: 0; padding: 11px 12px; min-height: 42px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
-.pyrita-table-value .wiki-link { display: inline-flex; vertical-align: middle; cursor: pointer; }
-.pyrita-table-menu { position: fixed; z-index: 110; width: 256px; padding: 5px; border: 1px solid #3f3f46; border-radius: 10px; background: #242427; box-shadow: 0 16px 40px #0008; color: #e4e4e7; max-height: calc(100vh - 16px); overflow-y: auto; font-size: 12px; }
-.pyrita-table-menu button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 5px; text-align: left; cursor: pointer; }
-.pyrita-table-menu button:hover, .pyrita-table-menu button:focus-visible { background: #3f3f46; }
-.pyrita-table-menu button:disabled { opacity: .35; cursor: default; }
-.pyrita-table-menu hr { border: 0; border-top: 1px solid #3f3f46; margin: 4px 0; }
+.pyrite-table button { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; border-radius: 4px; padding: 4px 6px; }
+.pyrite-table button:hover { background: #3f3f46; color: #fafafa; }
+.pyrite-table button:focus-visible, .pyrite-table-menu button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.pyrite-table-toolbar, .pyrite-table-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px; font-size: 11px; color: #a1a1aa; }
+.pyrite-table-toolbar { border-bottom: 1px solid #3f3f46; background: #202024; }
+.pyrite-table-toolbar > span, .pyrite-table-toolbar > div { display: flex; align-items: center; gap: 10px; }
+.pyrite-table-label { color: #e4e4e7; font-weight: 600; }
+.pyrite-table-scroll { overflow-x: auto; max-width: 100%; }
+.pyrite-table table { border-collapse: separate; border-spacing: 0; table-layout: fixed; margin: 0; font-size: 12px; max-width: none; }
+.pyrite-table th, .pyrite-table td { position: relative; padding: 0; vertical-align: top; border-right: 1px solid #3f3f46; border-bottom: 1px solid #3f3f46; background: transparent; }
+.pyrite-table th:last-child, .pyrite-table td:last-child { border-right: 0; }
+.pyrite-table tbody tr:last-child td { border-bottom: 0; }
+.pyrite-table th { background: #242427; color: #f4f4f5; font-weight: 600; }
+.pyrite-table tr:hover td { background: #222225; }
+.pyrite-table td:focus-within, .pyrite-table th:focus-within { box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-glow-subtle); }
+.pyrite-table textarea { display: block; width: 100%; min-width: 0; resize: none; field-sizing: content; min-height: 42px; max-height: 320px; padding: 11px 12px; border: 0; border-radius: 0; outline: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; line-height: 1.6; overflow-wrap: anywhere; }
+.pyrite-table-heading { display: flex; align-items: flex-start; text-align: inherit; }
+.pyrite-table-heading textarea { flex: 1; font-weight: 600; }
+.pyrite-table-heading .pyrite-table-value { flex: 1; font-weight: 600; }
+.pyrite-table-heading > button { flex-shrink: 0; margin: 9px 5px 0 0; padding: 4px; color: #a1a1aa; }
+.pyrite-table .pyrite-table-gutter { width: 38px; min-width: 38px; color: #71717a; text-align: center; background: #202023; }
+.pyrite-table-gutter button { width: 100%; justify-content: center; min-height: 42px; padding: 11px 2px; border-radius: 0; font-size: 10px; }
+.pyrite-table-resize { position: absolute; top: 0; bottom: 0; right: -3px; width: 6px; cursor: col-resize; z-index: 1; touch-action: none; }
+.pyrite-table-resize:hover, .pyrite-table-resize:focus-visible { background: var(--accent); outline: none; }
+.pyrite-table-footer { border-top: 1px solid #3f3f46; flex-wrap: wrap; }
+.pyrite-table-footer > button { color: #d4d4d8; }
+.pyrite-table-footer > span { font-size: 10px; color: #71717a; }
+.pyrite-table-filter, .pyrite-table-confirm { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 9px 12px; border-bottom: 1px solid #3f3f46; font-size: 11px; }
+.pyrite-table-filter label { display: flex; align-items: center; gap: 10px; flex: 1; }
+.pyrite-table-filter input { min-width: 100px; flex: 1; padding: 5px 8px; background: #09090b; border: 1px solid #3f3f46; border-radius: 5px; outline-color: var(--accent); }
+.pyrite-table-confirm { border-top: 1px solid #3f3f46; border-bottom: 0; }
+.pyrite-table .danger, .pyrite-table-menu .danger { color: #fb7185; }
+.pyrite-table-value { display: block; width: 100%; min-width: 0; padding: 11px 12px; min-height: 42px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
+.pyrite-table-value .wiki-link { display: inline-flex; vertical-align: middle; cursor: pointer; }
+.pyrite-table-menu { position: fixed; z-index: 110; width: 256px; padding: 5px; border: 1px solid #3f3f46; border-radius: 10px; background: #242427; box-shadow: 0 16px 40px #0008; color: #e4e4e7; max-height: calc(100vh - 16px); overflow-y: auto; font-size: 12px; }
+.pyrite-table-menu button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 5px; text-align: left; cursor: pointer; }
+.pyrite-table-menu button:hover, .pyrite-table-menu button:focus-visible { background: #3f3f46; }
+.pyrite-table-menu button:disabled { opacity: .35; cursor: default; }
+.pyrite-table-menu hr { border: 0; border-top: 1px solid #3f3f46; margin: 4px 0; }
 
 /* Every embedded block has a real caret landing point before/after it. */
-.pyrita-editor-surface { cursor: text; }
-.pyrita-editor-surface > p, .editor-paragraph { min-height: 1.65em; margin: 3px 0; }
-.pyrita-editor-surface > .editor-gap { min-height: 22px; margin: 0; }
-.pyrita-editor-surface[contenteditable="false"] > .editor-gap { display: none; }
+.pyrite-editor-surface { cursor: text; }
+.pyrite-editor-surface > p, .editor-paragraph { min-height: 1.65em; margin: 3px 0; }
+.pyrite-editor-surface > .editor-gap { min-height: 22px; margin: 0; }
+.pyrite-editor-surface[contenteditable="false"] > .editor-gap { display: none; }
 
-/* Pyrita Rich Editor Typography (ensures H1-H4, lists, blockquotes render styled inside contenteditable) */
-.pyrita-editor-surface h1 {
+/* Pyrite Rich Editor Typography (ensures H1-H4, lists, blockquotes render styled inside contenteditable) */
+.pyrite-editor-surface h1 {
   font-size: 1.625rem;
   line-height: 2rem;
   font-weight: 700;
@@ -275,7 +275,7 @@ input[type="checkbox"]:focus-visible,
   letter-spacing: -0.02em;
 }
 
-.pyrita-editor-surface h2 {
+.pyrite-editor-surface h2 {
   font-size: 1.35rem;
   line-height: 1.75rem;
   font-weight: 600;
@@ -285,7 +285,7 @@ input[type="checkbox"]:focus-visible,
   letter-spacing: -0.015em;
 }
 
-.pyrita-editor-surface h3 {
+.pyrite-editor-surface h3 {
   font-size: 1.15rem;
   line-height: 1.5rem;
   font-weight: 600;
@@ -295,7 +295,7 @@ input[type="checkbox"]:focus-visible,
   letter-spacing: -0.01em;
 }
 
-.pyrita-editor-surface h4 {
+.pyrite-editor-surface h4 {
   font-size: 1rem;
   line-height: 1.4rem;
   font-weight: 600;
@@ -304,7 +304,7 @@ input[type="checkbox"]:focus-visible,
   margin-bottom: 0.25rem;
 }
 
-.pyrita-editor-surface ul {
+.pyrite-editor-surface ul {
   list-style-type: disc !important;
   margin-top: 0.375rem !important;
   margin-bottom: 0.375rem !important;
@@ -312,7 +312,7 @@ input[type="checkbox"]:focus-visible,
   color: #d4d4d8;
 }
 
-.pyrita-editor-surface ol {
+.pyrite-editor-surface ol {
   list-style-type: decimal !important;
   margin-top: 0.375rem !important;
   margin-bottom: 0.375rem !important;
@@ -320,13 +320,13 @@ input[type="checkbox"]:focus-visible,
   color: #d4d4d8;
 }
 
-.pyrita-editor-surface li {
+.pyrite-editor-surface li {
   margin-top: 0.125rem;
   margin-bottom: 0.125rem;
   line-height: 1.6;
 }
 
-.pyrita-editor-surface blockquote {
+.pyrite-editor-surface blockquote {
   border-left: 3px solid rgba(161, 161, 170, 0.4);
   padding-left: 0.875rem;
   margin-top: 0.5rem;
@@ -335,7 +335,7 @@ input[type="checkbox"]:focus-visible,
   font-style: italic;
 }
 
-.pyrita-editor-surface hr {
+.pyrite-editor-surface hr {
   border: 0;
   border-top: 1px solid rgba(63, 63, 70, 0.5);
   margin-top: 1.25rem;
@@ -489,7 +489,7 @@ input[type="checkbox"]:focus-visible,
 /* =========================================================================
    TACTILE NOISE TEXTURE LAYER (Active by default in both Dark and Light modes)
    ========================================================================= */
-.pyrita-noise-layer {
+.pyrite-noise-layer {
   position: fixed;
   inset: 0;
   width: 100vw;
@@ -503,8 +503,8 @@ input[type="checkbox"]:focus-visible,
   mix-blend-mode: overlay;
 }
 
-.light .pyrita-noise-layer,
-html.light .pyrita-noise-layer {
+.light .pyrite-noise-layer,
+html.light .pyrite-noise-layer {
   display: none !important;
   opacity: 0 !important;
 }
@@ -619,7 +619,7 @@ html.light #root,
 /* 3. Editor & Cards (#FFFFFF, sem véu cinza) */
 .light .app-main-pane,
 .light .app-editor-pane,
-.light .pyrita-editor-surface,
+.light .pyrite-editor-surface,
 .light .task-document-page,
 .light .task-document-body,
 .light .kanban-task-card,
@@ -689,21 +689,21 @@ html.light #root,
   border-color: #E2E4E8 !important;
 }
 
-.light .pyrita-editor-surface {
+.light .pyrite-editor-surface {
   color: #252830 !important;
   font-weight: 400 !important;
 }
 
-.light .pyrita-editor-surface p,
-.light .pyrita-editor-surface li,
-.light .pyrita-editor-surface span {
+.light .pyrite-editor-surface p,
+.light .pyrite-editor-surface li,
+.light .pyrite-editor-surface span {
   font-weight: 400;
 }
 
-.light .pyrita-editor-surface h1,
-.light .pyrita-editor-surface h2,
-.light .pyrita-editor-surface h3,
-.light .pyrita-editor-surface h4 {
+.light .pyrite-editor-surface h1,
+.light .pyrite-editor-surface h2,
+.light .pyrite-editor-surface h3,
+.light .pyrite-editor-surface h4 {
   color: #252830 !important;
 }
 
@@ -893,7 +893,7 @@ html.light {
   background-color: var(--accent) !important;
   box-shadow: none !important;
 }
-.light .pyrita-editor-surface blockquote {
+.light .pyrite-editor-surface blockquote {
   border-left: 3px solid var(--accent) !important;
   box-shadow: none !important;
   color: #68707D !important;
@@ -1213,55 +1213,55 @@ html.light {
   border-color: #e4e4e7 !important;
 }
 
-/* Tabela Editável Pyrita (.pyrita-table) */
-.light .pyrita-table {
+/* Tabela Editável Pyrite (.pyrite-table) */
+.light .pyrite-table {
   border: 1px solid #dcdde0 !important;
   background: #ffffff !important;
   color: #18181b !important;
 }
-.light .pyrita-table-toolbar {
+.light .pyrite-table-toolbar {
   border-bottom: 1px solid #dcdde0 !important;
   background: #f4f4f6 !important;
   color: #52525b !important;
 }
-.light .pyrita-table-label {
+.light .pyrite-table-label {
   color: #18181b !important;
 }
-.light .pyrita-table th,
-.light .pyrita-table td {
+.light .pyrite-table th,
+.light .pyrite-table td {
   border-right: 1px solid #dcdde0 !important;
   border-bottom: 1px solid #dcdde0 !important;
 }
-.light .pyrita-table th {
+.light .pyrite-table th {
   background: #f0f0f3 !important;
   color: #18181b !important;
 }
-.light .pyrita-table tr:hover td {
+.light .pyrite-table tr:hover td {
   background: #f4f4f6 !important;
 }
-.light .pyrita-table .pyrita-table-gutter {
+.light .pyrite-table .pyrite-table-gutter {
   background: #f4f4f6 !important;
   color: #71717a !important;
 }
-.light .pyrita-table-footer {
+.light .pyrite-table-footer {
   border-top: 1px solid #dcdde0 !important;
   color: #71717a !important;
 }
-.light .pyrita-table-menu {
+.light .pyrite-table-menu {
   background: #ffffff !important;
   border: 1px solid #dcdde0 !important;
   color: #18181b !important;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
 }
-.light .pyrita-table-menu button:hover {
+.light .pyrite-table-menu button:hover {
   background: #f4f4f6 !important;
 }
-.light .pyrita-table-wiki-suggest {
+.light .pyrite-table-wiki-suggest {
   background: #ffffff !important;
   border-color: #dcdde0 !important;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12) !important;
 }
-.light .pyrita-table-wiki-suggest .wiki-suggest-header {
+.light .pyrite-table-wiki-suggest .wiki-suggest-header {
   border-bottom-color: #e4e4e7 !important;
 }
 
@@ -1830,7 +1830,7 @@ html.light {
   color: #18181b !important;
 }
 
-/* Empty state do Pyrita Draw */
+/* Empty state do Pyrite Draw */
 .light .draw-empty-state-wrapper {
   background-color: #EEF0F3 !important;
   color: #252830 !important;
@@ -1959,7 +1959,7 @@ html.light {
 }
 
 /* Checkbox e Listas Fluidas: texto subsequente inicia no começo da página */
-.pyrita-editor-surface .task-item {
+.pyrite-editor-surface .task-item {
   display: block !important;
   margin-top: 0.35rem !important;
   margin-bottom: 0.35rem !important;
@@ -1967,7 +1967,7 @@ html.light {
   clear: both !important;
 }
 
-.pyrita-editor-surface .task-item .task-checkbox {
+.pyrite-editor-surface .task-item .task-checkbox {
   float: left !important;
   margin-top: 0.22rem !important;
   margin-right: 0.55rem !important;
@@ -1975,19 +1975,19 @@ html.light {
   vertical-align: middle !important;
 }
 
-.pyrita-editor-surface .task-item .task-text {
+.pyrite-editor-surface .task-item .task-text {
   display: inline !important;
   word-break: break-word !important;
 }
 
-.pyrita-editor-surface ul,
-.pyrita-editor-surface ol {
+.pyrite-editor-surface ul,
+.pyrite-editor-surface ol {
   list-style-position: inside !important;
   padding-left: 0 !important;
   margin-left: 0 !important;
 }
 
-.pyrita-editor-surface li {
+.pyrite-editor-surface li {
   padding-left: 0 !important;
   margin-left: 0 !important;
   text-indent: 0 !important;
@@ -2014,15 +2014,15 @@ body {
   font-family: var(--app-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
 }
 
-.pyrita-editor-surface {
+.pyrite-editor-surface {
   font-family: var(--app-font-family, inherit);
 }
 
-.pyrita-editor-surface p,
-.pyrita-editor-surface ul,
-.pyrita-editor-surface ol,
-.pyrita-editor-surface li,
-.pyrita-editor-surface blockquote {
+.pyrite-editor-surface p,
+.pyrite-editor-surface ul,
+.pyrite-editor-surface ol,
+.pyrite-editor-surface li,
+.pyrite-editor-surface blockquote {
   font-size: var(--editor-font-size, 15px) !important;
 }
 

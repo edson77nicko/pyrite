@@ -87,7 +87,7 @@ export const HtmlEditor: React.FC<HtmlEditorProps> = ({ note, onUpdateNote, them
   // Persist View Mode ('preview' | 'split' | 'code')
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_html_view_mode')
+      const saved = localStorage.getItem('pyrite_html_view_mode') || localStorage.getItem('pyrita_html_view_mode')
       if (saved === 'preview' || saved === 'split' || saved === 'code') {
         return saved
       }
@@ -98,7 +98,7 @@ export const HtmlEditor: React.FC<HtmlEditorProps> = ({ note, onUpdateNote, them
   // Persist Device Preset
   const [device, setDevice] = useState<DevicePreset>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_html_device_preset')
+      const saved = localStorage.getItem('pyrite_html_device_preset') || localStorage.getItem('pyrita_html_device_preset')
       if (saved && saved in DEVICE_CONFIGS) {
         return saved as DevicePreset
       }
@@ -109,7 +109,7 @@ export const HtmlEditor: React.FC<HtmlEditorProps> = ({ note, onUpdateNote, them
   // Persist Resizable Split View State
   const [splitRatio, setSplitRatio] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_html_split_ratio')
+      const saved = localStorage.getItem('pyrite_html_split_ratio') || localStorage.getItem('pyrita_html_split_ratio')
       if (saved) {
         const parsed = parseFloat(saved)
         if (!isNaN(parsed) && parsed >= 15 && parsed <= 85) {
@@ -123,7 +123,7 @@ export const HtmlEditor: React.FC<HtmlEditorProps> = ({ note, onUpdateNote, them
   // Persist Word Wrap
   const [wordWrap, setWordWrap] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_html_word_wrap')
+      const saved = localStorage.getItem('pyrite_html_word_wrap') || localStorage.getItem('pyrita_html_word_wrap')
       if (saved !== null) return saved === 'true'
     } catch (_) {}
     return true
@@ -136,31 +136,31 @@ export const HtmlEditor: React.FC<HtmlEditorProps> = ({ note, onUpdateNote, them
   // Save states to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('pyrita_html_view_mode', viewMode)
+      localStorage.setItem('pyrite_html_view_mode', viewMode)
     } catch (_) {}
   }, [viewMode])
 
   useEffect(() => {
     try {
-      localStorage.setItem('pyrita_html_device_preset', device)
+      localStorage.setItem('pyrite_html_device_preset', device)
     } catch (_) {}
   }, [device])
 
   useEffect(() => {
     try {
-      localStorage.setItem('pyrita_html_split_ratio', splitRatio.toString())
+      localStorage.setItem('pyrite_html_split_ratio', splitRatio.toString())
     } catch (_) {}
   }, [splitRatio])
 
   useEffect(() => {
     try {
-      localStorage.setItem('pyrita_html_word_wrap', String(wordWrap))
+      localStorage.setItem('pyrite_html_word_wrap', String(wordWrap))
     } catch (_) {}
   }, [wordWrap])
 
   // Injected theme scrollbar style into iframe preview
   const renderedContent = React.useMemo(() => {
-    const scrollbarCss = `<style id="pyrita-theme-scrollbars">
+    const scrollbarCss = `<style id="pyrite-theme-scrollbars">
   :root {
     color-scheme: ${isLight ? 'light' : 'dark'};
   }

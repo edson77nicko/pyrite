@@ -230,7 +230,7 @@ export const AGENT_SPECIALTIES: AgentSpecialty[] = [
     systemDirective: `Sua persona e missão principal é a GESTÃO ESTRATÉGICA DE PROJETOS, EXECUÇÃO E DECOMPOSIÇÃO DE METAS EM TAREFAS.
 - Atue como um experiente Gerente de Projetos e Tech Lead ágil.
 - Quando o usuário expressar um objetivo, projeto ou necessidade, ajude a decompô-lo em tarefas claras, prioritárias, estimadas e acionáveis com subtarefas lógicas.
-- Sempre que sugerir criar, atualizar ou estruturar tarefas no Pyrita, forneça blocos executáveis de ação de tarefas usando a sintaxe especial:
+- Sempre que sugerir criar, atualizar ou estruturar tarefas no Pyrite, forneça blocos executáveis de ação de tarefas usando a sintaxe especial:
 \`\`\`task-action
 {
   "action": "create",
@@ -308,8 +308,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   onClose
 }) => {
   const vaultKey = useMemo(() => (vaultPath ? encodeURIComponent(vaultPath).replace(/%/g, '_') : 'default'), [vaultPath])
-  const storageKeyConversations = `pyrita_ai_conversations_v2_${vaultKey}`
-  const storageKeyActiveConvId = `pyrita_ai_active_conv_id_${vaultKey}`
+  const storageKeyConversations = `pyrite_ai_conversations_v2_${vaultKey}`
+  const legacyStorageKeyConversations = `pyrita_ai_conversations_v2_${vaultKey}`
+  const storageKeyActiveConvId = `pyrite_ai_active_conv_id_${vaultKey}`
+  const legacyStorageKeyActiveConvId = `pyrita_ai_active_conv_id_${vaultKey}`
   const effectiveNote = currentNote || allNotes[0] || {
     id: 'vault-root',
     title: 'Meu Vault',
@@ -323,7 +325,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   // Resizable width state with localStorage persistence
   const [panelWidth, setPanelWidth] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_ai_width')
+      const saved = localStorage.getItem('pyrite_ai_width') || localStorage.getItem('pyrita_ai_width')
       return saved ? Number(saved) : 380
     } catch {
       return 380
@@ -350,7 +352,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   // Agent Specialty State with persistence
   const [activeSpecialtyId, setActiveSpecialtyId] = useState<string>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_ai_specialty')
+      const saved = localStorage.getItem('pyrite_ai_specialty') || localStorage.getItem('pyrita_ai_specialty')
       if (saved === 'strategist') return 'architect'
       return saved || 'architect'
     } catch {
@@ -361,7 +363,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   // Agent Permission Rule Mode: 'analyst' (read-only consultant) vs 'editor' (co-author that creates/edits notes)
   const [agentRule, setAgentRule] = useState<AgentRuleMode>(() => {
     try {
-      const saved = localStorage.getItem('pyrita_ai_agent_rule')
+      const saved = localStorage.getItem('pyrite_ai_agent_rule') || localStorage.getItem('pyrita_ai_agent_rule')
       return (saved === 'editor' ? 'editor' : 'analyst') as AgentRuleMode
     } catch {
       return 'analyst'
@@ -458,7 +460,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   // Conversations History State with localStorage persistence per vault
   const [conversations, setConversations] = useState<AgentConversation[]>(() => {
     try {
-      const saved = localStorage.getItem(storageKeyConversations) || (vaultKey === 'default' ? localStorage.getItem('pyrita_ai_conversations_v2') : null)
+      const saved = localStorage.getItem(storageKeyConversations) || localStorage.getItem(legacyStorageKeyConversations) || (vaultKey === 'default' ? (localStorage.getItem('pyrite_ai_conversations_v2') || localStorage.getItem('pyrita_ai_conversations_v2')) : null)
       if (saved) {
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed) && parsed.length > 0) return parsed
@@ -476,7 +478,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           {
             id: 'm1',
             sender: 'ai',
-            text: `Olá! Sou o **Agente de IA do Pyrita**.\n\nEstou pronto para analisar sua nota ativa e pastas selecionadas com raciocínio profundo.`
+            text: `Olá! Sou o **Agente de IA do Pyrite**.\n\nEstou pronto para analisar sua nota ativa e pastas selecionadas com raciocínio profundo.`
           }
         ]
       }
@@ -485,7 +487,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
   const [activeConversationId, setActiveConversationId] = useState<string>(() => {
     try {
-      const savedId = localStorage.getItem(storageKeyActiveConvId) || (vaultKey === 'default' ? localStorage.getItem('pyrita_ai_active_conv_id') : null)
+      const savedId = localStorage.getItem(storageKeyActiveConvId) || localStorage.getItem(legacyStorageKeyActiveConvId) || (vaultKey === 'default' ? (localStorage.getItem('pyrite_ai_active_conv_id') || localStorage.getItem('pyrita_ai_active_conv_id')) : null)
       return savedId || conversations[0]?.id || 'conv_initial'
     } catch {
       return conversations[0]?.id || 'conv_initial'
@@ -495,12 +497,12 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   // Reload conversations when switching vaults
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(storageKeyConversations) || (vaultKey === 'default' ? localStorage.getItem('pyrita_ai_conversations_v2') : null)
+      const saved = localStorage.getItem(storageKeyConversations) || localStorage.getItem(legacyStorageKeyConversations) || (vaultKey === 'default' ? (localStorage.getItem('pyrite_ai_conversations_v2') || localStorage.getItem('pyrita_ai_conversations_v2')) : null)
       if (saved) {
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed) && parsed.length > 0) {
           setConversations(parsed)
-          const savedId = localStorage.getItem(storageKeyActiveConvId) || (vaultKey === 'default' ? localStorage.getItem('pyrita_ai_active_conv_id') : null)
+          const savedId = localStorage.getItem(storageKeyActiveConvId) || localStorage.getItem(legacyStorageKeyActiveConvId) || (vaultKey === 'default' ? (localStorage.getItem('pyrite_ai_active_conv_id') || localStorage.getItem('pyrita_ai_active_conv_id')) : null)
           setActiveConversationId(savedId || parsed[0].id)
           return
         }
@@ -518,13 +520,13 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
         {
           id: 'm1',
           sender: 'ai',
-          text: `Olá! Sou o **Agente de IA do Pyrita**.\n\nEstou pronto para analisar sua nota ativa e pastas selecionadas com raciocínio profundo.`
+          text: `Olá! Sou o **Agente de IA do Pyrite**.\n\nEstou pronto para analisar sua nota ativa e pastas selecionadas com raciocínio profundo.`
         }
       ]
     }
     setConversations([fresh])
     setActiveConversationId(fresh.id)
-  }, [storageKeyConversations, storageKeyActiveConvId, vaultKey])
+  }, [storageKeyConversations, legacyStorageKeyConversations, storageKeyActiveConvId, legacyStorageKeyActiveConvId, vaultKey])
 
   // Synchronize active conversation with messages state
   const activeConversation = useMemo(() => {
@@ -717,7 +719,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       const deltaX = upEvent.clientX - startX
       const finalWidth = Math.min(800, Math.max(290, startWidth + deltaX))
       try {
-        localStorage.setItem('pyrita_ai_width', String(finalWidth))
+        localStorage.setItem('pyrite_ai_width', String(finalWidth))
       } catch {}
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
@@ -960,7 +962,7 @@ Código-Fonte Atual:
 ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
 ---
 🚨 INSTRUÇÃO OBRIGATÓRIA PARA EDIÇÃO DESTE CÓDIGO HTML:
-- O usuário está com este arquivo HTML aberto na tela do Pyrita com visualização ao vivo e editor de código.
+- O usuário está com este arquivo HTML aberto na tela do Pyrite com visualização ao vivo e editor de código.
 - Quando ele solicitar para adicionar elementos, alterar estilos CSS/Tailwind, modificar cores, adicionar seções, criar formulários, incluir scripts JavaScript, gráficos ou reformular o código, você DEVE gerar o código HTML completo atualizado dentro do bloco:
   <<<REPLACE_NOTE>>>
   <!DOCTYPE html>
@@ -968,7 +970,7 @@ ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
   ... (todo o código HTML completo com as modificações)
   </html>
   <<<END_REPLACE_NOTE>>>
-- O Pyrita irá detectar o bloco <<<REPLACE_NOTE>>> e atualizar o código e a pré-visualização ao vivo do usuário instantaneamente!\n`
+- O Pyrite irá detectar o bloco <<<REPLACE_NOTE>>> e atualizar o código e a pré-visualização ao vivo do usuário instantaneamente!\n`
           } else {
             contextBlock += `\n### NOTA ATIVA PRINCIPAL EM CONTEXTO:\nTítulo: "${effectiveNote.title}"\nPasta: ${effectiveNote.folder || 'Início'}\nTags: ${effectiveNote.tags?.join(', ') || 'nenhuma'}\nConteúdo da nota:\n---\n${effectiveNote.content || '(nota vazia)'}\n---\n`
           }
@@ -1007,7 +1009,7 @@ ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
         // Ingest active custom skills from localStorage
         let skillsDirectiveBlock = ''
         try {
-          const savedCustomSkills = localStorage.getItem('pyrita_agent_custom_skills_v1')
+          const savedCustomSkills = localStorage.getItem('pyrite_agent_custom_skills_v1') || localStorage.getItem('pyrita_agent_custom_skills_v1')
           if (savedCustomSkills) {
             const parsedCustomSkills: any[] = JSON.parse(savedCustomSkills)
             const activeCustomSkills = parsedCustomSkills.filter(s => s.enabled)
@@ -1034,7 +1036,7 @@ ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
   <<<REPLACE_NOTE>>>
   (todo o conteúdo revisado aqui)
   <<<END_REPLACE_NOTE>>>
-  O Pyrita irá detectar esse bloco e atualizar a nota ou mapa mental do usuário automaticamente no editor!
+  O Pyrite irá detectar esse bloco e atualizar a nota ou mapa mental do usuário automaticamente no editor!
 - PARA NOTAS DO TIPO MAPA MENTAL (mindmap) - GUIA DE CRIAÇÃO E EDIÇÃO CORRETA:
   Dentro do bloco <<<REPLACE_NOTE>>>, forneça SEMPRE uma estrutura hierárquica em Markdown Outline rigorosamente formatada:
   1. TABELA DE CORRESPONDÊNCIA DE ETAPAS (SIGA ESTRITAMENTE):
@@ -1139,10 +1141,10 @@ ${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList
   "boardId": "${effectiveBoardId}"
 }
 \`\`\`
-O Pyrita renderiza esses blocos automaticamente como cards com botão de 1 clique para criação direta no cofre.`
+O Pyrite renderiza esses blocos automaticamente como cards com botão de 1 clique para criação direta no cofre.`
 
         const mindMapDirective = `DIRETRIZ DE OURO PARA MAPAS MENTAIS (MINDMAP):
-- O Pyrita possui um motor gráfico próprio de mapas mentais interativos.
+- O Pyrite possui um motor gráfico próprio de mapas mentais interativos.
 - A estrutura de um mapa mental é SEMPRE em Markdown Outline:
   # Tópico Central (Nó Inicial - 1 hashtag)
   ## 1ª Etapa (Ramos Principais - 2 hashtags OU traço '-' sem recuo)
@@ -1153,7 +1155,7 @@ O Pyrita renderiza esses blocos automaticamente como cards com botão de 1 cliqu
   * NUNCA misture traço com hashtag (ex: NUNCA escreva '- ### Título').
   * NUNCA use asteriscos ('**', '***') para indicar etapas ou níveis de profundidade, e NUNCA envolva títulos em negrito ('**Título**'). Use apenas texto limpo precedido de traço '-' e indentação correta. O motor gráfico cuida de todo o design e peso visual dos nós.`
 
-        const systemPrompt = `Você é o Agente de IA do Pyrita, assistente de alto nível para gestão de conhecimento e pensamento (estilo Obsidian) com foco em produtividade e pensamento em rede.
+        const systemPrompt = `Você é o Agente de IA do Pyrite, assistente de alto nível para gestão de conhecimento e pensamento (estilo Obsidian) com foco em produtividade e pensamento em rede.
 
 ${specialtyBlock}
 ${ruleDirective}
@@ -1192,7 +1194,7 @@ Diretrizes gerais:
           userContent = [
             {
               type: 'text',
-              text: raw.trim() || 'Por favor, ouça a mensagem de áudio enviada pelo usuário e responda no contexto do Pyrita:'
+              text: raw.trim() || 'Por favor, ouça a mensagem de áudio enviada pelo usuário e responda no contexto do Pyrite:'
             },
             {
               type: 'input_audio',
@@ -1412,7 +1414,7 @@ Diretrizes gerais:
 
     // Include custom skills
     try {
-      const savedCustomSkills = localStorage.getItem('pyrita_agent_custom_skills_v1')
+      const savedCustomSkills = localStorage.getItem('pyrite_agent_custom_skills_v1') || localStorage.getItem('pyrita_agent_custom_skills_v1')
       if (savedCustomSkills) {
         const parsed: any[] = JSON.parse(savedCustomSkills)
         for (const sk of parsed) {
@@ -1493,7 +1495,7 @@ Diretrizes gerais:
                         onClick={() => {
                           setAgentRule(rule.id)
                           try {
-                            localStorage.setItem('pyrita_ai_agent_rule', rule.id)
+                            localStorage.setItem('pyrite_ai_agent_rule', rule.id)
                           } catch {}
                           setIsRuleMenuOpen(false)
                         }}
@@ -2414,7 +2416,7 @@ Diretrizes gerais:
         onSelectSpecialty={id => {
           setActiveSpecialtyId(id)
           try {
-            localStorage.setItem('pyrita_ai_specialty', id)
+            localStorage.setItem('pyrite_ai_specialty', id)
           } catch {}
         }}
         onConfigSaved={refreshAiConfig}
@@ -2426,7 +2428,7 @@ Diretrizes gerais:
         onDoubleClick={() => {
           setPanelWidth(380)
           try {
-            localStorage.setItem('pyrita_ai_width', '380')
+            localStorage.setItem('pyrite_ai_width', '380')
           } catch {}
         }}
         className={`absolute top-0 right-0 w-2 h-full cursor-col-resize select-none z-30 transition-colors ${

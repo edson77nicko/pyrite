@@ -40,12 +40,12 @@ export function stripDuplicateTitleFromContent(content: string, title?: string):
 export const INITIAL_NOTES: Note[] = [
   {
     id: 'note-welcome',
-    title: 'Bem-vindo ao Pyrita',
+    title: 'Bem-vindo ao Pyrite',
     folder: 'Início',
-    tags: ['boas-vindas', 'pyrita', 'segundo-cérebro'],
+    tags: ['boas-vindas', 'pyrite', 'segundo-cérebro'],
     createdAt: Date.now() - 3600000 * 24,
     updatedAt: Date.now() - 3600000 * 12,
-    content: `O **Pyrita** é o seu segundo cérebro digital de alta performance, inspirado na filosofia **local-first** do [[Arquitetura do Obsidian]], mas com melhorias modernas e estéticas refinadas:
+    content: `O **Pyrite** é o seu segundo cérebro digital de alta performance, inspirado na filosofia **local-first** do [[Arquitetura do Obsidian]], mas com melhorias modernas e estéticas refinadas:
 
 - 🕸️ **[[Grafos de Conhecimento]]**: Visualização interativa e fluida em 2D dos seus pensamentos.
 - 🔗 **Links Bidirecionais**: Conecte ideias digitando \`[[Nome da Nota]]\`.
@@ -64,7 +64,7 @@ export const INITIAL_NOTES: Note[] = [
 4. Crie novas notas e organize em pastas na barra lateral esquerda!
 
 ---
-*Pyrita — O ambiente local de pensamento que potencializa sua riqueza intelectual.*
+*Pyrite — O ambiente local de pensamento que potencializa sua riqueza intelectual.*
 `
   },
   {
@@ -90,7 +90,7 @@ export const INITIAL_NOTES: Note[] = [
    - **PDFs e Apresentações**: Integração de PDF.js e Reveal.js.
 
 > [!NOTE]
-> No Pyrita, elevamos este conceito para a Web e Desktop leve: criamos um motor de grafo com física vetorial contínua e integrador semântico de [[Produtividade com IA]].
+> No Pyrite, elevamos este conceito para a Web e Desktop leve: criamos um motor de grafo com física vetorial contínua e integrador semântico de [[Produtividade com IA]].
 `
   },
   {
@@ -119,12 +119,12 @@ Ao usar [[Links Bidirecionais]], cada nota se torna um nó em uma rede viva inte
     tags: ['canvas', 'visual', 'brainstorming'],
     createdAt: Date.now() - 3600000 * 15,
     updatedAt: Date.now() - 3600000 * 2,
-    content: `Nem todas as ideias cabem em uma página linear de texto. O **Canvas do Pyrita** permite espacializar pensamentos em um plano 2D infinito.
+    content: `Nem todas as ideias cabem em uma página linear de texto. O **Canvas do Pyrite** permite espacializar pensamentos em um plano 2D infinito.
 
 ### Recursos:
 - 📌 Criar cartões coloridos para diferentes categorias de ideias.
 - ⚡ Conectar nós com setas direcionadas de causa e efeito.
-- 🔀 Integrar notas do [[Bem-vindo ao Pyrita]] diretamente no quadro.
+- 🔀 Integrar notas do [[Bem-vindo ao Pyrite]] diretamente no quadro.
 - 🔍 Zoom e pan livres para visão macro ou detalhada.
 `
   },
@@ -135,7 +135,7 @@ Ao usar [[Links Bidirecionais]], cada nota se torna um nó em uma rede viva inte
     tags: ['ia', 'produtividade', 'semântica'],
     createdAt: Date.now() - 3600000 * 10,
     updatedAt: Date.now() - 3600000 * 1,
-    content: `O Obsidian tradicional depende de você criar todos os links manualmente. No Pyrita, introduzimos o conceito de **Conexões Semânticas Sugeridas**:
+    content: `O Obsidian tradicional depende de você criar todos os links manualmente. No Pyrite, introduzimos o conceito de **Conexões Semânticas Sugeridas**:
 
 1. **Auto-Resumo**: O assistente gera uma síntese executiva de notas extensas.
 2. **Sugestão de Tags**: Detecta termos recorrentes e categorias conceituais.
@@ -194,7 +194,7 @@ Ao usar [[Links Bidirecionais]], cada nota se torna um nó em uma rede viva inte
     tags: ['artefatos', 'design-system', 'concentric-radius', 'componentes'],
     createdAt: Date.now() - 3600000,
     updatedAt: Date.now(),
-    content: `O **Pyrita** adota o padrão de camadas **Inset / Nested Card** com **Bordas Concêntricas (Concentric Corner Radius)** para criar cartões visuais sofisticados que economizam tokens da IA:
+    content: `O **Pyrite** adota o padrão de camadas **Inset / Nested Card** com **Bordas Concêntricas (Concentric Corner Radius)** para criar cartões visuais sofisticados que economizam tokens da IA:
 
 $$\\text{border-radius externo} = \\text{border-radius interno} + \\text{padding}$$
 
@@ -226,7 +226,7 @@ badge: Eficiência
 
 ## 2. Linha do Tempo / Roadmap
 
-:::timeline [Evolução Arquitetural Pyrita] badge: 2026
+:::timeline [Evolução Arquitetural Pyrite] badge: 2026
 - 2026-Q1 | Arquitetura Local-First | Estruturação de dados locais e sync ponta a ponta
 - 2026-Q2 | Agente & Artefatos Concêntricos | Componentes visuais com economia de tokens
 - 2026-Q3 | Grafo Semântico em WebGL | Visualização espacial de grandes bases de conhecimento
@@ -253,7 +253,7 @@ badge: Eficiência
 ## 4. Cartão Embutido em Camadas
 
 :::card [Diretriz de Design Concêntrico] badge: Craft UI
-Quando o container externo e a subsuperfície interna seguem rigorosamente a regra geométrica concêntrica, o espaçamento visual entre as bordas é uniforme em toda a curvatura do canto. Isso elimina distorções visuais e confere o acabamento refinado característico do ecossistema Pyrita.
+Quando o container externo e a subsuperfície interna seguem rigorosamente a regra geométrica concêntrica, o espaçamento visual entre as bordas é uniforme em toda a curvatura do canto. Isso elimina distorções visuais e confere o acabamento refinado característico do ecossistema Pyrite.
 :::
 `
   }

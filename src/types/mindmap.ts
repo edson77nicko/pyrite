@@ -26,7 +26,7 @@ export type MindMapStylePreset =
 
 export type MindMapPaletteId =
   | 'rainbow'    // Vibrant multi-color (Blue, Orange, Green, Purple, Magenta)
-  | 'gold'       // Pyrita Amber Gold
+  | 'gold'       // Pyrite Amber Gold
   | 'ocean'      // Cyan, Blue, Teal
   | 'emerald'    // Forest, Emerald, Mint
   | 'sunset'     // Coral, Orange, Rose, Amber
@@ -34,6 +34,8 @@ export type MindMapPaletteId =
   | (string & {}) // Custom palette IDs
 
 export type MindMapThemeId =
+  | 'pyrite-classic'
+  | 'pyrite-gold'
   | 'pyrita-classic'
   | 'pyrita-gold'
   | 'synthwave-neon'
@@ -107,7 +109,7 @@ export interface MindMapViewport {
 }
 
 export interface MindMapDocument {
-  type: 'pyrita-mindmap'
+  type: 'pyrite-mindmap' | 'pyrita-mindmap'
   version: 1
   rootId: string
   nodes: Record<string, MindMapNode>

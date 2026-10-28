@@ -119,7 +119,7 @@ export function VaultSwitcherModal({ isOpen, currentVaultPath, onClose, onSelect
           <button disabled={busy || !desktop} className={button + ' w-full'} onClick={() => { setMode('create'); setName(''); setError('') }}><Plus size={17}/>Criar cofre</button>
           <button disabled={busy || !desktop} className={button + ' w-full'} onClick={() => void run(async () => { const selected = await window.electronAPI!.selectFolder(); if (selected) await open(selected) })}><FolderOpen size={17}/>Abrir original</button>
           <button disabled={busy || !desktop} className={button + ' w-full'} onClick={() => void run(async () => { const selected = await window.electronAPI!.selectFolder(); if (selected) beginCopy(selected) })}><Copy size={17}/>Importar uma cópia</button>
-          <p className="text-xs text-zinc-500 leading-relaxed">Importe uma cópia de um cofre do Obsidian ou de outra pasta. As alterações no Pyrita ficarão na cópia.</p>
+          <p className="text-xs text-zinc-500 leading-relaxed">Importe uma cópia de um cofre do Obsidian ou de outra pasta. As alterações no Pyrite ficarão na cópia.</p>
         </div> : <form onSubmit={event => { event.preventDefault(); void run(async () => {
           const result = mode === 'copy'
             ? await window.electronAPI!.duplicateVault({ sourcePath, vaultName: name })
