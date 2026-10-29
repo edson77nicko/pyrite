@@ -1,6 +1,7 @@
 import { SidebarMenu } from './SidebarMenu'
 import type { SidebarAction } from './SidebarMenu'
 import React, { useState, useRef, useEffect } from 'react'
+import pyriteLogo from '../assets/icone_pyrite.png'
 import type { Note, NoteType, ViewMode } from '../types'
 import type { TaskBoard, TaskItem } from '../types/tasks'
 import {
@@ -124,6 +125,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onManage
 }) => {
   const [isSyncing, setIsSyncing] = useState(false)
+  const [logoFailed, setLogoFailed] = useState(false)
   const handleSyncClick = async () => {
     if (!onRefreshVault || isSyncing) return
     setIsSyncing(true)
@@ -751,11 +753,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className="flex items-center gap-2 truncate flex-1 min-w-0 p-1 -ml-0.5 rounded-lg hover:bg-zinc-800/60 cursor-pointer transition-colors group"
           title="Clique para alternar ou gerenciar cofres (Vault Switcher)"
         >
-          <img
-            src="/icone_pyrite.png"
-            alt="Pyrite"
-            className="w-6 h-6 rounded-md object-contain shrink-0 drop-shadow-sm select-none"
-          />
+          {!logoFailed ? (
+            <img
+              src={pyriteLogo}
+              alt="Pyrite"
+              className="w-6 h-6 rounded-md object-contain shrink-0 drop-shadow-sm select-none"
+              onError={() => setLogoFailed(true)}
+            />
+          ) : (
+            <div
+              className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs shadow-xs shrink-0"
+              style={{
+                backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                color: 'var(--accent, #d4af37)'
+              }}
+            >
+              Py
+            </div>
+          )}
           <div className="truncate flex-1 min-w-0">
             <div className="flex items-center gap-1">
               <span className="font-semibold text-zinc-100 text-xs tracking-wide truncate block group-hover:text-white transition-colors">
