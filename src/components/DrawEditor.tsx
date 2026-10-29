@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { Note } from '../types'
 import type { DrawDocument, DrawElement, DrawElementType, DrawPoint, DrawTool } from '../types/draw'
+import type { TaskItem } from '../types/tasks'
 import {
   getElementBounds,
   isPointInElement,
@@ -11,6 +12,8 @@ import {
   findClosestAnchor,
   updateConnectedLines
 } from '../utils/drawUtils'
+import { loadTasks, saveTasks, loadTaskSettings } from '../utils/taskStorage'
+import { CustomColorPickerPopover } from './CustomColorPickerPopover'
 import {
   MousePointer,
   Square,
@@ -41,7 +44,14 @@ import {
   Bold,
   Strikethrough,
   List,
-  Shapes
+  Shapes,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Kanban,
+  TableProperties,
+  RefreshCw,
+  FolderOpen
 } from 'lucide-react'
 
 interface DrawEditorProps {
@@ -80,7 +90,7 @@ const FIGJAM_COLORS_ROW2 = [
 
 // Sticky Note Color Palette (FigJam Post-it colors)
 const STICKY_COLORS = [
-  '#ffd8a8', // Peach / Salmon (Matching user print 2)
+  '#ffd8a8', // Peach / Salmon
   '#fff3bf', // Pastel Yellow
   '#ffe8cc', // Cream Orange
   '#d3f9d8', // Pastel Mint Green
@@ -117,6 +127,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
   const docRef = useRef(doc)
   docRef.current = doc
 
+  // Tasks from vault
+  const [tasks, setTasks] = useState<TaskItem[]>(() => loadTasks())
+  const [taskSettings] = useState(() => loadTaskSettings())
+
   // Undo / Redo history
   const historyRef = useRef<DrawElement[][]>([doc.elements])
   const historyIndexRef = useRef(0)
@@ -145,13 +159,19 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
   const textInputRef = useRef<HTMLTextAreaElement>(null)
 
   // Popover state for floating selection toolbar
-  const [openPopover, setOpenPopover] = useState<'shape' | 'color' | 'typography' | 'stroke' | 'stickyColor' | 'stickySize' | null>(null)
+  const [openPopover, setOpenPopover] = useState<'shape' | 'color' | 'typography' | 'stroke' | 'stickyColor' | 'stickySize' | 'dataTaskBoard' | null>(null)
   const [shapeSearch, setShapeSearch] = useState('')
-  const customColorInputRef = useRef<HTMLInputElement>(null)
+
+  // Custom Color Picker Popover (Matches Platform Settings)
+  const [showCustomPicker, setShowCustomPicker] = useState(false)
+  const rainbowBtnRef = useRef<HTMLButtonElement>(null)
 
   // Bottom toolbar Shapes Menu Popover
   const [isBottomShapesOpen, setIsBottomShapesOpen] = useState(false)
   const [bottomShapesSearch, setBottomShapesSearch] = useState('')
+
+  // Calendar month state for DataTask widget
+  const [calendarDate, setCalendarDate] = useState(() => new Date())
 
   // Mouse interaction state
   const isPointerDown = useRef(false)
@@ -175,6 +195,13 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     currentY: number
   } | null>(null)
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null)
+
+  // Platform accent color helper
+  const getAccentColor = useCallback(() => {
+    if (typeof window === 'undefined') return '#c59b27'
+    const computed = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
+    return computed || '#c59b27'
+  }, [])
 
   // Debounced auto-save to note
   const saveTimeoutRef = useRef<number | null>(null)
@@ -209,6 +236,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       })
       setSelectedIds([])
       setOpenPopover(null)
+      setShowCustomPicker(false)
     }
   }, [scheduleSave])
 
@@ -223,6 +251,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       })
       setSelectedIds([])
       setOpenPopover(null)
+      setShowCustomPicker(false)
     }
   }, [scheduleSave])
 
@@ -251,12 +280,25 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     historyIndexRef.current = 0
     setSelectedIds([])
     setOpenPopover(null)
+    setShowCustomPicker(false)
   }, [note.id])
 
   // Single selected element
   const singleSelectedElement = selectedIds.length === 1
     ? doc.elements.find(el => el.id === selectedIds[0]) || null
     : null
+
+  // Refresh tasks from storage
+  const handleReloadTasks = () => {
+    setTasks(loadTasks())
+  }
+
+  // Toggle task complete from canvas widget
+  const handleToggleTask = (taskId: string) => {
+    const updated = tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed, updatedAt: Date.now() } : t)
+    setTasks(updated)
+    saveTasks(updated)
+  }
 
   // Render Loop
   const drawCanvas = useCallback(() => {
@@ -267,6 +309,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
 
     const { width, height } = canvas
     const { panX, panY, zoom } = doc.viewport
+    const accent = getAccentColor()
 
     // Clear background
     ctx.clearRect(0, 0, width, height)
@@ -290,7 +333,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       renderElementToCanvas(ctx, el, isSelected)
     }
 
-    // Render selection indicators & FigJam handles
+    // Render selection indicators & FigJam handles (Using user custom accent color!)
     if (selectedIds.length > 0 && !editingText) {
       for (const id of selectedIds) {
         const el = doc.elements.find(e => e.id === id)
@@ -299,23 +342,25 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         ctx.save()
 
         // 1. SPECIFIC RENDERING FOR STRAIGHT LINE AND ARROW:
-        // Only 2 control squares (Point 1 and Point 2), no 4-corner box!
+        // Only 2 control squares (Point 1 and Point 2), using custom accent color!
         if (el.type === 'line' || el.type === 'arrow') {
           const p1 = { x: el.x, y: el.y }
           const p2 = { x: el.x + el.width, y: el.y + el.height }
           const handleSize = 9 / zoom
 
           // Highlight line
-          ctx.strokeStyle = 'rgba(0, 153, 255, 0.4)'
+          ctx.strokeStyle = accent
+          ctx.globalAlpha = 0.5
           ctx.lineWidth = Math.max(el.strokeWidth || 2, 4) / zoom
           ctx.beginPath()
           ctx.moveTo(p1.x, p1.y)
           ctx.lineTo(p2.x, p2.y)
           ctx.stroke()
+          ctx.globalAlpha = 1.0
 
           // Point 1 handle
           ctx.fillStyle = '#ffffff'
-          ctx.strokeStyle = '#0099ff'
+          ctx.strokeStyle = accent
           ctx.lineWidth = 1.6 / zoom
           ctx.fillRect(p1.x - handleSize / 2, p1.y - handleSize / 2, handleSize, handleSize)
           ctx.strokeRect(p1.x - handleSize / 2, p1.y - handleSize / 2, handleSize, handleSize)
@@ -331,13 +376,13 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         // 2. FOR ALL OTHER ELEMENTS: Bounding Box
         const bounds = getElementBounds(el)
 
-        // Selection Border: FigJam bright blue (#0099ff)
-        ctx.strokeStyle = '#0099ff'
+        // Selection Border: Platform accent color!
+        ctx.strokeStyle = accent
         ctx.lineWidth = 1.5 / zoom
         ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height)
 
         if (selectedIds.length === 1 && el.type !== 'freedraw') {
-          // Resize handles on 4 corners (White square with blue outline)
+          // Resize handles on 4 corners (White square with accent outline)
           const cornerHandleSize = 8 / zoom
           const corners = [
             { id: 'tl', x: bounds.x, y: bounds.y },
@@ -348,13 +393,13 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
 
           for (const c of corners) {
             ctx.fillStyle = '#ffffff'
-            ctx.strokeStyle = '#0099ff'
+            ctx.strokeStyle = accent
             ctx.lineWidth = 1.5 / zoom
             ctx.fillRect(c.x - cornerHandleSize / 2, c.y - cornerHandleSize / 2, cornerHandleSize, cornerHandleSize)
             ctx.strokeRect(c.x - cornerHandleSize / 2, c.y - cornerHandleSize / 2, cornerHandleSize, cornerHandleSize)
           }
 
-          // Output connection handlers (Only the 4 circular nodes, down arrow button removed!)
+          // Output connection handlers (N8N circular nodes with accent color)
           const isConnectable = el.type !== 'text'
           if (isConnectable) {
             const connHandles = [
@@ -370,10 +415,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
               const isHovered = hoveredHandle === h.id
               ctx.beginPath()
               ctx.arc(h.x, h.y, isHovered ? connRadius * 1.5 : connRadius, 0, Math.PI * 2)
-              ctx.fillStyle = isHovered ? '#38bdf8' : '#7dd3fc'
+              ctx.fillStyle = isHovered ? '#ffffff' : accent
               ctx.fill()
-              ctx.strokeStyle = '#0284c7'
-              ctx.lineWidth = 1 / zoom
+              ctx.strokeStyle = isHovered ? accent : '#ffffff'
+              ctx.lineWidth = 1.2 / zoom
               ctx.stroke()
             }
           }
@@ -387,7 +432,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     if (activeConnector.current) {
       const { startX, startY, currentX, currentY } = activeConnector.current
       ctx.save()
-      ctx.strokeStyle = '#0099ff'
+      ctx.strokeStyle = accent
       ctx.lineWidth = 2.5 / zoom
       ctx.lineCap = 'round'
       ctx.setLineDash([4 / zoom, 4 / zoom])
@@ -402,7 +447,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       const headLength = 12 / zoom
       const headAngle = Math.PI / 6
       ctx.setLineDash([])
-      ctx.fillStyle = '#0099ff'
+      ctx.fillStyle = accent
       ctx.beginPath()
       ctx.moveTo(currentX, currentY)
       ctx.lineTo(
@@ -427,8 +472,8 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       const h = Math.abs(currentY - startY)
 
       ctx.save()
-      ctx.fillStyle = 'rgba(0, 153, 255, 0.12)'
-      ctx.strokeStyle = '#0099ff'
+      ctx.fillStyle = 'var(--accent-glow, rgba(197, 155, 39, 0.15))'
+      ctx.strokeStyle = accent
       ctx.lineWidth = 1 / zoom
       ctx.fillRect(left, top, w, h)
       ctx.strokeRect(left, top, w, h)
@@ -436,7 +481,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     }
 
     ctx.restore()
-  }, [doc, selectedIds, editingText, hoveredHandle])
+  }, [doc, selectedIds, editingText, hoveredHandle, getAccentColor])
 
   // Canvas size adjustment
   useEffect(() => {
@@ -505,6 +550,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         pushHistory(updated)
         setSelectedIds([])
         setOpenPopover(null)
+        setShowCustomPicker(false)
         return
       }
 
@@ -538,6 +584,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           case 's':
           case 'n':
             setTool('sticky')
+            break
+          case 'k':
+            setTool('data-task')
             break
           case '5':
           case 'a':
@@ -740,9 +789,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         if (hit.fontSize) setFontSize(hit.fontSize)
         if (hit.fontFamily) setFontFamily(hit.fontFamily)
       } else {
-        // Clicked on empty space: clear selection and close any open popover
         if (!e.shiftKey) setSelectedIds([])
         setOpenPopover(null)
+        setShowCustomPicker(false)
         setIsBottomShapesOpen(false)
         marqueeBox.current = { startX: world.x, startY: world.y, currentX: world.x, currentY: world.y }
       }
@@ -777,7 +826,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       return
     }
 
-    // Creating shape / sticky / freedraw / arrow / line
+    // Creating shape / sticky / data-task / freedraw / arrow / line
     const newId = 'elem_' + crypto.randomUUID()
     activeElementId.current = newId
 
@@ -789,11 +838,13 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       width: 0,
       height: 0,
       strokeColor: tool === 'sticky' ? '#18181b' : strokeColor,
-      backgroundColor: tool === 'sticky' ? '#ffd8a8' : backgroundColor,
+      backgroundColor: tool === 'sticky' ? '#ffd8a8' : tool === 'data-task' ? '#141418' : backgroundColor,
       strokeWidth,
       strokeStyle,
-      fillStyle: tool === 'sticky' ? 'solid' : fillStyle,
-      points: tool === 'freedraw' ? [{ x: 0, y: 0 }] : []
+      fillStyle: tool === 'sticky' || tool === 'data-task' ? 'solid' : fillStyle,
+      points: tool === 'freedraw' ? [{ x: 0, y: 0 }] : [],
+      viewMode: tool === 'data-task' ? 'calendar' : undefined,
+      boardId: tool === 'data-task' ? 'default' : undefined
     }
 
     setDoc(prev => ({
@@ -832,11 +883,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     }
 
     if (!isPointerDown.current) {
-      // Dynamic cursor & hover inspection
       if (spacePressed.current || tool === 'pan') {
         container.style.cursor = 'grab'
       } else if (tool === 'select') {
-        // Check hover over handles
         if (selectedIds.length === 1) {
           const selEl = doc.elements.find(el => el.id === selectedIds[0])
           if (selEl) {
@@ -930,7 +979,6 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           }
           return el
         })
-        // Realtime update of connected lines!
         const withConnected = updateConnectedLines(moved, selectedIds)
         return { ...prev, elements: withConnected }
       })
@@ -959,7 +1007,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                     y: newStartY,
                     width: fixedEndX - newStartX,
                     height: fixedEndY - newStartY,
-                    startBinding: undefined // detached if manually moved
+                    startBinding: undefined
                   }
                 : item
             )
@@ -977,7 +1025,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                     ...item,
                     width: world.x - item.x,
                     height: world.y - item.y,
-                    endBinding: undefined // detached if manually moved
+                    endBinding: undefined
                   }
                 : item
             )
@@ -1121,7 +1169,6 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       const fromEl = docRef.current.elements.find(el => el.id === fromId)
 
       if (fromEl) {
-        // Find if dropped over another element to stick both ends!
         const targetEl = docRef.current.elements
           .slice()
           .reverse()
@@ -1190,10 +1237,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         'triangleDown',
         'parallelogram',
         'cylinder',
-        'sticky'
+        'sticky',
+        'data-task'
       ].includes(created.type)
 
-      // KEY FEATURE: If user just CLICKED (without dragging or < 8px), spawn perfect default dimensions!
+      // KEY FEATURE: If user just CLICKED, spawn perfect default dimensions!
       if (isShapeTool && distanceTraveled < 8) {
         let defaultWidth = 140
         let defaultHeight = 90
@@ -1210,6 +1258,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         } else if (created.type === 'sticky') {
           defaultWidth = 180
           defaultHeight = 180
+        } else if (created.type === 'data-task') {
+          defaultWidth = 580
+          defaultHeight = 420
         }
 
         const perfectX = created.x - defaultWidth / 2
@@ -1223,7 +1274,8 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                 y: perfectY,
                 width: defaultWidth,
                 height: defaultHeight,
-                backgroundColor: created.type === 'sticky' ? '#ffd8a8' : el.backgroundColor
+                backgroundColor: created.type === 'sticky' ? '#ffd8a8' : created.type === 'data-task' ? '#141418' : el.backgroundColor,
+                viewMode: created.type === 'data-task' ? 'calendar' : el.viewMode
               }
             : el
         )
@@ -1274,7 +1326,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     const world = screenToWorld(e.clientX - rect.left, e.clientY - rect.top)
 
     const hit = doc.elements.slice().reverse().find(el => isPointInElement(world, el))
-    if (!hit) return
+    if (!hit || hit.type === 'data-task') return
 
     const bounds = getElementBounds(hit)
     const isShape = hit.type !== 'text' && hit.type !== 'line' && hit.type !== 'arrow' && hit.type !== 'freedraw'
@@ -1491,6 +1543,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       pushHistory(nextElements)
       setSelectedIds([])
       setOpenPopover(null)
+      setShowCustomPicker(false)
     }
   }
 
@@ -1518,6 +1571,34 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     return found ? found.icon : Square
   }
 
+  // Calendar calculations for DataTask widget
+  const currentYear = calendarDate.getFullYear()
+  const currentMonth = calendarDate.getMonth()
+  const monthNames = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ]
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
+  const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay()
+
+  const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate()
+  const calendarCells: Array<{ day: number; isCurrentMonth: boolean; dateStr: string }> = []
+
+  // Prev month padding
+  for (let i = firstDayIndex - 1; i >= 0; i--) {
+    calendarCells.push({ day: prevMonthDays - i, isCurrentMonth: false, dateStr: '' })
+  }
+  // Current month days
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    calendarCells.push({ day: d, isCurrentMonth: true, dateStr })
+  }
+  // Next month padding to fill rows of 7
+  const remaining = 35 - calendarCells.length > 0 ? 35 - calendarCells.length : (42 - calendarCells.length)
+  for (let n = 1; n <= remaining; n++) {
+    calendarCells.push({ day: n, isCurrentMonth: false, dateStr: '' })
+  }
+
   return (
     <div
       ref={containerRef}
@@ -1534,7 +1615,299 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         className="block w-full h-full"
       />
 
-      {/* 2. Floating Selection Settings Popover (Appears ONLY when an element is selected) */}
+      {/* 2. Interactive DATA-TASK Frame Overlay (Live Task Database Widget) */}
+      {doc.elements.filter(el => el.type === 'data-task').map(dataTaskEl => {
+        const screenPos = worldToScreen(dataTaskEl.x, dataTaskEl.y)
+        const isSelected = selectedIds.includes(dataTaskEl.id)
+        const currentView = dataTaskEl.viewMode || 'calendar'
+        const currentBoardId = dataTaskEl.boardId || 'default'
+
+        const filteredTasks = tasks.filter(t => currentBoardId === 'all' || (t.boardId || 'default') === currentBoardId)
+
+        return (
+          <div
+            key={dataTaskEl.id}
+            onPointerDown={() => {
+              // Allow selecting or dragging widget from canvas
+              if (tool === 'select') {
+                if (!selectedIds.includes(dataTaskEl.id)) {
+                  setSelectedIds([dataTaskEl.id])
+                }
+              }
+            }}
+            className="absolute z-10 pointer-events-auto rounded-2xl bg-[#141418] border border-zinc-700/80 shadow-2xl flex flex-col overflow-hidden text-xs text-zinc-200"
+            style={{
+              left: `${screenPos.x}px`,
+              top: `${screenPos.y}px`,
+              width: `${dataTaskEl.width * doc.viewport.zoom}px`,
+              height: `${dataTaskEl.height * doc.viewport.zoom}px`,
+              transformOrigin: 'top left',
+              boxShadow: isSelected ? '0 0 0 2px var(--accent)' : '0 20px 40px -10px rgba(0,0,0,0.6)'
+            }}
+          >
+            {/* Widget Top Header - Styled like user image */}
+            <div className="p-3 pb-2 border-b border-zinc-800/80 flex items-center justify-between shrink-0 bg-[#16161b]">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-200 font-medium text-[11px] border border-zinc-700/60">
+                  <CalendarDays className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                  <span>{currentView === 'calendar' ? 'Calendar' : currentView === 'kanban' ? 'Quadro' : 'Data Task'}</span>
+                </div>
+
+                <div className="flex items-center gap-1 text-[11px] text-zinc-400">
+                  <span>•</span>
+                  <span className="font-medium text-zinc-300">
+                    {taskSettings.boards?.find(b => b.id === currentBoardId)?.name || 'Geral'}
+                  </span>
+                  <span className="text-[10px] text-zinc-500">({filteredTasks.length} tarefas)</span>
+                </div>
+              </div>
+
+              {/* View Switcher Pills */}
+              <div className="flex items-center gap-1 bg-zinc-900/90 p-0.5 rounded-lg border border-zinc-800">
+                <button
+                  onClick={() => updateSelectedProperty('viewMode', 'calendar')}
+                  className={`px-2 py-1 rounded text-[10.5px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
+                    currentView === 'calendar' ? 'text-white shadow-xs' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                  style={currentView === 'calendar' ? { backgroundColor: 'var(--accent)' } : undefined}
+                >
+                  <CalendarDays className="w-3 h-3" />
+                  <span>Mês</span>
+                </button>
+
+                <button
+                  onClick={() => updateSelectedProperty('viewMode', 'list')}
+                  className={`px-2 py-1 rounded text-[10.5px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
+                    currentView === 'list' ? 'text-white shadow-xs' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                  style={currentView === 'list' ? { backgroundColor: 'var(--accent)' } : undefined}
+                >
+                  <TableProperties className="w-3 h-3" />
+                  <span>Lista</span>
+                </button>
+
+                <button
+                  onClick={() => updateSelectedProperty('viewMode', 'kanban')}
+                  className={`px-2 py-1 rounded text-[10.5px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
+                    currentView === 'kanban' ? 'text-white shadow-xs' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                  style={currentView === 'kanban' ? { backgroundColor: 'var(--accent)' } : undefined}
+                >
+                  <Kanban className="w-3 h-3" />
+                  <span>Quadro</span>
+                </button>
+
+                <button
+                  onClick={handleReloadTasks}
+                  className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+                  title="Sincronizar tarefas do cofre"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* Widget Main View Area */}
+            <div className="flex-1 overflow-auto p-3 flex flex-col">
+              {/* VIEW 1: CALENDAR VIEW (Matching User Reference Image) */}
+              {currentView === 'calendar' && (
+                <div className="flex-1 flex flex-col bg-[#1c1c22] rounded-xl border border-zinc-800/80 p-2 text-zinc-100 overflow-hidden">
+                  {/* Calendar Top Month Navigation */}
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm tracking-tight">
+                        {monthNames[currentMonth]} {currentYear}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setCalendarDate(new Date(currentYear, currentMonth - 1, 1))}
+                        className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-800 transition-colors cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        onClick={() => setCalendarDate(new Date())}
+                        className="px-2 py-0.5 rounded text-[10px] font-medium text-zinc-300 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 transition-colors cursor-pointer"
+                      >
+                        Hoje
+                      </button>
+
+                      <button
+                        onClick={() => setCalendarDate(new Date(currentYear, currentMonth + 1, 1))}
+                        className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-800 transition-colors cursor-pointer"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Calendar Days Header */}
+                  <div className="grid grid-cols-7 gap-1 text-[10px] font-semibold text-zinc-400 pb-1 text-center">
+                    <span>Dom</span>
+                    <span>Seg</span>
+                    <span>Ter</span>
+                    <span>Qua</span>
+                    <span>Qui</span>
+                    <span>Sex</span>
+                    <span>Sáb</span>
+                  </div>
+
+                  {/* Calendar Month Cells Grid */}
+                  <div className="grid grid-cols-7 gap-1 flex-1">
+                    {calendarCells.map((cell, idx) => {
+                      const dayTasks = cell.dateStr ? filteredTasks.filter(t => t.date === cell.dateStr || t.deadline === cell.dateStr) : []
+                      const isToday = cell.dateStr === new Date().toISOString().slice(0, 10)
+
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex flex-col p-1 rounded-lg border min-h-[42px] transition-colors ${
+                            cell.isCurrentMonth
+                              ? 'bg-[#24242c] border-zinc-750/60'
+                              : 'bg-[#18181e] border-zinc-850/40 opacity-40'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span
+                              className={`text-[10px] font-medium w-4 h-4 flex items-center justify-center rounded-full ${
+                                isToday ? 'text-white font-bold' : 'text-zinc-300'
+                              }`}
+                              style={isToday ? { backgroundColor: 'var(--accent)' } : undefined}
+                            >
+                              {cell.day}
+                            </span>
+                            {dayTasks.length > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--accent)' }} />
+                            )}
+                          </div>
+
+                          {/* Task pills inside calendar cell */}
+                          <div className="flex flex-col gap-0.5 mt-0.5 overflow-hidden">
+                            {dayTasks.slice(0, 2).map(dt => (
+                              <div
+                                key={dt.id}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleToggleTask(dt.id)
+                                }}
+                                className={`text-[9px] truncate px-1 py-0.5 rounded cursor-pointer transition-opacity ${
+                                  dt.completed ? 'line-through opacity-50 bg-zinc-800 text-zinc-400' : 'bg-zinc-700/80 text-zinc-100 hover:opacity-80'
+                                }`}
+                                title={dt.title}
+                              >
+                                {dt.title}
+                              </div>
+                            ))}
+                            {dayTasks.length > 2 && (
+                              <span className="text-[8px] text-zinc-400">+{dayTasks.length - 2} mais</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* VIEW 2: LIST VIEW */}
+              {currentView === 'list' && (
+                <div className="flex-1 flex flex-col bg-[#1c1c22] rounded-xl border border-zinc-800/80 p-2 overflow-y-auto">
+                  <div className="flex flex-col gap-1.5">
+                    {filteredTasks.length === 0 ? (
+                      <div className="text-center py-8 text-zinc-500 text-xs">
+                        Nenhuma tarefa neste quadro.
+                      </div>
+                    ) : (
+                      filteredTasks.map(task => (
+                        <div
+                          key={task.id}
+                          onClick={() => handleToggleTask(task.id)}
+                          className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${
+                            task.completed
+                              ? 'bg-[#18181e] border-zinc-800/60 opacity-60'
+                              : 'bg-[#24242c] border-zinc-750 hover:border-zinc-600'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <input
+                              type="checkbox"
+                              checked={task.completed}
+                              onChange={() => handleToggleTask(task.id)}
+                              className="rounded border-zinc-600 cursor-pointer"
+                              style={{ accentColor: 'var(--accent)' }}
+                            />
+                            <span className={`text-xs font-medium truncate ${task.completed ? 'line-through text-zinc-400' : 'text-zinc-200'}`}>
+                              {task.title}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {task.deadline && (
+                              <span className="text-[10px] text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded font-mono">
+                                {task.deadline}
+                              </span>
+                            )}
+                            <span
+                              className="text-[9.5px] px-1.5 py-0.5 rounded font-semibold text-white"
+                              style={{
+                                backgroundColor: taskSettings.statuses?.find(s => s.id === task.statusId)?.color || '#3b82f6'
+                              }}
+                            >
+                              {taskSettings.statuses?.find(s => s.id === task.statusId)?.name || 'Status'}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* VIEW 3: KANBAN VIEW */}
+              {currentView === 'kanban' && (
+                <div className="flex-1 flex gap-2 overflow-x-auto pb-1">
+                  {(taskSettings.statuses || []).map(status => {
+                    const statusTasks = filteredTasks.filter(t => t.statusId === status.id)
+                    return (
+                      <div key={status.id} className="w-48 shrink-0 bg-[#1c1c22] border border-zinc-800/80 rounded-xl p-2 flex flex-col">
+                        <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-zinc-800">
+                          <div className="flex items-center gap-1.5 font-semibold text-[11px] text-zinc-200">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: status.color }} />
+                            <span>{status.name}</span>
+                          </div>
+                          <span className="text-[10px] text-zinc-500 font-mono">{statusTasks.length}</span>
+                        </div>
+
+                        <div className="flex-1 flex flex-col gap-1.5 overflow-y-auto">
+                          {statusTasks.map(st => (
+                            <div
+                              key={st.id}
+                              onClick={() => handleToggleTask(st.id)}
+                              className="p-2 rounded-lg bg-[#24242c] border border-zinc-750 hover:border-zinc-600 transition-colors cursor-pointer text-xs flex flex-col gap-1"
+                            >
+                              <span className={`font-medium text-zinc-200 ${st.completed ? 'line-through text-zinc-400' : ''}`}>
+                                {st.title}
+                              </span>
+                              {st.deadline && (
+                                <span className="text-[9.5px] text-zinc-400 font-mono">{st.deadline}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+
+      {/* 3. Floating Selection Settings Popover (Appears ONLY when an element is selected) */}
       {singleSelectedElement && popoverPos && (
         <div
           className="absolute z-30 pointer-events-auto transition-transform"
@@ -1546,8 +1919,59 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         >
           {/* Main Horizontal Popover Bar */}
           <div className="flex items-center gap-1 bg-[#1e1e22]/95 backdrop-blur-md border border-zinc-700/80 px-2 py-1.5 rounded-2xl shadow-2xl text-xs">
-            {/* A. STICKY NOTE (POST-IT) TOOLBAR - Matching User Print 2 */}
-            {singleSelectedElement.type === 'sticky' ? (
+            {/* A. DATA-TASK WIDGET TOOLBAR */}
+            {singleSelectedElement.type === 'data-task' ? (
+              <>
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenPopover(prev => prev === 'dataTaskBoard' ? null : 'dataTaskBoard')}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                    title="Escolher Conjunto / Quadro de Tarefas"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                    <span>{taskSettings.boards?.find(b => b.id === (singleSelectedElement.boardId || 'default'))?.name || 'Geral'}</span>
+                    <ChevronDown className="w-3 h-3 text-zinc-400" />
+                  </button>
+
+                  {/* Board Selection Popover */}
+                  {openPopover === 'dataTaskBoard' && (
+                    <div className="absolute left-0 bottom-full mb-2 w-48 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1">
+                      <span className="text-[10px] text-zinc-400 px-2 py-0.5 block">Conjuntos de Tarefas</span>
+                      <button
+                        onClick={() => {
+                          updateSelectedProperty('boardId', 'all')
+                          setOpenPopover(null)
+                        }}
+                        className={`px-2.5 py-1.5 rounded text-left transition-colors cursor-pointer ${
+                          singleSelectedElement.boardId === 'all' ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
+                        }`}
+                        style={singleSelectedElement.boardId === 'all' ? { backgroundColor: 'var(--accent)' } : undefined}
+                      >
+                        Todas as Tarefas
+                      </button>
+                      {(taskSettings.boards || []).map(b => (
+                        <button
+                          key={b.id}
+                          onClick={() => {
+                            updateSelectedProperty('boardId', b.id)
+                            setOpenPopover(null)
+                          }}
+                          className={`px-2.5 py-1.5 rounded text-left transition-colors cursor-pointer ${
+                            (singleSelectedElement.boardId || 'default') === b.id ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
+                          }`}
+                          style={(singleSelectedElement.boardId || 'default') === b.id ? { backgroundColor: 'var(--accent)' } : undefined}
+                        >
+                          {b.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="w-px h-4 bg-zinc-700/80 mx-0.5" />
+              </>
+            ) : singleSelectedElement.type === 'sticky' ? (
+              /* B. STICKY NOTE (POST-IT) TOOLBAR - Matching User Print 2 */
               <>
                 {/* 1. Sticky Note Color button */}
                 <div className="relative">
@@ -1579,10 +2003,13 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                             }}
                             className={`w-7 h-7 rounded-lg border transition-transform hover:scale-110 cursor-pointer ${
                               singleSelectedElement.backgroundColor === color
-                                ? 'border-violet-400 scale-105 ring-2 ring-violet-500'
+                                ? 'scale-105 ring-2'
                                 : 'border-zinc-700/60'
                             }`}
-                            style={{ backgroundColor: color }}
+                            style={{
+                              backgroundColor: color,
+                              borderColor: singleSelectedElement.backgroundColor === color ? 'var(--accent)' : undefined
+                            }}
                           />
                         ))}
                       </div>
@@ -1628,8 +2055,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                             setOpenPopover(null)
                           }}
                           className={`px-2.5 py-1.5 rounded text-left transition-colors cursor-pointer ${
-                            (singleSelectedElement.fontSize || 18) === opt.size ? 'bg-violet-600 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
+                            (singleSelectedElement.fontSize || 18) === opt.size ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
                           }`}
+                          style={(singleSelectedElement.fontSize || 18) === opt.size ? { backgroundColor: 'var(--accent)' } : undefined}
                         >
                           {opt.label}
                         </button>
@@ -1644,8 +2072,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                 <button
                   onClick={() => updateSelectedProperty('isBold', !singleSelectedElement.isBold)}
                   className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                    singleSelectedElement.isBold ? 'bg-violet-600 text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                    singleSelectedElement.isBold ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
                   }`}
+                  style={singleSelectedElement.isBold ? { backgroundColor: 'var(--accent)' } : undefined}
                   title="Negrito"
                 >
                   <Bold className="w-3.5 h-3.5" />
@@ -1655,8 +2084,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                 <button
                   onClick={() => updateSelectedProperty('isStrikethrough', !singleSelectedElement.isStrikethrough)}
                   className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                    singleSelectedElement.isStrikethrough ? 'bg-violet-600 text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                    singleSelectedElement.isStrikethrough ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
                   }`}
+                  style={singleSelectedElement.isStrikethrough ? { backgroundColor: 'var(--accent)' } : undefined}
                   title="Tachado / Riscado"
                 >
                   <Strikethrough className="w-3.5 h-3.5" />
@@ -1666,15 +2096,16 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                 <button
                   onClick={() => updateSelectedProperty('isList', !singleSelectedElement.isList)}
                   className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                    singleSelectedElement.isList ? 'bg-violet-600 text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                    singleSelectedElement.isList ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
                   }`}
+                  style={singleSelectedElement.isList ? { backgroundColor: 'var(--accent)' } : undefined}
                   title="Lista com Marcadores"
                 >
                   <List className="w-3.5 h-3.5" />
                 </button>
               </>
             ) : (
-              /* B. STANDARD SHAPES & ELEMENTS TOOLBAR */
+              /* C. STANDARD SHAPES & ELEMENTS TOOLBAR */
               <>
                 {/* Shape Switcher Button (For geometric shapes) */}
                 {![ 'line', 'arrow', 'freedraw', 'text'].includes(singleSelectedElement.type) && (
@@ -1708,7 +2139,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                         <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto scrollbar-none">
                           {SHAPE_OPTIONS.filter(s => s.label.toLowerCase().includes(shapeSearch.toLowerCase())).map(item => {
                             const Icon = item.icon
-                            const isSelected = singleSelectedElement.type === item.type
+                            const isSelectedShape = singleSelectedElement.type === item.type
                             return (
                               <button
                                 key={item.type}
@@ -1717,10 +2148,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                                   setOpenPopover(null)
                                 }}
                                 className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all cursor-pointer ${
-                                  isSelected
-                                    ? 'bg-violet-600 text-white shadow-md'
+                                  isSelectedShape
+                                    ? 'text-white shadow-md'
                                     : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
                                 }`}
+                                style={isSelectedShape ? { backgroundColor: 'var(--accent)' } : undefined}
                                 title={item.label}
                               >
                                 <Icon className="w-5 h-5 stroke-[1.8]" />
@@ -1761,9 +2193,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                           }}
                           className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
                             singleSelectedElement.strokeStyle === 'solid' && singleSelectedElement.strokeWidth > 0
-                              ? 'bg-violet-600 text-white shadow-xs'
+                              ? 'text-white shadow-xs'
                               : 'text-zinc-400 hover:text-zinc-200'
                           }`}
+                          style={singleSelectedElement.strokeStyle === 'solid' && singleSelectedElement.strokeWidth > 0 ? { backgroundColor: 'var(--accent)' } : undefined}
                         >
                           <Minus className="w-3.5 h-3.5" />
                           <span>Sólido</span>
@@ -1776,9 +2209,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                           }}
                           className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
                             singleSelectedElement.strokeStyle === 'dashed'
-                              ? 'bg-violet-600 text-white shadow-xs'
+                              ? 'text-white shadow-xs'
                               : 'text-zinc-400 hover:text-zinc-200'
                           }`}
+                          style={singleSelectedElement.strokeStyle === 'dashed' ? { backgroundColor: 'var(--accent)' } : undefined}
                         >
                           <span className="font-mono text-xs">┄</span>
                           <span>Tracejado</span>
@@ -1790,9 +2224,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                           }}
                           className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
                             singleSelectedElement.strokeWidth === 0
-                              ? 'bg-violet-600 text-white shadow-xs'
+                              ? 'text-white shadow-xs'
                               : 'text-zinc-400 hover:text-zinc-200'
                           }`}
+                          style={singleSelectedElement.strokeWidth === 0 ? { backgroundColor: 'var(--accent)' } : undefined}
                         >
                           <span className="text-xs">⊘</span>
                           <span>Nada</span>
@@ -1812,17 +2247,20 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                               }}
                               className={`w-6 h-6 rounded-full border transition-transform hover:scale-110 cursor-pointer ${
                                 isCurrent
-                                  ? 'border-violet-400 scale-110 ring-2 ring-violet-500'
+                                  ? 'scale-110 ring-2'
                                   : 'border-zinc-700/60'
                               }`}
-                              style={{ backgroundColor: color }}
+                              style={{
+                                backgroundColor: color,
+                                borderColor: isCurrent ? 'var(--accent)' : undefined
+                              }}
                               title={color}
                             />
                           )
                         })}
                       </div>
 
-                      {/* Row 2 of Colors: 10 Pastels + 1 Rainbow Custom Picker */}
+                      {/* Row 2 of Colors: 10 Pastels + 1 Custom Color Picker with Platform Design */}
                       <div className="flex items-center justify-between gap-1 mb-3">
                         {FIGJAM_COLORS_ROW2.map(color => {
                           const isCurrent = singleSelectedElement.strokeColor === color
@@ -1835,35 +2273,32 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                               }}
                               className={`w-6 h-6 rounded-full border transition-transform hover:scale-110 cursor-pointer ${
                                 isCurrent
-                                  ? 'border-violet-400 scale-110 ring-2 ring-violet-500'
+                                  ? 'scale-110 ring-2'
                                   : 'border-zinc-700/60'
                               }`}
-                              style={{ backgroundColor: color }}
+                              style={{
+                                backgroundColor: color,
+                                borderColor: isCurrent ? 'var(--accent)' : undefined
+                              }}
                               title={color}
                             />
                           )
                         })}
 
-                        {/* Rainbow circle button for custom color */}
+                        {/* Rainbow circle button opening the platform CustomColorPickerPopover */}
                         <div className="relative">
                           <button
-                            onClick={() => customColorInputRef.current?.click()}
+                            ref={rainbowBtnRef}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setShowCustomPicker(prev => !prev)
+                            }}
                             className="w-6 h-6 rounded-full border border-zinc-700/60 transition-transform hover:scale-110 cursor-pointer shadow-xs"
                             style={{
                               background:
                                 'conic-gradient(from 180deg at 50% 50%, #FF0000 0deg, #FFA500 50deg, #FFFF00 100deg, #008000 150deg, #00FFFF 200deg, #0000FF 250deg, #EE82EE 300deg, #FF0000 360deg)'
                             }}
-                            title="Cor personalizada"
-                          />
-                          <input
-                            ref={customColorInputRef}
-                            type="color"
-                            value={singleSelectedElement.strokeColor || '#ffffff'}
-                            onChange={e => {
-                              setStrokeColor(e.target.value)
-                              updateSelectedProperty('strokeColor', e.target.value)
-                            }}
-                            className="absolute inset-0 opacity-0 cursor-pointer pointer-events-none w-0 h-0"
+                            title="Cor personalizada (Color Picker)"
                           />
                         </div>
                       </div>
@@ -1961,8 +2396,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                                 updateSelectedProperty('fontSize', s.sz)
                               }}
                               className={`flex-1 py-1 rounded text-[11px] font-medium cursor-pointer ${
-                                (singleSelectedElement.fontSize || 18) === s.sz ? 'bg-zinc-750 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                                (singleSelectedElement.fontSize || 18) === s.sz ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
                               }`}
+                              style={(singleSelectedElement.fontSize || 18) === s.sz ? { backgroundColor: 'var(--accent)' } : undefined}
                             >
                               {s.label}
                             </button>
@@ -1985,8 +2421,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                                 updateSelectedProperty('fontFamily', f.id as any)
                               }}
                               className={`flex-1 py-1 rounded text-[10.5px] cursor-pointer ${
-                                (singleSelectedElement.fontFamily || 'sans') === f.id ? 'bg-zinc-750 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                                (singleSelectedElement.fontFamily || 'sans') === f.id ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
                               }`}
+                              style={(singleSelectedElement.fontFamily || 'sans') === f.id ? { backgroundColor: 'var(--accent)' } : undefined}
                             >
                               {f.label}
                             </button>
@@ -2029,8 +2466,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                                 setOpenPopover(null)
                               }}
                               className={`flex-1 py-1 rounded text-[10.5px] font-medium cursor-pointer ${
-                                (singleSelectedElement.strokeWidth || 2) === st.w ? 'bg-violet-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                                (singleSelectedElement.strokeWidth || 2) === st.w ? 'text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
                               }`}
+                              style={(singleSelectedElement.strokeWidth || 2) === st.w ? { backgroundColor: 'var(--accent)' } : undefined}
                             >
                               {st.label}
                             </button>
@@ -2074,6 +2512,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                 pushHistory(updated)
                 setSelectedIds([])
                 setOpenPopover(null)
+                setShowCustomPicker(false)
               }}
               className="p-1.5 text-rose-400 hover:text-rose-200 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
               title="Excluir (Del)"
@@ -2084,7 +2523,21 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         </div>
       )}
 
-      {/* 3. Bottom Floating FigJam Main Toolbar */}
+      {/* 4. Platform-matching Custom Color Picker Popover */}
+      {showCustomPicker && rainbowBtnRef.current && (
+        <CustomColorPickerPopover
+          anchorEl={rainbowBtnRef.current}
+          currentColor={singleSelectedElement?.strokeColor || '#c59b27'}
+          onChange={(newColor) => {
+            setStrokeColor(newColor)
+            updateSelectedProperty('strokeColor', newColor)
+          }}
+          onClose={() => setShowCustomPicker(false)}
+          align="center"
+        />
+      )}
+
+      {/* 5. Bottom Floating FigJam Main Toolbar */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#18181d]/92 backdrop-blur-md border border-zinc-700/80 px-2 py-1.5 rounded-2xl shadow-2xl z-20">
         {/* Pointer / Selection */}
         <button
@@ -2095,9 +2548,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           title="Seleção (V / 1)"
           className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             tool === 'select'
-              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              ? 'text-white font-semibold shadow-md scale-105'
               : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
           }`}
+          style={tool === 'select' ? { backgroundColor: 'var(--accent)' } : undefined}
         >
           <MousePointer className="w-4 h-4 stroke-[2]" />
         </button>
@@ -2109,9 +2563,14 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
             title="Formas Geométricas (Clique para escolher)"
             className={`h-9 px-2.5 rounded-xl flex items-center gap-1 transition-all cursor-pointer ${
               ['rectangle', 'ellipse', 'diamond', 'triangle', 'triangleDown', 'roundedRect', 'parallelogram', 'cylinder'].includes(tool) || isBottomShapesOpen
-                ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+                ? 'text-white font-semibold shadow-md scale-105'
                 : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
             }`}
+            style={
+              ['rectangle', 'ellipse', 'diamond', 'triangle', 'triangleDown', 'roundedRect', 'parallelogram', 'cylinder'].includes(tool) || isBottomShapesOpen
+                ? { backgroundColor: 'var(--accent)' }
+                : undefined
+            }
           >
             <Shapes className="w-4 h-4 stroke-[2]" />
             <ChevronDown className="w-3 h-3 text-zinc-300" />
@@ -2146,9 +2605,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                       }}
                       className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all cursor-pointer ${
                         isActive
-                          ? 'bg-violet-600 text-white shadow-md'
+                          ? 'text-white shadow-md'
                           : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
                       }`}
+                      style={isActive ? { backgroundColor: 'var(--accent)' } : undefined}
                       title={item.label}
                     >
                       <Icon className="w-5 h-5 stroke-[1.8]" />
@@ -2170,11 +2630,30 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           title="Nota Adesiva / Post-it (N / S) - Clique na tela para criar"
           className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             tool === 'sticky'
-              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              ? 'text-white font-semibold shadow-md scale-105'
               : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
           }`}
+          style={tool === 'sticky' ? { backgroundColor: 'var(--accent)' } : undefined}
         >
           <StickyNote className="w-4 h-4 stroke-[2]" />
+        </button>
+
+        {/* DATA-TASK (Banco de dados de tarefas / Calendar Frame) */}
+        <button
+          onClick={() => {
+            setTool('data-task')
+            setSelectedIds([])
+            setIsBottomShapesOpen(false)
+          }}
+          title="Data Task - Banco de dados de tarefas (K)"
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            tool === 'data-task'
+              ? 'text-white font-semibold shadow-md scale-105'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+          }`}
+          style={tool === 'data-task' ? { backgroundColor: 'var(--accent)' } : undefined}
+        >
+          <CalendarDays className="w-4 h-4 stroke-[2]" />
         </button>
 
         {/* Seta / Conector */}
@@ -2187,9 +2666,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           title="Seta Livre (A / 5)"
           className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             tool === 'arrow'
-              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              ? 'text-white font-semibold shadow-md scale-105'
               : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
           }`}
+          style={tool === 'arrow' ? { backgroundColor: 'var(--accent)' } : undefined}
         >
           <ArrowUpRight className="w-4 h-4 stroke-[2]" />
         </button>
@@ -2204,9 +2684,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           title="Linha Reta (L / 6)"
           className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             tool === 'line'
-              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              ? 'text-white font-semibold shadow-md scale-105'
               : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
           }`}
+          style={tool === 'line' ? { backgroundColor: 'var(--accent)' } : undefined}
         >
           <Minus className="w-4 h-4 stroke-[2]" />
         </button>
@@ -2221,9 +2702,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           title="Lápis / Caneta (P / 7)"
           className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             tool === 'freedraw'
-              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              ? 'text-white font-semibold shadow-md scale-105'
               : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
           }`}
+          style={tool === 'freedraw' ? { backgroundColor: 'var(--accent)' } : undefined}
         >
           <PenTool className="w-4 h-4 stroke-[2]" />
         </button>
@@ -2238,9 +2720,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           title="Texto (T / 8)"
           className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             tool === 'text'
-              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              ? 'text-white font-semibold shadow-md scale-105'
               : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
           }`}
+          style={tool === 'text' ? { backgroundColor: 'var(--accent)' } : undefined}
         >
           <Type className="w-4 h-4 stroke-[2]" />
         </button>
@@ -2255,9 +2738,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           title="Borracha (E / 9)"
           className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             tool === 'eraser'
-              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              ? 'text-white font-semibold shadow-md scale-105'
               : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
           }`}
+          style={tool === 'eraser' ? { backgroundColor: 'var(--accent)' } : undefined}
         >
           <Eraser className="w-4 h-4 stroke-[2]" />
         </button>
@@ -2272,19 +2756,21 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           title="Mover Tela (H / Espaço)"
           className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             tool === 'pan'
-              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              ? 'text-white font-semibold shadow-md scale-105'
               : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
           }`}
+          style={tool === 'pan' ? { backgroundColor: 'var(--accent)' } : undefined}
         >
           <Hand className="w-4 h-4 stroke-[2]" />
         </button>
       </div>
 
-      {/* 4. Top Right Floating Export & Actions Panel */}
+      {/* 6. Top Right Floating Export & Actions Panel */}
       <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-[#18181d]/90 backdrop-blur-md border border-zinc-700/80 p-1 rounded-xl shadow-2xl z-20">
         <button
           onClick={handleExportPNG}
-          className="flex items-center gap-1 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg text-xs transition-opacity shadow-sm cursor-pointer"
+          className="flex items-center gap-1 px-3 py-1.5 text-white font-semibold rounded-lg text-xs transition-opacity shadow-sm cursor-pointer"
+          style={{ backgroundColor: 'var(--accent)' }}
           title="Exportar Desenho em Alta Resolução (PNG)"
         >
           <Download className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -2300,7 +2786,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         </button>
       </div>
 
-      {/* 5. Bottom Left Floating Navigation & Zoom Controls */}
+      {/* 7. Bottom Left Floating Navigation & Zoom Controls */}
       <div className="absolute bottom-6 left-6 flex items-center gap-1 bg-[#18181d]/90 backdrop-blur-md border border-zinc-700/80 p-1 rounded-xl shadow-2xl z-20 text-xs">
         <button
           onClick={handleUndo}
@@ -2353,7 +2839,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         </button>
       </div>
 
-      {/* 6. In-place Overlay Text Editor for Shapes, Sticky & Pure Text */}
+      {/* 8. In-place Overlay Text Editor for Shapes, Sticky & Pure Text */}
       {editingText && (
         <div
           className="absolute z-30"
@@ -2382,11 +2868,12 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
             className={`text-zinc-100 outline-none p-2 resize-none font-sans ${
               editingText.isShape
                 ? 'bg-transparent border-none w-full max-h-full leading-tight text-center'
-                : 'bg-[#18181d]/95 border border-violet-500 rounded-lg shadow-2xl w-full leading-snug'
+                : 'bg-[#18181d]/95 rounded-lg shadow-2xl w-full leading-snug border'
             }`}
             style={{
               fontSize: `${fontSize * doc.viewport.zoom}px`,
-              lineHeight: 1.25
+              lineHeight: 1.25,
+              borderColor: 'var(--accent)'
             }}
           />
         </div>

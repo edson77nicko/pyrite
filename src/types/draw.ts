@@ -9,6 +9,7 @@ export type DrawTool =
   | 'parallelogram'
   | 'cylinder'
   | 'sticky'
+  | 'data-task'
   | 'arrow'
   | 'line'
   | 'freedraw'
@@ -26,6 +27,7 @@ export type DrawElementType =
   | 'parallelogram'
   | 'cylinder'
   | 'sticky'
+  | 'data-task'
   | 'arrow'
   | 'line'
   | 'freedraw'
@@ -66,6 +68,9 @@ export interface DrawElement {
   isBold?: boolean
   isStrikethrough?: boolean
   isList?: boolean
+  boardId?: string
+  viewMode?: 'calendar' | 'list' | 'kanban'
+  taskFilter?: 'all' | 'pending' | 'completed'
 }
 
 export interface DrawViewport {

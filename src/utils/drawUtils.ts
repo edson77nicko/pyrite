@@ -592,6 +592,63 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
       break
     }
 
+    case 'data-task': {
+      // Data Task Frame (Calendar / Kanban / List representation)
+      ctx.save()
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)'
+      ctx.shadowBlur = 16
+      ctx.shadowOffsetY = 6
+
+      const radius = 12
+      ctx.beginPath()
+      ctx.roundRect(normX, normY, normW, normH, radius)
+      ctx.fillStyle = '#141418'
+      ctx.fill()
+      ctx.restore()
+
+      // Outer border
+      ctx.beginPath()
+      ctx.roundRect(normX, normY, normW, normH, radius)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+
+      // Header top pill
+      ctx.fillStyle = '#222228'
+      ctx.beginPath()
+      ctx.roundRect(normX + 16, normY + 16, 110, 26, 6)
+      ctx.fill()
+
+      ctx.font = '600 12px Inter, system-ui, sans-serif'
+      ctx.fillStyle = '#ffffff'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('📅 ' + (el.viewMode === 'list' ? 'Lista' : el.viewMode === 'kanban' ? 'Quadro' : 'Calendário'), normX + 16 + 55, normY + 16 + 13)
+
+      // Title & Subtitle
+      ctx.font = 'bold 16px Inter, system-ui, sans-serif'
+      ctx.fillStyle = '#ffffff'
+      ctx.textAlign = 'left'
+      ctx.fillText(el.text || 'Tarefas do Projeto', normX + 16, normY + 68)
+
+      ctx.font = '11px Inter, system-ui, sans-serif'
+      ctx.fillStyle = '#8e8e93'
+      ctx.fillText('Banco de dados de tarefas e acompanhamento de prazos', normX + 16, normY + 88)
+
+      // Content area
+      const gridTop = normY + 104
+      const gridW = normW - 32
+      const gridH = Math.max(60, normH - 120)
+      ctx.fillStyle = '#1e1e24'
+      ctx.beginPath()
+      ctx.roundRect(normX + 16, gridTop, gridW, gridH, 8)
+      ctx.fill()
+      ctx.strokeStyle = '#2e2e38'
+      ctx.lineWidth = 1
+      ctx.stroke()
+      break
+    }
+
     case 'text': {
       const fontSize = el.fontSize || 18
       const fontFamily = el.fontFamily === 'mono' ? 'monospace' : el.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'
