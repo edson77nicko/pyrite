@@ -7,7 +7,9 @@ import {
   parseDrawDocument,
   renderElementToCanvas,
   renderGrid,
-  serializeDrawDocument
+  serializeDrawDocument,
+  findClosestAnchor,
+  updateConnectedLines
 } from '../utils/drawUtils'
 import {
   MousePointer,
@@ -34,7 +36,12 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
-  Layers
+  Layers,
+  StickyNote,
+  Bold,
+  Strikethrough,
+  List,
+  Shapes
 } from 'lucide-react'
 
 interface DrawEditorProps {
@@ -71,6 +78,19 @@ const FIGJAM_COLORS_ROW2 = [
   '#fcc2d7'  // Soft Pink
 ]
 
+// Sticky Note Color Palette (FigJam Post-it colors)
+const STICKY_COLORS = [
+  '#ffd8a8', // Peach / Salmon (Matching user print 2)
+  '#fff3bf', // Pastel Yellow
+  '#ffe8cc', // Cream Orange
+  '#d3f9d8', // Pastel Mint Green
+  '#c5f6fa', // Pastel Cyan
+  '#d0ebff', // Pastel Blue
+  '#e5dbff', // Pastel Lavender
+  '#fcc2d7', // Pastel Pink
+  '#f4f4f5'  // Soft White / Gray
+]
+
 interface ShapeOption {
   type: DrawElementType
   label: string
@@ -78,8 +98,8 @@ interface ShapeOption {
 }
 
 const SHAPE_OPTIONS: ShapeOption[] = [
-  { type: 'ellipse', label: 'Círculo', icon: Circle },
   { type: 'rectangle', label: 'Retângulo', icon: Square },
+  { type: 'ellipse', label: 'Círculo', icon: Circle },
   { type: 'roundedRect', label: 'Retângulo Arredondado', icon: Square },
   { type: 'diamond', label: 'Losango', icon: Diamond },
   { type: 'triangle', label: 'Triângulo', icon: Triangle },
@@ -124,10 +144,14 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
   const [editingText, setEditingText] = useState<{ id: string; x: number; y: number; text: string; width: number; height: number; isShape?: boolean } | null>(null)
   const textInputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Popover state for floating toolbar
-  const [openPopover, setOpenPopover] = useState<'shape' | 'color' | 'typography' | 'stroke' | null>(null)
+  // Popover state for floating selection toolbar
+  const [openPopover, setOpenPopover] = useState<'shape' | 'color' | 'typography' | 'stroke' | 'stickyColor' | 'stickySize' | null>(null)
   const [shapeSearch, setShapeSearch] = useState('')
   const customColorInputRef = useRef<HTMLInputElement>(null)
+
+  // Bottom toolbar Shapes Menu Popover
+  const [isBottomShapesOpen, setIsBottomShapesOpen] = useState(false)
+  const [bottomShapesSearch, setBottomShapesSearch] = useState('')
 
   // Mouse interaction state
   const isPointerDown = useRef(false)
@@ -137,7 +161,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
   const isPanning = useRef(false)
   const panStart = useRef<DrawPoint>({ x: 0, y: 0 })
   const activeElementId = useRef<string | null>(null)
-  const dragHandle = useRef<string | null>(null) // 'tl', 'tr', 'bl', 'br', 'move'
+  const dragHandle = useRef<string | null>(null) // 'tl', 'tr', 'bl', 'br', 'p1', 'p2', 'move'
   const initialElementBounds = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
   const marqueeBox = useRef<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
 
@@ -229,7 +253,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     setOpenPopover(null)
   }, [note.id])
 
-  // Get selected element if single
+  // Single selected element
   const singleSelectedElement = selectedIds.length === 1
     ? doc.elements.find(el => el.id === selectedIds[0]) || null
     : null
@@ -260,30 +284,60 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     // Render elements
     for (const el of doc.elements) {
       if (editingText && editingText.id === el.id && !editingText.isShape) {
-        // Skip pure text element while editing
         continue
       }
       const isSelected = selectedIds.includes(el.id)
       renderElementToCanvas(ctx, el, isSelected)
     }
 
-    // Render selection indicators & FigJam-like handles
+    // Render selection indicators & FigJam handles
     if (selectedIds.length > 0 && !editingText) {
       for (const id of selectedIds) {
         const el = doc.elements.find(e => e.id === id)
         if (!el) continue
 
-        const bounds = getElementBounds(el)
         ctx.save()
 
-        // Selection Border: FigJam cyan / bright blue (#0099ff)
+        // 1. SPECIFIC RENDERING FOR STRAIGHT LINE AND ARROW:
+        // Only 2 control squares (Point 1 and Point 2), no 4-corner box!
+        if (el.type === 'line' || el.type === 'arrow') {
+          const p1 = { x: el.x, y: el.y }
+          const p2 = { x: el.x + el.width, y: el.y + el.height }
+          const handleSize = 9 / zoom
+
+          // Highlight line
+          ctx.strokeStyle = 'rgba(0, 153, 255, 0.4)'
+          ctx.lineWidth = Math.max(el.strokeWidth || 2, 4) / zoom
+          ctx.beginPath()
+          ctx.moveTo(p1.x, p1.y)
+          ctx.lineTo(p2.x, p2.y)
+          ctx.stroke()
+
+          // Point 1 handle
+          ctx.fillStyle = '#ffffff'
+          ctx.strokeStyle = '#0099ff'
+          ctx.lineWidth = 1.6 / zoom
+          ctx.fillRect(p1.x - handleSize / 2, p1.y - handleSize / 2, handleSize, handleSize)
+          ctx.strokeRect(p1.x - handleSize / 2, p1.y - handleSize / 2, handleSize, handleSize)
+
+          // Point 2 handle
+          ctx.fillRect(p2.x - handleSize / 2, p2.y - handleSize / 2, handleSize, handleSize)
+          ctx.strokeRect(p2.x - handleSize / 2, p2.y - handleSize / 2, handleSize, handleSize)
+
+          ctx.restore()
+          continue
+        }
+
+        // 2. FOR ALL OTHER ELEMENTS: Bounding Box
+        const bounds = getElementBounds(el)
+
+        // Selection Border: FigJam bright blue (#0099ff)
         ctx.strokeStyle = '#0099ff'
         ctx.lineWidth = 1.5 / zoom
         ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height)
 
-        // Handles on single selection
         if (selectedIds.length === 1 && el.type !== 'freedraw') {
-          // 1. Resize handles on 4 corners (White square with blue outline, like FigJam)
+          // Resize handles on 4 corners (White square with blue outline)
           const cornerHandleSize = 8 / zoom
           const corners = [
             { id: 'tl', x: bounds.x, y: bounds.y },
@@ -300,9 +354,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
             ctx.strokeRect(c.x - cornerHandleSize / 2, c.y - cornerHandleSize / 2, cornerHandleSize, cornerHandleSize)
           }
 
-          // 2. Output connection handlers (N8N / FigJam circular nodes on 4 cardinal edges)
-          const isClosed = !['arrow', 'line', 'text'].includes(el.type)
-          if (isClosed) {
+          // Output connection handlers (Only the 4 circular nodes, down arrow button removed!)
+          const isConnectable = el.type !== 'text'
+          if (isConnectable) {
             const connHandles = [
               { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
               { id: 'right', x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
@@ -315,40 +369,13 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
             for (const h of connHandles) {
               const isHovered = hoveredHandle === h.id
               ctx.beginPath()
-              ctx.arc(h.x, h.y, isHovered ? connRadius * 1.4 : connRadius, 0, Math.PI * 2)
+              ctx.arc(h.x, h.y, isHovered ? connRadius * 1.5 : connRadius, 0, Math.PI * 2)
               ctx.fillStyle = isHovered ? '#38bdf8' : '#7dd3fc'
               ctx.fill()
               ctx.strokeStyle = '#0284c7'
               ctx.lineWidth = 1 / zoom
               ctx.stroke()
             }
-
-            // Bottom quick add connection button (Blue circular button with down arrow ↓)
-            const bottomH = connHandles[2]
-            const arrowBtnY = bottomH.y + 14 / zoom
-            const arrowBtnRadius = 8 / zoom
-
-            ctx.beginPath()
-            ctx.arc(bottomH.x, arrowBtnY, arrowBtnRadius, 0, Math.PI * 2)
-            ctx.fillStyle = '#0284c7'
-            ctx.fill()
-            ctx.strokeStyle = '#ffffff'
-            ctx.lineWidth = 1.2 / zoom
-            ctx.stroke()
-
-            // Draw white down arrow inside button
-            ctx.beginPath()
-            ctx.strokeStyle = '#ffffff'
-            ctx.lineWidth = 1.6 / zoom
-            ctx.lineCap = 'round'
-            ctx.lineJoin = 'round'
-            const arrowSize = 3.5 / zoom
-            ctx.moveTo(bottomH.x, arrowBtnY - arrowSize)
-            ctx.lineTo(bottomH.x, arrowBtnY + arrowSize)
-            ctx.moveTo(bottomH.x - arrowSize * 0.8, arrowBtnY + arrowSize * 0.3)
-            ctx.lineTo(bottomH.x, arrowBtnY + arrowSize)
-            ctx.lineTo(bottomH.x + arrowSize * 0.8, arrowBtnY + arrowSize * 0.3)
-            ctx.stroke()
           }
         }
 
@@ -508,6 +535,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           case 'o':
             setTool('ellipse')
             break
+          case 's':
+          case 'n':
+            setTool('sticky')
+            break
           case '5':
           case 'a':
             setTool('arrow')
@@ -622,58 +653,66 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     }
 
     if (tool === 'select') {
-      // 1. Check if hit resize handles or N8N output connection handles on single selection
+      // 1. Check if hit resize handles on single selection
       if (selectedIds.length === 1) {
         const selEl = doc.elements.find(el => el.id === selectedIds[0])
-        if (selEl && selEl.type !== 'freedraw') {
-          const bounds = getElementBounds(selEl)
+        if (selEl) {
           const z = doc.viewport.zoom
           const margin = 10 / z
 
-          // Corners
-          const corners = [
-            { id: 'tl', x: bounds.x, y: bounds.y },
-            { id: 'tr', x: bounds.x + bounds.width, y: bounds.y },
-            { id: 'bl', x: bounds.x, y: bounds.y + bounds.height },
-            { id: 'br', x: bounds.x + bounds.width, y: bounds.y + bounds.height }
-          ]
+          // SPECIFIC HANDLES FOR LINE AND ARROW: Point 1 and Point 2
+          if (selEl.type === 'line' || selEl.type === 'arrow') {
+            const p1 = { x: selEl.x, y: selEl.y }
+            const p2 = { x: selEl.x + selEl.width, y: selEl.y + selEl.height }
 
-          const cornerHit = corners.find(h => Math.hypot(h.x - world.x, h.y - world.y) <= margin)
-          if (cornerHit) {
-            dragHandle.current = cornerHit.id
-            initialElementBounds.current = { ...bounds }
-            return
-          }
-
-          // N8N Output Connection Nodes (Top, Right, Bottom, Left)
-          const isClosed = !['arrow', 'line', 'text'].includes(selEl.type)
-          if (isClosed) {
-            const connHandles: Array<{ id: 'top' | 'right' | 'bottom' | 'left'; x: number; y: number }> = [
-              { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
-              { id: 'right', x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
-              { id: 'bottom', x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
-              { id: 'left', x: bounds.x, y: bounds.y + bounds.height / 2 }
+            if (Math.hypot(p1.x - world.x, p1.y - world.y) <= margin) {
+              dragHandle.current = 'p1'
+              initialElementBounds.current = { x: selEl.x, y: selEl.y, width: selEl.width, height: selEl.height }
+              return
+            }
+            if (Math.hypot(p2.x - world.x, p2.y - world.y) <= margin) {
+              dragHandle.current = 'p2'
+              initialElementBounds.current = { x: selEl.x, y: selEl.y, width: selEl.width, height: selEl.height }
+              return
+            }
+          } else if (selEl.type !== 'freedraw') {
+            // Corner handles for box shapes
+            const bounds = getElementBounds(selEl)
+            const corners = [
+              { id: 'tl', x: bounds.x, y: bounds.y },
+              { id: 'tr', x: bounds.x + bounds.width, y: bounds.y },
+              { id: 'bl', x: bounds.x, y: bounds.y + bounds.height },
+              { id: 'br', x: bounds.x + bounds.width, y: bounds.y + bounds.height }
             ]
 
-            const connHit = connHandles.find(h => Math.hypot(h.x - world.x, h.y - world.y) <= margin)
-            // Also check bottom quick-add button (down arrow circular button)
-            const bottomBtnY = bounds.y + bounds.height + 14 / z
-            const isBottomBtnHit = Math.hypot(bounds.x + bounds.width / 2 - world.x, bottomBtnY - world.y) <= margin
-
-            if (connHit || isBottomBtnHit) {
-              const handle = connHit ? connHit.id : 'bottom'
-              const startX = connHit ? connHit.x : bounds.x + bounds.width / 2
-              const startY = connHit ? connHit.y : bounds.y + bounds.height
-
-              activeConnector.current = {
-                fromId: selEl.id,
-                handleId: handle,
-                startX,
-                startY,
-                currentX: world.x,
-                currentY: world.y
-              }
+            const cornerHit = corners.find(h => Math.hypot(h.x - world.x, h.y - world.y) <= margin)
+            if (cornerHit) {
+              dragHandle.current = cornerHit.id
+              initialElementBounds.current = { ...bounds }
               return
+            }
+
+            // N8N Output Connection Nodes (Top, Right, Bottom, Left)
+            if (selEl.type !== 'text') {
+              const connHandles: Array<{ id: 'top' | 'right' | 'bottom' | 'left'; x: number; y: number }> = [
+                { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
+                { id: 'right', x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
+                { id: 'bottom', x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
+                { id: 'left', x: bounds.x, y: bounds.y + bounds.height / 2 }
+              ]
+
+              const connHit = connHandles.find(h => Math.hypot(h.x - world.x, h.y - world.y) <= margin)
+              if (connHit) {
+                activeConnector.current = {
+                  fromId: selEl.id,
+                  handleId: connHit.id,
+                  startX: connHit.x,
+                  startY: connHit.y,
+                  currentX: world.x,
+                  currentY: world.y
+                }
+                return
+              }
             }
           }
         }
@@ -704,6 +743,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         // Clicked on empty space: clear selection and close any open popover
         if (!e.shiftKey) setSelectedIds([])
         setOpenPopover(null)
+        setIsBottomShapesOpen(false)
         marqueeBox.current = { startX: world.x, startY: world.y, currentX: world.x, currentY: world.y }
       }
       return
@@ -716,8 +756,8 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         type: 'text',
         x: world.x,
         y: world.y,
-        width: 160,
-        height: 36,
+        width: 180,
+        height: 30,
         strokeColor,
         backgroundColor: 'transparent',
         strokeWidth,
@@ -731,13 +771,13 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
 
       const nextElements = [...doc.elements, newTextElement]
       setDoc(prev => ({ ...prev, elements: nextElements }))
-      setEditingText({ id, x: world.x, y: world.y, width: 160, height: 36, text: '' })
+      setEditingText({ id, x: world.x, y: world.y, width: 180, height: 30, text: '' })
       setSelectedIds([id])
       setTool('select')
       return
     }
 
-    // Creating shape / freedraw / arrow / line
+    // Creating shape / sticky / freedraw / arrow / line
     const newId = 'elem_' + crypto.randomUUID()
     activeElementId.current = newId
 
@@ -748,11 +788,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       y: world.y,
       width: 0,
       height: 0,
-      strokeColor,
-      backgroundColor,
+      strokeColor: tool === 'sticky' ? '#18181b' : strokeColor,
+      backgroundColor: tool === 'sticky' ? '#ffd8a8' : backgroundColor,
       strokeWidth,
       strokeStyle,
-      fillStyle,
+      fillStyle: tool === 'sticky' ? 'solid' : fillStyle,
       points: tool === 'freedraw' ? [{ x: 0, y: 0 }] : []
     }
 
@@ -799,26 +839,32 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         // Check hover over handles
         if (selectedIds.length === 1) {
           const selEl = doc.elements.find(el => el.id === selectedIds[0])
-          if (selEl && !['arrow', 'line', 'freedraw'].includes(selEl.type)) {
-            const bounds = getElementBounds(selEl)
+          if (selEl) {
             const z = doc.viewport.zoom
             const margin = 10 / z
 
-            const connHandles = [
-              { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
-              { id: 'right', x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
-              { id: 'bottom', x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
-              { id: 'left', x: bounds.x, y: bounds.y + bounds.height / 2 }
-            ]
+            if (selEl.type === 'line' || selEl.type === 'arrow') {
+              const p1 = { x: selEl.x, y: selEl.y }
+              const p2 = { x: selEl.x + selEl.width, y: selEl.y + selEl.height }
+              if (Math.hypot(p1.x - world.x, p1.y - world.y) <= margin || Math.hypot(p2.x - world.x, p2.y - world.y) <= margin) {
+                container.style.cursor = 'crosshair'
+                return
+              }
+            } else if (selEl.type !== 'text' && selEl.type !== 'freedraw') {
+              const bounds = getElementBounds(selEl)
+              const connHandles = [
+                { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
+                { id: 'right', x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
+                { id: 'bottom', x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
+                { id: 'left', x: bounds.x, y: bounds.y + bounds.height / 2 }
+              ]
 
-            const hitConn = connHandles.find(h => Math.hypot(h.x - world.x, h.y - world.y) <= margin)
-            const bottomBtnY = bounds.y + bounds.height + 14 / z
-            const isBottomHit = Math.hypot(bounds.x + bounds.width / 2 - world.x, bottomBtnY - world.y) <= margin
-
-            if (hitConn || isBottomHit) {
-              setHoveredHandle(hitConn ? hitConn.id : 'bottom')
-              container.style.cursor = 'crosshair'
-              return
+              const hitConn = connHandles.find(h => Math.hypot(h.x - world.x, h.y - world.y) <= margin)
+              if (hitConn) {
+                setHoveredHandle(hitConn.id)
+                container.style.cursor = 'crosshair'
+                return
+              }
             }
           }
         }
@@ -867,15 +913,14 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       return
     }
 
-    // Moving selected elements
+    // Moving selected elements (with attached lines updated in real-time!)
     if (tool === 'select' && dragHandle.current === 'move') {
       const dx = world.x - dragStartPoint.current.x
       const dy = world.y - dragStartPoint.current.y
       dragStartPoint.current = world
 
-      setDoc(prev => ({
-        ...prev,
-        elements: prev.elements.map(el => {
+      setDoc(prev => {
+        const moved = prev.elements.map(el => {
           if (selectedIds.includes(el.id)) {
             return {
               ...el,
@@ -885,7 +930,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           }
           return el
         })
-      }))
+        // Realtime update of connected lines!
+        const withConnected = updateConnectedLines(moved, selectedIds)
+        return { ...prev, elements: withConnected }
+      })
       return
     }
 
@@ -893,35 +941,84 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     if (tool === 'select' && dragHandle.current && selectedIds.length === 1) {
       const handle = dragHandle.current
       const el = doc.elements.find(e => e.id === selectedIds[0])
-      if (el && initialElementBounds.current) {
-        const b = initialElementBounds.current
-        let nextX = el.x
-        let nextY = el.y
-        let nextW = el.width
-        let nextH = el.height
+      if (el) {
+        // Point 1 of line/arrow
+        if (handle === 'p1') {
+          const fixedEndX = el.x + el.width
+          const fixedEndY = el.y + el.height
+          const newStartX = world.x
+          const newStartY = world.y
 
-        if (handle === 'br') {
-          nextW = Math.max(10, world.x - b.x)
-          nextH = Math.max(10, world.y - b.y)
-        } else if (handle === 'bl') {
-          nextX = world.x
-          nextW = Math.max(10, b.x + b.width - world.x)
-          nextH = Math.max(10, world.y - b.y)
-        } else if (handle === 'tr') {
-          nextY = world.y
-          nextW = Math.max(10, world.x - b.x)
-          nextH = Math.max(10, b.y + b.height - world.y)
-        } else if (handle === 'tl') {
-          nextX = world.x
-          nextY = world.y
-          nextW = Math.max(10, b.x + b.width - world.x)
-          nextH = Math.max(10, b.y + b.height - world.y)
+          setDoc(prev => ({
+            ...prev,
+            elements: prev.elements.map(item =>
+              item.id === el.id
+                ? {
+                    ...item,
+                    x: newStartX,
+                    y: newStartY,
+                    width: fixedEndX - newStartX,
+                    height: fixedEndY - newStartY,
+                    startBinding: undefined // detached if manually moved
+                  }
+                : item
+            )
+          }))
+          return
         }
 
-        setDoc(prev => ({
-          ...prev,
-          elements: prev.elements.map(item => item.id === el.id ? { ...item, x: nextX, y: nextY, width: nextW, height: nextH } : item)
-        }))
+        // Point 2 of line/arrow
+        if (handle === 'p2') {
+          setDoc(prev => ({
+            ...prev,
+            elements: prev.elements.map(item =>
+              item.id === el.id
+                ? {
+                    ...item,
+                    width: world.x - item.x,
+                    height: world.y - item.y,
+                    endBinding: undefined // detached if manually moved
+                  }
+                : item
+            )
+          }))
+          return
+        }
+
+        // 4 corner handles for box shapes
+        if (initialElementBounds.current) {
+          const b = initialElementBounds.current
+          let nextX = el.x
+          let nextY = el.y
+          let nextW = el.width
+          let nextH = el.height
+
+          if (handle === 'br') {
+            nextW = Math.max(20, world.x - b.x)
+            nextH = Math.max(20, world.y - b.y)
+          } else if (handle === 'bl') {
+            nextX = world.x
+            nextW = Math.max(20, b.x + b.width - world.x)
+            nextH = Math.max(20, world.y - b.y)
+          } else if (handle === 'tr') {
+            nextY = world.y
+            nextW = Math.max(20, world.x - b.x)
+            nextH = Math.max(20, b.y + b.height - world.y)
+          } else if (handle === 'tl') {
+            nextX = world.x
+            nextY = world.y
+            nextW = Math.max(20, b.x + b.width - world.x)
+            nextH = Math.max(20, b.y + b.height - world.y)
+          }
+
+          setDoc(prev => {
+            const resized = prev.elements.map(item =>
+              item.id === el.id ? { ...item, x: nextX, y: nextY, width: nextW, height: nextH } : item
+            )
+            const withConnected = updateConnectedLines(resized, [el.id])
+            return { ...prev, elements: withConnected }
+          })
+        }
       }
       return
     }
@@ -968,122 +1065,101 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     }
 
     if (dragHandle.current) {
+      // Check if moving line endpoints landed on an object to bind
+      const handle = dragHandle.current
+      if (selectedIds.length === 1 && (handle === 'p1' || handle === 'p2')) {
+        const el = docRef.current.elements.find(e => e.id === selectedIds[0])
+        if (el && (el.type === 'line' || el.type === 'arrow')) {
+          const pt = handle === 'p1' ? { x: el.x, y: el.y } : { x: el.x + el.width, y: el.y + el.height }
+          const targetEl = docRef.current.elements
+            .slice()
+            .reverse()
+            .find(other => other.id !== el.id && other.type !== 'line' && other.type !== 'arrow' && isPointInElement(pt, other))
+
+          if (targetEl) {
+            const anchor = findClosestAnchor(targetEl, pt)
+            setDoc(prev => {
+              const updated = prev.elements.map(item => {
+                if (item.id !== el.id) return item
+                if (handle === 'p1') {
+                  const fixedEndX = item.x + item.width
+                  const fixedEndY = item.y + item.height
+                  return {
+                    ...item,
+                    x: anchor.point.x,
+                    y: anchor.point.y,
+                    width: fixedEndX - anchor.point.x,
+                    height: fixedEndY - anchor.point.y,
+                    startBinding: { elementId: targetEl.id, handle: anchor.handle }
+                  }
+                } else {
+                  return {
+                    ...item,
+                    width: anchor.point.x - item.x,
+                    height: anchor.point.y - item.y,
+                    endBinding: { elementId: targetEl.id, handle: anchor.handle }
+                  }
+                }
+              })
+              return { ...prev, elements: updated }
+            })
+          }
+        }
+      }
+
       dragHandle.current = null
       initialElementBounds.current = null
       scheduleSave(docRef.current)
       pushHistory(docRef.current.elements)
     }
 
-    // Handle N8N Output Connection completion
+    // Handle N8N Output Connection completion: BIND TO TARGET ELEMENT!
     if (activeConnector.current) {
       const { fromId, handleId, startX, startY, currentX, currentY } = activeConnector.current
       activeConnector.current = null
 
-      const dist = Math.hypot(currentX - startX, currentY - startY)
       const fromEl = docRef.current.elements.find(el => el.id === fromId)
 
       if (fromEl) {
-        if (dist < 8) {
-          // Quick click on down arrow (or handler) -> create connected new shape in that direction!
-          const bounds = getElementBounds(fromEl)
-          const newShapeId = 'elem_' + crypto.randomUUID()
-          const newArrowId = 'elem_' + crypto.randomUUID()
+        // Find if dropped over another element to stick both ends!
+        const targetEl = docRef.current.elements
+          .slice()
+          .reverse()
+          .find(el => el.id !== fromId && el.type !== 'line' && el.type !== 'arrow' && isPointInElement({ x: currentX, y: currentY }, el))
 
-          const offsetDistance = 60
-          let newX = bounds.x
-          let newY = bounds.y
-          let arrowTargetX = bounds.x + bounds.width / 2
-          let arrowTargetY = bounds.y + bounds.height + offsetDistance
+        let finalTargetX = currentX
+        let finalTargetY = currentY
+        let endBinding = undefined
 
-          if (handleId === 'bottom') {
-            newY = bounds.y + bounds.height + offsetDistance
-            arrowTargetX = bounds.x + bounds.width / 2
-            arrowTargetY = newY
-          } else if (handleId === 'right') {
-            newX = bounds.x + bounds.width + offsetDistance
-            arrowTargetX = newX
-            arrowTargetY = bounds.y + bounds.height / 2
-          } else if (handleId === 'left') {
-            newX = bounds.x - bounds.width - offsetDistance
-            arrowTargetX = newX + bounds.width
-            arrowTargetY = bounds.y + bounds.height / 2
-          } else if (handleId === 'top') {
-            newY = bounds.y - bounds.height - offsetDistance
-            arrowTargetX = bounds.x + bounds.width / 2
-            arrowTargetY = newY + bounds.height
-          }
-
-          const newShape: DrawElement = {
-            id: newShapeId,
-            type: fromEl.type,
-            x: newX,
-            y: newY,
-            width: bounds.width,
-            height: bounds.height,
-            strokeColor: fromEl.strokeColor,
-            backgroundColor: fromEl.backgroundColor,
-            strokeWidth: fromEl.strokeWidth,
-            strokeStyle: fromEl.strokeStyle,
-            fillStyle: fromEl.fillStyle
-          }
-
-          const newArrow: DrawElement = {
-            id: newArrowId,
-            type: 'arrow',
-            x: startX,
-            y: startY,
-            width: arrowTargetX - startX,
-            height: arrowTargetY - startY,
-            strokeColor: '#339af0',
-            backgroundColor: 'transparent',
-            strokeWidth: 2,
-            strokeStyle: 'solid',
-            fillStyle: 'none'
-          }
-
-          const nextElements = [...docRef.current.elements, newShape, newArrow]
-          setDoc(prev => ({ ...prev, elements: nextElements }))
-          setSelectedIds([newShapeId])
-          scheduleSave({ ...docRef.current, elements: nextElements })
-          pushHistory(nextElements)
-        } else {
-          // Dragged connection line: create arrow pointing to drop position
-          const targetEl = docRef.current.elements
-            .slice()
-            .reverse()
-            .find(el => el.id !== fromId && isPointInElement({ x: currentX, y: currentY }, el))
-
-          let finalTargetX = currentX
-          let finalTargetY = currentY
-
-          if (targetEl) {
-            const tb = getElementBounds(targetEl)
-            // Snap to closest edge of target element
-            finalTargetX = Math.max(tb.x, Math.min(tb.x + tb.width, currentX))
-            finalTargetY = Math.max(tb.y, Math.min(tb.y + tb.height, currentY))
-          }
-
-          const newArrowId = 'elem_' + crypto.randomUUID()
-          const newArrow: DrawElement = {
-            id: newArrowId,
-            type: 'arrow',
-            x: startX,
-            y: startY,
-            width: finalTargetX - startX,
-            height: finalTargetY - startY,
-            strokeColor: fromEl.strokeColor || '#339af0',
-            backgroundColor: 'transparent',
-            strokeWidth: fromEl.strokeWidth || 2,
-            strokeStyle: 'solid',
-            fillStyle: 'none'
-          }
-
-          const nextElements = [...docRef.current.elements, newArrow]
-          setDoc(prev => ({ ...prev, elements: nextElements }))
-          setSelectedIds([newArrowId])
-          scheduleSave({ ...docRef.current, elements: nextElements })
-          pushHistory(nextElements)
+        if (targetEl) {
+          const anchor = findClosestAnchor(targetEl, { x: currentX, y: currentY })
+          finalTargetX = anchor.point.x
+          finalTargetY = anchor.point.y
+          endBinding = { elementId: targetEl.id, handle: anchor.handle }
         }
+
+        const newArrowId = 'elem_' + crypto.randomUUID()
+        const newArrow: DrawElement = {
+          id: newArrowId,
+          type: 'arrow',
+          x: startX,
+          y: startY,
+          width: finalTargetX - startX,
+          height: finalTargetY - startY,
+          strokeColor: fromEl.strokeColor || '#339af0',
+          backgroundColor: 'transparent',
+          strokeWidth: fromEl.strokeWidth || 2,
+          strokeStyle: 'solid',
+          fillStyle: 'none',
+          startBinding: { elementId: fromEl.id, handle: handleId },
+          endBinding
+        }
+
+        const nextElements = [...docRef.current.elements, newArrow]
+        setDoc(prev => ({ ...prev, elements: nextElements }))
+        setSelectedIds([newArrowId])
+        scheduleSave({ ...docRef.current, elements: nextElements })
+        pushHistory(nextElements)
       }
       return
     }
@@ -1096,7 +1172,6 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       const created = docRef.current.elements.find(el => el.id === id)
       if (!created) return
 
-      // Measure distance traveled from pointer down
       const container = containerRef.current
       const rect = container?.getBoundingClientRect() || { left: 0, top: 0 }
       const screenX = e.clientX - rect.left
@@ -1114,7 +1189,8 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         'triangle',
         'triangleDown',
         'parallelogram',
-        'cylinder'
+        'cylinder',
+        'sticky'
       ].includes(created.type)
 
       // KEY FEATURE: If user just CLICKED (without dragging or < 8px), spawn perfect default dimensions!
@@ -1131,9 +1207,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         } else if (created.type === 'cylinder') {
           defaultWidth = 110
           defaultHeight = 120
+        } else if (created.type === 'sticky') {
+          defaultWidth = 180
+          defaultHeight = 180
         }
 
-        // Center on click point
         const perfectX = created.x - defaultWidth / 2
         const perfectY = created.y - defaultHeight / 2
 
@@ -1144,7 +1222,8 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                 x: perfectX,
                 y: perfectY,
                 width: defaultWidth,
-                height: defaultHeight
+                height: defaultHeight,
+                backgroundColor: created.type === 'sticky' ? '#ffd8a8' : el.backgroundColor
               }
             : el
         )
@@ -1166,21 +1245,24 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         return
       }
 
-      // Normalize negative width / height from manual drag
-      const normX = created.width < 0 ? created.x + created.width : created.x
-      const normY = created.height < 0 ? created.y + created.height : created.y
-      const normW = Math.abs(created.width)
-      const normH = Math.abs(created.height)
+      // Normalize negative width / height from manual drag (except for lines and arrows!)
+      if (created.type !== 'line' && created.type !== 'arrow' && created.type !== 'freedraw') {
+        const normX = created.width < 0 ? created.x + created.width : created.x
+        const normY = created.height < 0 ? created.y + created.height : created.y
+        const normW = Math.abs(created.width)
+        const normH = Math.abs(created.height)
 
-      const normalizedElements = docRef.current.elements.map(el =>
-        el.id === id ? { ...el, x: normX, y: normY, width: normW, height: normH } : el
-      )
+        const normalizedElements = docRef.current.elements.map(el =>
+          el.id === id ? { ...el, x: normX, y: normY, width: normW, height: normH } : el
+        )
 
-      setDoc(prev => ({ ...prev, elements: normalizedElements }))
+        setDoc(prev => ({ ...prev, elements: normalizedElements }))
+      }
+
       setSelectedIds([id])
       setTool('select')
-      scheduleSave({ ...docRef.current, elements: normalizedElements })
-      pushHistory(normalizedElements)
+      scheduleSave(docRef.current)
+      pushHistory(docRef.current.elements)
     }
   }
 
@@ -1219,7 +1301,6 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     const { id, text, isShape } = editingText
 
     if (!isShape && !text.trim()) {
-      // Remove empty standalone text element
       const nextElements = doc.elements.filter(el => el.id !== id)
       setDoc(prev => {
         const next = { ...prev, elements: nextElements }
@@ -1266,7 +1347,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       ...el,
       id: 'elem_' + crypto.randomUUID(),
       x: el.x + offset,
-      y: el.y + offset
+      y: el.y + offset,
+      startBinding: undefined,
+      endBinding: undefined
     }))
 
     const nextElements = [...doc.elements, ...duplicated]
@@ -1418,11 +1501,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     const topScreen = worldToScreen(bounds.x + bounds.width / 2, bounds.y)
     const bottomScreen = worldToScreen(bounds.x + bounds.width / 2, bounds.y + bounds.height)
 
-    // Default: 50px above element
     let top = topScreen.y - 52
     let left = topScreen.x
 
-    // If too close to top of screen, place below element
     if (top < 65) {
       top = bottomScreen.y + 16
     }
@@ -1432,7 +1513,6 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
 
   const popoverPos = getPopoverPosition()
 
-  // Shape icon helper
   const getShapeIcon = (type: DrawElementType) => {
     const found = SHAPE_OPTIONS.find(s => s.type === type)
     return found ? found.icon : Square
@@ -1466,368 +1546,502 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         >
           {/* Main Horizontal Popover Bar */}
           <div className="flex items-center gap-1 bg-[#1e1e22]/95 backdrop-blur-md border border-zinc-700/80 px-2 py-1.5 rounded-2xl shadow-2xl text-xs">
-            {/* A. Shape Switcher Button (For geometric shapes) */}
-            {![ 'line', 'arrow', 'freedraw', 'text'].includes(singleSelectedElement.type) && (
-              <div className="relative">
-                <button
-                  onClick={() => setOpenPopover(prev => prev === 'shape' ? null : 'shape')}
-                  className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
-                    openPopover === 'shape' ? 'bg-zinc-800 text-white shadow-xs' : ''
-                  }`}
-                  title="Alterar tipo de forma"
-                >
-                  {React.createElement(getShapeIcon(singleSelectedElement.type), { className: 'w-4 h-4' })}
-                  <ChevronDown className="w-3 h-3 text-zinc-400" />
-                </button>
+            {/* A. STICKY NOTE (POST-IT) TOOLBAR - Matching User Print 2 */}
+            {singleSelectedElement.type === 'sticky' ? (
+              <>
+                {/* 1. Sticky Note Color button */}
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenPopover(prev => prev === 'stickyColor' ? null : 'stickyColor')}
+                    className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                      openPopover === 'stickyColor' ? 'bg-zinc-800 text-white shadow-xs' : ''
+                    }`}
+                    title="Cor da nota"
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full border border-zinc-600 shadow-xs"
+                      style={{ backgroundColor: singleSelectedElement.backgroundColor || '#ffd8a8' }}
+                    />
+                    <ChevronDown className="w-3 h-3 text-zinc-400" />
+                  </button>
 
-                {/* Shape Picker Popover Menu (Matching User Print 2) */}
-                {openPopover === 'shape' && (
-                  <div className="absolute left-0 bottom-full mb-2 w-64 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2.5 z-40">
-                    <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 mb-2.5">
-                      <Search className="w-3.5 h-3.5 text-zinc-500" />
-                      <input
-                        type="text"
-                        placeholder="Procure uma forma"
-                        value={shapeSearch}
-                        onChange={e => setShapeSearch(e.target.value)}
-                        className="w-full bg-transparent text-xs text-zinc-200 placeholder-zinc-500 outline-none"
-                        autoFocus
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto scrollbar-none">
-                      {SHAPE_OPTIONS.filter(s => s.label.toLowerCase().includes(shapeSearch.toLowerCase())).map(item => {
-                        const Icon = item.icon
-                        const isSelected = singleSelectedElement.type === item.type
-                        return (
+                  {/* Sticky Color Popover */}
+                  {openPopover === 'stickyColor' && (
+                    <div className="absolute left-0 bottom-full mb-2 w-48 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2.5 z-40">
+                      <span className="text-[10px] text-zinc-400 block mb-1.5">Cor do Post-it</span>
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {STICKY_COLORS.map(color => (
                           <button
-                            key={item.type}
+                            key={color}
                             onClick={() => {
-                              updateSelectedProperty('type', item.type)
+                              updateSelectedProperty('backgroundColor', color)
                               setOpenPopover(null)
                             }}
-                            className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-violet-600 text-white shadow-md'
-                                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+                            className={`w-7 h-7 rounded-lg border transition-transform hover:scale-110 cursor-pointer ${
+                              singleSelectedElement.backgroundColor === color
+                                ? 'border-violet-400 scale-105 ring-2 ring-violet-500'
+                                : 'border-zinc-700/60'
                             }`}
-                            title={item.label}
-                          >
-                            <Icon className="w-5 h-5 stroke-[1.8]" />
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* B. Color & Stroke Style Button (Matching User Print 1) */}
-            <div className="relative">
-              <button
-                onClick={() => setOpenPopover(prev => prev === 'color' ? null : 'color')}
-                className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
-                  openPopover === 'color' ? 'bg-zinc-800 text-white shadow-xs' : ''
-                }`}
-                title="Cor do contorno e estilo"
-              >
-                <div
-                  className="w-4 h-4 rounded-full border border-zinc-600 shadow-xs"
-                  style={{ backgroundColor: singleSelectedElement.strokeColor || '#ffffff' }}
-                />
-                <ChevronDown className="w-3 h-3 text-zinc-400" />
-              </button>
-
-              {/* Color & Stroke Popover Menu (Matching User Print 1) */}
-              {openPopover === 'color' && (
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-[340px] bg-[#1a1a1e] border border-zinc-700/80 rounded-2xl shadow-2xl p-3 z-40 text-xs">
-                  {/* Top Pills: Sólido | Tracejado | Nada */}
-                  <div className="flex items-center gap-1.5 bg-zinc-900/80 p-1 rounded-xl mb-3 border border-zinc-800">
-                    <button
-                      onClick={() => {
-                        updateSelectedProperty('strokeStyle', 'solid')
-                        if (singleSelectedElement.strokeWidth === 0) updateSelectedProperty('strokeWidth', 2)
-                      }}
-                      className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
-                        singleSelectedElement.strokeStyle === 'solid' && singleSelectedElement.strokeWidth > 0
-                          ? 'bg-violet-600 text-white shadow-xs'
-                          : 'text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      <Minus className="w-3.5 h-3.5" />
-                      <span>Sólido</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        updateSelectedProperty('strokeStyle', 'dashed')
-                        if (singleSelectedElement.strokeWidth === 0) updateSelectedProperty('strokeWidth', 2)
-                      }}
-                      className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
-                        singleSelectedElement.strokeStyle === 'dashed'
-                          ? 'bg-violet-600 text-white shadow-xs'
-                          : 'text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      <span className="font-mono text-xs">┄</span>
-                      <span>Tracejado</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        updateSelectedProperty('strokeWidth', 0)
-                      }}
-                      className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
-                        singleSelectedElement.strokeWidth === 0
-                          ? 'bg-violet-600 text-white shadow-xs'
-                          : 'text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      <span className="text-xs">⊘</span>
-                      <span>Nada</span>
-                    </button>
-                  </div>
-
-                  {/* Row 1 of Colors: 11 Vibrant FigJam Colors */}
-                  <div className="flex items-center justify-between gap-1 mb-2">
-                    {FIGJAM_COLORS_ROW1.map(color => {
-                      const isCurrent = singleSelectedElement.strokeColor === color
-                      return (
-                        <button
-                          key={color}
-                          onClick={() => {
-                            setStrokeColor(color)
-                            updateSelectedProperty('strokeColor', color)
-                          }}
-                          className={`w-6 h-6 rounded-full border transition-transform hover:scale-110 cursor-pointer ${
-                            isCurrent
-                              ? 'border-violet-400 scale-110 ring-2 ring-violet-500'
-                              : 'border-zinc-700/60'
-                          }`}
-                          style={{ backgroundColor: color }}
-                          title={color}
-                        />
-                      )
-                    })}
-                  </div>
-
-                  {/* Row 2 of Colors: 10 Pastels + 1 Rainbow Custom Picker */}
-                  <div className="flex items-center justify-between gap-1 mb-3">
-                    {FIGJAM_COLORS_ROW2.map(color => {
-                      const isCurrent = singleSelectedElement.strokeColor === color
-                      return (
-                        <button
-                          key={color}
-                          onClick={() => {
-                            setStrokeColor(color)
-                            updateSelectedProperty('strokeColor', color)
-                          }}
-                          className={`w-6 h-6 rounded-full border transition-transform hover:scale-110 cursor-pointer ${
-                            isCurrent
-                              ? 'border-violet-400 scale-110 ring-2 ring-violet-500'
-                              : 'border-zinc-700/60'
-                          }`}
-                          style={{ backgroundColor: color }}
-                          title={color}
-                        />
-                      )
-                    })}
-
-                    {/* Rainbow circle button for custom color */}
-                    <div className="relative">
-                      <button
-                        onClick={() => customColorInputRef.current?.click()}
-                        className="w-6 h-6 rounded-full border border-zinc-700/60 transition-transform hover:scale-110 cursor-pointer shadow-xs"
-                        style={{
-                          background:
-                            'conic-gradient(from 180deg at 50% 50%, #FF0000 0deg, #FFA500 50deg, #FFFF00 100deg, #008000 150deg, #00FFFF 200deg, #0000FF 250deg, #EE82EE 300deg, #FF0000 360deg)'
-                        }}
-                        title="Cor personalizada"
-                      />
-                      <input
-                        ref={customColorInputRef}
-                        type="color"
-                        value={singleSelectedElement.strokeColor || '#ffffff'}
-                        onChange={e => {
-                          setStrokeColor(e.target.value)
-                          updateSelectedProperty('strokeColor', e.target.value)
-                        }}
-                        className="absolute inset-0 opacity-0 cursor-pointer pointer-events-none w-0 h-0"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Fill Background options for closed shapes */}
-                  {![ 'line', 'arrow', 'freedraw'].includes(singleSelectedElement.type) && (
-                    <div className="pt-2 border-t border-zinc-800 flex items-center justify-between">
-                      <span className="text-[11px] text-zinc-400 font-medium">Preenchimento:</span>
-                      <div className="flex items-center gap-1">
-                        {[
-                          { id: 'none', label: 'Transparente' },
-                          { id: 'semi', label: 'Suave' },
-                          { id: 'solid', label: 'Sólido' }
-                        ].map(f => (
-                          <button
-                            key={f.id}
-                            onClick={() => {
-                              const fs = f.id as 'none' | 'semi' | 'solid'
-                              setFillStyle(fs)
-                              updateSelectedProperty('fillStyle', fs)
-                              if (fs !== 'none' && singleSelectedElement.backgroundColor === 'transparent') {
-                                updateSelectedProperty('backgroundColor', singleSelectedElement.strokeColor || '#339af0')
-                              }
-                            }}
-                            className={`px-2 py-0.5 rounded text-[10.5px] cursor-pointer transition-colors ${
-                              singleSelectedElement.fillStyle === f.id
-                                ? 'bg-zinc-750 text-white font-medium'
-                                : 'text-zinc-400 hover:text-zinc-200'
-                            }`}
-                          >
-                            {f.label}
-                          </button>
+                            style={{ backgroundColor: color }}
+                          />
                         ))}
                       </div>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {/* C. Typography & Text Alignment Button (Matching User Print 1 & 2) */}
-            <div className="relative">
-              <button
-                onClick={() => setOpenPopover(prev => prev === 'typography' ? null : 'typography')}
-                className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
-                  openPopover === 'typography' ? 'bg-zinc-800 text-white shadow-xs' : ''
-                }`}
-                title="Texto e alinhamento"
-              >
-                <AlignLeft className="w-4 h-4" />
-                <ChevronDown className="w-3 h-3 text-zinc-400" />
-              </button>
+                {/* 2. Font family selector Aa */}
+                <button
+                  onClick={() => {
+                    const next = singleSelectedElement.fontFamily === 'sans' ? 'handwriting' : singleSelectedElement.fontFamily === 'handwriting' ? 'mono' : 'sans'
+                    updateSelectedProperty('fontFamily', next)
+                  }}
+                  className="px-2 py-1.5 rounded-lg font-serif font-bold text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                  title={`Fonte: ${singleSelectedElement.fontFamily || 'sans'}`}
+                >
+                  Aa
+                </button>
 
-              {/* Typography Popover */}
-              {openPopover === 'typography' && (
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2.5 z-40 text-xs flex flex-col gap-2">
-                  <div>
-                    <span className="text-[10px] text-zinc-400 block mb-1">Alinhamento</span>
-                    <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
+                {/* 3. Text Size Dropdown ("Grande", "Normal", "Pequeno") */}
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenPopover(prev => prev === 'stickySize' ? null : 'stickySize')}
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                      openPopover === 'stickySize' ? 'bg-zinc-800 text-white' : ''
+                    }`}
+                  >
+                    <span>{singleSelectedElement.fontSize === 24 ? 'Grande' : singleSelectedElement.fontSize === 14 ? 'Pequeno' : 'Normal'}</span>
+                    <ChevronDown className="w-3 h-3 text-zinc-400" />
+                  </button>
+
+                  {openPopover === 'stickySize' && (
+                    <div className="absolute left-0 bottom-full mb-2 w-32 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1">
                       {[
-                        { id: 'left', icon: AlignLeft },
-                        { id: 'center', icon: AlignCenter },
-                        { id: 'right', icon: AlignRight }
-                      ].map(a => {
-                        const Icon = a.icon
-                        const isCur = (singleSelectedElement.textAlign || 'center') === a.id
-                        return (
+                        { size: 14, label: 'Pequeno' },
+                        { size: 18, label: 'Normal' },
+                        { size: 24, label: 'Grande' }
+                      ].map(opt => (
+                        <button
+                          key={opt.size}
+                          onClick={() => {
+                            updateSelectedProperty('fontSize', opt.size)
+                            setOpenPopover(null)
+                          }}
+                          className={`px-2.5 py-1.5 rounded text-left transition-colors cursor-pointer ${
+                            (singleSelectedElement.fontSize || 18) === opt.size ? 'bg-violet-600 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="w-px h-4 bg-zinc-700/80 mx-0.5" />
+
+                {/* 4. Bold [ B ] */}
+                <button
+                  onClick={() => updateSelectedProperty('isBold', !singleSelectedElement.isBold)}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    singleSelectedElement.isBold ? 'bg-violet-600 text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                  }`}
+                  title="Negrito"
+                >
+                  <Bold className="w-3.5 h-3.5" />
+                </button>
+
+                {/* 5. Strikethrough [ S̶ ] */}
+                <button
+                  onClick={() => updateSelectedProperty('isStrikethrough', !singleSelectedElement.isStrikethrough)}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    singleSelectedElement.isStrikethrough ? 'bg-violet-600 text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                  }`}
+                  title="Tachado / Riscado"
+                >
+                  <Strikethrough className="w-3.5 h-3.5" />
+                </button>
+
+                {/* 6. Bullet List [ ≡: ] */}
+                <button
+                  onClick={() => updateSelectedProperty('isList', !singleSelectedElement.isList)}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    singleSelectedElement.isList ? 'bg-violet-600 text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                  }`}
+                  title="Lista com Marcadores"
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+              </>
+            ) : (
+              /* B. STANDARD SHAPES & ELEMENTS TOOLBAR */
+              <>
+                {/* Shape Switcher Button (For geometric shapes) */}
+                {![ 'line', 'arrow', 'freedraw', 'text'].includes(singleSelectedElement.type) && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setOpenPopover(prev => prev === 'shape' ? null : 'shape')}
+                      className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                        openPopover === 'shape' ? 'bg-zinc-800 text-white shadow-xs' : ''
+                      }`}
+                      title="Alterar tipo de forma"
+                    >
+                      {React.createElement(getShapeIcon(singleSelectedElement.type), { className: 'w-4 h-4' })}
+                      <ChevronDown className="w-3 h-3 text-zinc-400" />
+                    </button>
+
+                    {/* Shape Picker Popover Menu */}
+                    {openPopover === 'shape' && (
+                      <div className="absolute left-0 bottom-full mb-2 w-64 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2.5 z-40">
+                        <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 mb-2.5">
+                          <Search className="w-3.5 h-3.5 text-zinc-500" />
+                          <input
+                            type="text"
+                            placeholder="Procure uma forma"
+                            value={shapeSearch}
+                            onChange={e => setShapeSearch(e.target.value)}
+                            className="w-full bg-transparent text-xs text-zinc-200 placeholder-zinc-500 outline-none"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto scrollbar-none">
+                          {SHAPE_OPTIONS.filter(s => s.label.toLowerCase().includes(shapeSearch.toLowerCase())).map(item => {
+                            const Icon = item.icon
+                            const isSelected = singleSelectedElement.type === item.type
+                            return (
+                              <button
+                                key={item.type}
+                                onClick={() => {
+                                  updateSelectedProperty('type', item.type)
+                                  setOpenPopover(null)
+                                }}
+                                className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-violet-600 text-white shadow-md'
+                                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+                                }`}
+                                title={item.label}
+                              >
+                                <Icon className="w-5 h-5 stroke-[1.8]" />
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Color & Stroke Style Button */}
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenPopover(prev => prev === 'color' ? null : 'color')}
+                    className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                      openPopover === 'color' ? 'bg-zinc-800 text-white shadow-xs' : ''
+                    }`}
+                    title="Cor do contorno e estilo"
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full border border-zinc-600 shadow-xs"
+                      style={{ backgroundColor: singleSelectedElement.strokeColor || '#ffffff' }}
+                    />
+                    <ChevronDown className="w-3 h-3 text-zinc-400" />
+                  </button>
+
+                  {/* Color & Stroke Popover Menu */}
+                  {openPopover === 'color' && (
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-[340px] bg-[#1a1a1e] border border-zinc-700/80 rounded-2xl shadow-2xl p-3 z-40 text-xs">
+                      {/* Top Pills: Sólido | Tracejado | Nada */}
+                      <div className="flex items-center gap-1.5 bg-zinc-900/80 p-1 rounded-xl mb-3 border border-zinc-800">
+                        <button
+                          onClick={() => {
+                            updateSelectedProperty('strokeStyle', 'solid')
+                            if (singleSelectedElement.strokeWidth === 0) updateSelectedProperty('strokeWidth', 2)
+                          }}
+                          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
+                            singleSelectedElement.strokeStyle === 'solid' && singleSelectedElement.strokeWidth > 0
+                              ? 'bg-violet-600 text-white shadow-xs'
+                              : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                          <span>Sólido</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            updateSelectedProperty('strokeStyle', 'dashed')
+                            if (singleSelectedElement.strokeWidth === 0) updateSelectedProperty('strokeWidth', 2)
+                          }}
+                          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
+                            singleSelectedElement.strokeStyle === 'dashed'
+                              ? 'bg-violet-600 text-white shadow-xs'
+                              : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          <span className="font-mono text-xs">┄</span>
+                          <span>Tracejado</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            updateSelectedProperty('strokeWidth', 0)
+                          }}
+                          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer ${
+                            singleSelectedElement.strokeWidth === 0
+                              ? 'bg-violet-600 text-white shadow-xs'
+                              : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          <span className="text-xs">⊘</span>
+                          <span>Nada</span>
+                        </button>
+                      </div>
+
+                      {/* Row 1 of Colors: 11 Vibrant FigJam Colors */}
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        {FIGJAM_COLORS_ROW1.map(color => {
+                          const isCurrent = singleSelectedElement.strokeColor === color
+                          return (
+                            <button
+                              key={color}
+                              onClick={() => {
+                                setStrokeColor(color)
+                                updateSelectedProperty('strokeColor', color)
+                              }}
+                              className={`w-6 h-6 rounded-full border transition-transform hover:scale-110 cursor-pointer ${
+                                isCurrent
+                                  ? 'border-violet-400 scale-110 ring-2 ring-violet-500'
+                                  : 'border-zinc-700/60'
+                              }`}
+                              style={{ backgroundColor: color }}
+                              title={color}
+                            />
+                          )
+                        })}
+                      </div>
+
+                      {/* Row 2 of Colors: 10 Pastels + 1 Rainbow Custom Picker */}
+                      <div className="flex items-center justify-between gap-1 mb-3">
+                        {FIGJAM_COLORS_ROW2.map(color => {
+                          const isCurrent = singleSelectedElement.strokeColor === color
+                          return (
+                            <button
+                              key={color}
+                              onClick={() => {
+                                setStrokeColor(color)
+                                updateSelectedProperty('strokeColor', color)
+                              }}
+                              className={`w-6 h-6 rounded-full border transition-transform hover:scale-110 cursor-pointer ${
+                                isCurrent
+                                  ? 'border-violet-400 scale-110 ring-2 ring-violet-500'
+                                  : 'border-zinc-700/60'
+                              }`}
+                              style={{ backgroundColor: color }}
+                              title={color}
+                            />
+                          )
+                        })}
+
+                        {/* Rainbow circle button for custom color */}
+                        <div className="relative">
                           <button
-                            key={a.id}
-                            onClick={() => updateSelectedProperty('textAlign', a.id as any)}
-                            className={`flex-1 py-1 rounded flex items-center justify-center cursor-pointer ${
-                              isCur ? 'bg-zinc-750 text-white' : 'text-zinc-400 hover:text-zinc-200'
-                            }`}
-                          >
-                            <Icon className="w-3.5 h-3.5" />
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
+                            onClick={() => customColorInputRef.current?.click()}
+                            className="w-6 h-6 rounded-full border border-zinc-700/60 transition-transform hover:scale-110 cursor-pointer shadow-xs"
+                            style={{
+                              background:
+                                'conic-gradient(from 180deg at 50% 50%, #FF0000 0deg, #FFA500 50deg, #FFFF00 100deg, #008000 150deg, #00FFFF 200deg, #0000FF 250deg, #EE82EE 300deg, #FF0000 360deg)'
+                            }}
+                            title="Cor personalizada"
+                          />
+                          <input
+                            ref={customColorInputRef}
+                            type="color"
+                            value={singleSelectedElement.strokeColor || '#ffffff'}
+                            onChange={e => {
+                              setStrokeColor(e.target.value)
+                              updateSelectedProperty('strokeColor', e.target.value)
+                            }}
+                            className="absolute inset-0 opacity-0 cursor-pointer pointer-events-none w-0 h-0"
+                          />
+                        </div>
+                      </div>
 
-                  <div>
-                    <span className="text-[10px] text-zinc-400 block mb-1">Tamanho da Fonte</span>
-                    <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
-                      {[
-                        { sz: 14, label: 'P' },
-                        { sz: 18, label: 'M' },
-                        { sz: 24, label: 'G' },
-                        { sz: 32, label: 'GG' }
-                      ].map(s => (
-                        <button
-                          key={s.sz}
-                          onClick={() => {
-                            setFontSize(s.sz)
-                            updateSelectedProperty('fontSize', s.sz)
-                          }}
-                          className={`flex-1 py-1 rounded text-[11px] font-medium cursor-pointer ${
-                            (singleSelectedElement.fontSize || 18) === s.sz ? 'bg-zinc-750 text-white' : 'text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          {s.label}
-                        </button>
-                      ))}
+                      {/* Fill Background options for closed shapes */}
+                      {![ 'line', 'arrow', 'freedraw', 'text'].includes(singleSelectedElement.type) && (
+                        <div className="pt-2 border-t border-zinc-800 flex items-center justify-between">
+                          <span className="text-[11px] text-zinc-400 font-medium">Preenchimento:</span>
+                          <div className="flex items-center gap-1">
+                            {[
+                              { id: 'none', label: 'Transparente' },
+                              { id: 'semi', label: 'Suave' },
+                              { id: 'solid', label: 'Sólido' }
+                            ].map(f => (
+                              <button
+                                key={f.id}
+                                onClick={() => {
+                                  const fs = f.id as 'none' | 'semi' | 'solid'
+                                  setFillStyle(fs)
+                                  updateSelectedProperty('fillStyle', fs)
+                                  if (fs !== 'none' && singleSelectedElement.backgroundColor === 'transparent') {
+                                    updateSelectedProperty('backgroundColor', singleSelectedElement.strokeColor || '#339af0')
+                                  }
+                                }}
+                                className={`px-2 py-0.5 rounded text-[10.5px] cursor-pointer transition-colors ${
+                                  singleSelectedElement.fillStyle === f.id
+                                    ? 'bg-zinc-750 text-white font-medium'
+                                    : 'text-zinc-400 hover:text-zinc-200'
+                                }`}
+                              >
+                                {f.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] text-zinc-400 block mb-1">Fonte</span>
-                    <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
-                      {[
-                        { id: 'sans', label: 'Sans' },
-                        { id: 'handwriting', label: 'Draw' },
-                        { id: 'mono', label: 'Mono' }
-                      ].map(f => (
-                        <button
-                          key={f.id}
-                          onClick={() => {
-                            setFontFamily(f.id as any)
-                            updateSelectedProperty('fontFamily', f.id as any)
-                          }}
-                          className={`flex-1 py-1 rounded text-[10.5px] cursor-pointer ${
-                            (singleSelectedElement.fontFamily || 'sans') === f.id ? 'bg-zinc-750 text-white' : 'text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          {f.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {/* D. Stroke Width selector */}
-            <div className="relative">
-              <button
-                onClick={() => setOpenPopover(prev => prev === 'stroke' ? null : 'stroke')}
-                className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
-                  openPopover === 'stroke' ? 'bg-zinc-800 text-white shadow-xs' : ''
-                }`}
-                title="Espessura da linha"
-              >
-                <Minus className="w-4 h-4 stroke-[2.5]" />
-                <span className="text-[10px] font-mono">{singleSelectedElement.strokeWidth || 2}px</span>
-              </button>
+                {/* Typography & Text Alignment Button */}
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenPopover(prev => prev === 'typography' ? null : 'typography')}
+                    className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                      openPopover === 'typography' ? 'bg-zinc-800 text-white shadow-xs' : ''
+                    }`}
+                    title="Texto e alinhamento"
+                  >
+                    <AlignLeft className="w-4 h-4" />
+                    <ChevronDown className="w-3 h-3 text-zinc-400" />
+                  </button>
 
-              {openPopover === 'stroke' && (
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-36 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2 z-40 text-xs">
-                  <span className="text-[10px] text-zinc-400 block mb-1.5">Espessura</span>
-                  <div className="flex items-center gap-1">
-                    {[
-                      { w: 1, label: '1px' },
-                      { w: 2, label: '2px' },
-                      { w: 4, label: '4px' },
-                      { w: 6, label: '6px' }
-                    ].map(st => (
-                      <button
-                        key={st.w}
-                        onClick={() => {
-                          setStrokeWidth(st.w)
-                          updateSelectedProperty('strokeWidth', st.w)
-                          setOpenPopover(null)
-                        }}
-                        className={`flex-1 py-1 rounded text-[10.5px] font-medium cursor-pointer ${
-                          (singleSelectedElement.strokeWidth || 2) === st.w ? 'bg-violet-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                        }`}
-                      >
-                        {st.label}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Typography Popover */}
+                  {openPopover === 'typography' && (
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2.5 z-40 text-xs flex flex-col gap-2">
+                      <div>
+                        <span className="text-[10px] text-zinc-400 block mb-1">Alinhamento</span>
+                        <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
+                          {[
+                            { id: 'left', icon: AlignLeft },
+                            { id: 'center', icon: AlignCenter },
+                            { id: 'right', icon: AlignRight }
+                          ].map(a => {
+                            const Icon = a.icon
+                            const isCur = (singleSelectedElement.textAlign || 'center') === a.id
+                            return (
+                              <button
+                                key={a.id}
+                                onClick={() => updateSelectedProperty('textAlign', a.id as any)}
+                                className={`flex-1 py-1 rounded flex items-center justify-center cursor-pointer ${
+                                  isCur ? 'bg-zinc-750 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                                }`}
+                              >
+                                <Icon className="w-3.5 h-3.5" />
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-zinc-400 block mb-1">Tamanho da Fonte</span>
+                        <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
+                          {[
+                            { sz: 14, label: 'P' },
+                            { sz: 18, label: 'M' },
+                            { sz: 24, label: 'G' },
+                            { sz: 32, label: 'GG' }
+                          ].map(s => (
+                            <button
+                              key={s.sz}
+                              onClick={() => {
+                                setFontSize(s.sz)
+                                updateSelectedProperty('fontSize', s.sz)
+                              }}
+                              className={`flex-1 py-1 rounded text-[11px] font-medium cursor-pointer ${
+                                (singleSelectedElement.fontSize || 18) === s.sz ? 'bg-zinc-750 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-zinc-400 block mb-1">Fonte</span>
+                        <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
+                          {[
+                            { id: 'sans', label: 'Sans' },
+                            { id: 'handwriting', label: 'Draw' },
+                            { id: 'mono', label: 'Mono' }
+                          ].map(f => (
+                            <button
+                              key={f.id}
+                              onClick={() => {
+                                setFontFamily(f.id as any)
+                                updateSelectedProperty('fontFamily', f.id as any)
+                              }}
+                              className={`flex-1 py-1 rounded text-[10.5px] cursor-pointer ${
+                                (singleSelectedElement.fontFamily || 'sans') === f.id ? 'bg-zinc-750 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+
+                {/* Stroke Width selector (For lines, arrows, and borders) */}
+                {singleSelectedElement.type !== 'text' && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setOpenPopover(prev => prev === 'stroke' ? null : 'stroke')}
+                      className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                        openPopover === 'stroke' ? 'bg-zinc-800 text-white shadow-xs' : ''
+                      }`}
+                      title="Espessura da linha"
+                    >
+                      <Minus className="w-4 h-4 stroke-[2.5]" />
+                      <span className="text-[10px] font-mono">{singleSelectedElement.strokeWidth || 2}px</span>
+                    </button>
+
+                    {openPopover === 'stroke' && (
+                      <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-36 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2 z-40 text-xs">
+                        <span className="text-[10px] text-zinc-400 block mb-1.5">Espessura</span>
+                        <div className="flex items-center gap-1">
+                          {[
+                            { w: 1, label: '1px' },
+                            { w: 2, label: '2px' },
+                            { w: 4, label: '4px' },
+                            { w: 6, label: '6px' }
+                          ].map(st => (
+                            <button
+                              key={st.w}
+                              onClick={() => {
+                                setStrokeWidth(st.w)
+                                updateSelectedProperty('strokeWidth', st.w)
+                                setOpenPopover(null)
+                              }}
+                              className={`flex-1 py-1 rounded text-[10.5px] font-medium cursor-pointer ${
+                                (singleSelectedElement.strokeWidth || 2) === st.w ? 'bg-violet-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              {st.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
 
             <div className="w-px h-4 bg-zinc-700/80 mx-0.5" />
 
@@ -1872,39 +2086,198 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
 
       {/* 3. Bottom Floating FigJam Main Toolbar */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#18181d]/92 backdrop-blur-md border border-zinc-700/80 px-2 py-1.5 rounded-2xl shadow-2xl z-20">
-        {[
-          { id: 'select', icon: MousePointer, title: 'Seleção (V / 1)' },
-          { id: 'rectangle', icon: Square, title: 'Retângulo (R / 2) - Clique para criar perfeito' },
-          { id: 'ellipse', icon: Circle, title: 'Círculo (C / 4) - Clique para criar perfeito' },
-          { id: 'diamond', icon: Diamond, title: 'Losango (D / 3) - Clique para criar perfeito' },
-          { id: 'arrow', icon: ArrowUpRight, title: 'Seta / Conector (A / 5)' },
-          { id: 'line', icon: Minus, title: 'Linha (L / 6)' },
-          { id: 'freedraw', icon: PenTool, title: 'Lápis / Caneta (P / 7)' },
-          { id: 'text', icon: Type, title: 'Texto (T / 8)' },
-          { id: 'eraser', icon: Eraser, title: 'Borracha (E / 9)' },
-          { id: 'pan', icon: Hand, title: 'Mover Tela (H / Espaço)' }
-        ].map(item => {
-          const Icon = item.icon
-          const isActive = tool === item.id
-          return (
-            <button
-              key={item.id}
-              onClick={() => {
-                setTool(item.id as DrawTool)
-                if (item.id !== 'select') setSelectedIds([])
-                setOpenPopover(null)
-              }}
-              title={item.title}
-              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-                isActive
-                  ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
-                  : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-              }`}
-            >
-              <Icon className="w-4 h-4 stroke-[2]" />
-            </button>
-          )
-        })}
+        {/* Pointer / Selection */}
+        <button
+          onClick={() => {
+            setTool('select')
+            setIsBottomShapesOpen(false)
+          }}
+          title="Seleção (V / 1)"
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            tool === 'select'
+              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+          }`}
+        >
+          <MousePointer className="w-4 h-4 stroke-[2]" />
+        </button>
+
+        {/* FORMAS (Single unified Shapes button with Popover!) */}
+        <div className="relative">
+          <button
+            onClick={() => setIsBottomShapesOpen(prev => !prev)}
+            title="Formas Geométricas (Clique para escolher)"
+            className={`h-9 px-2.5 rounded-xl flex items-center gap-1 transition-all cursor-pointer ${
+              ['rectangle', 'ellipse', 'diamond', 'triangle', 'triangleDown', 'roundedRect', 'parallelogram', 'cylinder'].includes(tool) || isBottomShapesOpen
+                ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+          >
+            <Shapes className="w-4 h-4 stroke-[2]" />
+            <ChevronDown className="w-3 h-3 text-zinc-300" />
+          </button>
+
+          {/* Bottom Shapes Popover */}
+          {isBottomShapesOpen && (
+            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-3 w-64 bg-[#1a1a1e] border border-zinc-700/80 rounded-2xl shadow-2xl p-2.5 z-40 text-xs">
+              <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 mb-2.5">
+                <Search className="w-3.5 h-3.5 text-zinc-500" />
+                <input
+                  type="text"
+                  placeholder="Procure uma forma"
+                  value={bottomShapesSearch}
+                  onChange={e => setBottomShapesSearch(e.target.value)}
+                  className="w-full bg-transparent text-xs text-zinc-200 placeholder-zinc-500 outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto scrollbar-none">
+                {SHAPE_OPTIONS.filter(s => s.label.toLowerCase().includes(bottomShapesSearch.toLowerCase())).map(item => {
+                  const Icon = item.icon
+                  const isActive = tool === item.type
+                  return (
+                    <button
+                      key={item.type}
+                      onClick={() => {
+                        setTool(item.type as DrawTool)
+                        setIsBottomShapesOpen(false)
+                        setSelectedIds([])
+                      }}
+                      className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-violet-600 text-white shadow-md'
+                          : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+                      }`}
+                      title={item.label}
+                    >
+                      <Icon className="w-5 h-5 stroke-[1.8]" />
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* NOTA / POST-IT (STICKY NOTE) */}
+        <button
+          onClick={() => {
+            setTool('sticky')
+            setSelectedIds([])
+            setIsBottomShapesOpen(false)
+          }}
+          title="Nota Adesiva / Post-it (N / S) - Clique na tela para criar"
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            tool === 'sticky'
+              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+          }`}
+        >
+          <StickyNote className="w-4 h-4 stroke-[2]" />
+        </button>
+
+        {/* Seta / Conector */}
+        <button
+          onClick={() => {
+            setTool('arrow')
+            setSelectedIds([])
+            setIsBottomShapesOpen(false)
+          }}
+          title="Seta Livre (A / 5)"
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            tool === 'arrow'
+              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+          }`}
+        >
+          <ArrowUpRight className="w-4 h-4 stroke-[2]" />
+        </button>
+
+        {/* Linha Reta */}
+        <button
+          onClick={() => {
+            setTool('line')
+            setSelectedIds([])
+            setIsBottomShapesOpen(false)
+          }}
+          title="Linha Reta (L / 6)"
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            tool === 'line'
+              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+          }`}
+        >
+          <Minus className="w-4 h-4 stroke-[2]" />
+        </button>
+
+        {/* Caneta / Freedraw */}
+        <button
+          onClick={() => {
+            setTool('freedraw')
+            setSelectedIds([])
+            setIsBottomShapesOpen(false)
+          }}
+          title="Lápis / Caneta (P / 7)"
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            tool === 'freedraw'
+              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+          }`}
+        >
+          <PenTool className="w-4 h-4 stroke-[2]" />
+        </button>
+
+        {/* Texto */}
+        <button
+          onClick={() => {
+            setTool('text')
+            setSelectedIds([])
+            setIsBottomShapesOpen(false)
+          }}
+          title="Texto (T / 8)"
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            tool === 'text'
+              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+          }`}
+        >
+          <Type className="w-4 h-4 stroke-[2]" />
+        </button>
+
+        {/* Borracha */}
+        <button
+          onClick={() => {
+            setTool('eraser')
+            setSelectedIds([])
+            setIsBottomShapesOpen(false)
+          }}
+          title="Borracha (E / 9)"
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            tool === 'eraser'
+              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+          }`}
+        >
+          <Eraser className="w-4 h-4 stroke-[2]" />
+        </button>
+
+        {/* Pan */}
+        <button
+          onClick={() => {
+            setTool('pan')
+            setSelectedIds([])
+            setIsBottomShapesOpen(false)
+          }}
+          title="Mover Tela (H / Espaço)"
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            tool === 'pan'
+              ? 'bg-violet-600 text-white font-semibold shadow-md scale-105'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+          }`}
+        >
+          <Hand className="w-4 h-4 stroke-[2]" />
+        </button>
       </div>
 
       {/* 4. Top Right Floating Export & Actions Panel */}
@@ -1980,14 +2353,14 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         </button>
       </div>
 
-      {/* 6. In-place Overlay Text Editor for Shapes & Pure Text */}
+      {/* 6. In-place Overlay Text Editor for Shapes, Sticky & Pure Text */}
       {editingText && (
         <div
           className="absolute z-30"
           style={{
             left: `${worldToScreen(editingText.x, editingText.y).x}px`,
             top: `${worldToScreen(editingText.x, editingText.y).y}px`,
-            width: editingText.isShape ? `${editingText.width * doc.viewport.zoom}px` : undefined,
+            width: `${Math.max(40, editingText.width) * doc.viewport.zoom}px`,
             height: editingText.isShape ? `${editingText.height * doc.viewport.zoom}px` : undefined,
             display: editingText.isShape ? 'flex' : undefined,
             alignItems: editingText.isShape ? 'center' : undefined,
@@ -2000,20 +2373,20 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
             onChange={e => setEditingText(prev => prev ? { ...prev, text: e.target.value } : null)}
             onBlur={handleFinishEditingText}
             onKeyDown={e => {
-              if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey && editingText.isShape)) {
+              if (e.key === 'Escape') {
                 e.preventDefault()
                 handleFinishEditingText()
               }
             }}
             placeholder={editingText.isShape ? 'Adicionar texto...' : 'Digite algo...'}
-            className={`text-zinc-100 outline-none p-2 resize-none text-center font-sans ${
+            className={`text-zinc-100 outline-none p-2 resize-none font-sans ${
               editingText.isShape
-                ? 'bg-transparent border-none w-full max-h-full leading-tight'
-                : 'bg-[#18181d]/95 border border-violet-500 rounded-lg shadow-2xl min-w-[200px] min-h-[40px]'
+                ? 'bg-transparent border-none w-full max-h-full leading-tight text-center'
+                : 'bg-[#18181d]/95 border border-violet-500 rounded-lg shadow-2xl w-full leading-snug'
             }`}
             style={{
               fontSize: `${fontSize * doc.viewport.zoom}px`,
-              lineHeight: 1.3
+              lineHeight: 1.25
             }}
           />
         </div>

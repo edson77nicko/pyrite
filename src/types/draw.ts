@@ -8,6 +8,7 @@ export type DrawTool =
   | 'roundedRect'
   | 'parallelogram'
   | 'cylinder'
+  | 'sticky'
   | 'arrow'
   | 'line'
   | 'freedraw'
@@ -24,6 +25,7 @@ export type DrawElementType =
   | 'roundedRect'
   | 'parallelogram'
   | 'cylinder'
+  | 'sticky'
   | 'arrow'
   | 'line'
   | 'freedraw'
@@ -32,6 +34,11 @@ export type DrawElementType =
 export interface DrawPoint {
   x: number
   y: number
+}
+
+export interface ElementBinding {
+  elementId: string
+  handle: 'top' | 'right' | 'bottom' | 'left'
 }
 
 export interface DrawElement {
@@ -54,6 +61,11 @@ export interface DrawElement {
   textAlign?: 'left' | 'center' | 'right'
   opacity?: number // 0 a 100
   isLocked?: boolean
+  startBinding?: ElementBinding
+  endBinding?: ElementBinding
+  isBold?: boolean
+  isStrikethrough?: boolean
+  isList?: boolean
 }
 
 export interface DrawViewport {

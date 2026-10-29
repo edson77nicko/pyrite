@@ -77,6 +77,146 @@ export function serializeDrawDocument(doc: DrawDocument): string {
 }
 
 // Helper: Calculate bounding box of element
+export function wrapTextLines(text: string, maxWidth: number, fontSize: number = 18, isBold: boolean = false): string[] {
+  if (!text) return ['']
+  const charWidth = fontSize * (isBold ? 0.62 : 0.54)
+  const maxCharsPerLine = Math.max(1, Math.floor(maxWidth / charWidth))
+
+  const result: string[] = []
+  const paragraphs = text.split('\n')
+
+  for (const para of paragraphs) {
+    if (para.length === 0) {
+      result.push('')
+      continue
+    }
+
+    const words = para.split(' ')
+    let currentLine = ''
+
+    for (const word of words) {
+      if (!currentLine) {
+        currentLine = word
+      } else if ((currentLine + ' ' + word).length <= maxCharsPerLine) {
+        currentLine += ' ' + word
+      } else {
+        result.push(currentLine)
+        currentLine = word
+      }
+    }
+    if (currentLine) {
+      result.push(currentLine)
+    }
+  }
+
+  return result.length > 0 ? result : ['']
+}
+
+export function getElementAnchorPoint(
+  el: DrawElement,
+  handle: 'top' | 'right' | 'bottom' | 'left'
+): DrawPoint {
+  const bounds = getElementBounds(el)
+  switch (handle) {
+    case 'top':
+      return { x: bounds.x + bounds.width / 2, y: bounds.y }
+    case 'right':
+      return { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 }
+    case 'bottom':
+      return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height }
+    case 'left':
+      return { x: bounds.x, y: bounds.y + bounds.height / 2 }
+  }
+}
+
+export function findClosestAnchor(
+  targetEl: DrawElement,
+  point: DrawPoint
+): { handle: 'top' | 'right' | 'bottom' | 'left'; point: DrawPoint } {
+  const handles: Array<'top' | 'right' | 'bottom' | 'left'> = ['top', 'right', 'bottom', 'left']
+  let bestHandle: 'top' | 'right' | 'bottom' | 'left' = 'top'
+  let bestPoint = getElementAnchorPoint(targetEl, 'top')
+  let bestDist = Math.hypot(point.x - bestPoint.x, point.y - bestPoint.y)
+
+  for (const h of handles) {
+    const pt = getElementAnchorPoint(targetEl, h)
+    const d = Math.hypot(point.x - pt.x, point.y - pt.y)
+    if (d < bestDist) {
+      bestDist = d
+      bestHandle = h
+      bestPoint = pt
+    }
+  }
+
+  return { handle: bestHandle, point: bestPoint }
+}
+
+export function updateConnectedLines(
+  elements: DrawElement[],
+  movedElementIds: string[]
+): DrawElement[] {
+  if (movedElementIds.length === 0) return elements
+  const movedSet = new Set(movedElementIds)
+  const elementMap = new Map(elements.map(el => [el.id, el]))
+
+  let hasChanged = false
+
+  const updated = elements.map(el => {
+    if (el.type !== 'line' && el.type !== 'arrow') return el
+
+    const startBound = el.startBinding && movedSet.has(el.startBinding.elementId)
+    const endBound = el.endBinding && movedSet.has(el.endBinding.elementId)
+
+    if (!startBound && !endBound) return el
+
+    let newStartX = el.x
+    let newStartY = el.y
+    let newEndX = el.x + el.width
+    let newEndY = el.y + el.height
+
+    if (el.startBinding) {
+      const fromEl = elementMap.get(el.startBinding.elementId)
+      if (fromEl) {
+        const pt = getElementAnchorPoint(fromEl, el.startBinding.handle)
+        newStartX = pt.x
+        newStartY = pt.y
+      }
+    }
+
+    if (el.endBinding) {
+      const toEl = elementMap.get(el.endBinding.elementId)
+      if (toEl) {
+        const pt = getElementAnchorPoint(toEl, el.endBinding.handle)
+        newEndX = pt.x
+        newEndY = pt.y
+      }
+    }
+
+    const newWidth = newEndX - newStartX
+    const newHeight = newEndY - newStartY
+
+    if (
+      newStartX !== el.x ||
+      newStartY !== el.y ||
+      newWidth !== el.width ||
+      newHeight !== el.height
+    ) {
+      hasChanged = true
+      return {
+        ...el,
+        x: newStartX,
+        y: newStartY,
+        width: newWidth,
+        height: newHeight
+      }
+    }
+
+    return el
+  })
+
+  return hasChanged ? updated : elements
+}
+
 export function getElementBounds(el: DrawElement): { x: number; y: number; width: number; height: number } {
   if (el.type === 'freedraw' && el.points && el.points.length > 0) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
@@ -92,6 +232,20 @@ export function getElementBounds(el: DrawElement): { x: number; y: number; width
       y: el.y + minY - padding,
       width: Math.max(20, maxX - minX + padding * 2),
       height: Math.max(20, maxY - minY + padding * 2)
+    }
+  }
+
+  if (el.type === 'text') {
+    const fontSize = el.fontSize || 18
+    const lineHeight = fontSize * 1.25
+    const width = Math.max(40, Math.abs(el.width))
+    const lines = wrapTextLines(el.text || '', width, fontSize, !!el.isBold)
+    const realHeight = Math.max(fontSize * 1.25, lines.length * lineHeight)
+    return {
+      x: el.width < 0 ? el.x + el.width : el.x,
+      y: el.height < 0 ? el.y + el.height : el.y,
+      width,
+      height: realHeight
     }
   }
 
@@ -365,20 +519,111 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
       break
     }
 
-    case 'text': {
-      const fontSize = el.fontSize || 20
+    case 'sticky': {
+      // FigJam-like Sticky Note / Post-it
+      ctx.save()
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.22)'
+      ctx.shadowBlur = 10
+      ctx.shadowOffsetY = 4
+      ctx.shadowOffsetX = 0
+
+      const radius = 6
+      ctx.beginPath()
+      ctx.roundRect(normX, normY, normW, normH, radius)
+      ctx.fillStyle = el.backgroundColor || '#ffd8a8'
+      ctx.fill()
+      ctx.restore()
+
+      // Subtle contrast border
+      ctx.beginPath()
+      ctx.roundRect(normX, normY, normW, normH, radius)
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)'
+      ctx.lineWidth = 1
+      ctx.stroke()
+
+      // Render text inside sticky note
+      const padding = 16
+      const innerW = Math.max(20, normW - padding * 2)
+      const fontSize = el.fontSize || 16
       const fontFamily = el.fontFamily === 'mono' ? 'monospace' : el.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'
-      ctx.font = `${fontSize}px ${fontFamily}`
+      const fontWeight = el.isBold ? 'bold' : 'normal'
+      ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`
+      ctx.fillStyle = '#18181b'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+
+      const rawLines = (el.text || '').split('\n')
+      const lineHeight = fontSize * 1.3
+      let currentY = normY + padding
+
+      if (!el.text && isSelected) {
+        ctx.fillStyle = 'rgba(24, 24, 27, 0.35)'
+        ctx.fillText('Nota adesiva...', normX + padding, normY + padding)
+      } else {
+        for (const rawLine of rawLines) {
+          const wrapped = wrapTextLines(rawLine, el.isList ? innerW - 14 : innerW, fontSize, !!el.isBold)
+          wrapped.forEach((line, lineIdx) => {
+            if (currentY + lineHeight > normY + normH - padding + 4) return
+
+            if (el.isList && lineIdx === 0 && rawLine.trim().length > 0) {
+              ctx.beginPath()
+              ctx.arc(normX + padding + 4, currentY + fontSize * 0.45, 2.5, 0, Math.PI * 2)
+              ctx.fill()
+            }
+
+            const textX = el.isList ? normX + padding + 14 : normX + padding
+            ctx.fillText(line, textX, currentY)
+
+            if (el.isStrikethrough && line) {
+              const textMetrics = ctx.measureText(line)
+              const strikeY = currentY + fontSize * 0.5
+              ctx.beginPath()
+              ctx.moveTo(textX, strikeY)
+              ctx.lineTo(textX + textMetrics.width, strikeY)
+              ctx.lineWidth = 1.5
+              ctx.strokeStyle = '#18181b'
+              ctx.stroke()
+            }
+
+            currentY += lineHeight
+          })
+        }
+      }
+      break
+    }
+
+    case 'text': {
+      const fontSize = el.fontSize || 18
+      const fontFamily = el.fontFamily === 'mono' ? 'monospace' : el.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'
+      const fontWeight = el.isBold ? 'bold' : 'normal'
+      ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`
       ctx.fillStyle = el.strokeColor || '#e4e4e7'
       ctx.textAlign = (el.textAlign || 'left') as CanvasTextAlign
       ctx.textBaseline = 'top'
 
-      const lines = (el.text || '').split('\n')
-      const lineHeight = fontSize * 1.3
-      const textX = el.textAlign === 'center' ? el.x + el.width / 2 : el.textAlign === 'right' ? el.x + el.width : el.x
+      const lines = wrapTextLines(el.text || '', normW, fontSize, !!el.isBold)
+      const lineHeight = fontSize * 1.25
 
       lines.forEach((line, idx) => {
-        ctx.fillText(line, textX, el.y + idx * lineHeight)
+        let textX = normX
+        if (el.textAlign === 'center') textX = normX + normW / 2
+        else if (el.textAlign === 'right') textX = normX + normW
+
+        ctx.fillText(line, textX, normY + idx * lineHeight)
+
+        if (el.isStrikethrough && line) {
+          const textMetrics = ctx.measureText(line)
+          let lineStartX = textX
+          if (el.textAlign === 'center') lineStartX = textX - textMetrics.width / 2
+          else if (el.textAlign === 'right') lineStartX = textX - textMetrics.width
+          const strikeY = normY + idx * lineHeight + fontSize * 0.5
+          ctx.beginPath()
+          ctx.moveTo(lineStartX, strikeY)
+          ctx.lineTo(lineStartX + textMetrics.width, strikeY)
+          ctx.lineWidth = 1.5
+          ctx.strokeStyle = el.strokeColor || '#e4e4e7'
+          ctx.stroke()
+        }
       })
       break
     }
