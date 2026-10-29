@@ -144,7 +144,7 @@ export function isPointInElement(point: DrawPoint, el: DrawElement): boolean {
 }
 
 // Canvas rendering engine with hand-drawn organic aesthetic
-export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawElement) {
+export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawElement, isSelected: boolean = false) {
   ctx.save()
 
   ctx.strokeStyle = el.strokeColor || '#e4e4e7'
@@ -178,7 +178,7 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
 
   switch (el.type) {
     case 'rectangle': {
-      const radius = Math.min(12, normW / 4, normH / 4)
+      const radius = Math.min(8, normW / 6, normH / 6)
       ctx.beginPath()
       if (radius > 2) {
         ctx.roundRect(normX, normY, normW, normH, radius)
@@ -186,10 +186,17 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
         ctx.rect(normX, normY, normW, normH)
       }
 
-      if (hasFill) {
-        ctx.fill()
-      }
+      if (hasFill) ctx.fill()
+      if (isSemi) ctx.globalAlpha = 1.0
+      ctx.stroke()
+      break
+    }
 
+    case 'roundedRect': {
+      const radius = Math.min(24, normW / 3, normH / 3)
+      ctx.beginPath()
+      ctx.roundRect(normX, normY, normW, normH, radius)
+      if (hasFill) ctx.fill()
       if (isSemi) ctx.globalAlpha = 1.0
       ctx.stroke()
       break
@@ -206,10 +213,73 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
       ctx.lineTo(normX, midY)
       ctx.closePath()
 
-      if (hasFill) {
-        ctx.fill()
-      }
+      if (hasFill) ctx.fill()
+      if (isSemi) ctx.globalAlpha = 1.0
+      ctx.stroke()
+      break
+    }
 
+    case 'triangle': {
+      const midX = normX + normW / 2
+      ctx.beginPath()
+      ctx.moveTo(midX, normY)
+      ctx.lineTo(normX + normW, normY + normH)
+      ctx.lineTo(normX, normY + normH)
+      ctx.closePath()
+
+      if (hasFill) ctx.fill()
+      if (isSemi) ctx.globalAlpha = 1.0
+      ctx.stroke()
+      break
+    }
+
+    case 'triangleDown': {
+      const midX = normX + normW / 2
+      ctx.beginPath()
+      ctx.moveTo(normX, normY)
+      ctx.lineTo(normX + normW, normY)
+      ctx.lineTo(midX, normY + normH)
+      ctx.closePath()
+
+      if (hasFill) ctx.fill()
+      if (isSemi) ctx.globalAlpha = 1.0
+      ctx.stroke()
+      break
+    }
+
+    case 'parallelogram': {
+      const skew = Math.min(24, normW * 0.2)
+      ctx.beginPath()
+      ctx.moveTo(normX + skew, normY)
+      ctx.lineTo(normX + normW, normY)
+      ctx.lineTo(normX + normW - skew, normY + normH)
+      ctx.lineTo(normX, normY + normH)
+      ctx.closePath()
+
+      if (hasFill) ctx.fill()
+      if (isSemi) ctx.globalAlpha = 1.0
+      ctx.stroke()
+      break
+    }
+
+    case 'cylinder': {
+      const ry = Math.min(16, normH * 0.15)
+      const cx = normX + normW / 2
+
+      ctx.beginPath()
+      // Top ellipse
+      ctx.ellipse(cx, normY + ry, normW / 2, ry, 0, 0, Math.PI * 2)
+      if (hasFill) ctx.fill()
+      if (isSemi) ctx.globalAlpha = 1.0
+      ctx.stroke()
+
+      // Body
+      ctx.beginPath()
+      ctx.moveTo(normX, normY + ry)
+      ctx.lineTo(normX, normY + normH - ry)
+      ctx.ellipse(cx, normY + normH - ry, normW / 2, ry, 0, 0, Math.PI, false)
+      ctx.lineTo(normX + normW, normY + ry)
+      if (hasFill) ctx.fill()
       if (isSemi) ctx.globalAlpha = 1.0
       ctx.stroke()
       break
@@ -224,10 +294,7 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
       ctx.beginPath()
       ctx.ellipse(cx, cy, Math.max(1, rx), Math.max(1, ry), 0, 0, Math.PI * 2)
 
-      if (hasFill) {
-        ctx.fill()
-      }
-
+      if (hasFill) ctx.fill()
       if (isSemi) ctx.globalAlpha = 1.0
       ctx.stroke()
       break
@@ -314,6 +381,39 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
         ctx.fillText(line, textX, el.y + idx * lineHeight)
       })
       break
+    }
+  }
+
+  // Render centered text inside closed shapes (rectangle, ellipse, diamond, etc.)
+  const isClosedShape = ['rectangle', 'roundedRect', 'diamond', 'ellipse', 'triangle', 'triangleDown', 'parallelogram', 'cylinder'].includes(el.type)
+  if (isClosedShape) {
+    const hasText = el.text && el.text.trim().length > 0
+    if (hasText) {
+      const fontSize = el.fontSize || 16
+      const fontFamily = el.fontFamily === 'mono' ? 'monospace' : el.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'
+      ctx.font = `${fontSize}px ${fontFamily}`
+      ctx.fillStyle = el.strokeColor || '#f4f4f5'
+      ctx.textAlign = (el.textAlign || 'center') as CanvasTextAlign
+      ctx.textBaseline = 'middle'
+
+      const lines = (el.text || '').split('\n')
+      const lineHeight = fontSize * 1.25
+      const totalH = lines.length * lineHeight
+      const startY = normY + normH / 2 - totalH / 2 + lineHeight / 2
+
+      const textX = el.textAlign === 'left' ? normX + 16 : el.textAlign === 'right' ? normX + normW - 16 : normX + normW / 2
+
+      lines.forEach((line, idx) => {
+        ctx.fillText(line, textX, startY + idx * lineHeight)
+      })
+    } else if (isSelected) {
+      // FigJam-like placeholder: "Adicionar texto"
+      const fontSize = 14
+      ctx.font = `500 ${fontSize}px Inter, system-ui, sans-serif`
+      ctx.fillStyle = '#71717a'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('Adicionar texto', normX + normW / 2, normY + normH / 2)
     }
   }
 
