@@ -1,7 +1,7 @@
 {
   "name": "pyrite",
   "private": true,
-  "version": "1.0.66",
+  "version": "1.0.67",
   "description": "Pyrite - Local-First Knowledge Management & Thinking Environment",
   "author": "Pyrite Team",
   "type": "module",
@@ -61,11 +61,14 @@
       "!dist/table-editor-*"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "public/icon.ico"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico"
     }
   }
 }

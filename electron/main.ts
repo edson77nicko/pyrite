@@ -37,7 +37,7 @@ function createWindow() {
     minHeight: 620,
     frame: false, // Frameless window with custom Obsidian-like header
     backgroundColor: '#121214',
-    icon: path.join(process.env.VITE_PUBLIC || '', 'favicon.ico'),
+    icon: path.join(process.env.VITE_PUBLIC || '', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
