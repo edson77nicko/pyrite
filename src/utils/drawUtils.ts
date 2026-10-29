@@ -649,6 +649,69 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
       break
     }
 
+    case 'note-card': {
+      // Clean document card preview for canvas / PNG exports
+      ctx.save()
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.25)'
+      ctx.shadowBlur = 12
+      ctx.shadowOffsetY = 6
+
+      const radius = 12
+      ctx.beginPath()
+      ctx.roundRect(normX, normY, normW, normH, radius)
+      ctx.fillStyle = el.backgroundColor || '#18181e'
+      ctx.fill()
+      ctx.restore()
+
+      // Outer border
+      ctx.beginPath()
+      ctx.roundRect(normX, normY, normW, normH, radius)
+      ctx.strokeStyle = el.strokeColor || 'rgba(255, 255, 255, 0.14)'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+
+      // Header Bar
+      ctx.fillStyle = '#202028'
+      ctx.beginPath()
+      ctx.roundRect(normX + 16, normY + 16, Math.min(220, Math.max(80, normW - 32)), 26, 6)
+      ctx.fill()
+
+      ctx.font = '600 12px Inter, system-ui, sans-serif'
+      ctx.fillStyle = '#f4f4f5'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      const titleText = '📄 ' + (el.noteTitle || 'Nota Importada')
+      ctx.fillText(titleText, normX + 24, normY + 16 + 13, Math.min(200, normW - 48))
+
+      if (el.noteFolder) {
+        ctx.font = '10px Inter, system-ui, sans-serif'
+        ctx.fillStyle = '#a1a1aa'
+        ctx.fillText('📁 ' + el.noteFolder, normX + 16, normY + 54, normW - 32)
+      }
+
+      // Content preview
+      const contentTop = normY + (el.noteFolder ? 70 : 54)
+      const contentH = normH - (el.noteFolder ? 86 : 70)
+      if (contentH > 20) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(normX + 16, contentTop, normW - 32, contentH)
+        ctx.clip()
+
+        ctx.font = '12px Inter, system-ui, sans-serif'
+        ctx.fillStyle = '#d4d4d8'
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+
+        const lines = (el.noteContent || '').split('\n').slice(0, 30)
+        lines.forEach((l, idx) => {
+          ctx.fillText(l, normX + 16, contentTop + idx * 18, normW - 32)
+        })
+        ctx.restore()
+      }
+      break
+    }
+
     case 'table': {
       const rows = Math.max(1, el.rows || 3)
       const cols = Math.max(1, el.cols || 4)

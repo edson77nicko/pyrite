@@ -1432,6 +1432,9 @@ export const App: React.FC = () => {
                     key={currentNote.id}
                     note={currentNote}
                     onUpdateNote={handleUpdateNote}
+                    notes={notes}
+                    folders={folders}
+                    onOpenNote={handleSelectNote}
                   />
                 ) : currentNote.type === 'html' ? (
                   <HtmlEditor

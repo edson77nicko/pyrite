@@ -11,6 +11,7 @@ export type DrawTool =
   | 'sticky'
   | 'data-task'
   | 'table'
+  | 'note-card'
   | 'arrow'
   | 'line'
   | 'freedraw'
@@ -30,6 +31,7 @@ export type DrawElementType =
   | 'sticky'
   | 'data-task'
   | 'table'
+  | 'note-card'
   | 'arrow'
   | 'line'
   | 'freedraw'
@@ -78,6 +80,10 @@ export interface DrawElement {
   rowHeights?: number[]
   colWidths?: number[]
   cells?: Record<string, string>
+  noteId?: string
+  noteTitle?: string
+  noteContent?: string
+  noteFolder?: string
 }
 
 export interface DrawViewport {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Note } from '../types'
 import type { DrawDocument, DrawElement, DrawElementType, DrawPoint, DrawTool } from '../types/draw'
 import type { TaskItem } from '../types/tasks'
@@ -53,12 +53,23 @@ import {
   Table,
   Plus,
   RefreshCw,
-  FolderOpen
+  FolderOpen,
+  Folder,
+  ArrowLeft,
+  ExternalLink,
+  FileText,
+  X,
+  Palette,
+  Brain,
+  CodeXml
 } from 'lucide-react'
 
 interface DrawEditorProps {
   note: Note
   onUpdateNote: (updatedNote: Note) => void
+  notes?: Note[]
+  folders?: string[]
+  onOpenNote?: (noteId: string) => void
 }
 
 // 11 Colors Line 1 (Solid vibrant - FigJam matching)
@@ -118,6 +129,44 @@ const TABLE_COLORS = [
   '#3b0764'  // Purple Dark
 ]
 
+// Helper for hierarchical folder navigation in Import Note Modal
+function getImmediateChildren(validFolders: string[], currentPath: string): { name: string; fullPath: string; hasChildren: boolean }[] {
+  const prefix = currentPath ? currentPath + '/' : ''
+  const childMap = new Map<string, { fullPath: string; hasChildren: boolean }>()
+
+  for (const f of validFolders) {
+    if (prefix) {
+      if (!f.startsWith(prefix)) continue
+      const remainder = f.slice(prefix.length)
+      if (!remainder) continue
+      const parts = remainder.split('/')
+      const childName = parts[0]
+      const childFullPath = prefix + childName
+      const existing = childMap.get(childName)
+      childMap.set(childName, {
+        fullPath: childFullPath,
+        hasChildren: existing?.hasChildren || parts.length > 1
+      })
+    } else {
+      const parts = f.split('/')
+      const childName = parts[0]
+      const existing = childMap.get(childName)
+      childMap.set(childName, {
+        fullPath: childName,
+        hasChildren: existing?.hasChildren || parts.length > 1
+      })
+    }
+  }
+
+  return Array.from(childMap.entries())
+    .map(([name, data]) => ({
+      name,
+      fullPath: data.fullPath,
+      hasChildren: data.hasChildren
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
 interface ShapeOption {
   type: DrawElementType
   label: string
@@ -135,7 +184,7 @@ const SHAPE_OPTIONS: ShapeOption[] = [
   { type: 'cylinder', label: 'Cilindro', icon: Circle }
 ]
 
-export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) => {
+export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, notes = [], folders = [], onOpenNote }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -143,6 +192,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
   const [doc, setDoc] = useState<DrawDocument>(() => parseDrawDocument(note.content, note.title))
   const docRef = useRef(doc)
   docRef.current = doc
+
+  // Note Import Modal states
+  const [isImportNoteModalOpen, setIsImportNoteModalOpen] = useState(false)
+  const [noteModalSearch, setNoteModalSearch] = useState('')
+  const [noteModalFolder, setNoteModalFolder] = useState('')
 
   // Tasks from vault
   const [tasks, setTasks] = useState<TaskItem[]>(() => loadTasks())
@@ -444,7 +498,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           }
 
           // Output connection handlers (N8N circular nodes with accent color)
-          const isConnectable = el.type !== 'text' && el.type !== 'table'
+          const isConnectable = el.type !== 'text' && el.type !== 'table' && el.type !== 'note-card'
           if (isConnectable) {
             const connHandles = [
               { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
@@ -1415,7 +1469,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     const world = screenToWorld(e.clientX - rect.left, e.clientY - rect.top)
 
     const hit = doc.elements.slice().reverse().find(el => isPointInElement(world, el))
-    if (!hit || hit.type === 'data-task') return
+    if (!hit || hit.type === 'data-task' || hit.type === 'note-card') return
 
     if (hit.type === 'table') {
       const bounds = getElementBounds(hit)
@@ -1769,6 +1823,80 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     })
     pushHistory(nextElements)
     setSelectedIds(duplicated.map(d => d.id))
+  }
+
+  // Folders list for Note Import Modal
+  const computedFolders = useMemo(() => {
+    const set = new Set<string>()
+    if (Array.isArray(folders)) {
+      folders.forEach(f => f && set.add(f))
+    }
+    if (Array.isArray(notes)) {
+      notes.forEach(n => n.folder && set.add(n.folder))
+    }
+    return Array.from(set).sort()
+  }, [folders, notes])
+
+  // Import Note as an interactive note card on canvas
+  const handleImportNote = (selectedNote: Note) => {
+    const container = containerRef.current
+    const rect = container?.getBoundingClientRect() || { width: 1000, height: 700 }
+    const defaultW = 440
+    const defaultH = 520
+
+    // Place in center of current viewport
+    const centerX = (rect.width / 2 - doc.viewport.panX) / doc.viewport.zoom - defaultW / 2
+    const centerY = (rect.height / 2 - doc.viewport.panY) / doc.viewport.zoom - defaultH / 2
+
+    // If an existing note-card was selected, we can swap its note
+    if (selectedIds.length === 1) {
+      const existing = doc.elements.find(el => el.id === selectedIds[0] && el.type === 'note-card')
+      if (existing) {
+        const updated = doc.elements.map(el =>
+          el.id === existing.id
+            ? {
+                ...el,
+                noteId: selectedNote.id,
+                noteTitle: selectedNote.title,
+                noteContent: selectedNote.content,
+                noteFolder: selectedNote.folder || ''
+              }
+            : el
+        )
+        setDoc(prev => ({ ...prev, elements: updated }))
+        scheduleSave({ ...doc, elements: updated })
+        pushHistory(updated)
+        setIsImportNoteModalOpen(false)
+        return
+      }
+    }
+
+    const newId = 'note_card_' + crypto.randomUUID()
+    const newElement: DrawElement = {
+      id: newId,
+      type: 'note-card',
+      x: centerX,
+      y: centerY,
+      width: defaultW,
+      height: defaultH,
+      strokeColor: '#3f3f46',
+      backgroundColor: '#18181e',
+      strokeWidth: 1.5,
+      strokeStyle: 'solid',
+      fillStyle: 'solid',
+      noteId: selectedNote.id,
+      noteTitle: selectedNote.title,
+      noteContent: selectedNote.content,
+      noteFolder: selectedNote.folder || ''
+    }
+
+    const nextElements = [...doc.elements, newElement]
+    setDoc(prev => ({ ...prev, elements: nextElements }))
+    setSelectedIds([newId])
+    setTool('select')
+    scheduleSave({ ...doc, elements: nextElements })
+    pushHistory(nextElements)
+    setIsImportNoteModalOpen(false)
   }
 
   // Reorder
@@ -2265,6 +2393,119 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         )
       })}
 
+      {/* 2.5. Interactive NOTE-CARD Frame Overlay (Imported Vault Note Document) */}
+      {doc.elements.filter(el => el.type === 'note-card').map(noteEl => {
+        const screenPos = worldToScreen(noteEl.x, noteEl.y)
+        const isSelected = selectedIds.includes(noteEl.id)
+
+        // Try to read live note from vault, falling back to cached note fields in element
+        const liveNote = notes.find(n => n.id === noteEl.noteId)
+        const displayTitle = liveNote?.title || noteEl.noteTitle || 'Nota Sem Título'
+        const displayContent = liveNote?.content !== undefined ? liveNote.content : noteEl.noteContent || ''
+        const displayFolder = liveNote?.folder !== undefined ? liveNote.folder : noteEl.noteFolder || ''
+
+        const NoteIcon = liveNote?.type === 'mindmap' ? Brain : liveNote?.type === 'draw' ? Palette : liveNote?.type === 'html' ? CodeXml : FileText
+
+        return (
+          <div
+            key={noteEl.id}
+            onPointerDown={() => {
+              if (tool === 'select') {
+                if (!selectedIds.includes(noteEl.id)) {
+                  setSelectedIds([noteEl.id])
+                }
+              }
+            }}
+            className="absolute z-10 pointer-events-auto rounded-2xl bg-[#18181e] border border-zinc-700/80 shadow-2xl flex flex-col overflow-hidden text-xs text-zinc-200"
+            style={{
+              left: `${screenPos.x}px`,
+              top: `${screenPos.y}px`,
+              width: `${noteEl.width * doc.viewport.zoom}px`,
+              height: `${noteEl.height * doc.viewport.zoom}px`,
+              transformOrigin: 'top left',
+              boxShadow: isSelected ? '0 0 0 2px var(--accent)' : '0 20px 40px -10px rgba(0,0,0,0.6)'
+            }}
+          >
+            {/* Top Card Header */}
+            <div className="p-3 pb-2 border-b border-zinc-800/80 flex items-center justify-between shrink-0 bg-[#1e1e26]/90">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-100 font-semibold text-[11px] border border-zinc-700/60 shrink-0">
+                  <NoteIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                  <span className="truncate max-w-[140px]">{displayTitle}</span>
+                </div>
+
+                <div className="flex items-center gap-1 text-[10.5px] text-zinc-400 truncate">
+                  <span>•</span>
+                  <span className="truncate max-w-[130px]">📁 {displayFolder || 'Raiz'}</span>
+                </div>
+              </div>
+
+              {/* Action Buttons: Sync from vault & Open in tab */}
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (liveNote) {
+                      setDoc(prev => ({
+                        ...prev,
+                        elements: prev.elements.map(el =>
+                          el.id === noteEl.id
+                            ? {
+                                ...el,
+                                noteTitle: liveNote.title,
+                                noteContent: liveNote.content,
+                                noteFolder: liveNote.folder || ''
+                              }
+                            : el
+                        )
+                      }))
+                    }
+                  }}
+                  className="p-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 rounded transition-colors cursor-pointer"
+                  title="Sincronizar com o conteúdo mais recente do cofre"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+
+                {onOpenNote && noteEl.noteId && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onOpenNote(noteEl.noteId!)
+                    }}
+                    className="p-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 rounded transition-colors cursor-pointer"
+                    title="Abrir nota no editor em nova aba"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Scrollable Content Body with live text / markdown preview */}
+            <div className="flex-1 overflow-y-auto p-4 select-text leading-relaxed font-sans text-zinc-300 text-[13px] bg-[#16161c]/50">
+              {displayContent ? (
+                <div className="whitespace-pre-wrap break-words">
+                  {displayContent}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-zinc-500 text-xs italic">
+                  Nota vazia
+                </div>
+              )}
+            </div>
+
+            {/* Bottom Card Footer */}
+            <div className="px-3 py-1.5 border-t border-zinc-800/80 bg-[#181820] flex items-center justify-between text-[10px] text-zinc-500 font-mono shrink-0">
+              <span>{displayContent.length} caracteres</span>
+              <span>Documento acoplado</span>
+            </div>
+          </div>
+        )
+      })}
+
       {/* 3. Floating Selection Settings Popover (Appears ONLY when an element is selected) */}
       {singleSelectedElement && popoverPos && (
         <div
@@ -2660,11 +2901,45 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                   )}
                 </div>
               </>
+            ) : singleSelectedElement.type === 'note-card' ? (
+              /* D. NOTE CARD TOOLBAR */
+              <>
+                <div className="flex items-center gap-1.5 px-2 py-1 text-zinc-300">
+                  <FileText className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                  <span className="font-medium truncate max-w-[160px]">
+                    {singleSelectedElement.noteTitle || 'Nota Acoplada'}
+                  </span>
+                </div>
+
+                <div className="w-px h-4 bg-zinc-700/80 mx-0.5" />
+
+                <button
+                  type="button"
+                  onClick={() => setIsImportNoteModalOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer text-xs"
+                  title="Trocar nota acoplada"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Trocar nota</span>
+                </button>
+
+                {onOpenNote && singleSelectedElement.noteId && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenNote(singleSelectedElement.noteId!)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer text-xs"
+                    title="Abrir nota no editor"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Abrir</span>
+                  </button>
+                )}
+              </>
             ) : (
-              /* C. STANDARD SHAPES & ELEMENTS TOOLBAR */
+              /* E. STANDARD SHAPES & ELEMENTS TOOLBAR */
               <>
                 {/* Shape Switcher Button (For geometric shapes) */}
-                {![ 'line', 'arrow', 'freedraw', 'text'].includes(singleSelectedElement.type) && (
+                {![ 'line', 'arrow', 'freedraw', 'text', 'note-card'].includes(singleSelectedElement.type) && (
                   <div className="relative">
                     <button
                       onClick={() => setOpenPopover(prev => prev === 'shape' ? null : 'shape')}
@@ -3240,6 +3515,23 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           <Table className="w-4 h-4 stroke-[2]" />
         </button>
 
+        {/* IMPORTAR NOTA / DOCUMENTO ACOPLADO */}
+        <button
+          onClick={() => {
+            setIsImportNoteModalOpen(true)
+            setIsBottomShapesOpen(false)
+          }}
+          title="Importar Nota do Cofre (Documento Acoplado)"
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            isImportNoteModalOpen
+              ? 'text-white font-semibold shadow-md scale-105'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+          }`}
+          style={isImportNoteModalOpen ? { backgroundColor: 'var(--accent)' } : undefined}
+        >
+          <FileText className="w-4 h-4 stroke-[2]" />
+        </button>
+
         {/* Seta / Conector */}
         <button
           onClick={() => {
@@ -3788,6 +4080,275 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           </div>
           <div className="bg-[#e4e4e7] text-zinc-900 text-xs font-medium px-2.5 py-1 rounded-md shadow-xl border border-zinc-300 flex items-center gap-1.5">
             <span>Clique e arraste para definir o tamanho</span>
+          </div>
+        </div>
+      )}
+
+      {/* 12. Modal: Import Note from Vault (Hierarchical Drill-down + Instant Search) */}
+      {isImportNoteModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setIsImportNoteModalOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setIsImportNoteModalOpen(false)
+          }}
+        >
+          <div
+            className="w-full max-w-xl bg-[#18181f] border border-zinc-700/80 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-[#1e1e26]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-zinc-800 text-white shadow-xs" style={{ color: 'var(--accent)' }}>
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-zinc-100 text-sm">Importar Nota para o Quadro</h3>
+                  <p className="text-[11px] text-zinc-400">
+                    Navegue pelas pastas ou busque pelo nome para acoplar uma nota ao canvas
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsImportNoteModalOpen(false)}
+                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Search Bar */}
+            <div className="p-3 border-b border-zinc-800/80 bg-[#16161c]">
+              <div className="flex items-center bg-zinc-900 border border-zinc-700/80 rounded-xl px-3 py-2 focus-within:border-[var(--accent)] transition-colors">
+                <Search className="w-4 h-4 text-zinc-400 shrink-0 mr-2" />
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Pesquisar por título ou conteúdo da nota..."
+                  value={noteModalSearch}
+                  onChange={(e) => setNoteModalSearch(e.target.value)}
+                  className="w-full bg-transparent text-xs text-zinc-100 placeholder-zinc-500 outline-none"
+                />
+                {noteModalSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setNoteModalSearch('')}
+                    className="p-1 text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-3 text-xs">
+              {noteModalSearch.trim() !== '' ? (
+                /* Search Results Mode */
+                (() => {
+                  const q = noteModalSearch.trim().toLowerCase()
+                  const results = notes.filter(n =>
+                    n.title.toLowerCase().includes(q) ||
+                    (n.content && n.content.toLowerCase().includes(q))
+                  )
+
+                  if (results.length === 0) {
+                    return (
+                      <div className="py-12 flex flex-col items-center justify-center text-zinc-500 text-center gap-1.5">
+                        <FileText className="w-8 h-8 stroke-[1.5] opacity-50 mb-1" />
+                        <p className="font-medium text-zinc-300">Nenhuma nota encontrada</p>
+                        <p className="text-[11px] text-zinc-500">Tente buscar por outras palavras-chave</p>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[10.5px] font-medium text-zinc-400 px-1">
+                        {results.length} {results.length === 1 ? 'nota encontrada' : 'notas encontradas'}:
+                      </span>
+                      {results.map(n => {
+                        const Icon = n.type === 'mindmap' ? Brain : n.type === 'draw' ? Palette : n.type === 'html' ? CodeXml : FileText
+                        return (
+                          <div
+                            key={n.id}
+                            onClick={() => handleImportNote(n)}
+                            className="p-2.5 rounded-xl border border-zinc-800 bg-[#1c1c24] hover:bg-[#22222c] hover:border-zinc-700 transition-all cursor-pointer flex flex-col gap-1 group"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 truncate">
+                                <Icon className="w-4 h-4 shrink-0" style={{ color: 'var(--accent)' }} />
+                                <span className="font-medium text-zinc-100 group-hover:text-white truncate">
+                                  {n.title}
+                                </span>
+                              </div>
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400 shrink-0 font-mono">
+                                📁 {n.folder || 'Raiz'}
+                              </span>
+                            </div>
+                            {n.content && (
+                              <p className="text-[11px] text-zinc-400 line-clamp-2 leading-relaxed pl-6">
+                                {n.content.slice(0, 150)}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()
+              ) : (
+                /* Hierarchical Drill-down Mode */
+                (() => {
+                  const childFolders = getImmediateChildren(computedFolders, noteModalFolder)
+                  const currentFolderNotes = notes.filter(n => (n.folder || '') === noteModalFolder)
+
+                  return (
+                    <div className="flex flex-col gap-3">
+                      {/* Breadcrumbs */}
+                      <div className="flex items-center gap-1.5 bg-zinc-900/60 p-2 rounded-xl border border-zinc-800/80 text-[11px] overflow-x-auto">
+                        <button
+                          type="button"
+                          onClick={() => setNoteModalFolder('')}
+                          className={`px-2 py-1 rounded transition-colors cursor-pointer shrink-0 ${
+                            noteModalFolder === '' ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                          }`}
+                        >
+                          Raiz do cofre
+                        </button>
+                        {noteModalFolder.split('/').filter(Boolean).map((seg, idx, arr) => {
+                          const segPath = arr.slice(0, idx + 1).join('/')
+                          const isLast = idx === arr.length - 1
+                          return (
+                            <React.Fragment key={segPath}>
+                              <ChevronRight className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+                              <button
+                                type="button"
+                                onClick={() => setNoteModalFolder(segPath)}
+                                className={`px-2 py-1 rounded transition-colors cursor-pointer truncate max-w-[120px] ${
+                                  isLast ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                                }`}
+                                title={seg}
+                              >
+                                {seg}
+                              </button>
+                            </React.Fragment>
+                          )
+                        })}
+                      </div>
+
+                      {/* Back button if inside folder */}
+                      {noteModalFolder !== '' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const parts = noteModalFolder.split('/')
+                            parts.pop()
+                            setNoteModalFolder(parts.join('/'))
+                          }}
+                          className="flex items-center gap-1.5 px-2 py-1 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-xs self-start"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                          <span>Voltar para pasta anterior</span>
+                        </button>
+                      )}
+
+                      {/* Subfolders Grid */}
+                      {childFolders.length > 0 && (
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500 px-1">
+                            Pastas ({childFolders.length})
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                            {childFolders.map(child => {
+                              const notesInChild = notes.filter(n => (n.folder || '') === child.fullPath || (n.folder || '').startsWith(child.fullPath + '/')).length
+                              return (
+                                <button
+                                  key={child.fullPath}
+                                  type="button"
+                                  onClick={() => setNoteModalFolder(child.fullPath)}
+                                  className="p-2.5 rounded-xl border border-zinc-800 bg-[#1a1a22] hover:bg-[#22222e] hover:border-zinc-700 transition-all cursor-pointer flex items-center justify-between text-left group"
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    <Folder className="w-4 h-4 shrink-0" style={{ color: 'var(--accent)' }} />
+                                    <span className="font-medium text-zinc-200 group-hover:text-white truncate">
+                                      {child.name}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 text-[10.5px] text-zinc-500 shrink-0">
+                                    <span>{notesInChild}</span>
+                                    <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-transform group-hover:translate-x-0.5" />
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Notes in current folder */}
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500 px-1">
+                          Notas nesta pasta ({currentFolderNotes.length})
+                        </span>
+
+                        {currentFolderNotes.length === 0 ? (
+                          <div className="py-6 text-center text-zinc-500 text-xs">
+                            Nenhuma nota diretamente nesta pasta
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-1.5">
+                            {currentFolderNotes.map(n => {
+                              const Icon = n.type === 'mindmap' ? Brain : n.type === 'draw' ? Palette : n.type === 'html' ? CodeXml : FileText
+                              return (
+                                <div
+                                  key={n.id}
+                                  onClick={() => handleImportNote(n)}
+                                  className="p-2.5 rounded-xl border border-zinc-800 bg-[#1c1c24] hover:bg-[#22222c] hover:border-zinc-700 transition-all cursor-pointer flex flex-col gap-1 group"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 truncate">
+                                      <Icon className="w-4 h-4 shrink-0" style={{ color: 'var(--accent)' }} />
+                                      <span className="font-medium text-zinc-100 group-hover:text-white truncate">
+                                        {n.title}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400 shrink-0">
+                                      Clique para importar
+                                    </span>
+                                  </div>
+                                  {n.content && (
+                                    <p className="text-[11px] text-zinc-400 line-clamp-2 leading-relaxed pl-6">
+                                      {n.content.slice(0, 150)}
+                                    </p>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 border-t border-zinc-800 bg-[#1a1a22] flex items-center justify-between text-xs">
+              <span className="text-zinc-500 text-[11px]">
+                Total de notas no cofre: <strong>{notes.length}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsImportNoteModalOpen(false)}
+                className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
