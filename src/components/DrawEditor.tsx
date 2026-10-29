@@ -50,6 +50,8 @@ import {
   ChevronRight,
   Kanban,
   TableProperties,
+  Table,
+  Plus,
   RefreshCw,
   FolderOpen
 } from 'lucide-react'
@@ -99,6 +101,21 @@ const STICKY_COLORS = [
   '#e5dbff', // Pastel Lavender
   '#fcc2d7', // Pastel Pink
   '#f4f4f5'  // Soft White / Gray
+]
+
+// Table Background Palette (FigJam Table colors)
+const TABLE_COLORS = [
+  '#18181b', // Zinc Dark
+  '#27272a', // Zinc Slate
+  '#09090b', // Pure Black
+  '#ffffff', // White Clean
+  '#f4f4f5', // Zinc Light
+  '#0f172a', // Slate Dark
+  '#1e293b', // Slate Medium
+  '#0c4a6e', // Sky Dark
+  '#064e3b', // Emerald Dark
+  '#4c0519', // Rose Dark
+  '#3b0764'  // Purple Dark
 ]
 
 interface ShapeOption {
@@ -158,8 +175,35 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
   const [editingText, setEditingText] = useState<{ id: string; x: number; y: number; text: string; width: number; height: number; isShape?: boolean } | null>(null)
   const textInputRef = useRef<HTMLTextAreaElement>(null)
 
+  // Table Inline Cell Editing
+  const [editingTableCell, setEditingTableCell] = useState<{
+    tableId: string
+    row: number
+    col: number
+    x: number
+    y: number
+    width: number
+    height: number
+    text: string
+  } | null>(null)
+  const tableCellInputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Table Column / Row Selection & Inserter States
+  const [selectedTableCol, setSelectedTableCol] = useState<number | null>(null)
+  const [selectedTableRow, setSelectedTableRow] = useState<number | null>(null)
+  const [hoveredTableCol, setHoveredTableCol] = useState<number | null>(null)
+  const [hoveredTableRow, setHoveredTableRow] = useState<number | null>(null)
+
+  // Table Creation Drag Preview Tooltip
+  const [tableCreationPreview, setTableCreationPreview] = useState<{
+    screenX: number
+    screenY: number
+    rows: number
+    cols: number
+  } | null>(null)
+
   // Popover state for floating selection toolbar
-  const [openPopover, setOpenPopover] = useState<'shape' | 'color' | 'typography' | 'stroke' | 'stickyColor' | 'stickySize' | 'dataTaskBoard' | null>(null)
+  const [openPopover, setOpenPopover] = useState<'shape' | 'color' | 'typography' | 'stroke' | 'stickyColor' | 'stickySize' | 'dataTaskBoard' | 'tableColor' | 'tableSize' | 'tableAlign' | null>(null)
   const [shapeSearch, setShapeSearch] = useState('')
 
   // Custom Color Picker Popover (Matches Platform Settings)
@@ -400,7 +444,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           }
 
           // Output connection handlers (N8N circular nodes with accent color)
-          const isConnectable = el.type !== 'text'
+          const isConnectable = el.type !== 'text' && el.type !== 'table'
           if (isConnectable) {
             const connHandles = [
               { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
@@ -587,6 +631,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
             break
           case 'k':
             setTool('data-task')
+            break
+          case 'b':
+            setTool('table')
             break
           case '5':
           case 'a':
@@ -826,7 +873,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       return
     }
 
-    // Creating shape / sticky / data-task / freedraw / arrow / line
+    // Creating shape / sticky / data-task / table / freedraw / arrow / line
     const newId = 'elem_' + crypto.randomUUID()
     activeElementId.current = newId
 
@@ -837,14 +884,17 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       y: world.y,
       width: 0,
       height: 0,
-      strokeColor: tool === 'sticky' ? '#18181b' : strokeColor,
-      backgroundColor: tool === 'sticky' ? '#ffd8a8' : tool === 'data-task' ? '#141418' : backgroundColor,
-      strokeWidth,
+      strokeColor: tool === 'sticky' ? '#18181b' : tool === 'table' ? '#52525b' : strokeColor,
+      backgroundColor: tool === 'sticky' ? '#ffd8a8' : tool === 'data-task' || tool === 'table' ? '#18181b' : backgroundColor,
+      strokeWidth: tool === 'table' ? 1.5 : strokeWidth,
       strokeStyle,
-      fillStyle: tool === 'sticky' || tool === 'data-task' ? 'solid' : fillStyle,
+      fillStyle: tool === 'sticky' || tool === 'data-task' || tool === 'table' ? 'solid' : fillStyle,
       points: tool === 'freedraw' ? [{ x: 0, y: 0 }] : [],
       viewMode: tool === 'data-task' ? 'calendar' : undefined,
-      boardId: tool === 'data-task' ? 'default' : undefined
+      boardId: tool === 'data-task' ? 'default' : undefined,
+      rows: tool === 'table' ? 3 : undefined,
+      cols: tool === 'table' ? 4 : undefined,
+      cells: tool === 'table' ? {} : undefined
     }
 
     setDoc(prev => ({
@@ -1089,6 +1139,26 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
             }
           }
 
+          if (el.type === 'table') {
+            const dragW = world.x - start.x
+            const dragH = world.y - start.y
+            const computedCols = Math.max(2, Math.min(10, Math.round(Math.abs(dragW) / 110)) || 2)
+            const computedRows = Math.max(2, Math.min(10, Math.round(Math.abs(dragH) / 45)) || 2)
+            setTableCreationPreview({
+              screenX: e.clientX,
+              screenY: e.clientY,
+              rows: computedRows,
+              cols: computedCols
+            })
+            return {
+              ...el,
+              width: dragW,
+              height: dragH,
+              cols: computedCols,
+              rows: computedRows
+            }
+          }
+
           return {
             ...el,
             width: world.x - start.x,
@@ -1111,6 +1181,8 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     if (marqueeBox.current) {
       marqueeBox.current = null
     }
+
+    setTableCreationPreview(null)
 
     if (dragHandle.current) {
       // Check if moving line endpoints landed on an object to bind
@@ -1238,7 +1310,8 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         'parallelogram',
         'cylinder',
         'sticky',
-        'data-task'
+        'data-task',
+        'table'
       ].includes(created.type)
 
       // KEY FEATURE: If user just CLICKED, spawn perfect default dimensions!
@@ -1261,6 +1334,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         } else if (created.type === 'data-task') {
           defaultWidth = 580
           defaultHeight = 420
+        } else if (created.type === 'table') {
+          defaultWidth = 520
+          defaultHeight = 150
         }
 
         const perfectX = created.x - defaultWidth / 2
@@ -1274,7 +1350,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                 y: perfectY,
                 width: defaultWidth,
                 height: defaultHeight,
-                backgroundColor: created.type === 'sticky' ? '#ffd8a8' : created.type === 'data-task' ? '#141418' : el.backgroundColor,
+                backgroundColor: created.type === 'sticky' ? '#ffd8a8' : created.type === 'data-task' || created.type === 'table' ? '#18181b' : el.backgroundColor,
+                rows: created.type === 'table' ? 3 : el.rows,
+                cols: created.type === 'table' ? 4 : el.cols,
                 viewMode: created.type === 'data-task' ? 'calendar' : el.viewMode
               }
             : el
@@ -1304,8 +1382,19 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
         const normW = Math.abs(created.width)
         const normH = Math.abs(created.height)
 
+        const finalCols = created.type === 'table' ? Math.max(2, Math.min(10, Math.round(normW / 110)) || 2) : created.cols
+        const finalRows = created.type === 'table' ? Math.max(2, Math.min(10, Math.round(normH / 45)) || 2) : created.rows
+
         const normalizedElements = docRef.current.elements.map(el =>
-          el.id === id ? { ...el, x: normX, y: normY, width: normW, height: normH } : el
+          el.id === id ? {
+            ...el,
+            x: normX,
+            y: normY,
+            width: normW,
+            height: normH,
+            cols: finalCols,
+            rows: finalRows
+          } : el
         )
 
         setDoc(prev => ({ ...prev, elements: normalizedElements }))
@@ -1328,6 +1417,36 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     const hit = doc.elements.slice().reverse().find(el => isPointInElement(world, el))
     if (!hit || hit.type === 'data-task') return
 
+    if (hit.type === 'table') {
+      const bounds = getElementBounds(hit)
+      const rows = Math.max(1, hit.rows || 3)
+      const cols = Math.max(1, hit.cols || 4)
+      const colW = bounds.width / cols
+      const rowH = bounds.height / rows
+      const c = Math.max(0, Math.min(cols - 1, Math.floor((world.x - bounds.x) / colW)))
+      const r = Math.max(0, Math.min(rows - 1, Math.floor((world.y - bounds.y) / rowH)))
+      const cellX = bounds.x + c * colW
+      const cellY = bounds.y + r * rowH
+      const key = `${r}_${c}`
+      const text = (hit.cells && hit.cells[key]) || ''
+
+      setEditingTableCell({
+        tableId: hit.id,
+        row: r,
+        col: c,
+        x: cellX,
+        y: cellY,
+        width: colW,
+        height: rowH,
+        text
+      })
+      setTimeout(() => {
+        tableCellInputRef.current?.focus()
+        tableCellInputRef.current?.select()
+      }, 30)
+      return
+    }
+
     const bounds = getElementBounds(hit)
     const isShape = hit.type !== 'text' && hit.type !== 'line' && hit.type !== 'arrow' && hit.type !== 'freedraw'
 
@@ -1345,6 +1464,244 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       textInputRef.current?.focus()
       textInputRef.current?.select()
     }, 20)
+  }
+
+  // Finish editing table cell
+  const handleFinishEditingTableCell = (nextCell?: { r: number; c: number }) => {
+    if (!editingTableCell) return
+    const { tableId, row, col, text } = editingTableCell
+
+    const key = `${row}_${col}`
+    const nextElements = doc.elements.map(el => {
+      if (el.id !== tableId) return el
+      const newCells = { ...(el.cells || {}) }
+      if (text.trim()) {
+        newCells[key] = text
+      } else {
+        delete newCells[key]
+      }
+      return { ...el, cells: newCells }
+    })
+
+    setDoc(prev => {
+      const next = { ...prev, elements: nextElements }
+      scheduleSave(next)
+      return next
+    })
+    pushHistory(nextElements)
+
+    if (nextCell) {
+      const el = nextElements.find(e => e.id === tableId)
+      if (el) {
+        const bounds = getElementBounds(el)
+        const rows = Math.max(1, el.rows || 3)
+        const cols = Math.max(1, el.cols || 4)
+        if (nextCell.r >= 0 && nextCell.r < rows && nextCell.c >= 0 && nextCell.c < cols) {
+          const colW = bounds.width / cols
+          const rowH = bounds.height / rows
+          const cellX = bounds.x + nextCell.c * colW
+          const cellY = bounds.y + nextCell.r * rowH
+          const nextKey = `${nextCell.r}_${nextCell.c}`
+          const nextText = (el.cells && el.cells[nextKey]) || ''
+          setEditingTableCell({
+            tableId,
+            row: nextCell.r,
+            col: nextCell.c,
+            x: cellX,
+            y: cellY,
+            width: colW,
+            height: rowH,
+            text: nextText
+          })
+          setTimeout(() => {
+            tableCellInputRef.current?.focus()
+            tableCellInputRef.current?.select()
+          }, 30)
+          return
+        }
+      }
+    }
+
+    setEditingTableCell(null)
+  }
+
+  // Table Structure Manipulation Handlers
+  const handleAddTableRow = (tableId: string) => {
+    setDoc(prev => {
+      const updated = prev.elements.map(el => {
+        if (el.id !== tableId) return el
+        const currentRows = Math.max(1, el.rows || 3)
+        const rowH = el.height / currentRows
+        return {
+          ...el,
+          rows: currentRows + 1,
+          height: el.height + rowH
+        }
+      })
+      scheduleSave({ ...prev, elements: updated })
+      pushHistory(updated)
+      return { ...prev, elements: updated }
+    })
+  }
+
+  const handleAddTableCol = (tableId: string) => {
+    setDoc(prev => {
+      const updated = prev.elements.map(el => {
+        if (el.id !== tableId) return el
+        const currentCols = Math.max(1, el.cols || 4)
+        const colW = el.width / currentCols
+        return {
+          ...el,
+          cols: currentCols + 1,
+          width: el.width + colW
+        }
+      })
+      scheduleSave({ ...prev, elements: updated })
+      pushHistory(updated)
+      return { ...prev, elements: updated }
+    })
+  }
+
+  const handleInsertTableRow = (tableId: string, atIndex: number) => {
+    setDoc(prev => {
+      const updated = prev.elements.map(el => {
+        if (el.id !== tableId) return el
+        const currentRows = Math.max(1, el.rows || 3)
+        const rowH = el.height / currentRows
+        const oldCells = el.cells || {}
+        const newCells: Record<string, string> = {}
+
+        Object.entries(oldCells).forEach(([k, v]) => {
+          const [rStr, cStr] = k.split('_')
+          const r = parseInt(rStr, 10)
+          const c = parseInt(cStr, 10)
+          if (r >= atIndex) {
+            newCells[`${r + 1}_${c}`] = v
+          } else {
+            newCells[k] = v
+          }
+        })
+
+        return {
+          ...el,
+          rows: currentRows + 1,
+          height: el.height + rowH,
+          cells: newCells
+        }
+      })
+      scheduleSave({ ...prev, elements: updated })
+      pushHistory(updated)
+      return { ...prev, elements: updated }
+    })
+  }
+
+  const handleInsertTableCol = (tableId: string, atIndex: number) => {
+    setDoc(prev => {
+      const updated = prev.elements.map(el => {
+        if (el.id !== tableId) return el
+        const currentCols = Math.max(1, el.cols || 4)
+        const colW = el.width / currentCols
+        const oldCells = el.cells || {}
+        const newCells: Record<string, string> = {}
+
+        Object.entries(oldCells).forEach(([k, v]) => {
+          const [rStr, cStr] = k.split('_')
+          const r = parseInt(rStr, 10)
+          const c = parseInt(cStr, 10)
+          if (c >= atIndex) {
+            newCells[`${r}_${c + 1}`] = v
+          } else {
+            newCells[k] = v
+          }
+        })
+
+        return {
+          ...el,
+          cols: currentCols + 1,
+          width: el.width + colW,
+          cells: newCells
+        }
+      })
+      scheduleSave({ ...prev, elements: updated })
+      pushHistory(updated)
+      return { ...prev, elements: updated }
+    })
+  }
+
+  const handleDeleteTableRow = (tableId: string, rowIndex: number) => {
+    setDoc(prev => {
+      const updated = prev.elements.map(el => {
+        if (el.id !== tableId) return el
+        const currentRows = Math.max(1, el.rows || 3)
+        if (currentRows <= 1) return el
+        const rowH = el.height / currentRows
+        const oldCells = el.cells || {}
+        const newCells: Record<string, string> = {}
+
+        Object.entries(oldCells).forEach(([k, v]) => {
+          const [rStr, cStr] = k.split('_')
+          const r = parseInt(rStr, 10)
+          const c = parseInt(cStr, 10)
+          if (r === rowIndex) {
+            return
+          }
+          if (r > rowIndex) {
+            newCells[`${r - 1}_${c}`] = v
+          } else {
+            newCells[k] = v
+          }
+        })
+
+        return {
+          ...el,
+          rows: currentRows - 1,
+          height: Math.max(40, el.height - rowH),
+          cells: newCells
+        }
+      })
+      scheduleSave({ ...prev, elements: updated })
+      pushHistory(updated)
+      return { ...prev, elements: updated }
+    })
+    setSelectedTableRow(null)
+  }
+
+  const handleDeleteTableCol = (tableId: string, colIndex: number) => {
+    setDoc(prev => {
+      const updated = prev.elements.map(el => {
+        if (el.id !== tableId) return el
+        const currentCols = Math.max(1, el.cols || 4)
+        if (currentCols <= 1) return el
+        const colW = el.width / currentCols
+        const oldCells = el.cells || {}
+        const newCells: Record<string, string> = {}
+
+        Object.entries(oldCells).forEach(([k, v]) => {
+          const [rStr, cStr] = k.split('_')
+          const r = parseInt(rStr, 10)
+          const c = parseInt(cStr, 10)
+          if (c === colIndex) {
+            return
+          }
+          if (c > colIndex) {
+            newCells[`${r}_${c - 1}`] = v
+          } else {
+            newCells[k] = v
+          }
+        })
+
+        return {
+          ...el,
+          cols: currentCols - 1,
+          width: Math.max(80, el.width - colW),
+          cells: newCells
+        }
+      })
+      scheduleSave({ ...prev, elements: updated })
+      pushHistory(updated)
+      return { ...prev, elements: updated }
+    })
+    setSelectedTableCol(null)
   }
 
   // Finish editing text
@@ -1554,11 +1911,12 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
     const topScreen = worldToScreen(bounds.x + bounds.width / 2, bounds.y)
     const bottomScreen = worldToScreen(bounds.x + bounds.width / 2, bounds.y + bounds.height)
 
-    let top = topScreen.y - 52
+    const isTable = singleSelectedElement.type === 'table'
+    let top = isTable ? topScreen.y - 68 : topScreen.y - 52
     let left = topScreen.x
 
     if (top < 65) {
-      top = bottomScreen.y + 16
+      top = bottomScreen.y + (isTable ? 44 : 16)
     }
 
     return { top, left }
@@ -2104,6 +2462,204 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
                   <List className="w-3.5 h-3.5" />
                 </button>
               </>
+            ) : singleSelectedElement.type === 'table' ? (
+              /* C. TABLE TOOLBAR - Matching User Prints 2, 4, 5 */
+              <>
+                {/* 1. Table Background Color button */}
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenPopover(prev => prev === 'tableColor' ? null : 'tableColor')}
+                    className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                      openPopover === 'tableColor' ? 'bg-zinc-800 text-white shadow-xs' : ''
+                    }`}
+                    title="Cor da tabela"
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full border border-zinc-600 shadow-xs"
+                      style={{ backgroundColor: singleSelectedElement.backgroundColor || '#18181b' }}
+                    />
+                    <ChevronDown className="w-3 h-3 text-zinc-400" />
+                  </button>
+
+                  {/* Table Color Popover */}
+                  {openPopover === 'tableColor' && (
+                    <div className="absolute left-0 bottom-full mb-2 w-52 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2.5 z-40">
+                      <span className="text-[10px] text-zinc-400 block mb-1.5">Cor da Tabela</span>
+                      <div className="grid grid-cols-6 gap-1.5 mb-2">
+                        {TABLE_COLORS.map(color => (
+                          <button
+                            key={color}
+                            onClick={() => {
+                              updateSelectedProperty('backgroundColor', color)
+                              setOpenPopover(null)
+                            }}
+                            className={`w-6 h-6 rounded-lg border transition-transform hover:scale-110 cursor-pointer ${
+                              singleSelectedElement.backgroundColor === color
+                                ? 'scale-105 ring-2'
+                                : 'border-zinc-700/60'
+                            }`}
+                            style={{
+                              backgroundColor: color,
+                              borderColor: singleSelectedElement.backgroundColor === color ? 'var(--accent)' : undefined
+                            }}
+                            title={color}
+                          />
+                        ))}
+
+                        {/* Rainbow circle for Custom color picker */}
+                        <button
+                          ref={rainbowBtnRef}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setShowCustomPicker(prev => !prev)
+                          }}
+                          className="w-6 h-6 rounded-lg border border-zinc-700/60 transition-transform hover:scale-110 cursor-pointer shadow-xs"
+                          style={{
+                            background:
+                              'conic-gradient(from 180deg at 50% 50%, #FF0000 0deg, #FFA500 50deg, #FFFF00 100deg, #008000 150deg, #00FFFF 200deg, #0000FF 250deg, #EE82EE 300deg, #FF0000 360deg)'
+                          }}
+                          title="Cor personalizada (Color Picker)"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Font family selector Aa */}
+                <button
+                  onClick={() => {
+                    const next = singleSelectedElement.fontFamily === 'sans' ? 'handwriting' : singleSelectedElement.fontFamily === 'handwriting' ? 'mono' : 'sans'
+                    updateSelectedProperty('fontFamily', next)
+                  }}
+                  className="px-2 py-1.5 rounded-lg font-serif font-bold text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                  title={`Fonte: ${singleSelectedElement.fontFamily || 'sans'}`}
+                >
+                  Aa
+                </button>
+
+                {/* 3. Text Size Dropdown ("Pequeno", "Médio", "Grande") */}
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenPopover(prev => prev === 'tableSize' ? null : 'tableSize')}
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                      openPopover === 'tableSize' ? 'bg-zinc-800 text-white' : ''
+                    }`}
+                  >
+                    <span>{singleSelectedElement.fontSize === 18 ? 'Grande' : singleSelectedElement.fontSize === 12 ? 'Pequeno' : 'Médio'}</span>
+                    <ChevronDown className="w-3 h-3 text-zinc-400" />
+                  </button>
+
+                  {openPopover === 'tableSize' && (
+                    <div className="absolute left-0 bottom-full mb-2 w-32 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1">
+                      {[
+                        { size: 12, label: 'Pequeno' },
+                        { size: 14, label: 'Médio' },
+                        { size: 18, label: 'Grande' }
+                      ].map(opt => (
+                        <button
+                          key={opt.size}
+                          onClick={() => {
+                            updateSelectedProperty('fontSize', opt.size)
+                            setOpenPopover(null)
+                          }}
+                          className={`px-2.5 py-1.5 rounded text-left transition-colors cursor-pointer ${
+                            (singleSelectedElement.fontSize || 14) === opt.size ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
+                          }`}
+                          style={(singleSelectedElement.fontSize || 14) === opt.size ? { backgroundColor: 'var(--accent)' } : undefined}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="w-px h-4 bg-zinc-700/80 mx-0.5" />
+
+                {/* 4. Bold [ B ] */}
+                <button
+                  onClick={() => updateSelectedProperty('isBold', !singleSelectedElement.isBold)}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    singleSelectedElement.isBold ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                  }`}
+                  style={singleSelectedElement.isBold ? { backgroundColor: 'var(--accent)' } : undefined}
+                  title="Negrito"
+                >
+                  <Bold className="w-3.5 h-3.5" />
+                </button>
+
+                {/* 5. Strikethrough [ S̶ ] */}
+                <button
+                  onClick={() => updateSelectedProperty('isStrikethrough', !singleSelectedElement.isStrikethrough)}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    singleSelectedElement.isStrikethrough ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                  }`}
+                  style={singleSelectedElement.isStrikethrough ? { backgroundColor: 'var(--accent)' } : undefined}
+                  title="Tachado / Riscado"
+                >
+                  <Strikethrough className="w-3.5 h-3.5" />
+                </button>
+
+                {/* 6. Bullet List [ ≡: ] */}
+                <button
+                  onClick={() => updateSelectedProperty('isList', !singleSelectedElement.isList)}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    singleSelectedElement.isList ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                  }`}
+                  style={singleSelectedElement.isList ? { backgroundColor: 'var(--accent)' } : undefined}
+                  title="Lista com Marcadores"
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+
+                {/* 7. Alignment dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenPopover(prev => prev === 'tableAlign' ? null : 'tableAlign')}
+                    className={`flex items-center gap-1 p-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                      openPopover === 'tableAlign' ? 'bg-zinc-800 text-white shadow-xs' : ''
+                    }`}
+                    title="Alinhamento do texto"
+                  >
+                    {singleSelectedElement.textAlign === 'center' ? (
+                      <AlignCenter className="w-3.5 h-3.5" />
+                    ) : singleSelectedElement.textAlign === 'right' ? (
+                      <AlignRight className="w-3.5 h-3.5" />
+                    ) : (
+                      <AlignLeft className="w-3.5 h-3.5" />
+                    )}
+                    <ChevronDown className="w-2.5 h-2.5 text-zinc-400" />
+                  </button>
+
+                  {openPopover === 'tableAlign' && (
+                    <div className="absolute left-0 bottom-full mb-2 w-32 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1">
+                      {[
+                        { align: 'left', label: 'Esquerda', icon: AlignLeft },
+                        { align: 'center', label: 'Centro', icon: AlignCenter },
+                        { align: 'right', label: 'Direita', icon: AlignRight }
+                      ].map(opt => {
+                        const Icon = opt.icon
+                        return (
+                          <button
+                            key={opt.align}
+                            onClick={() => {
+                              updateSelectedProperty('textAlign', opt.align as any)
+                              setOpenPopover(null)
+                            }}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded text-left transition-colors cursor-pointer ${
+                              (singleSelectedElement.textAlign || 'left') === opt.align ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
+                            }`}
+                            style={(singleSelectedElement.textAlign || 'left') === opt.align ? { backgroundColor: 'var(--accent)' } : undefined}
+                          >
+                            <Icon className="w-3.5 h-3.5" />
+                            <span>{opt.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
             ) : (
               /* C. STANDARD SHAPES & ELEMENTS TOOLBAR */
               <>
@@ -2527,10 +3083,20 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
       {showCustomPicker && rainbowBtnRef.current && (
         <CustomColorPickerPopover
           anchorEl={rainbowBtnRef.current}
-          currentColor={singleSelectedElement?.strokeColor || '#c59b27'}
+          currentColor={
+            singleSelectedElement?.type === 'table'
+              ? singleSelectedElement.backgroundColor || '#18181b'
+              : singleSelectedElement?.type === 'sticky'
+                ? singleSelectedElement.backgroundColor || '#ffd8a8'
+                : singleSelectedElement?.strokeColor || '#c59b27'
+          }
           onChange={(newColor) => {
-            setStrokeColor(newColor)
-            updateSelectedProperty('strokeColor', newColor)
+            if (singleSelectedElement?.type === 'table' || singleSelectedElement?.type === 'sticky') {
+              updateSelectedProperty('backgroundColor', newColor)
+            } else {
+              setStrokeColor(newColor)
+              updateSelectedProperty('strokeColor', newColor)
+            }
           }}
           onClose={() => setShowCustomPicker(false)}
           align="center"
@@ -2654,6 +3220,24 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
           style={tool === 'data-task' ? { backgroundColor: 'var(--accent)' } : undefined}
         >
           <CalendarDays className="w-4 h-4 stroke-[2]" />
+        </button>
+
+        {/* TABELA (FigJam Table tool) */}
+        <button
+          onClick={() => {
+            setTool('table')
+            setSelectedIds([])
+            setIsBottomShapesOpen(false)
+          }}
+          title="Tabela (B) - Clique ou arraste para definir tamanho"
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            tool === 'table'
+              ? 'text-white font-semibold shadow-md scale-105'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+          }`}
+          style={tool === 'table' ? { backgroundColor: 'var(--accent)' } : undefined}
+        >
+          <Table className="w-4 h-4 stroke-[2]" />
         </button>
 
         {/* Seta / Conector */}
@@ -2876,6 +3460,335 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote }) =>
               borderColor: 'var(--accent)'
             }}
           />
+        </div>
+      )}
+
+      {/* 9. In-place Overlay Text Editor for Table Cells */}
+      {editingTableCell && (
+        <div
+          className="absolute z-35"
+          style={{
+            left: `${worldToScreen(editingTableCell.x, editingTableCell.y).x}px`,
+            top: `${worldToScreen(editingTableCell.x, editingTableCell.y).y}px`,
+            width: `${editingTableCell.width * doc.viewport.zoom}px`,
+            height: `${editingTableCell.height * doc.viewport.zoom}px`
+          }}
+        >
+          <textarea
+            ref={tableCellInputRef}
+            value={editingTableCell.text}
+            onChange={e => setEditingTableCell(prev => prev ? { ...prev, text: e.target.value } : null)}
+            onBlur={() => handleFinishEditingTableCell()}
+            onKeyDown={e => {
+              if (e.key === 'Tab') {
+                e.preventDefault()
+                const delta = e.shiftKey ? -1 : 1
+                const table = doc.elements.find(el => el.id === editingTableCell.tableId)
+                if (table) {
+                  const r = editingTableCell.row
+                  const c = editingTableCell.col
+                  const cols = table.cols || 4
+                  const rows = table.rows || 3
+                  let nextC = c + delta
+                  let nextR = r
+                  if (nextC >= cols) {
+                    nextC = 0
+                    nextR = Math.min(rows - 1, r + 1)
+                  } else if (nextC < 0) {
+                    nextC = cols - 1
+                    nextR = Math.max(0, r - 1)
+                  }
+                  handleFinishEditingTableCell({ r: nextR, c: nextC })
+                }
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                handleFinishEditingTableCell()
+              }
+            }}
+            placeholder="Digite algo..."
+            className="w-full h-full bg-[#18181b] text-zinc-100 outline-none p-2 resize-none font-sans rounded-md border shadow-2xl leading-snug"
+            style={{
+              fontSize: `${(doc.elements.find(el => el.id === editingTableCell.tableId)?.fontSize || 14) * doc.viewport.zoom}px`,
+              borderColor: 'var(--accent)'
+            }}
+          />
+        </div>
+      )}
+
+      {/* 10. Table Interactive FigJam Controls (Bottom Bar, Right Bar, Top Handles, Left Handles, Inserter Dots) */}
+      {(() => {
+        if (selectedIds.length !== 1 || editingTableCell) return null
+        const selectedTable = doc.elements.find(el => el.id === selectedIds[0] && el.type === 'table')
+        if (!selectedTable) return null
+
+        const bounds = getElementBounds(selectedTable)
+        const topLeft = worldToScreen(bounds.x, bounds.y)
+        const bottomRight = worldToScreen(bounds.x + bounds.width, bounds.y + bounds.height)
+        const tX = topLeft.x
+        const tY = topLeft.y
+        const tW = bottomRight.x - topLeft.x
+        const tH = bottomRight.y - topLeft.y
+        const tCols = Math.max(1, selectedTable.cols || 4)
+        const tRows = Math.max(1, selectedTable.rows || 3)
+        const colW = tW / tCols
+        const rowH = tH / tRows
+
+        return (
+          <div className="pointer-events-auto">
+            {/* A. Selected Column Highlight */}
+            {selectedTableCol !== null && selectedTableCol < tCols && (
+              <>
+                <div
+                  className="absolute pointer-events-none rounded-sm border-2 border-sky-400 bg-sky-400/10 z-25"
+                  style={{
+                    left: `${tX + selectedTableCol * colW}px`,
+                    top: `${tY}px`,
+                    width: `${colW}px`,
+                    height: `${tH}px`
+                  }}
+                />
+
+                {/* Column Action Popup */}
+                <div
+                  className="absolute flex items-center gap-1 bg-[#1a1a1e] border border-zinc-700/80 px-2 py-1 rounded-xl shadow-2xl z-40 text-[11px]"
+                  style={{
+                    left: `${tX + selectedTableCol * colW + colW / 2}px`,
+                    top: `${tY - 58}px`,
+                    transform: 'translateX(-50%)'
+                  }}
+                >
+                  <button
+                    onClick={() => handleInsertTableCol(selectedTable.id, selectedTableCol)}
+                    className="px-2 py-0.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+                    title="Inserir coluna à esquerda"
+                  >
+                    + Coluna antes
+                  </button>
+                  <button
+                    onClick={() => handleInsertTableCol(selectedTable.id, selectedTableCol + 1)}
+                    className="px-2 py-0.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+                    title="Inserir coluna à direita"
+                  >
+                    + Coluna depois
+                  </button>
+                  {tCols > 1 && (
+                    <button
+                      onClick={() => handleDeleteTableCol(selectedTable.id, selectedTableCol)}
+                      className="px-2 py-0.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded transition-colors cursor-pointer flex items-center gap-1"
+                      title="Excluir coluna"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Excluir
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* B. Selected Row Highlight */}
+            {selectedTableRow !== null && selectedTableRow < tRows && (
+              <>
+                <div
+                  className="absolute pointer-events-none rounded-sm border-2 border-sky-400 bg-sky-400/10 z-25"
+                  style={{
+                    left: `${tX}px`,
+                    top: `${tY + selectedTableRow * rowH}px`,
+                    width: `${tW}px`,
+                    height: `${rowH}px`
+                  }}
+                />
+
+                {/* Row Action Popup */}
+                <div
+                  className="absolute flex items-center gap-1 bg-[#1a1a1e] border border-zinc-700/80 px-2 py-1 rounded-xl shadow-2xl z-40 text-[11px]"
+                  style={{
+                    left: `${tX - 8}px`,
+                    top: `${tY + selectedTableRow * rowH + rowH / 2}px`,
+                    transform: 'translate(-100%, -50%)'
+                  }}
+                >
+                  <button
+                    onClick={() => handleInsertTableRow(selectedTable.id, selectedTableRow)}
+                    className="px-2 py-0.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+                    title="Inserir linha acima"
+                  >
+                    + Linha acima
+                  </button>
+                  <button
+                    onClick={() => handleInsertTableRow(selectedTable.id, selectedTableRow + 1)}
+                    className="px-2 py-0.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+                    title="Inserir linha abaixo"
+                  >
+                    + Linha abaixo
+                  </button>
+                  {tRows > 1 && (
+                    <button
+                      onClick={() => handleDeleteTableRow(selectedTable.id, selectedTableRow)}
+                      className="px-2 py-0.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded transition-colors cursor-pointer flex items-center gap-1"
+                      title="Excluir linha"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Excluir
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* C. Bottom Bar: Add Row */}
+            <button
+              onClick={() => handleAddTableRow(selectedTable.id)}
+              className="absolute bg-sky-400/20 hover:bg-sky-400/35 text-sky-400 hover:text-sky-300 border border-sky-400/40 rounded-lg flex items-center justify-center cursor-pointer transition-all z-25 group"
+              style={{
+                left: `${tX}px`,
+                top: `${tY + tH + 6}px`,
+                width: `${tW}px`,
+                height: '22px'
+              }}
+              title="Adicionar linha"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5] group-hover:scale-125 transition-transform" />
+            </button>
+
+            {/* D. Right Bar: Add Column */}
+            <button
+              onClick={() => handleAddTableCol(selectedTable.id)}
+              className="absolute bg-sky-400/20 hover:bg-sky-400/35 text-sky-400 hover:text-sky-300 border border-sky-400/40 rounded-lg flex items-center justify-center cursor-pointer transition-all z-25 group"
+              style={{
+                left: `${tX + tW + 6}px`,
+                top: `${tY}px`,
+                width: '22px',
+                height: `${tH}px`
+              }}
+              title="Adicionar coluna"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5] group-hover:scale-125 transition-transform" />
+            </button>
+
+            {/* E. Top Column Handles & Inserters */}
+            {Array.from({ length: tCols }).map((_, c) => {
+              const handleCenterX = tX + c * colW + colW / 2
+              const isSelected = selectedTableCol === c
+              const isHovered = hoveredTableCol === c
+
+              return (
+                <React.Fragment key={`col_ctrl_${c}`}>
+                  {/* Column Handle [ = ] */}
+                  <button
+                    onClick={() => {
+                      setSelectedTableCol(prev => prev === c ? null : c)
+                      setSelectedTableRow(null)
+                    }}
+                    onMouseEnter={() => setHoveredTableCol(c)}
+                    onMouseLeave={() => setHoveredTableCol(null)}
+                    className={`absolute -translate-x-1/2 w-7 h-5 rounded-md flex items-center justify-center text-xs transition-all cursor-pointer z-30 shadow-xs ${
+                      isSelected
+                        ? 'bg-sky-500 text-white ring-2 ring-sky-300'
+                        : isHovered
+                          ? 'bg-sky-500/80 text-white'
+                          : 'bg-zinc-800/80 hover:bg-sky-500 text-zinc-400 hover:text-white border border-zinc-700/60'
+                    }`}
+                    style={{
+                      left: `${handleCenterX}px`,
+                      top: `${tY - 26}px`
+                    }}
+                    title={`Selecionar coluna ${c + 1}`}
+                  >
+                    <div className="flex flex-col gap-[3px] items-center justify-center pointer-events-none">
+                      <span className="w-3.5 h-[2px] bg-current rounded-full" />
+                      <span className="w-3.5 h-[2px] bg-current rounded-full" />
+                    </div>
+                  </button>
+
+                  {/* Column Divider Dot / Inserter between c and c + 1 */}
+                  {c + 1 < tCols && (
+                    <button
+                      onClick={() => handleInsertTableCol(selectedTable.id, c + 1)}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 text-zinc-950 hover:scale-125 shadow-xs"
+                      style={{
+                        left: `${tX + (c + 1) * colW}px`,
+                        top: `${tY - 14}px`
+                      }}
+                      title={`Inserir coluna entre ${c + 1} e ${c + 2}`}
+                    >
+                      <Plus className="w-2.5 h-2.5 stroke-[3]" />
+                    </button>
+                  )}
+                </React.Fragment>
+              )
+            })}
+
+            {/* F. Left Row Handles & Inserters */}
+            {Array.from({ length: tRows }).map((_, r) => {
+              const handleCenterY = tY + r * rowH + rowH / 2
+              const isSelected = selectedTableRow === r
+              const isHovered = hoveredTableRow === r
+
+              return (
+                <React.Fragment key={`row_ctrl_${r}`}>
+                  {/* Row Handle [ || ] */}
+                  <button
+                    onClick={() => {
+                      setSelectedTableRow(prev => prev === r ? null : r)
+                      setSelectedTableCol(null)
+                    }}
+                    onMouseEnter={() => setHoveredTableRow(r)}
+                    onMouseLeave={() => setHoveredTableRow(null)}
+                    className={`absolute -translate-x-full -translate-y-1/2 w-5 h-7 rounded-md flex items-center justify-center text-xs transition-all cursor-pointer z-30 shadow-xs ${
+                      isSelected
+                        ? 'bg-sky-500 text-white ring-2 ring-sky-300'
+                        : isHovered
+                          ? 'bg-sky-500/80 text-white'
+                          : 'bg-zinc-800/80 hover:bg-sky-500 text-zinc-400 hover:text-white border border-zinc-700/60'
+                    }`}
+                    style={{
+                      left: `${tX - 8}px`,
+                      top: `${handleCenterY}px`
+                    }}
+                    title={`Selecionar linha ${r + 1}`}
+                  >
+                    <div className="flex flex-row gap-[3px] items-center justify-center pointer-events-none">
+                      <span className="h-3.5 w-[2px] bg-current rounded-full" />
+                      <span className="h-3.5 w-[2px] bg-current rounded-full" />
+                    </div>
+                  </button>
+
+                  {/* Row Divider Dot / Inserter between r and r + 1 */}
+                  {r + 1 < tRows && (
+                    <button
+                      onClick={() => handleInsertTableRow(selectedTable.id, r + 1)}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 text-zinc-950 hover:scale-125 shadow-xs"
+                      style={{
+                        left: `${tX - 14}px`,
+                        top: `${tY + (r + 1) * rowH}px`
+                      }}
+                      title={`Inserir linha entre ${r + 1} e ${r + 2}`}
+                    >
+                      <Plus className="w-2.5 h-2.5 stroke-[3]" />
+                    </button>
+                  )}
+                </React.Fragment>
+              )
+            })}
+          </div>
+        )
+      })()}
+
+      {/* 11. Table Creation Drag Preview Tooltip (Matching Image 1) */}
+      {tableCreationPreview && (
+        <div
+          className="fixed pointer-events-none z-50 flex flex-col items-center gap-1.5"
+          style={{
+            left: `${tableCreationPreview.screenX + 16}px`,
+            top: `${tableCreationPreview.screenY + 16}px`
+          }}
+        >
+          <div className="bg-zinc-800/90 text-zinc-300 text-[10px] px-2 py-0.5 rounded font-mono border border-zinc-700/80 shadow-md">
+            {tableCreationPreview.cols} × {tableCreationPreview.rows}
+          </div>
+          <div className="bg-[#e4e4e7] text-zinc-900 text-xs font-medium px-2.5 py-1 rounded-md shadow-xl border border-zinc-300 flex items-center gap-1.5">
+            <span>Clique e arraste para definir o tamanho</span>
+          </div>
         </div>
       )}
     </div>

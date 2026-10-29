@@ -649,6 +649,117 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
       break
     }
 
+    case 'table': {
+      const rows = Math.max(1, el.rows || 3)
+      const cols = Math.max(1, el.cols || 4)
+      const radius = 10
+
+      // Table background
+      ctx.save()
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.2)'
+      ctx.shadowBlur = 8
+      ctx.shadowOffsetY = 4
+
+      ctx.beginPath()
+      ctx.roundRect(normX, normY, normW, normH, radius)
+      ctx.fillStyle = el.backgroundColor && el.backgroundColor !== 'transparent' ? el.backgroundColor : '#18181b'
+      ctx.fill()
+      ctx.restore()
+
+      // Table outer border
+      ctx.beginPath()
+      ctx.roundRect(normX, normY, normW, normH, radius)
+      ctx.strokeStyle = el.strokeColor || 'rgba(255, 255, 255, 0.16)'
+      ctx.lineWidth = el.strokeWidth || 1.5
+      ctx.stroke()
+
+      // Calculate col widths & row heights
+      const colW = normW / cols
+      const rowH = normH / rows
+
+      // Clip inside table to avoid grid lines overflowing rounded corners
+      ctx.save()
+      ctx.beginPath()
+      ctx.roundRect(normX, normY, normW, normH, radius)
+      ctx.clip()
+
+      // Grid lines
+      ctx.beginPath()
+      ctx.strokeStyle = el.strokeColor ? el.strokeColor + '55' : 'rgba(255, 255, 255, 0.14)'
+      ctx.lineWidth = 1
+
+      // Vertical lines
+      for (let c = 1; c < cols; c++) {
+        const lx = normX + c * colW
+        ctx.moveTo(lx, normY)
+        ctx.lineTo(lx, normY + normH)
+      }
+
+      // Horizontal lines
+      for (let r = 1; r < rows; r++) {
+        const ly = normY + r * rowH
+        ctx.moveTo(normX, ly)
+        ctx.lineTo(normX + normW, ly)
+      }
+      ctx.stroke()
+
+      // Render cell text contents
+      const cells = el.cells || {}
+      const fontSize = el.fontSize || 14
+      const fontFamily = el.fontFamily === 'mono' ? 'monospace' : el.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'
+      const fontWeight = el.isBold ? 'bold' : 'normal'
+      ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`
+      ctx.fillStyle = el.strokeColor || '#f4f4f5'
+      ctx.textAlign = (el.textAlign || 'left') as CanvasTextAlign
+      ctx.textBaseline = 'middle'
+
+      const padding = 12
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const key = `${r}_${c}`
+          const rawText = cells[key]
+          if (rawText) {
+            const cellX = normX + c * colW
+            const cellY = normY + r * rowH
+            const maxW = colW - padding * 2
+
+            const lines = rawText.split('\n')
+            const lineHeight = fontSize * 1.3
+            const totalH = lines.length * lineHeight
+            const startY = cellY + rowH / 2 - totalH / 2 + lineHeight / 2
+
+            let tx = cellX + padding
+            if (el.textAlign === 'center') tx = cellX + colW / 2
+            else if (el.textAlign === 'right') tx = cellX + colW - padding
+
+            lines.forEach((l, idx) => {
+              const displayLine = el.isList ? `• ${l}` : l
+              ctx.fillText(displayLine, tx, startY + idx * lineHeight, maxW)
+
+              if (el.isStrikethrough && displayLine) {
+                const metrics = ctx.measureText(displayLine)
+                const textWidth = Math.min(metrics.width, maxW)
+                let strikeStartX = tx
+                if (el.textAlign === 'center') strikeStartX = tx - textWidth / 2
+                else if (el.textAlign === 'right') strikeStartX = tx - textWidth
+                const strikeY = startY + idx * lineHeight
+                ctx.beginPath()
+                ctx.moveTo(strikeStartX, strikeY)
+                ctx.lineTo(strikeStartX + textWidth, strikeY)
+                ctx.lineWidth = 1.2
+                ctx.strokeStyle = el.strokeColor || '#f4f4f5'
+                ctx.stroke()
+              }
+            })
+          }
+        }
+      }
+
+      ctx.restore()
+      break
+    }
+
     case 'text': {
       const fontSize = el.fontSize || 18
       const fontFamily = el.fontFamily === 'mono' ? 'monospace' : el.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'

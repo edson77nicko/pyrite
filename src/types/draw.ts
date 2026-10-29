@@ -10,6 +10,7 @@ export type DrawTool =
   | 'cylinder'
   | 'sticky'
   | 'data-task'
+  | 'table'
   | 'arrow'
   | 'line'
   | 'freedraw'
@@ -28,6 +29,7 @@ export type DrawElementType =
   | 'cylinder'
   | 'sticky'
   | 'data-task'
+  | 'table'
   | 'arrow'
   | 'line'
   | 'freedraw'
@@ -71,6 +73,11 @@ export interface DrawElement {
   boardId?: string
   viewMode?: 'calendar' | 'list' | 'kanban'
   taskFilter?: 'all' | 'pending' | 'completed'
+  rows?: number
+  cols?: number
+  rowHeights?: number[]
+  colWidths?: number[]
+  cells?: Record<string, string>
 }
 
 export interface DrawViewport {
