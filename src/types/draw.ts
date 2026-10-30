@@ -69,6 +69,7 @@ export interface DrawElement {
   isLocked?: boolean
   startBinding?: ElementBinding
   endBinding?: ElementBinding
+  connectorStyle?: 'orthogonal' | 'straight'
   isBold?: boolean
   isStrikethrough?: boolean
   isList?: boolean
@@ -80,6 +81,16 @@ export interface DrawElement {
   rowHeights?: number[]
   colWidths?: number[]
   cells?: Record<string, string>
+  cellStyles?: Record<string, {
+    backgroundColor?: string
+    textColor?: string
+    fontSize?: number
+    fontFamily?: 'sans' | 'handwriting' | 'mono'
+    textAlign?: 'left' | 'center' | 'right'
+    isBold?: boolean
+    isStrikethrough?: boolean
+    isList?: boolean
+  }>
   noteId?: string
   noteTitle?: string
   noteContent?: string

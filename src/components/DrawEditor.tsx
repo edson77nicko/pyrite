@@ -10,7 +10,10 @@ import {
   renderGrid,
   serializeDrawDocument,
   findClosestAnchor,
-  updateConnectedLines
+  updateConnectedLines,
+  getOrthogonalConnectorPoints,
+  drawRoundedOrthogonalPath,
+  drawArrowhead
 } from '../utils/drawUtils'
 import { loadTasks, saveTasks, loadTaskSettings } from '../utils/taskStorage'
 import { CustomColorPickerPopover } from './CustomColorPickerPopover'
@@ -62,7 +65,8 @@ import {
   X,
   Palette,
   Brain,
-  CodeXml
+  CodeXml,
+  CornerDownRight
 } from 'lucide-react'
 
 interface DrawEditorProps {
@@ -243,7 +247,12 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
   } | null>(null)
   const tableCellInputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Table Column / Row Selection & Inserter States
+  // Table Column / Row / Cell Selection & Inserter States
+  const [selectedTableCell, setSelectedTableCell] = useState<{
+    tableId: string
+    row: number
+    col: number
+  } | null>(null)
   const [selectedTableCol, setSelectedTableCol] = useState<number | null>(null)
   const [selectedTableRow, setSelectedTableRow] = useState<number | null>(null)
   const [hoveredTableCol, setHoveredTableCol] = useState<number | null>(null)
@@ -260,7 +269,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
   } | null>(null)
 
   // Popover state for floating selection toolbar
-  const [openPopover, setOpenPopover] = useState<'shape' | 'color' | 'typography' | 'stroke' | 'stickyColor' | 'stickySize' | 'dataTaskBoard' | 'tableColor' | 'tableSize' | 'tableAlign' | null>(null)
+  const [openPopover, setOpenPopover] = useState<'shape' | 'color' | 'typography' | 'stroke' | 'stickyColor' | 'stickySize' | 'dataTaskBoard' | 'tableColor' | 'tableTypography' | 'tableSize' | 'tableAlign' | null>(null)
   const [shapeSearch, setShapeSearch] = useState('')
 
   // Custom Color Picker Popover (Matches Platform Settings)
@@ -430,8 +439,13 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
       if (editingText && editingText.id === el.id && !editingText.isShape) {
         continue
       }
+      // Skip data-task and note-card duplicate background rendering in interactive editor canvas,
+      // as they are fully managed by the live GPU-accelerated DOM overlay.
+      if (el.type === 'data-task' || el.type === 'note-card') {
+        continue
+      }
       const isSelected = selectedIds.includes(el.id)
-      renderElementToCanvas(ctx, el, isSelected)
+      renderElementToCanvas(ctx, el, isSelected, doc.elements)
     }
 
     // Render selection indicators & FigJam handles (Using user custom accent color!)
@@ -442,21 +456,43 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
 
         ctx.save()
 
-        // 1. SPECIFIC RENDERING FOR STRAIGHT LINE AND ARROW:
+        // 1. SPECIFIC RENDERING FOR LINE AND ARROW:
         // Only 2 control squares (Point 1 and Point 2), using custom accent color!
         if (el.type === 'line' || el.type === 'arrow') {
+          const isOrthogonal = el.connectorStyle === 'orthogonal' || (el.connectorStyle !== 'straight' && !!el.startBinding)
           const p1 = { x: el.x, y: el.y }
           const p2 = { x: el.x + el.width, y: el.y + el.height }
           const handleSize = 9 / zoom
 
-          // Highlight line
+          // Highlight line (exact orthogonal path or straight line)
           ctx.strokeStyle = accent
           ctx.globalAlpha = 0.5
           ctx.lineWidth = Math.max(el.strokeWidth || 2, 4) / zoom
-          ctx.beginPath()
-          ctx.moveTo(p1.x, p1.y)
-          ctx.lineTo(p2.x, p2.y)
-          ctx.stroke()
+
+          if (isOrthogonal) {
+            const startHandle = el.startBinding?.handle || (Math.abs(el.width) >= Math.abs(el.height) ? (el.width >= 0 ? 'right' : 'left') : (el.height >= 0 ? 'bottom' : 'top'))
+            const fromEl = el.startBinding ? doc.elements.find(e => e.id === el.startBinding!.elementId) : undefined
+            const toEl = el.endBinding ? doc.elements.find(e => e.id === el.endBinding!.elementId) : undefined
+            const fromBounds = fromEl ? getElementBounds(fromEl) : undefined
+            const toBounds = toEl ? getElementBounds(toEl) : undefined
+
+            const points = getOrthogonalConnectorPoints(
+              p1,
+              startHandle,
+              p2,
+              el.endBinding?.handle,
+              fromBounds,
+              toBounds
+            )
+            ctx.beginPath()
+            drawRoundedOrthogonalPath(ctx, points, 16)
+            ctx.stroke()
+          } else {
+            ctx.beginPath()
+            ctx.moveTo(p1.x, p1.y)
+            ctx.lineTo(p2.x, p2.y)
+            ctx.stroke()
+          }
           ctx.globalAlpha = 1.0
 
           // Point 1 handle
@@ -477,10 +513,20 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
         // 2. FOR ALL OTHER ELEMENTS: Bounding Box
         const bounds = getElementBounds(el)
 
-        // Selection Border: Platform accent color!
+        // Selection Border: Platform accent color with matching border-radii!
         ctx.strokeStyle = accent
         ctx.lineWidth = 1.5 / zoom
-        ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height)
+        if (el.type === 'data-task' || el.type === 'note-card') {
+          ctx.beginPath()
+          ctx.roundRect(bounds.x, bounds.y, bounds.width, bounds.height, 16)
+          ctx.stroke()
+        } else if (el.type === 'table') {
+          ctx.beginPath()
+          ctx.roundRect(bounds.x, bounds.y, bounds.width, bounds.height, 12)
+          ctx.stroke()
+        } else {
+          ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height)
+        }
 
         if (selectedIds.length === 1 && el.type !== 'freedraw') {
           // Resize handles on 4 corners + middle right (mr) and middle bottom (mb)
@@ -533,36 +579,57 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
 
     // Render interactive connector line while dragging from N8N handler
     if (activeConnector.current) {
-      const { startX, startY, currentX, currentY } = activeConnector.current
+      const { fromId, handleId, startX, startY, currentX, currentY } = activeConnector.current
       ctx.save()
       ctx.strokeStyle = accent
+      ctx.fillStyle = accent
       ctx.lineWidth = 2.5 / zoom
       ctx.lineCap = 'round'
-      ctx.setLineDash([4 / zoom, 4 / zoom])
+      ctx.lineJoin = 'round'
+      ctx.setLineDash([5 / zoom, 4 / zoom])
+
+      const fromEl = doc.elements.find(e => e.id === fromId)
+      const fromBounds = fromEl ? getElementBounds(fromEl) : undefined
+      const targetEl = doc.elements.slice().reverse().find(el => el.id !== fromId && el.type !== 'line' && el.type !== 'arrow' && isPointInElement({ x: currentX, y: currentY }, el))
+
+      let targetPoint = { x: currentX, y: currentY }
+      let targetHandle: 'top' | 'right' | 'bottom' | 'left' | undefined = undefined
+      let toBounds = undefined
+
+      if (targetEl) {
+        const anchor = findClosestAnchor(targetEl, { x: currentX, y: currentY })
+        targetPoint = anchor.point
+        targetHandle = anchor.handle
+        toBounds = getElementBounds(targetEl)
+      }
+
+      const points = getOrthogonalConnectorPoints(
+        { x: startX, y: startY },
+        handleId,
+        targetPoint,
+        targetHandle,
+        fromBounds,
+        toBounds
+      )
 
       ctx.beginPath()
-      ctx.moveTo(startX, startY)
-      ctx.lineTo(currentX, currentY)
+      drawRoundedOrthogonalPath(ctx, points, 16)
       ctx.stroke()
 
-      // Arrowhead at cursor
-      const angle = Math.atan2(currentY - startY, currentX - startX)
-      const headLength = 12 / zoom
-      const headAngle = Math.PI / 6
       ctx.setLineDash([])
-      ctx.fillStyle = accent
-      ctx.beginPath()
-      ctx.moveTo(currentX, currentY)
-      ctx.lineTo(
-        currentX - headLength * Math.cos(angle - headAngle),
-        currentY - headLength * Math.sin(angle - headAngle)
-      )
-      ctx.lineTo(
-        currentX - headLength * Math.cos(angle + headAngle),
-        currentY - headLength * Math.sin(angle + headAngle)
-      )
-      ctx.closePath()
-      ctx.fill()
+      drawArrowhead(ctx, points, 2.5 / zoom)
+
+      // Snap highlight indicator on target handle
+      if (targetEl) {
+        ctx.beginPath()
+        ctx.arc(targetPoint.x, targetPoint.y, 6 / zoom, 0, Math.PI * 2)
+        ctx.fillStyle = accent
+        ctx.fill()
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 1.5 / zoom
+        ctx.stroke()
+      }
+
       ctx.restore()
     }
 
@@ -908,6 +975,22 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
         const bounds = getElementBounds(hit)
         initialElementBounds.current = { ...bounds }
 
+        if (hit.type === 'table') {
+          const tCols = Math.max(1, hit.cols || 4)
+          const tRows = Math.max(1, hit.rows || 3)
+          const colW = bounds.width / tCols
+          const rowH = bounds.height / tRows
+          const c = Math.max(0, Math.min(tCols - 1, Math.floor((world.x - bounds.x) / colW)))
+          const r = Math.max(0, Math.min(tRows - 1, Math.floor((world.y - bounds.y) / rowH)))
+          setSelectedTableCell({ tableId: hit.id, row: r, col: c })
+          setSelectedTableCol(null)
+          setSelectedTableRow(null)
+        } else {
+          setSelectedTableCell(null)
+          setSelectedTableCol(null)
+          setSelectedTableRow(null)
+        }
+
         // Sync toolbar properties to hit element
         setStrokeColor(hit.strokeColor || '#4a4a4e')
         setBackgroundColor(hit.backgroundColor || 'transparent')
@@ -917,7 +1000,12 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
         if (hit.fontSize) setFontSize(hit.fontSize)
         if (hit.fontFamily) setFontFamily(hit.fontFamily)
       } else {
-        if (!e.shiftKey) setSelectedIds([])
+        if (!e.shiftKey) {
+          setSelectedIds([])
+          setSelectedTableCell(null)
+          setSelectedTableCol(null)
+          setSelectedTableRow(null)
+        }
         setOpenPopover(null)
         setShowCustomPicker(false)
         setIsBottomShapesOpen(false)
@@ -1412,14 +1500,16 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                     y: anchor.point.y,
                     width: fixedEndX - anchor.point.x,
                     height: fixedEndY - anchor.point.y,
-                    startBinding: { elementId: targetEl.id, handle: anchor.handle }
+                    startBinding: { elementId: targetEl.id, handle: anchor.handle },
+                    connectorStyle: item.connectorStyle || 'orthogonal'
                   }
                 } else {
                   return {
                     ...item,
                     width: anchor.point.x - item.x,
                     height: anchor.point.y - item.y,
-                    endBinding: { elementId: targetEl.id, handle: anchor.handle }
+                    endBinding: { elementId: targetEl.id, handle: anchor.handle },
+                    connectorStyle: item.connectorStyle || 'orthogonal'
                   }
                 }
               })
@@ -1467,13 +1557,14 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
           y: startY,
           width: finalTargetX - startX,
           height: finalTargetY - startY,
-          strokeColor: fromEl.strokeColor || '#339af0',
+          strokeColor: fromEl.strokeColor || '#52525b',
           backgroundColor: 'transparent',
           strokeWidth: fromEl.strokeWidth || 2,
           strokeStyle: 'solid',
           fillStyle: 'none',
           startBinding: { elementId: fromEl.id, handle: handleId },
-          endBinding
+          endBinding,
+          connectorStyle: 'orthogonal'
         }
 
         const nextElements = [...docRef.current.elements, newArrow]
@@ -2231,7 +2322,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
     ctx.translate(padding - minX, padding - minY)
 
     for (const el of doc.elements) {
-      renderElementToCanvas(ctx, el, false)
+      renderElementToCanvas(ctx, el, false, doc.elements)
     }
     ctx.restore()
 
@@ -2258,7 +2349,102 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
     }
   }
 
-  // Calculate Popover Position above selected element
+  // Helper to format table cells / rows / columns / whole table
+  const updateTableFormatting = (property: string, value: any) => {
+    if (!singleSelectedElement || singleSelectedElement.type !== 'table') return
+    const tableId = singleSelectedElement.id
+
+    setDoc(prev => {
+      const updated = prev.elements.map(el => {
+        if (el.id !== tableId) return el
+        const cellStyles = { ...(el.cellStyles || {}) }
+
+        if (selectedTableCell && selectedTableCell.tableId === tableId) {
+          // Format single cell
+          const key = `${selectedTableCell.row}_${selectedTableCell.col}`
+          cellStyles[key] = {
+            ...cellStyles[key],
+            [property]: value
+          }
+          return { ...el, cellStyles }
+        }
+
+        if (selectedTableCol !== null) {
+          // Format whole column
+          const rows = Math.max(1, el.rows || 3)
+          for (let r = 0; r < rows; r++) {
+            const key = `${r}_${selectedTableCol}`
+            cellStyles[key] = {
+              ...cellStyles[key],
+              [property]: value
+            }
+          }
+          return { ...el, cellStyles }
+        }
+
+        if (selectedTableRow !== null) {
+          // Format whole row
+          const cols = Math.max(1, el.cols || 4)
+          for (let c = 0; c < cols; c++) {
+            const key = `${selectedTableRow}_${c}`
+            cellStyles[key] = {
+              ...cellStyles[key],
+              [property]: value
+            }
+          }
+          return { ...el, cellStyles }
+        }
+
+        // Format whole table
+        if (property === 'backgroundColor') return { ...el, backgroundColor: value }
+        if (property === 'textColor') return { ...el, strokeColor: value }
+        if (property === 'fontSize') return { ...el, fontSize: value }
+        if (property === 'fontFamily') return { ...el, fontFamily: value }
+        if (property === 'textAlign') return { ...el, textAlign: value }
+        if (property === 'isBold') return { ...el, isBold: value }
+        if (property === 'isStrikethrough') return { ...el, isStrikethrough: value }
+        if (property === 'isList') return { ...el, isList: value }
+
+        return el
+      })
+
+      scheduleSave({ ...prev, elements: updated })
+      return { ...prev, elements: updated }
+    })
+  }
+
+  // Read current formatting property for the active table selection target
+  const getTableCurrentValue = (property: string, fallback: any) => {
+    if (!singleSelectedElement || singleSelectedElement.type !== 'table') return fallback
+    const cellStyles = singleSelectedElement.cellStyles || {}
+
+    if (selectedTableCell && selectedTableCell.tableId === singleSelectedElement.id) {
+      const key = `${selectedTableCell.row}_${selectedTableCell.col}`
+      const st = cellStyles[key]
+      if (st && (st as any)[property] !== undefined) return (st as any)[property]
+    } else if (selectedTableCol !== null) {
+      const key = `0_${selectedTableCol}`
+      const st = cellStyles[key]
+      if (st && (st as any)[property] !== undefined) return (st as any)[property]
+    } else if (selectedTableRow !== null) {
+      const key = `${selectedTableRow}_0`
+      const st = cellStyles[key]
+      if (st && (st as any)[property] !== undefined) return (st as any)[property]
+    }
+
+    if (property === 'backgroundColor') return singleSelectedElement.backgroundColor || fallback
+    if (property === 'textColor') return singleSelectedElement.strokeColor || fallback
+    if (property === 'fontSize') return singleSelectedElement.fontSize || fallback
+    if (property === 'fontFamily') return singleSelectedElement.fontFamily || fallback
+    if (property === 'textAlign') return singleSelectedElement.textAlign || fallback
+    if (property === 'isBold') return singleSelectedElement.isBold ?? fallback
+    if (property === 'isStrikethrough') return singleSelectedElement.isStrikethrough ?? fallback
+    if (property === 'isList') return singleSelectedElement.isList ?? fallback
+
+    return fallback
+  }
+
+  // Calculate Popover Position above or below selected element/cell
   const getPopoverPosition = () => {
     if (!singleSelectedElement) return null
     const bounds = getElementBounds(singleSelectedElement)
@@ -2266,6 +2452,36 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
     const bottomScreen = worldToScreen(bounds.x + bounds.width / 2, bounds.y + bounds.height)
 
     const isTable = singleSelectedElement.type === 'table'
+
+    // If a specific table cell is selected, position popover directly near the cell (matching FigJam reference)
+    if (isTable && selectedTableCell && selectedTableCell.tableId === singleSelectedElement.id) {
+      const tCols = Math.max(1, singleSelectedElement.cols || 4)
+      const tRows = Math.max(1, singleSelectedElement.rows || 3)
+      const colW = bounds.width / tCols
+      const rowH = bounds.height / tRows
+      const cellCenterX = bounds.x + selectedTableCell.col * colW + colW / 2
+      const cellBottomY = bounds.y + (selectedTableCell.row + 1) * rowH
+      const screenCellBottom = worldToScreen(cellCenterX, cellBottomY)
+      let cellTop = screenCellBottom.y + 14
+      let cellLeft = screenCellBottom.x
+      if (cellTop > window.innerHeight - 80) {
+        const cellTopY = bounds.y + selectedTableCell.row * rowH
+        cellTop = worldToScreen(cellCenterX, cellTopY).y - 58
+      }
+      return { top: cellTop, left: cellLeft }
+    }
+
+    // If a specific table column is selected, center horizontally on that column
+    if (isTable && selectedTableCol !== null) {
+      const tCols = Math.max(1, singleSelectedElement.cols || 4)
+      const colW = bounds.width / tCols
+      const colCenterX = bounds.x + selectedTableCol * colW + colW / 2
+      const colScreenX = worldToScreen(colCenterX, bounds.y).x
+      let top = topScreen.y - 58
+      if (top < 65) top = bottomScreen.y + 44
+      return { top, left: colScreenX }
+    }
+
     let top = isTable ? topScreen.y - 68 : topScreen.y - 52
     let left = topScreen.x
 
@@ -2355,7 +2571,6 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
       {/* 2. Interactive DATA-TASK Frame Overlay (Live Task Database Widget) */}
       {doc.elements.filter(el => el.type === 'data-task').map(dataTaskEl => {
         const screenPos = worldToScreen(dataTaskEl.x, dataTaskEl.y)
-        const isSelected = selectedIds.includes(dataTaskEl.id)
         const currentView = dataTaskEl.viewMode || 'calendar'
         const currentBoardId = dataTaskEl.boardId || 'default'
 
@@ -2371,7 +2586,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 }
               }
             }}
-            className={`absolute z-10 rounded-2xl bg-[#15151a] shadow-2xl flex flex-col overflow-hidden text-xs text-zinc-200 transition-shadow ${
+            className={`absolute z-10 rounded-2xl bg-[#15151a] border border-white/[0.08] shadow-2xl flex flex-col overflow-hidden text-xs text-zinc-200 transition-shadow ${
               tool !== 'select' ? 'pointer-events-none' : 'pointer-events-auto'
             }`}
             style={{
@@ -2381,13 +2596,13 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
               left: 0,
               top: 0,
               willChange: 'transform',
-              boxShadow: isSelected ? '0 0 0 2px var(--accent)' : '0 20px 45px -10px rgba(0,0,0,0.7)'
+              boxShadow: '0 20px 45px -10px rgba(0,0,0,0.7)'
             }}
           >
             {/* Widget Top Header - Sleek Tonal Contrast + Drag Surface */}
             <div
               onPointerDown={(e) => handleCardHeaderPointerDown(e, dataTaskEl.id)}
-              className="p-3 pb-2.5 bg-[#1a1a22] flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/[0.04]"
+              className="p-3 pb-2.5 bg-[#181820] flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/[0.06]"
             >
               <div className="flex items-center gap-2 pointer-events-none">
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.05] text-zinc-200 font-medium text-[11px]">
@@ -2464,11 +2679,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
               </div>
             </div>
 
-            {/* Widget Main View Area */}
-            <div className="flex-1 overflow-auto p-3 flex flex-col">
-              {/* VIEW 1: CALENDAR VIEW (Sleek Tonal Grid, No Harsh Borders) */}
+            {/* Widget Main View Area - Fluid Unified Body */}
+            <div className="flex-1 overflow-auto flex flex-col bg-[#131317]">
+              {/* VIEW 1: CALENDAR VIEW */}
               {currentView === 'calendar' && (
-                <div className="flex-1 flex flex-col bg-[#121216] rounded-xl p-2.5 text-zinc-100 overflow-hidden">
+                <div className="flex-1 flex flex-col p-3 text-zinc-100 overflow-hidden">
                   {/* Calendar Top Month Navigation */}
                   <div className="flex items-center justify-between pb-2 mb-2">
                     <div className="flex items-center gap-2">
@@ -2584,7 +2799,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
 
               {/* VIEW 2: LIST VIEW */}
               {currentView === 'list' && (
-                <div className="flex-1 flex flex-col bg-[#121216] rounded-xl p-2.5 overflow-y-auto">
+                <div className="flex-1 flex flex-col p-3 overflow-y-auto">
                   <div className="flex flex-col gap-1.5">
                     {filteredTasks.length === 0 ? (
                       <div className="text-center py-8 text-zinc-500 text-xs">
@@ -2638,11 +2853,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
 
               {/* VIEW 3: KANBAN VIEW */}
               {currentView === 'kanban' && (
-                <div className="flex-1 flex gap-2 overflow-x-auto pb-1">
+                <div className="flex-1 flex gap-2.5 p-3 overflow-x-auto pb-2">
                   {(taskSettings.statuses || []).map(status => {
                     const statusTasks = filteredTasks.filter(t => t.statusId === status.id)
                     return (
-                      <div key={status.id} className="w-48 shrink-0 bg-[#121216] rounded-xl p-2.5 flex flex-col">
+                      <div key={status.id} className="w-48 shrink-0 bg-[#16161c] rounded-xl p-2.5 flex flex-col border border-white/[0.04]">
                         <div className="flex items-center justify-between pb-2 mb-2">
                           <div className="flex items-center gap-1.5 font-semibold text-[11px] text-zinc-200">
                             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: status.color }} />
@@ -2680,7 +2895,6 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
       {/* 2.5. Interactive NOTE-CARD Frame Overlay (Imported Vault Note Document) */}
       {doc.elements.filter(el => el.type === 'note-card').map(noteEl => {
         const screenPos = worldToScreen(noteEl.x, noteEl.y)
-        const isSelected = selectedIds.includes(noteEl.id)
 
         // Try to read live note from vault, falling back to cached note fields in element
         const liveNote = notes.find(n => n.id === noteEl.noteId)
@@ -2700,7 +2914,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 }
               }
             }}
-            className={`absolute z-10 rounded-2xl bg-[#16161a] shadow-2xl flex flex-col overflow-hidden text-xs text-zinc-200 transition-shadow ${
+            className={`absolute z-10 rounded-2xl bg-[#15151a] border border-white/[0.08] shadow-2xl flex flex-col overflow-hidden text-xs text-zinc-200 transition-shadow ${
               tool !== 'select' ? 'pointer-events-none' : 'pointer-events-auto'
             }`}
             style={{
@@ -2710,13 +2924,13 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
               left: 0,
               top: 0,
               willChange: 'transform',
-              boxShadow: isSelected ? '0 0 0 2px var(--accent)' : '0 20px 45px -10px rgba(0,0,0,0.7)'
+              boxShadow: '0 20px 45px -10px rgba(0,0,0,0.7)'
             }}
           >
             {/* Top Card Header - Drag Surface */}
             <div
               onPointerDown={(e) => handleCardHeaderPointerDown(e, noteEl.id)}
-              className="p-3 pb-2.5 bg-[#1a1a22] flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/[0.04]"
+              className="p-3 pb-2.5 bg-[#181820] flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/[0.06]"
             >
               <div className="flex items-center gap-2 min-w-0 pointer-events-none">
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.05] text-zinc-100 font-semibold text-[11px] shrink-0">
@@ -2779,7 +2993,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
 
             {/* Scrollable Content Body with live text / markdown preview */}
             <div
-              className="flex-1 overflow-y-auto p-4 select-text leading-relaxed font-sans text-zinc-300 text-[13px] bg-[#121216]/60 scrollbar-thin scrollbar-thumb-zinc-700/60"
+              className="flex-1 overflow-y-auto p-4 select-text leading-relaxed font-sans text-zinc-300 text-[13px] bg-[#131317] scrollbar-thin scrollbar-thumb-zinc-700/60"
               onPointerDown={() => {
                 if (tool === 'select' && !selectedIds.includes(noteEl.id)) {
                   setSelectedIds([noteEl.id])
@@ -2798,7 +3012,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
             </div>
 
             {/* Bottom Card Footer */}
-            <div className="px-3 py-1.5 border-t border-white/[0.04] bg-[#141418] flex items-center justify-between text-[10px] text-zinc-500 font-mono shrink-0">
+            <div className="px-3 py-2 border-t border-white/[0.06] bg-[#16161c] flex items-center justify-between text-[10px] text-zinc-500 font-mono shrink-0">
               <span>{displayContent.length} caracteres</span>
               <span>Documento acoplado</span>
             </div>
@@ -3004,48 +3218,61 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 </button>
               </>
             ) : singleSelectedElement.type === 'table' ? (
-              /* C. TABLE TOOLBAR - Matching User Prints 2, 4, 5 */
+              /* C. TABLE TOOLBAR - Matching User Prints & FigJam Spec */
               <>
-                {/* 1. Table Background Color button */}
+                {/* 1. Table / Cell / Row / Column Background Color */}
                 <div className="relative">
                   <button
                     onClick={() => setOpenPopover(prev => prev === 'tableColor' ? null : 'tableColor')}
                     className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
                       openPopover === 'tableColor' ? 'bg-zinc-800 text-white shadow-xs' : ''
                     }`}
-                    title="Cor da tabela"
+                    title={
+                      selectedTableCell ? 'Cor da célula selecionada' :
+                      selectedTableCol !== null ? `Cor da coluna ${selectedTableCol + 1}` :
+                      selectedTableRow !== null ? `Cor da linha ${selectedTableRow + 1}` :
+                      'Cor da tabela'
+                    }
                   >
                     <div
                       className="w-4 h-4 rounded-full border border-zinc-600 shadow-xs"
-                      style={{ backgroundColor: singleSelectedElement.backgroundColor || '#18181b' }}
+                      style={{ backgroundColor: getTableCurrentValue('backgroundColor', '#18181b') }}
                     />
                     <ChevronDown className="w-3 h-3 text-zinc-400" />
                   </button>
 
-                  {/* Table Color Popover */}
+                  {/* Color Popover */}
                   {openPopover === 'tableColor' && (
                     <div className="absolute left-0 bottom-full mb-2 w-52 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2.5 z-40">
-                      <span className="text-[10px] text-zinc-400 block mb-1.5">Cor da Tabela</span>
+                      <span className="text-[10px] text-zinc-400 block mb-1.5">
+                        {selectedTableCell ? 'Cor de fundo da Célula' :
+                         selectedTableCol !== null ? `Cor de fundo da Coluna ${selectedTableCol + 1}` :
+                         selectedTableRow !== null ? `Cor de fundo da Linha ${selectedTableRow + 1}` :
+                         'Cor de fundo da Tabela'}
+                      </span>
                       <div className="grid grid-cols-6 gap-1.5 mb-2">
-                        {TABLE_COLORS.map(color => (
-                          <button
-                            key={color}
-                            onClick={() => {
-                              updateSelectedProperty('backgroundColor', color)
-                              setOpenPopover(null)
-                            }}
-                            className={`w-6 h-6 rounded-lg border transition-transform hover:scale-110 cursor-pointer ${
-                              singleSelectedElement.backgroundColor === color
-                                ? 'scale-105 ring-2'
-                                : 'border-zinc-700/60'
-                            }`}
-                            style={{
-                              backgroundColor: color,
-                              borderColor: singleSelectedElement.backgroundColor === color ? 'var(--accent)' : undefined
-                            }}
-                            title={color}
-                          />
-                        ))}
+                        {TABLE_COLORS.map(color => {
+                          const currBg = getTableCurrentValue('backgroundColor', '#18181b')
+                          return (
+                            <button
+                              key={color}
+                              onClick={() => {
+                                updateTableFormatting('backgroundColor', color)
+                                setOpenPopover(null)
+                              }}
+                              className={`w-6 h-6 rounded-lg border transition-transform hover:scale-110 cursor-pointer ${
+                                currBg === color
+                                  ? 'scale-105 ring-2'
+                                  : 'border-zinc-700/60'
+                              }`}
+                              style={{
+                                backgroundColor: color,
+                                borderColor: currBg === color ? 'var(--accent)' : undefined
+                              }}
+                              title={color}
+                            />
+                          )
+                        })}
 
                         {/* Rainbow circle for Custom color picker */}
                         <button
@@ -3066,17 +3293,81 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                   )}
                 </div>
 
-                {/* 2. Font family selector Aa */}
-                <button
-                  onClick={() => {
-                    const next = singleSelectedElement.fontFamily === 'sans' ? 'handwriting' : singleSelectedElement.fontFamily === 'handwriting' ? 'mono' : 'sans'
-                    updateSelectedProperty('fontFamily', next)
-                  }}
-                  className="px-2 py-1.5 rounded-lg font-serif font-bold text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-                  title={`Fonte: ${singleSelectedElement.fontFamily || 'sans'}`}
-                >
-                  Aa
-                </button>
+                {/* 2. Text Color & Font Popover [ Aa ▾ ] */}
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenPopover(prev => prev === 'tableTypography' ? null : 'tableTypography')}
+                    className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                      openPopover === 'tableTypography' ? 'bg-zinc-800 text-white shadow-xs' : ''
+                    }`}
+                    title="Tipografia e Cor do Texto"
+                  >
+                    <span
+                      className="font-serif font-bold text-xs"
+                      style={{ color: getTableCurrentValue('textColor', '#f4f4f5') }}
+                    >
+                      Aa
+                    </span>
+                    <ChevronDown className="w-2.5 h-2.5 text-zinc-400" />
+                  </button>
+
+                  {openPopover === 'tableTypography' && (
+                    <div className="absolute left-0 bottom-full mb-2 w-56 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2.5 z-40 text-xs">
+                      {/* Font family choices */}
+                      <span className="text-[10px] text-zinc-400 block mb-1">Família da Fonte</span>
+                      <div className="grid grid-cols-3 gap-1 mb-2.5">
+                        {[
+                          { id: 'sans', label: 'Sans', fontClass: 'font-sans' },
+                          { id: 'handwriting', label: 'Escrita', fontClass: 'font-serif italic' },
+                          { id: 'mono', label: 'Mono', fontClass: 'font-mono' }
+                        ].map(f => {
+                          const currFam = getTableCurrentValue('fontFamily', 'sans')
+                          const isSel = currFam === f.id
+                          return (
+                            <button
+                              key={f.id}
+                              onClick={() => {
+                                updateTableFormatting('fontFamily', f.id)
+                                setOpenPopover(null)
+                              }}
+                              className={`py-1 px-1.5 rounded text-center transition-colors cursor-pointer ${
+                                isSel ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
+                              } ${f.fontClass}`}
+                              style={isSel ? { backgroundColor: 'var(--accent)' } : undefined}
+                            >
+                              {f.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      {/* Text Color presets */}
+                      <span className="text-[10px] text-zinc-400 block mb-1">Cor do Texto</span>
+                      <div className="grid grid-cols-6 gap-1.5">
+                        {[
+                          '#f4f4f5', '#a1a1aa', '#ef4444', '#f97316', '#eab308',
+                          '#22c55e', '#06b6d4', '#3b82f6', '#a855f7', '#ec4899', '#ffffff', '#18181b'
+                        ].map(c => {
+                          const currColor = getTableCurrentValue('textColor', '#f4f4f5')
+                          return (
+                            <button
+                              key={c}
+                              onClick={() => {
+                                updateTableFormatting('textColor', c)
+                                setOpenPopover(null)
+                              }}
+                              className={`w-6 h-6 rounded-md border transition-transform hover:scale-110 cursor-pointer ${
+                                currColor === c ? 'ring-2 ring-sky-400' : 'border-zinc-700/60'
+                              }`}
+                              style={{ backgroundColor: c }}
+                              title={c}
+                            />
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* 3. Text Size Dropdown ("Pequeno", "Médio", "Grande") */}
                 <div className="relative">
@@ -3086,7 +3377,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                       openPopover === 'tableSize' ? 'bg-zinc-800 text-white' : ''
                     }`}
                   >
-                    <span>{singleSelectedElement.fontSize === 18 ? 'Grande' : singleSelectedElement.fontSize === 12 ? 'Pequeno' : 'Médio'}</span>
+                    <span>{getTableCurrentValue('fontSize', 14) === 18 ? 'Grande' : getTableCurrentValue('fontSize', 14) === 12 ? 'Pequeno' : 'Médio'}</span>
                     <ChevronDown className="w-3 h-3 text-zinc-400" />
                   </button>
 
@@ -3096,21 +3387,24 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                         { size: 12, label: 'Pequeno' },
                         { size: 14, label: 'Médio' },
                         { size: 18, label: 'Grande' }
-                      ].map(opt => (
-                        <button
-                          key={opt.size}
-                          onClick={() => {
-                            updateSelectedProperty('fontSize', opt.size)
-                            setOpenPopover(null)
-                          }}
-                          className={`px-2.5 py-1.5 rounded text-left transition-colors cursor-pointer ${
-                            (singleSelectedElement.fontSize || 14) === opt.size ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
-                          }`}
-                          style={(singleSelectedElement.fontSize || 14) === opt.size ? { backgroundColor: 'var(--accent)' } : undefined}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
+                      ].map(opt => {
+                        const currSize = getTableCurrentValue('fontSize', 14)
+                        return (
+                          <button
+                            key={opt.size}
+                            onClick={() => {
+                              updateTableFormatting('fontSize', opt.size)
+                              setOpenPopover(null)
+                            }}
+                            className={`px-2.5 py-1.5 rounded text-left transition-colors cursor-pointer ${
+                              currSize === opt.size ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
+                            }`}
+                            style={currSize === opt.size ? { backgroundColor: 'var(--accent)' } : undefined}
+                          >
+                            {opt.label}
+                          </button>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -3119,11 +3413,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
 
                 {/* 4. Bold [ B ] */}
                 <button
-                  onClick={() => updateSelectedProperty('isBold', !singleSelectedElement.isBold)}
+                  onClick={() => updateTableFormatting('isBold', !getTableCurrentValue('isBold', false))}
                   className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                    singleSelectedElement.isBold ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                    getTableCurrentValue('isBold', false) ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
                   }`}
-                  style={singleSelectedElement.isBold ? { backgroundColor: 'var(--accent)' } : undefined}
+                  style={getTableCurrentValue('isBold', false) ? { backgroundColor: 'var(--accent)' } : undefined}
                   title="Negrito"
                 >
                   <Bold className="w-3.5 h-3.5" />
@@ -3131,11 +3425,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
 
                 {/* 5. Strikethrough [ S̶ ] */}
                 <button
-                  onClick={() => updateSelectedProperty('isStrikethrough', !singleSelectedElement.isStrikethrough)}
+                  onClick={() => updateTableFormatting('isStrikethrough', !getTableCurrentValue('isStrikethrough', false))}
                   className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                    singleSelectedElement.isStrikethrough ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                    getTableCurrentValue('isStrikethrough', false) ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
                   }`}
-                  style={singleSelectedElement.isStrikethrough ? { backgroundColor: 'var(--accent)' } : undefined}
+                  style={getTableCurrentValue('isStrikethrough', false) ? { backgroundColor: 'var(--accent)' } : undefined}
                   title="Tachado / Riscado"
                 >
                   <Strikethrough className="w-3.5 h-3.5" />
@@ -3143,11 +3437,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
 
                 {/* 6. Bullet List [ ≡: ] */}
                 <button
-                  onClick={() => updateSelectedProperty('isList', !singleSelectedElement.isList)}
+                  onClick={() => updateTableFormatting('isList', !getTableCurrentValue('isList', false))}
                   className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                    singleSelectedElement.isList ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+                    getTableCurrentValue('isList', false) ? 'text-white shadow-xs' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
                   }`}
-                  style={singleSelectedElement.isList ? { backgroundColor: 'var(--accent)' } : undefined}
+                  style={getTableCurrentValue('isList', false) ? { backgroundColor: 'var(--accent)' } : undefined}
                   title="Lista com Marcadores"
                 >
                   <List className="w-3.5 h-3.5" />
@@ -3162,9 +3456,9 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                     }`}
                     title="Alinhamento do texto"
                   >
-                    {singleSelectedElement.textAlign === 'center' ? (
+                    {getTableCurrentValue('textAlign', 'left') === 'center' ? (
                       <AlignCenter className="w-3.5 h-3.5" />
-                    ) : singleSelectedElement.textAlign === 'right' ? (
+                    ) : getTableCurrentValue('textAlign', 'left') === 'right' ? (
                       <AlignRight className="w-3.5 h-3.5" />
                     ) : (
                       <AlignLeft className="w-3.5 h-3.5" />
@@ -3180,17 +3474,18 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                         { align: 'right', label: 'Direita', icon: AlignRight }
                       ].map(opt => {
                         const Icon = opt.icon
+                        const currAlign = getTableCurrentValue('textAlign', 'left')
                         return (
                           <button
                             key={opt.align}
                             onClick={() => {
-                              updateSelectedProperty('textAlign', opt.align as any)
+                              updateTableFormatting('textAlign', opt.align as any)
                               setOpenPopover(null)
                             }}
                             className={`flex items-center gap-1.5 px-2 py-1 rounded text-left transition-colors cursor-pointer ${
-                              (singleSelectedElement.textAlign || 'left') === opt.align ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
+                              currAlign === opt.align ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
                             }`}
-                            style={(singleSelectedElement.textAlign || 'left') === opt.align ? { backgroundColor: 'var(--accent)' } : undefined}
+                            style={currAlign === opt.align ? { backgroundColor: 'var(--accent)' } : undefined}
                           >
                             <Icon className="w-3.5 h-3.5" />
                             <span>{opt.label}</span>
@@ -3200,6 +3495,69 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                     </div>
                   )}
                 </div>
+
+                {/* 8. Delete / Clear Action depending on active selection target */}
+                <div className="w-px h-4 bg-zinc-700/80 mx-0.5" />
+
+                {selectedTableCol !== null ? (
+                  <button
+                    onClick={() => handleDeleteTableCol(singleSelectedElement.id, selectedTableCol)}
+                    className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                    title={`Excluir coluna ${selectedTableCol + 1}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                ) : selectedTableRow !== null ? (
+                  <button
+                    onClick={() => handleDeleteTableRow(singleSelectedElement.id, selectedTableRow)}
+                    className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                    title={`Excluir linha ${selectedTableRow + 1}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                ) : selectedTableCell ? (
+                  <button
+                    onClick={() => {
+                      const key = `${selectedTableCell.row}_${selectedTableCell.col}`
+                      setDoc(prev => {
+                        const updated = prev.elements.map(el => {
+                          if (el.id !== singleSelectedElement.id) return el
+                          const cells = { ...(el.cells || {}) }
+                          delete cells[key]
+                          const cellStyles = { ...(el.cellStyles || {}) }
+                          delete cellStyles[key]
+                          return { ...el, cells, cellStyles }
+                        })
+                        scheduleSave({ ...prev, elements: updated })
+                        return { ...prev, elements: updated }
+                      })
+                    }}
+                    className="p-1.5 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                    title="Limpar conteúdo e formatação da célula"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      const idsToRemove = new Set(selectedIds)
+                      const updated = doc.elements.filter(el => !idsToRemove.has(el.id))
+                      setDoc(prev => {
+                        const next = { ...prev, elements: updated }
+                        scheduleSave(next)
+                        return next
+                      })
+                      pushHistory(updated)
+                      setSelectedIds([])
+                      setOpenPopover(null)
+                      setShowCustomPicker(false)
+                    }}
+                    className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                    title="Excluir tabela inteira"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </>
             ) : singleSelectedElement.type === 'note-card' ? (
               /* D. NOTE CARD TOOLBAR */
@@ -3293,6 +3651,38 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Connector Style Switcher (Orthogonal vs Straight) */}
+                {(singleSelectedElement.type === 'line' || singleSelectedElement.type === 'arrow') && (
+                  <div className="flex items-center bg-zinc-900/80 p-0.5 rounded-lg border border-zinc-800">
+                    <button
+                      onClick={() => updateSelectedProperty('connectorStyle', 'orthogonal')}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors cursor-pointer ${
+                        singleSelectedElement.connectorStyle !== 'straight'
+                          ? 'text-white shadow-xs font-medium'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                      style={singleSelectedElement.connectorStyle !== 'straight' ? { backgroundColor: 'var(--accent)' } : undefined}
+                      title="Conector Ortogonal Curvado"
+                    >
+                      <CornerDownRight className="w-3.5 h-3.5" />
+                      <span>Ortogonal</span>
+                    </button>
+                    <button
+                      onClick={() => updateSelectedProperty('connectorStyle', 'straight')}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors cursor-pointer ${
+                        singleSelectedElement.connectorStyle === 'straight'
+                          ? 'text-white shadow-xs font-medium'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                      style={singleSelectedElement.connectorStyle === 'straight' ? { backgroundColor: 'var(--accent)' } : undefined}
+                      title="Linha Reta"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                      <span>Reta</span>
+                    </button>
                   </div>
                 )}
 
@@ -4055,7 +4445,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
         </div>
       )}
 
-      {/* 9. In-place Overlay Text Editor for Table Cells */}
+      {/* 9. In-place Overlay Text Editor for Table Cells (Transparent background matching FigJam) */}
       {editingTableCell && (
         <div
           className="absolute z-35"
@@ -4066,44 +4456,59 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
             height: `${editingTableCell.height * doc.viewport.zoom}px`
           }}
         >
-          <textarea
-            ref={tableCellInputRef}
-            value={editingTableCell.text}
-            onChange={e => setEditingTableCell(prev => prev ? { ...prev, text: e.target.value } : null)}
-            onBlur={() => handleFinishEditingTableCell()}
-            onKeyDown={e => {
-              if (e.key === 'Tab') {
-                e.preventDefault()
-                const delta = e.shiftKey ? -1 : 1
-                const table = doc.elements.find(el => el.id === editingTableCell.tableId)
-                if (table) {
-                  const r = editingTableCell.row
-                  const c = editingTableCell.col
-                  const cols = table.cols || 4
-                  const rows = table.rows || 3
-                  let nextC = c + delta
-                  let nextR = r
-                  if (nextC >= cols) {
-                    nextC = 0
-                    nextR = Math.min(rows - 1, r + 1)
-                  } else if (nextC < 0) {
-                    nextC = cols - 1
-                    nextR = Math.max(0, r - 1)
+          {(() => {
+            const table = doc.elements.find(el => el.id === editingTableCell.tableId)
+            const cellKey = `${editingTableCell.row}_${editingTableCell.col}`
+            const cellSt = table?.cellStyles?.[cellKey]
+            const cellFontSize = (cellSt?.fontSize || table?.fontSize || 14) * doc.viewport.zoom
+            const cellFontFam = cellSt?.fontFamily === 'mono' ? 'monospace' : cellSt?.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'
+            const cellColor = cellSt?.textColor || table?.strokeColor || '#f4f4f5'
+            const isBold = cellSt?.isBold !== undefined ? cellSt.isBold : !!table?.isBold
+            const textAlign = cellSt?.textAlign || table?.textAlign || 'left'
+
+            return (
+              <textarea
+                ref={tableCellInputRef}
+                value={editingTableCell.text}
+                onChange={e => setEditingTableCell(prev => prev ? { ...prev, text: e.target.value } : null)}
+                onBlur={() => handleFinishEditingTableCell()}
+                onKeyDown={e => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault()
+                    const delta = e.shiftKey ? -1 : 1
+                    if (table) {
+                      const r = editingTableCell.row
+                      const c = editingTableCell.col
+                      const cols = table.cols || 4
+                      const rows = table.rows || 3
+                      let nextC = c + delta
+                      let nextR = r
+                      if (nextC >= cols) {
+                        nextC = 0
+                        nextR = Math.min(rows - 1, r + 1)
+                      } else if (nextC < 0) {
+                        nextC = cols - 1
+                        nextR = Math.max(0, r - 1)
+                      }
+                      handleFinishEditingTableCell({ r: nextR, c: nextC })
+                    }
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    handleFinishEditingTableCell()
                   }
-                  handleFinishEditingTableCell({ r: nextR, c: nextC })
-                }
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                handleFinishEditingTableCell()
-              }
-            }}
-            placeholder="Digite algo..."
-            className="w-full h-full bg-[#18181b] text-zinc-100 outline-none p-2 resize-none font-sans rounded-md border shadow-2xl leading-snug"
-            style={{
-              fontSize: `${(doc.elements.find(el => el.id === editingTableCell.tableId)?.fontSize || 14) * doc.viewport.zoom}px`,
-              borderColor: 'var(--accent)'
-            }}
-          />
+                }}
+                placeholder="Digite algo..."
+                className="w-full h-full bg-transparent outline-none p-2 resize-none border-2 border-sky-400 leading-snug"
+                style={{
+                  fontSize: `${cellFontSize}px`,
+                  fontFamily: cellFontFam,
+                  color: cellColor,
+                  fontWeight: isBold ? 'bold' : 'normal',
+                  textAlign: textAlign as any
+                }}
+              />
+            )
+          })()}
         </div>
       )}
 
@@ -4127,104 +4532,46 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
 
         return (
           <div className="pointer-events-auto">
+            {/* A0. Selected Cell Highlight */}
+            {selectedTableCell && selectedTableCell.tableId === selectedTable.id && (
+              <div
+                className="absolute pointer-events-none border-2 border-sky-400 z-25"
+                style={{
+                  left: `${tX + selectedTableCell.col * colW}px`,
+                  top: `${tY + selectedTableCell.row * rowH}px`,
+                  width: `${colW}px`,
+                  height: `${rowH}px`,
+                  boxSizing: 'border-box'
+                }}
+              />
+            )}
+
             {/* A. Selected Column Highlight */}
             {selectedTableCol !== null && selectedTableCol < tCols && (
-              <>
-                <div
-                  className="absolute pointer-events-none rounded-sm border-2 border-sky-400 bg-sky-400/10 z-25"
-                  style={{
-                    left: `${tX + selectedTableCol * colW}px`,
-                    top: `${tY}px`,
-                    width: `${colW}px`,
-                    height: `${tH}px`
-                  }}
-                />
-
-                {/* Column Action Popup */}
-                <div
-                  className="absolute flex items-center gap-1 bg-[#1a1a1e] border border-zinc-700/80 px-2 py-1 rounded-xl shadow-2xl z-40 text-[11px]"
-                  style={{
-                    left: `${tX + selectedTableCol * colW + colW / 2}px`,
-                    top: `${tY - 58}px`,
-                    transform: 'translateX(-50%)'
-                  }}
-                >
-                  <button
-                    onClick={() => handleInsertTableCol(selectedTable.id, selectedTableCol)}
-                    className="px-2 py-0.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded transition-colors cursor-pointer"
-                    title="Inserir coluna à esquerda"
-                  >
-                    + Coluna antes
-                  </button>
-                  <button
-                    onClick={() => handleInsertTableCol(selectedTable.id, selectedTableCol + 1)}
-                    className="px-2 py-0.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded transition-colors cursor-pointer"
-                    title="Inserir coluna à direita"
-                  >
-                    + Coluna depois
-                  </button>
-                  {tCols > 1 && (
-                    <button
-                      onClick={() => handleDeleteTableCol(selectedTable.id, selectedTableCol)}
-                      className="px-2 py-0.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded transition-colors cursor-pointer flex items-center gap-1"
-                      title="Excluir coluna"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      Excluir
-                    </button>
-                  )}
-                </div>
-              </>
+              <div
+                className="absolute pointer-events-none rounded-sm border-2 border-sky-400 bg-sky-400/10 z-25"
+                style={{
+                  left: `${tX + selectedTableCol * colW}px`,
+                  top: `${tY}px`,
+                  width: `${colW}px`,
+                  height: `${tH}px`,
+                  boxSizing: 'border-box'
+                }}
+              />
             )}
 
             {/* B. Selected Row Highlight */}
             {selectedTableRow !== null && selectedTableRow < tRows && (
-              <>
-                <div
-                  className="absolute pointer-events-none rounded-sm border-2 border-sky-400 bg-sky-400/10 z-25"
-                  style={{
-                    left: `${tX}px`,
-                    top: `${tY + selectedTableRow * rowH}px`,
-                    width: `${tW}px`,
-                    height: `${rowH}px`
-                  }}
-                />
-
-                {/* Row Action Popup */}
-                <div
-                  className="absolute flex items-center gap-1 bg-[#1a1a1e] border border-zinc-700/80 px-2 py-1 rounded-xl shadow-2xl z-40 text-[11px]"
-                  style={{
-                    left: `${tX - 8}px`,
-                    top: `${tY + selectedTableRow * rowH + rowH / 2}px`,
-                    transform: 'translate(-100%, -50%)'
-                  }}
-                >
-                  <button
-                    onClick={() => handleInsertTableRow(selectedTable.id, selectedTableRow)}
-                    className="px-2 py-0.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded transition-colors cursor-pointer"
-                    title="Inserir linha acima"
-                  >
-                    + Linha acima
-                  </button>
-                  <button
-                    onClick={() => handleInsertTableRow(selectedTable.id, selectedTableRow + 1)}
-                    className="px-2 py-0.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded transition-colors cursor-pointer"
-                    title="Inserir linha abaixo"
-                  >
-                    + Linha abaixo
-                  </button>
-                  {tRows > 1 && (
-                    <button
-                      onClick={() => handleDeleteTableRow(selectedTable.id, selectedTableRow)}
-                      className="px-2 py-0.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded transition-colors cursor-pointer flex items-center gap-1"
-                      title="Excluir linha"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      Excluir
-                    </button>
-                  )}
-                </div>
-              </>
+              <div
+                className="absolute pointer-events-none rounded-sm border-2 border-sky-400 bg-sky-400/10 z-25"
+                style={{
+                  left: `${tX}px`,
+                  top: `${tY + selectedTableRow * rowH}px`,
+                  width: `${tW}px`,
+                  height: `${rowH}px`,
+                  boxSizing: 'border-box'
+                }}
+              />
             )}
 
             {/* C. Bottom Bar: Add Row (Only visible on hover) */}
@@ -4265,148 +4612,172 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
               </button>
             )}
 
-            {/* E. Top Column Handles & Inserters (Only show for hovered or selected column) */}
+            {/* E. Top Column Handles & Inserters (Thin Sleek Pill + Circular Dots) */}
             {Array.from({ length: tCols }).map((_, c) => {
               const handleCenterX = tX + c * colW + colW / 2
               const isSelected = selectedTableCol === c
               const isHovered = hoveredTableCol === c
 
               if (!isSelected && !isHovered) {
-                // If adjacent column is hovered, show divider inserter
+                // If adjacent column is hovered, show divider inserter dot
                 const showDivider = hoveredTableCol === c + 1
                 if (!showDivider || c + 1 >= tCols) return null
                 return (
                   <button
                     key={`col_div_${c}`}
-                    onClick={() => handleInsertTableCol(selectedTable.id, c + 1)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleInsertTableCol(selectedTable.id, c + 1)
+                    }}
                     onMouseEnter={() => setHoveredTableCol(c)}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 text-zinc-950 hover:scale-125 shadow-xs animate-in fade-in duration-100"
+                    className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 hover:scale-125 shadow-xs animate-in fade-in duration-100"
                     style={{
                       left: `${tX + (c + 1) * colW}px`,
-                      top: `${tY - 14}px`
+                      top: `${tY - 9}px`
                     }}
                     title={`Inserir coluna entre ${c + 1} e ${c + 2}`}
-                  >
-                    <Plus className="w-2.5 h-2.5 stroke-[3]" />
-                  </button>
+                  />
                 )
               }
 
               return (
                 <React.Fragment key={`col_ctrl_${c}`}>
-                  {/* Column Handle [ = ] */}
+                  {/* Left Inserter Dot */}
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleInsertTableCol(selectedTable.id, c)
+                    }}
+                    onMouseEnter={() => setHoveredTableCol(c)}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 hover:scale-125 shadow-xs animate-in fade-in duration-100"
+                    style={{
+                      left: `${tX + c * colW}px`,
+                      top: `${tY - 9}px`
+                    }}
+                    title={`Inserir coluna antes da coluna ${c + 1}`}
+                  />
+
+                  {/* Sleek Column Handle Pill (Horizontal stroke) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
                       setSelectedTableCol(prev => prev === c ? null : c)
                       setSelectedTableRow(null)
+                      setSelectedTableCell(null)
                     }}
                     onMouseEnter={() => setHoveredTableCol(c)}
                     onMouseLeave={() => setHoveredTableCol(null)}
-                    className={`absolute -translate-x-1/2 w-7 h-5 rounded-md flex items-center justify-center text-xs transition-all cursor-pointer z-30 shadow-xs animate-in fade-in duration-100 ${
+                    className={`absolute -translate-x-1/2 w-5 h-1.5 rounded-full transition-all cursor-pointer z-30 shadow-xs animate-in fade-in duration-100 ${
                       isSelected
-                        ? 'bg-sky-500 text-white ring-2 ring-sky-300'
-                        : 'bg-sky-500/80 hover:bg-sky-500 text-white shadow-md'
+                        ? 'bg-sky-400 ring-2 ring-sky-300 scale-110'
+                        : 'bg-sky-400/90 hover:bg-sky-300 hover:scale-125'
                     }`}
                     style={{
                       left: `${handleCenterX}px`,
-                      top: `${tY - 26}px`
+                      top: `${tY - 10}px`
                     }}
                     title={`Selecionar coluna ${c + 1}`}
-                  >
-                    <div className="flex flex-col gap-[3px] items-center justify-center pointer-events-none">
-                      <span className="w-3.5 h-[2px] bg-current rounded-full" />
-                      <span className="w-3.5 h-[2px] bg-current rounded-full" />
-                    </div>
-                  </button>
+                  />
 
-                  {/* Column Divider Dot / Inserter between c and c + 1 */}
-                  {c + 1 < tCols && (
-                    <button
-                      onClick={() => handleInsertTableCol(selectedTable.id, c + 1)}
-                      onMouseEnter={() => setHoveredTableCol(c)}
-                      className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 text-zinc-950 hover:scale-125 shadow-xs animate-in fade-in duration-100"
-                      style={{
-                        left: `${tX + (c + 1) * colW}px`,
-                        top: `${tY - 14}px`
-                      }}
-                      title={`Inserir coluna entre ${c + 1} e ${c + 2}`}
-                    >
-                      <Plus className="w-2.5 h-2.5 stroke-[3]" />
-                    </button>
-                  )}
+                  {/* Right Inserter Dot */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleInsertTableCol(selectedTable.id, c + 1)
+                    }}
+                    onMouseEnter={() => setHoveredTableCol(c)}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 hover:scale-125 shadow-xs animate-in fade-in duration-100"
+                    style={{
+                      left: `${tX + (c + 1) * colW}px`,
+                      top: `${tY - 9}px`
+                    }}
+                    title={`Inserir coluna depois da coluna ${c + 1}`}
+                  />
                 </React.Fragment>
               )
             })}
 
-            {/* F. Left Row Handles & Inserters (Only show for hovered or selected row) */}
+            {/* F. Left Row Handles & Inserters (Thin Sleek Pill + Circular Dots) */}
             {Array.from({ length: tRows }).map((_, r) => {
               const handleCenterY = tY + r * rowH + rowH / 2
               const isSelected = selectedTableRow === r
               const isHovered = hoveredTableRow === r
 
               if (!isSelected && !isHovered) {
-                // If adjacent row is hovered, show divider inserter
+                // If adjacent row is hovered, show divider inserter dot
                 const showDivider = hoveredTableRow === r + 1
                 if (!showDivider || r + 1 >= tRows) return null
                 return (
                   <button
                     key={`row_div_${r}`}
-                    onClick={() => handleInsertTableRow(selectedTable.id, r + 1)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleInsertTableRow(selectedTable.id, r + 1)
+                    }}
                     onMouseEnter={() => setHoveredTableRow(r)}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 text-zinc-950 hover:scale-125 shadow-xs animate-in fade-in duration-100"
+                    className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 hover:scale-125 shadow-xs animate-in fade-in duration-100"
                     style={{
-                      left: `${tX - 14}px`,
+                      left: `${tX - 9}px`,
                       top: `${tY + (r + 1) * rowH}px`
                     }}
                     title={`Inserir linha entre ${r + 1} e ${r + 2}`}
-                  >
-                    <Plus className="w-2.5 h-2.5 stroke-[3]" />
-                  </button>
+                  />
                 )
               }
 
               return (
                 <React.Fragment key={`row_ctrl_${r}`}>
-                  {/* Row Handle [ || ] */}
+                  {/* Top Inserter Dot */}
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleInsertTableRow(selectedTable.id, r)
+                    }}
+                    onMouseEnter={() => setHoveredTableRow(r)}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 hover:scale-125 shadow-xs animate-in fade-in duration-100"
+                    style={{
+                      left: `${tX - 9}px`,
+                      top: `${tY + r * rowH}px`
+                    }}
+                    title={`Inserir linha antes da linha ${r + 1}`}
+                  />
+
+                  {/* Sleek Row Handle Pill (Vertical stroke) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
                       setSelectedTableRow(prev => prev === r ? null : r)
                       setSelectedTableCol(null)
+                      setSelectedTableCell(null)
                     }}
                     onMouseEnter={() => setHoveredTableRow(r)}
                     onMouseLeave={() => setHoveredTableRow(null)}
-                    className={`absolute -translate-x-full -translate-y-1/2 w-5 h-7 rounded-md flex items-center justify-center text-xs transition-all cursor-pointer z-30 shadow-xs animate-in fade-in duration-100 ${
+                    className={`absolute -translate-y-1/2 w-1.5 h-5 rounded-full transition-all cursor-pointer z-30 shadow-xs animate-in fade-in duration-100 ${
                       isSelected
-                        ? 'bg-sky-500 text-white ring-2 ring-sky-300'
-                        : 'bg-sky-500/80 hover:bg-sky-500 text-white shadow-md'
+                        ? 'bg-sky-400 ring-2 ring-sky-300 scale-110'
+                        : 'bg-sky-400/90 hover:bg-sky-300 hover:scale-125'
                     }`}
                     style={{
-                      left: `${tX - 8}px`,
+                      left: `${tX - 10}px`,
                       top: `${handleCenterY}px`
                     }}
                     title={`Selecionar linha ${r + 1}`}
-                  >
-                    <div className="flex flex-row gap-[3px] items-center justify-center pointer-events-none">
-                      <span className="h-3.5 w-[2px] bg-current rounded-full" />
-                      <span className="h-3.5 w-[2px] bg-current rounded-full" />
-                    </div>
-                  </button>
+                  />
 
-                  {/* Row Divider Dot / Inserter between r and r + 1 */}
-                  {r + 1 < tRows && (
-                    <button
-                      onClick={() => handleInsertTableRow(selectedTable.id, r + 1)}
-                      onMouseEnter={() => setHoveredTableRow(r)}
-                      className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 text-zinc-950 hover:scale-125 shadow-xs animate-in fade-in duration-100"
-                      style={{
-                        left: `${tX - 14}px`,
-                        top: `${tY + (r + 1) * rowH}px`
-                      }}
-                      title={`Inserir linha entre ${r + 1} e ${r + 2}`}
-                    >
-                      <Plus className="w-2.5 h-2.5 stroke-[3]" />
-                    </button>
-                  )}
+                  {/* Bottom Inserter Dot */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleInsertTableRow(selectedTable.id, r + 1)
+                    }}
+                    onMouseEnter={() => setHoveredTableRow(r)}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer transition-all z-30 bg-sky-400 hover:bg-sky-300 hover:scale-125 shadow-xs animate-in fade-in duration-100"
+                    style={{
+                      left: `${tX - 9}px`,
+                      top: `${tY + (r + 1) * rowH}px`
+                    }}
+                    title={`Inserir linha depois da linha ${r + 1}`}
+                  />
                 </React.Fragment>
               )
             })}

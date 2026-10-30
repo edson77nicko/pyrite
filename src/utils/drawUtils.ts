@@ -217,6 +217,300 @@ export function updateConnectedLines(
   return hasChanged ? updated : elements
 }
 
+export function distToSegment(p: DrawPoint, v: DrawPoint, w: DrawPoint): number {
+  const l2 = (w.x - v.x) * (w.x - v.x) + (w.y - v.y) * (w.y - v.y)
+  if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y)
+  let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2
+  t = Math.max(0, Math.min(1, t))
+  return Math.hypot(p.x - (v.x + t * (w.x - v.x)), p.y - (v.y + t * (w.y - v.y)))
+}
+
+function simplifyPoints(points: DrawPoint[]): DrawPoint[] {
+  if (points.length <= 2) return points
+
+  const clean: DrawPoint[] = [points[0]]
+  for (let i = 1; i < points.length; i++) {
+    const prev = clean[clean.length - 1]
+    const curr = points[i]
+    if (Math.hypot(curr.x - prev.x, curr.y - prev.y) < 1) continue
+    clean.push(curr)
+  }
+
+  if (clean.length <= 2) return clean
+
+  const result: DrawPoint[] = [clean[0]]
+  for (let i = 1; i < clean.length - 1; i++) {
+    const prev = result[result.length - 1]
+    const curr = clean[i]
+    const next = clean[i + 1]
+
+    const isHorizontal = Math.abs(prev.y - curr.y) < 0.5 && Math.abs(curr.y - next.y) < 0.5
+    const isVertical = Math.abs(prev.x - curr.x) < 0.5 && Math.abs(curr.x - next.x) < 0.5
+
+    if (!isHorizontal && !isVertical) {
+      result.push(curr)
+    }
+  }
+  result.push(clean[clean.length - 1])
+
+  return result
+}
+
+export function getOrthogonalConnectorPoints(
+  start: DrawPoint,
+  startHandle: 'top' | 'right' | 'bottom' | 'left',
+  end: DrawPoint,
+  endHandle?: 'top' | 'right' | 'bottom' | 'left',
+  fromBounds?: { x: number; y: number; width: number; height: number },
+  toBounds?: { x: number; y: number; width: number; height: number }
+): DrawPoint[] {
+  const OFFSET = 24
+
+  const DIR_VECTORS: Record<'top' | 'right' | 'bottom' | 'left', { x: number; y: number }> = {
+    top: { x: 0, y: -1 },
+    bottom: { x: 0, y: 1 },
+    left: { x: -1, y: 0 },
+    right: { x: 1, y: 0 }
+  }
+
+  const sDir = DIR_VECTORS[startHandle]
+
+  if (!endHandle) {
+    const pStartStub = { x: start.x + sDir.x * OFFSET, y: start.y + sDir.y * OFFSET }
+    if (startHandle === 'right' || startHandle === 'left') {
+      return simplifyPoints([
+        start,
+        pStartStub,
+        { x: pStartStub.x, y: end.y },
+        end
+      ])
+    } else {
+      return simplifyPoints([
+        start,
+        pStartStub,
+        { x: end.x, y: pStartStub.y },
+        end
+      ])
+    }
+  }
+
+  const eDir = DIR_VECTORS[endHandle]
+  const pStartStub = { x: start.x + sDir.x * OFFSET, y: start.y + sDir.y * OFFSET }
+  const pEndStub = { x: end.x + eDir.x * OFFSET, y: end.y + eDir.y * OFFSET }
+
+  const fromLeft = fromBounds ? fromBounds.x : start.x
+  const fromRight = fromBounds ? fromBounds.x + fromBounds.width : start.x
+  const fromTop = fromBounds ? fromBounds.y : start.y
+  const fromBottom = fromBounds ? fromBounds.y + fromBounds.height : start.y
+
+  const toLeft = toBounds ? toBounds.x : end.x
+  const toRight = toBounds ? toBounds.x + toBounds.width : end.x
+  const toTop = toBounds ? toBounds.y : end.y
+  const toBottom = toBounds ? toBounds.y + toBounds.height : end.y
+
+  const isStartHorizontal = startHandle === 'right' || startHandle === 'left'
+  const isEndVertical = endHandle === 'top' || endHandle === 'bottom'
+
+  let points: DrawPoint[] = []
+
+  // Case 1: Start Horizontal ('right'/'left') & End Vertical ('top'/'bottom')
+  // (Exatamente como nas imagens de referência!)
+  if (isStartHorizontal && isEndVertical) {
+    let channelX: number
+    if (startHandle === 'right') {
+      if (toLeft > fromRight + OFFSET * 2) {
+        channelX = (fromRight + toLeft) / 2
+      } else {
+        channelX = Math.max(fromRight, toRight) + OFFSET
+      }
+    } else {
+      if (toRight < fromLeft - OFFSET * 2) {
+        channelX = (fromLeft + toRight) / 2
+      } else {
+        channelX = Math.min(fromLeft, toLeft) - OFFSET
+      }
+    }
+
+    let channelY = pEndStub.y
+    if (endHandle === 'top') {
+      if (end.y < fromTop) {
+        channelY = Math.min(channelY, fromTop - OFFSET)
+      }
+    } else if (endHandle === 'bottom') {
+      if (end.y > fromBottom) {
+        channelY = Math.max(channelY, fromBottom + OFFSET)
+      }
+    }
+
+    points = [
+      start,
+      { x: channelX, y: start.y },
+      { x: channelX, y: channelY },
+      { x: end.x, y: channelY },
+      end
+    ]
+  }
+  // Case 2: Start Vertical ('top'/'bottom') & End Horizontal ('left'/'right')
+  else if (!isStartHorizontal && !isEndVertical) {
+    let channelY: number
+    if (startHandle === 'bottom') {
+      if (toTop > fromBottom + OFFSET * 2) {
+        channelY = (fromBottom + toTop) / 2
+      } else {
+        channelY = Math.max(fromBottom, toBottom) + OFFSET
+      }
+    } else {
+      if (toBottom < fromTop - OFFSET * 2) {
+        channelY = (fromTop + toBottom) / 2
+      } else {
+        channelY = Math.min(fromTop, toTop) - OFFSET
+      }
+    }
+
+    let channelX = pEndStub.x
+    if (endHandle === 'left') {
+      if (end.x < fromLeft) {
+        channelX = Math.min(channelX, fromLeft - OFFSET)
+      }
+    } else if (endHandle === 'right') {
+      if (end.x > fromRight) {
+        channelX = Math.max(channelX, fromRight + OFFSET)
+      }
+    }
+
+    points = [
+      start,
+      { x: start.x, y: channelY },
+      { x: channelX, y: channelY },
+      { x: channelX, y: end.y },
+      end
+    ]
+  }
+  // Case 3: Both Horizontal ('right'/'left' to 'right'/'left')
+  else if (isStartHorizontal && !isEndVertical) {
+    if (startHandle === 'right' && endHandle === 'left' && toLeft >= fromRight) {
+      const midX = (fromRight + toLeft) / 2
+      points = [
+        start,
+        { x: midX, y: start.y },
+        { x: midX, y: end.y },
+        end
+      ]
+    } else if (startHandle === 'left' && endHandle === 'right' && toRight <= fromLeft) {
+      const midX = (fromLeft + toRight) / 2
+      points = [
+        start,
+        { x: midX, y: start.y },
+        { x: midX, y: end.y },
+        end
+      ]
+    } else {
+      const detourY = Math.abs(start.y - (Math.min(fromTop, toTop) - OFFSET)) <
+        Math.abs(Math.max(fromBottom, toBottom) + OFFSET - start.y)
+        ? Math.min(fromTop, toTop) - OFFSET
+        : Math.max(fromBottom, toBottom) + OFFSET
+
+      points = [
+        start,
+        pStartStub,
+        { x: pStartStub.x, y: detourY },
+        { x: pEndStub.x, y: detourY },
+        pEndStub,
+        end
+      ]
+    }
+  }
+  // Case 4: Both Vertical ('top'/'bottom' to 'top'/'bottom')
+  else {
+    if (startHandle === 'bottom' && endHandle === 'top' && toTop >= fromBottom) {
+      const midY = (fromBottom + toTop) / 2
+      points = [
+        start,
+        { x: start.x, y: midY },
+        { x: end.x, y: midY },
+        end
+      ]
+    } else if (startHandle === 'top' && endHandle === 'bottom' && toBottom <= fromTop) {
+      const midY = (fromTop + toBottom) / 2
+      points = [
+        start,
+        { x: start.x, y: midY },
+        { x: end.x, y: midY },
+        end
+      ]
+    } else {
+      const detourX = Math.abs(start.x - (Math.min(fromLeft, toLeft) - OFFSET)) <
+        Math.abs(Math.max(fromRight, toRight) + OFFSET - start.x)
+        ? Math.min(fromLeft, toLeft) - OFFSET
+        : Math.max(fromRight, toRight) + OFFSET
+
+      points = [
+        start,
+        pStartStub,
+        { x: detourX, y: pStartStub.y },
+        { x: detourX, y: pEndStub.y },
+        pEndStub,
+        end
+      ]
+    }
+  }
+
+  return simplifyPoints(points)
+}
+
+export function drawRoundedOrthogonalPath(
+  ctx: CanvasRenderingContext2D,
+  points: DrawPoint[],
+  radius: number = 16
+) {
+  if (points.length < 2) return
+  if (points.length === 2) {
+    ctx.moveTo(points[0].x, points[0].y)
+    ctx.lineTo(points[1].x, points[1].y)
+    return
+  }
+
+  ctx.moveTo(points[0].x, points[0].y)
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1]
+    const curr = points[i]
+    const next = points[i + 1]
+
+    const d1 = Math.hypot(curr.x - prev.x, curr.y - prev.y)
+    const d2 = Math.hypot(next.x - curr.x, next.y - curr.y)
+    const r = Math.min(radius, d1 / 2, d2 / 2)
+
+    ctx.arcTo(curr.x, curr.y, next.x, next.y, r)
+  }
+  ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y)
+}
+
+export function drawArrowhead(
+  ctx: CanvasRenderingContext2D,
+  points: DrawPoint[],
+  strokeWidth: number = 2
+) {
+  if (points.length < 2) return
+  const end = points[points.length - 1]
+  const prev = points[points.length - 2]
+
+  const angle = Math.atan2(end.y - prev.y, end.x - prev.x)
+  const headLength = Math.max(12, strokeWidth * 4.5)
+  const headAngle = Math.PI / 4.8 // Abertura em V elegante e limpa
+
+  ctx.beginPath()
+  ctx.moveTo(
+    end.x - headLength * Math.cos(angle - headAngle),
+    end.y - headLength * Math.sin(angle - headAngle)
+  )
+  ctx.lineTo(end.x, end.y)
+  ctx.lineTo(
+    end.x - headLength * Math.cos(angle + headAngle),
+    end.y - headLength * Math.sin(angle + headAngle)
+  )
+  ctx.stroke()
+}
+
 export function getElementBounds(el: DrawElement): { x: number; y: number; width: number; height: number } {
   if (el.type === 'freedraw' && el.points && el.points.length > 0) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
@@ -246,6 +540,31 @@ export function getElementBounds(el: DrawElement): { x: number; y: number; width
       y: el.height < 0 ? el.y + el.height : el.y,
       width,
       height: realHeight
+    }
+  }
+
+  // Orthogonal connectors: calculate bounds covering all orthogonal path points
+  if ((el.type === 'line' || el.type === 'arrow') && (el.connectorStyle === 'orthogonal' || (el.connectorStyle !== 'straight' && !!el.startBinding))) {
+    const startHandle = el.startBinding?.handle || (Math.abs(el.width) >= Math.abs(el.height) ? (el.width >= 0 ? 'right' : 'left') : (el.height >= 0 ? 'bottom' : 'top'))
+    const points = getOrthogonalConnectorPoints(
+      { x: el.x, y: el.y },
+      startHandle,
+      { x: el.x + el.width, y: el.y + el.height },
+      el.endBinding?.handle
+    )
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const p of points) {
+      if (p.x < minX) minX = p.x
+      if (p.y < minY) minY = p.y
+      if (p.x > maxX) maxX = p.x
+      if (p.y > maxY) maxY = p.y
+    }
+    const pad = Math.max(12, (el.strokeWidth || 2) * 2)
+    return {
+      x: minX - pad,
+      y: minY - pad,
+      width: Math.max(20, maxX - minX + pad * 2),
+      height: Math.max(20, maxY - minY + pad * 2)
     }
   }
 
@@ -282,6 +601,21 @@ export function isPointInElement(point: DrawPoint, el: DrawElement): boolean {
   }
 
   if (el.type === 'line' || el.type === 'arrow') {
+    // Orthogonal connector hit test against all path segments
+    if (el.connectorStyle === 'orthogonal' || (el.connectorStyle !== 'straight' && !!el.startBinding)) {
+      const startHandle = el.startBinding?.handle || (Math.abs(el.width) >= Math.abs(el.height) ? (el.width >= 0 ? 'right' : 'left') : (el.height >= 0 ? 'bottom' : 'top'))
+      const points = getOrthogonalConnectorPoints(
+        { x: el.x, y: el.y },
+        startHandle,
+        { x: el.x + el.width, y: el.y + el.height },
+        el.endBinding?.handle
+      )
+      for (let i = 0; i < points.length - 1; i++) {
+        if (distToSegment(point, points[i], points[i + 1]) <= margin) return true
+      }
+      return false
+    }
+
     const x1 = el.x
     const y1 = el.y
     const x2 = el.x + el.width
@@ -298,7 +632,12 @@ export function isPointInElement(point: DrawPoint, el: DrawElement): boolean {
 }
 
 // Canvas rendering engine with hand-drawn organic aesthetic
-export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawElement, isSelected: boolean = false) {
+export function renderElementToCanvas(
+  ctx: CanvasRenderingContext2D,
+  el: DrawElement,
+  isSelected: boolean = false,
+  allElements?: DrawElement[]
+) {
   ctx.save()
 
   ctx.strokeStyle = el.strokeColor || '#e4e4e7'
@@ -454,43 +793,62 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
       break
     }
 
-    case 'line': {
-      ctx.beginPath()
-      ctx.moveTo(el.x, el.y)
-      ctx.lineTo(el.x + el.width, el.y + el.height)
-      ctx.stroke()
-      break
-    }
-
+    case 'line':
     case 'arrow': {
+      const isOrthogonal = el.connectorStyle === 'orthogonal' || (el.connectorStyle !== 'straight' && !!el.startBinding)
       const fromX = el.x
       const fromY = el.y
       const toX = el.x + el.width
       const toY = el.y + el.height
 
-      // Main line
-      ctx.beginPath()
-      ctx.moveTo(fromX, fromY)
-      ctx.lineTo(toX, toY)
-      ctx.stroke()
+      if (isOrthogonal) {
+        const startHandle = el.startBinding?.handle || (Math.abs(toX - fromX) >= Math.abs(toY - fromY) ? (toX >= fromX ? 'right' : 'left') : (toY >= fromY ? 'bottom' : 'top'))
+        const fromEl = el.startBinding ? allElements?.find(e => e.id === el.startBinding!.elementId) : undefined
+        const toEl = el.endBinding ? allElements?.find(e => e.id === el.endBinding!.elementId) : undefined
+        const fromBounds = fromEl ? getElementBounds(fromEl) : undefined
+        const toBounds = toEl ? getElementBounds(toEl) : undefined
 
-      // Arrowhead
-      const angle = Math.atan2(toY - fromY, toX - fromX)
-      const headLength = Math.max(12, (el.strokeWidth || 2) * 4)
-      const headAngle = Math.PI / 6
+        const points = getOrthogonalConnectorPoints(
+          { x: fromX, y: fromY },
+          startHandle,
+          { x: toX, y: toY },
+          el.endBinding?.handle,
+          fromBounds,
+          toBounds
+        )
 
-      ctx.beginPath()
-      ctx.moveTo(toX, toY)
-      ctx.lineTo(
-        toX - headLength * Math.cos(angle - headAngle),
-        toY - headLength * Math.sin(angle - headAngle)
-      )
-      ctx.moveTo(toX, toY)
-      ctx.lineTo(
-        toX - headLength * Math.cos(angle + headAngle),
-        toY - headLength * Math.sin(angle + headAngle)
-      )
-      ctx.stroke()
+        ctx.beginPath()
+        drawRoundedOrthogonalPath(ctx, points, 16)
+        ctx.stroke()
+
+        if (el.type === 'arrow') {
+          drawArrowhead(ctx, points, el.strokeWidth || 2)
+        }
+      } else {
+        // Straight line / arrow
+        ctx.beginPath()
+        ctx.moveTo(fromX, fromY)
+        ctx.lineTo(toX, toY)
+        ctx.stroke()
+
+        if (el.type === 'arrow') {
+          const angle = Math.atan2(toY - fromY, toX - fromX)
+          const headLength = Math.max(12, (el.strokeWidth || 2) * 4.5)
+          const headAngle = Math.PI / 4.8
+
+          ctx.beginPath()
+          ctx.moveTo(
+            toX - headLength * Math.cos(angle - headAngle),
+            toY - headLength * Math.sin(angle - headAngle)
+          )
+          ctx.lineTo(toX, toY)
+          ctx.lineTo(
+            toX - headLength * Math.cos(angle + headAngle),
+            toY - headLength * Math.sin(angle + headAngle)
+          )
+          ctx.stroke()
+        }
+      }
       break
     }
 
@@ -594,74 +952,61 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
 
     case 'data-task': {
       // Data Task Frame (Calendar / Kanban / List representation)
-      const radius = 12
+      const radius = 16
       ctx.beginPath()
       ctx.roundRect(normX, normY, normW, normH, radius)
-      ctx.fillStyle = '#141418'
+      ctx.fillStyle = '#15151a'
       ctx.fill()
 
       // Outer border
       ctx.beginPath()
       ctx.roundRect(normX, normY, normW, normH, radius)
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
       ctx.lineWidth = 1.5
       ctx.stroke()
 
       // Header top pill
-      ctx.fillStyle = '#222228'
+      ctx.fillStyle = '#1a1a22'
       ctx.beginPath()
-      ctx.roundRect(normX + 16, normY + 16, 110, 26, 6)
+      ctx.roundRect(normX, normY, normW, 44, [16, 16, 0, 0])
       ctx.fill()
 
       ctx.font = '600 12px Inter, system-ui, sans-serif'
       ctx.fillStyle = '#ffffff'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText('📅 ' + (el.viewMode === 'list' ? 'Lista' : el.viewMode === 'kanban' ? 'Quadro' : 'Calendário'), normX + 16 + 55, normY + 16 + 13)
-
-      // Title & Subtitle
-      ctx.font = 'bold 16px Inter, system-ui, sans-serif'
-      ctx.fillStyle = '#ffffff'
       ctx.textAlign = 'left'
-      ctx.fillText(el.text || 'Tarefas do Projeto', normX + 16, normY + 68)
-
-      ctx.font = '11px Inter, system-ui, sans-serif'
-      ctx.fillStyle = '#8e8e93'
-      ctx.fillText('Banco de dados de tarefas e acompanhamento de prazos', normX + 16, normY + 88)
+      ctx.textBaseline = 'middle'
+      ctx.fillText('📅 ' + (el.viewMode === 'list' ? 'Lista' : el.viewMode === 'kanban' ? 'Quadro' : 'Calendário'), normX + 16, normY + 22)
 
       // Content area
-      const gridTop = normY + 104
-      const gridW = normW - 32
-      const gridH = Math.max(60, normH - 120)
-      ctx.fillStyle = '#1e1e24'
+      const gridTop = normY + 48
+      const gridW = normW - 24
+      const gridH = Math.max(60, normH - 60)
+      ctx.fillStyle = '#121216'
       ctx.beginPath()
-      ctx.roundRect(normX + 16, gridTop, gridW, gridH, 8)
+      ctx.roundRect(normX + 12, gridTop, gridW, gridH, 8)
       ctx.fill()
-      ctx.strokeStyle = '#2e2e38'
-      ctx.lineWidth = 1
-      ctx.stroke()
       break
     }
 
     case 'note-card': {
       // Clean document card preview for canvas / PNG exports
-      const radius = 12
+      const radius = 16
       ctx.beginPath()
       ctx.roundRect(normX, normY, normW, normH, radius)
-      ctx.fillStyle = el.backgroundColor || '#18181e'
+      ctx.fillStyle = el.backgroundColor || '#16161a'
       ctx.fill()
 
       // Outer border
       ctx.beginPath()
       ctx.roundRect(normX, normY, normW, normH, radius)
-      ctx.strokeStyle = el.strokeColor || 'rgba(255, 255, 255, 0.14)'
+      ctx.strokeStyle = el.strokeColor || 'rgba(255, 255, 255, 0.08)'
       ctx.lineWidth = 1.5
       ctx.stroke()
 
       // Header Bar
-      ctx.fillStyle = '#202028'
+      ctx.fillStyle = '#1a1a22'
       ctx.beginPath()
-      ctx.roundRect(normX + 16, normY + 16, Math.min(220, Math.max(80, normW - 32)), 26, 6)
+      ctx.roundRect(normX, normY, normW, 44, [16, 16, 0, 0])
       ctx.fill()
 
       ctx.font = '600 12px Inter, system-ui, sans-serif'
@@ -669,17 +1014,11 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
       const titleText = '📄 ' + (el.noteTitle || 'Nota Importada')
-      ctx.fillText(titleText, normX + 24, normY + 16 + 13, Math.min(200, normW - 48))
-
-      if (el.noteFolder) {
-        ctx.font = '10px Inter, system-ui, sans-serif'
-        ctx.fillStyle = '#a1a1aa'
-        ctx.fillText('📁 ' + el.noteFolder, normX + 16, normY + 54, normW - 32)
-      }
+      ctx.fillText(titleText, normX + 16, normY + 22, Math.min(260, normW - 32))
 
       // Content preview
-      const contentTop = normY + (el.noteFolder ? 70 : 54)
-      const contentH = normH - (el.noteFolder ? 86 : 70)
+      const contentTop = normY + 54
+      const contentH = normH - 74
       if (contentH > 20) {
         ctx.save()
         ctx.beginPath()
@@ -703,7 +1042,7 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
     case 'table': {
       const rows = Math.max(1, el.rows || 3)
       const cols = Math.max(1, el.cols || 4)
-      const radius = 10
+      const radius = 12
 
       // Table background
       ctx.save()
@@ -717,13 +1056,6 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
       ctx.fill()
       ctx.restore()
 
-      // Table outer border
-      ctx.beginPath()
-      ctx.roundRect(normX, normY, normW, normH, radius)
-      ctx.strokeStyle = el.strokeColor || 'rgba(255, 255, 255, 0.16)'
-      ctx.lineWidth = el.strokeWidth || 1.5
-      ctx.stroke()
-
       // Calculate col widths & row heights
       const colW = normW / cols
       const rowH = normH / rows
@@ -733,6 +1065,19 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
       ctx.beginPath()
       ctx.roundRect(normX, normY, normW, normH, radius)
       ctx.clip()
+
+      // Render individual cell background colors if defined
+      const cellStyles = el.cellStyles || {}
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const key = `${r}_${c}`
+          const st = cellStyles[key]
+          if (st?.backgroundColor && st.backgroundColor !== 'transparent') {
+            ctx.fillStyle = st.backgroundColor
+            ctx.fillRect(normX + c * colW, normY + r * rowH, colW, rowH)
+          }
+        }
+      }
 
       // Grid lines
       ctx.beginPath()
@@ -756,14 +1101,8 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
 
       // Render cell text contents
       const cells = el.cells || {}
-      const fontSize = el.fontSize || 14
-      const fontFamily = el.fontFamily === 'mono' ? 'monospace' : el.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'
-      const fontWeight = el.isBold ? 'bold' : 'normal'
-      ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`
-      ctx.fillStyle = el.strokeColor || '#f4f4f5'
-      ctx.textAlign = (el.textAlign || 'left') as CanvasTextAlign
-      ctx.textBaseline = 'middle'
-
+      const defaultFontSize = el.fontSize || 14
+      const defaultFontFamily = el.fontFamily === 'mono' ? 'monospace' : el.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'
       const padding = 12
 
       for (let r = 0; r < rows; r++) {
@@ -771,35 +1110,49 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
           const key = `${r}_${c}`
           const rawText = cells[key]
           if (rawText) {
+            const st = cellStyles[key]
+            const cellFontSize = st?.fontSize || defaultFontSize
+            const cellFontFam = st?.fontFamily === 'mono' ? 'monospace' : st?.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : defaultFontFamily
+            const isBold = st?.isBold !== undefined ? st.isBold : el.isBold
+            const isStrike = st?.isStrikethrough !== undefined ? st.isStrikethrough : el.isStrikethrough
+            const isList = st?.isList !== undefined ? st.isList : el.isList
+            const textAlign = (st?.textAlign || el.textAlign || 'left') as CanvasTextAlign
+            const textColor = st?.textColor || el.strokeColor || '#f4f4f5'
+
+            ctx.font = `${isBold ? 'bold' : 'normal'} ${cellFontSize}px ${cellFontFam}`
+            ctx.fillStyle = textColor
+            ctx.textAlign = textAlign
+            ctx.textBaseline = 'middle'
+
             const cellX = normX + c * colW
             const cellY = normY + r * rowH
             const maxW = colW - padding * 2
 
             const lines = rawText.split('\n')
-            const lineHeight = fontSize * 1.3
+            const lineHeight = cellFontSize * 1.3
             const totalH = lines.length * lineHeight
             const startY = cellY + rowH / 2 - totalH / 2 + lineHeight / 2
 
             let tx = cellX + padding
-            if (el.textAlign === 'center') tx = cellX + colW / 2
-            else if (el.textAlign === 'right') tx = cellX + colW - padding
+            if (textAlign === 'center') tx = cellX + colW / 2
+            else if (textAlign === 'right') tx = cellX + colW - padding
 
             lines.forEach((l, idx) => {
-              const displayLine = el.isList ? `• ${l}` : l
+              const displayLine = isList ? `• ${l}` : l
               ctx.fillText(displayLine, tx, startY + idx * lineHeight, maxW)
 
-              if (el.isStrikethrough && displayLine) {
+              if (isStrike && displayLine) {
                 const metrics = ctx.measureText(displayLine)
                 const textWidth = Math.min(metrics.width, maxW)
                 let strikeStartX = tx
-                if (el.textAlign === 'center') strikeStartX = tx - textWidth / 2
-                else if (el.textAlign === 'right') strikeStartX = tx - textWidth
+                if (textAlign === 'center') strikeStartX = tx - textWidth / 2
+                else if (textAlign === 'right') strikeStartX = tx - textWidth
                 const strikeY = startY + idx * lineHeight
                 ctx.beginPath()
                 ctx.moveTo(strikeStartX, strikeY)
                 ctx.lineTo(strikeStartX + textWidth, strikeY)
                 ctx.lineWidth = 1.2
-                ctx.strokeStyle = el.strokeColor || '#f4f4f5'
+                ctx.strokeStyle = textColor
                 ctx.stroke()
               }
             })
@@ -808,6 +1161,13 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
       }
 
       ctx.restore()
+
+      // Table outer border
+      ctx.beginPath()
+      ctx.roundRect(normX, normY, normW, normH, radius)
+      ctx.strokeStyle = el.strokeColor || 'rgba(255, 255, 255, 0.16)'
+      ctx.lineWidth = el.strokeWidth || 1.5
+      ctx.stroke()
       break
     }
 
