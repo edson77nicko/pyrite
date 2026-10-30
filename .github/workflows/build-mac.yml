@@ -31,10 +31,15 @@ jobs:
       - name: Instalar dependências
         run: npm install
 
-      - name: Compilar e anexar .dmg na Release
+      - name: Compilar instalador Mac
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: |
           npm run build
-          npx electron-builder --mac --publish always
+          npx electron-builder --mac --publish never
+
+      - name: Anexar .dmg e arquivos na Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.event.inputs.tag || github.ref_name }} release/*.dmg release/*.zip release/latest-mac.yml --clobber
