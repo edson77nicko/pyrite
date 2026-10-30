@@ -12,6 +12,7 @@ export interface ElectronAPI {
   writeCanvas: (vaultPath: string, document: import('../utils/canvasBoards').CanvasDocument) => Promise<{ success: boolean; error?: string }>
   managePath: (params: { vaultPath: string; source: string; destination?: string; action: 'copy' | 'move' | 'delete' | 'open' }) => Promise<{ success: boolean; error?: string }>
   isElectron: boolean
+  platform?: string
   minimize: () => Promise<void>
   maximize: () => Promise<boolean>
   close: () => Promise<void>

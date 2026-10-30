@@ -29,6 +29,8 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 let win: BrowserWindow | null = null
 
 function createWindow() {
+  const isMac = process.platform === 'darwin'
+
   win = new BrowserWindow({
     title: 'Pyrite',
     width: 1300,
@@ -36,8 +38,10 @@ function createWindow() {
     minWidth: 920,
     minHeight: 620,
     frame: false, // Frameless window with custom Obsidian-like header
+    titleBarStyle: isMac ? 'hiddenInset' : undefined,
+    trafficLightPosition: isMac ? { x: 12, y: 10 } : undefined,
     backgroundColor: '#121214',
-    icon: path.join(process.env.VITE_PUBLIC || '', 'icon.ico'),
+    icon: path.join(process.env.VITE_PUBLIC || '', isMac ? 'icon.png' : 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,

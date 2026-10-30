@@ -11,6 +11,7 @@ export interface VaultFileItem {
 
 const electronAPI = {
   isElectron: true,
+  platform: process.platform,
   readCanvas: (vaultPath: string) => ipcRenderer.invoke('canvas:read', vaultPath),
   writeCanvas: (vaultPath: string, document: import('../src/utils/canvasBoards').CanvasDocument) => ipcRenderer.invoke('canvas:write', vaultPath, document),
   managePath: (params: { vaultPath: string; source: string; destination?: string; action: 'copy' | 'move' | 'delete' | 'open' }) => ipcRenderer.invoke('vault:managePath', params),

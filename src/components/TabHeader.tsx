@@ -55,6 +55,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
   onReorderTabs
 }) => {
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
+  const isMac = isElectron && window.electronAPI?.platform === 'darwin'
   const [isMaximized, setIsMaximized] = useState(false)
   const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatusData | null>(null)
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null)
@@ -99,7 +100,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
   const handleClose = () => window.electronAPI?.close()
 
   return (
-    <div className="app-tab-header h-9 bg-[#0c0c0e] border-b border-zinc-800/80 flex items-center justify-between px-2 select-none shrink-0 z-10 text-xs app-drag">
+    <div className={`app-tab-header h-9 bg-[#0c0c0e] border-b border-zinc-800/80 flex items-center justify-between px-2 select-none shrink-0 z-10 text-xs app-drag ${isMac ? 'pl-20' : ''}`}>
       {/* Left: Tabs List (Max 5 tabs) + New Tab Button */}
       <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-1 app-no-drag">
         {tabs.map((tab) => {
@@ -315,8 +316,8 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           <SlidersHorizontal className="w-3.5 h-3.5" />
         </button>
 
-        {/* Native Electron Window Controls (Minimize, Maximize, Close) */}
-        {isElectron && (
+        {/* Native Electron Window Controls (Minimize, Maximize, Close - Windows/Linux only) */}
+        {isElectron && !isMac && (
           <div className="flex items-center h-full ml-1.5 pl-1.5 border-l border-zinc-800/80">
             <button
               onClick={handleMinimize}
