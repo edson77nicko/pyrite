@@ -594,17 +594,11 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
 
     case 'data-task': {
       // Data Task Frame (Calendar / Kanban / List representation)
-      ctx.save()
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)'
-      ctx.shadowBlur = 16
-      ctx.shadowOffsetY = 6
-
       const radius = 12
       ctx.beginPath()
       ctx.roundRect(normX, normY, normW, normH, radius)
       ctx.fillStyle = '#141418'
       ctx.fill()
-      ctx.restore()
 
       // Outer border
       ctx.beginPath()
@@ -651,17 +645,11 @@ export function renderElementToCanvas(ctx: CanvasRenderingContext2D, el: DrawEle
 
     case 'note-card': {
       // Clean document card preview for canvas / PNG exports
-      ctx.save()
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.25)'
-      ctx.shadowBlur = 12
-      ctx.shadowOffsetY = 6
-
       const radius = 12
       ctx.beginPath()
       ctx.roundRect(normX, normY, normW, normH, radius)
       ctx.fillStyle = el.backgroundColor || '#18181e'
       ctx.fill()
-      ctx.restore()
 
       // Outer border
       ctx.beginPath()

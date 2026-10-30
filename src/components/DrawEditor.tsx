@@ -1119,27 +1119,31 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                   world.y <= bounds.y + bounds.height + tableMargin
                 ) {
                   const colIdx = Math.floor((world.x - bounds.x) / colW)
-                  setHoveredTableCol(colIdx >= 0 && colIdx < tCols ? colIdx : null)
+                  const targetCol = colIdx >= 0 && colIdx < tCols ? colIdx : null
+                  setHoveredTableCol(prev => prev === targetCol ? prev : targetCol)
 
                   const rowIdx = Math.floor((world.y - bounds.y) / rowH)
-                  setHoveredTableRow(rowIdx >= 0 && rowIdx < tRows ? rowIdx : null)
+                  const targetRow = rowIdx >= 0 && rowIdx < tRows ? rowIdx : null
+                  setHoveredTableRow(prev => prev === targetRow ? prev : targetRow)
 
-                  setIsHoveringBottomAdd(
+                  const targetBottomAdd = (
                     world.y >= bounds.y + bounds.height - 12 / doc.viewport.zoom &&
                     world.y <= bounds.y + bounds.height + tableMargin &&
                     world.x >= bounds.x && world.x <= bounds.x + bounds.width
                   )
+                  setIsHoveringBottomAdd(prev => prev === targetBottomAdd ? prev : targetBottomAdd)
 
-                  setIsHoveringRightAdd(
+                  const targetRightAdd = (
                     world.x >= bounds.x + bounds.width - 12 / doc.viewport.zoom &&
                     world.x <= bounds.x + bounds.width + tableMargin &&
                     world.y >= bounds.y && world.y <= bounds.y + bounds.height
                   )
+                  setIsHoveringRightAdd(prev => prev === targetRightAdd ? prev : targetRightAdd)
                 } else {
-                  setHoveredTableCol(null)
-                  setHoveredTableRow(null)
-                  setIsHoveringBottomAdd(false)
-                  setIsHoveringRightAdd(false)
+                  setHoveredTableCol(prev => prev === null ? prev : null)
+                  setHoveredTableRow(prev => prev === null ? prev : null)
+                  setIsHoveringBottomAdd(prev => !prev ? prev : false)
+                  setIsHoveringRightAdd(prev => !prev ? prev : false)
                 }
               }
 
@@ -1944,6 +1948,18 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
     pushHistory(updated)
   }
 
+  // Update property of specific element directly (works even when unselected, and selects it)
+  const updateElementProperty = <K extends keyof DrawElement>(elementId: string, key: K, value: DrawElement[K]) => {
+    setSelectedIds([elementId])
+    const updated = doc.elements.map(el => (el.id === elementId ? { ...el, [key]: value } : el))
+    setDoc(prev => {
+      const next = { ...prev, elements: updated }
+      scheduleSave(next)
+      return next
+    })
+    pushHistory(updated)
+  }
+
   // Duplicate Selected Elements
   const handleDuplicateSelected = () => {
     if (selectedIds.length === 0) return
@@ -2267,6 +2283,30 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
     return found ? found.icon : Square
   }
 
+  // Pre-index tasks by date for O(1) instant calendar lookup without filtering 42 times per frame
+  const tasksByDate = useMemo(() => {
+    const map = new Map<string, TaskItem[]>()
+    for (const t of tasks) {
+      if (t.date) {
+        let list = map.get(t.date)
+        if (!list) {
+          list = []
+          map.set(t.date, list)
+        }
+        list.push(t)
+      }
+      if (t.deadline && t.deadline !== t.date) {
+        let list = map.get(t.deadline)
+        if (!list) {
+          list = []
+          map.set(t.deadline, list)
+        }
+        list.push(t)
+      }
+    }
+    return map
+  }, [tasks])
+
   // Calendar calculations for DataTask widget
   const currentYear = calendarDate.getFullYear()
   const currentMonth = calendarDate.getMonth()
@@ -2274,26 +2314,27 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
   ]
-  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
-  const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay()
 
-  const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate()
-  const calendarCells: Array<{ day: number; isCurrentMonth: boolean; dateStr: string }> = []
+  // Memoize calendar month cells calculation so it doesn't re-run on every mousemove
+  const calendarCells = useMemo(() => {
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
+    const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay()
+    const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate()
+    const cells: Array<{ day: number; isCurrentMonth: boolean; dateStr: string }> = []
 
-  // Prev month padding
-  for (let i = firstDayIndex - 1; i >= 0; i--) {
-    calendarCells.push({ day: prevMonthDays - i, isCurrentMonth: false, dateStr: '' })
-  }
-  // Current month days
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-    calendarCells.push({ day: d, isCurrentMonth: true, dateStr })
-  }
-  // Next month padding to fill rows of 7
-  const remaining = 35 - calendarCells.length > 0 ? 35 - calendarCells.length : (42 - calendarCells.length)
-  for (let n = 1; n <= remaining; n++) {
-    calendarCells.push({ day: n, isCurrentMonth: false, dateStr: '' })
-  }
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      cells.push({ day: prevMonthDays - i, isCurrentMonth: false, dateStr: '' })
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      cells.push({ day: d, isCurrentMonth: true, dateStr })
+    }
+    const remaining = 35 - cells.length > 0 ? 35 - cells.length : 42 - cells.length
+    for (let n = 1; n <= remaining; n++) {
+      cells.push({ day: n, isCurrentMonth: false, dateStr: '' })
+    }
+    return cells
+  }, [currentYear, currentMonth])
 
   return (
     <div
@@ -2334,11 +2375,12 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
               tool !== 'select' ? 'pointer-events-none' : 'pointer-events-auto'
             }`}
             style={{
-              left: `${screenPos.x}px`,
-              top: `${screenPos.y}px`,
+              transform: `translate3d(${screenPos.x}px, ${screenPos.y}px, 0)`,
               width: `${dataTaskEl.width * doc.viewport.zoom}px`,
               height: `${dataTaskEl.height * doc.viewport.zoom}px`,
-              transformOrigin: 'top left',
+              left: 0,
+              top: 0,
+              willChange: 'transform',
               boxShadow: isSelected ? '0 0 0 2px var(--accent)' : '0 20px 45px -10px rgba(0,0,0,0.7)'
             }}
           >
@@ -2368,7 +2410,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 onPointerDown={(e) => e.stopPropagation()}
               >
                 <button
-                  onClick={() => updateSelectedProperty('viewMode', 'calendar')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    updateElementProperty(dataTaskEl.id, 'viewMode', 'calendar')
+                  }}
                   className={`px-2 py-1 rounded text-[10.5px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
                     currentView === 'calendar' ? 'text-white shadow-xs' : 'text-zinc-400 hover:text-zinc-200'
                   }`}
@@ -2379,7 +2424,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 </button>
 
                 <button
-                  onClick={() => updateSelectedProperty('viewMode', 'list')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    updateElementProperty(dataTaskEl.id, 'viewMode', 'list')
+                  }}
                   className={`px-2 py-1 rounded text-[10.5px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
                     currentView === 'list' ? 'text-white shadow-xs' : 'text-zinc-400 hover:text-zinc-200'
                   }`}
@@ -2390,7 +2438,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 </button>
 
                 <button
-                  onClick={() => updateSelectedProperty('viewMode', 'kanban')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    updateElementProperty(dataTaskEl.id, 'viewMode', 'kanban')
+                  }}
                   className={`px-2 py-1 rounded text-[10.5px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
                     currentView === 'kanban' ? 'text-white shadow-xs' : 'text-zinc-400 hover:text-zinc-200'
                   }`}
@@ -2401,7 +2452,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 </button>
 
                 <button
-                  onClick={handleReloadTasks}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleReloadTasks()
+                  }}
                   className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.08] transition-colors cursor-pointer"
                   title="Sincronizar tarefas do cofre"
                 >
@@ -2425,21 +2479,30 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
 
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => setCalendarDate(new Date(currentYear, currentMonth - 1, 1))}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setCalendarDate(new Date(currentYear, currentMonth - 1, 1))
+                        }}
                         className="p-1 text-zinc-400 hover:text-white rounded hover:bg-white/[0.06] transition-colors cursor-pointer"
                       >
                         <ChevronLeft className="w-3.5 h-3.5" />
                       </button>
 
                       <button
-                        onClick={() => setCalendarDate(new Date())}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setCalendarDate(new Date())
+                        }}
                         className="px-2 py-0.5 rounded text-[10px] font-medium text-zinc-300 hover:text-white bg-white/[0.06] hover:bg-white/[0.1] transition-colors cursor-pointer"
                       >
                         Hoje
                       </button>
 
                       <button
-                        onClick={() => setCalendarDate(new Date(currentYear, currentMonth + 1, 1))}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setCalendarDate(new Date(currentYear, currentMonth + 1, 1))
+                        }}
                         className="p-1 text-zinc-400 hover:text-white rounded hover:bg-white/[0.06] transition-colors cursor-pointer"
                       >
                         <ChevronRight className="w-3.5 h-3.5" />
@@ -2461,7 +2524,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                   {/* Calendar Month Cells Grid */}
                   <div className="grid grid-cols-7 gap-1 flex-1">
                     {calendarCells.map((cell, idx) => {
-                      const dayTasks = cell.dateStr ? filteredTasks.filter(t => t.date === cell.dateStr || t.deadline === cell.dateStr) : []
+                      const rawDayTasks = cell.dateStr ? tasksByDate.get(cell.dateStr) || [] : []
+                      const dayTasks = currentBoardId === 'all'
+                        ? rawDayTasks
+                        : rawDayTasks.filter(t => (t.boardId || 'default') === currentBoardId)
                       const isToday = cell.dateStr === new Date().toISOString().slice(0, 10)
 
                       return (
@@ -2638,11 +2704,12 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
               tool !== 'select' ? 'pointer-events-none' : 'pointer-events-auto'
             }`}
             style={{
-              left: `${screenPos.x}px`,
-              top: `${screenPos.y}px`,
+              transform: `translate3d(${screenPos.x}px, ${screenPos.y}px, 0)`,
               width: `${noteEl.width * doc.viewport.zoom}px`,
               height: `${noteEl.height * doc.viewport.zoom}px`,
-              transformOrigin: 'top left',
+              left: 0,
+              top: 0,
+              willChange: 'transform',
               boxShadow: isSelected ? '0 0 0 2px var(--accent)' : '0 20px 45px -10px rgba(0,0,0,0.7)'
             }}
           >
