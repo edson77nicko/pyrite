@@ -58,51 +58,67 @@ export const App: React.FC = () => {
     if (!currentPath) return
 
     try {
-      const files = await api.readVault(currentPath)
-      if (files.length > 0) {
-        setNotes(prevNotes => {
-          const existingMap = new Map(prevNotes.map(n => [n.filePath || `${n.folder}/${n.title}`, n]))
-          const loadedNotes: Note[] = files.map((f, i) => {
-            const key = f.filePath || `${f.folder}/${f.title}`
-            const existing = existingMap.get(key)
-            return {
-              id: existing ? existing.id : `note_disk_${i}_${Date.now()}`,
-              title: f.title,
-              folder: f.folder,
-              content: f.content,
-              filePath: f.filePath,
-              tags: extractTags(f.content),
-              type: (isMindMapContent(f.content) || f.filePath?.endsWith('.mindmap.json') || f.filePath?.endsWith('.mindmap.md'))
-                ? 'mindmap'
-                : (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md'))
-                ? 'draw'
-                : (f.filePath?.endsWith('.html') || f.filePath?.endsWith('.htm'))
-                ? 'html'
-                : 'note',
-              createdAt: f.createdAt,
-              updatedAt: f.updatedAt,
-              isFavorite: existing?.isFavorite
-            }
-          })
-          const loadedFolders = Array.from(new Set(loadedNotes.map(n => n.folder).filter(Boolean)))
-          setFolders(loadedFolders)
-          saveNotes(loadedNotes)
-          saveFolders(loadedFolders)
-          if (!keepSelection && loadedNotes[0]) {
-            setCurrentNoteId(loadedNotes[0].id)
-            setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title, type: loadedNotes[0].type }])
-            setActiveTabId(`tab_${loadedNotes[0].id}`)
+      const [files, diskFolders] = await Promise.all([
+        api.readVault(currentPath),
+        api.readFolders ? api.readFolders(currentPath) : Promise.resolve<string[]>([])
+      ])
+
+      const safeFiles = files || []
+      const diskFolderList = diskFolders || []
+
+      setNotes(prevNotes => {
+        const existingMap = new Map(prevNotes.map(n => [n.filePath || `${n.folder}/${n.title}`, n]))
+        const loadedNotes: Note[] = safeFiles.map((f, i) => {
+          const key = f.filePath || `${f.folder}/${f.title}`
+          const existing = existingMap.get(key)
+          return {
+            id: existing ? existing.id : `note_disk_${i}_${Date.now()}`,
+            title: f.title,
+            folder: f.folder,
+            content: f.content,
+            filePath: f.filePath,
+            tags: extractTags(f.content),
+            type: (isMindMapContent(f.content) || f.filePath?.endsWith('.mindmap.json') || f.filePath?.endsWith('.mindmap.md'))
+              ? 'mindmap'
+              : (isDrawContent(f.content) || f.filePath?.endsWith('.draw.json') || f.filePath?.endsWith('.draw.md'))
+              ? 'draw'
+              : (f.filePath?.endsWith('.html') || f.filePath?.endsWith('.htm'))
+              ? 'html'
+              : 'note',
+            createdAt: f.createdAt,
+            updatedAt: f.updatedAt,
+            isFavorite: existing?.isFavorite
           }
-          return loadedNotes
         })
-        setTasks(loadTasks(currentPath))
-        setTaskSettings(loadTaskSettings(currentPath))
-      } else {
-        setNotes([])
-        setFolders([])
-        saveNotes([])
-        saveFolders([])
-      }
+
+        const noteFolders = loadedNotes.map(n => n.folder).filter(Boolean)
+        const combinedFolders = Array.from(new Set([...diskFolderList, ...noteFolders]))
+
+        setFolders(prevFolders => {
+          const finalFolders = api.readFolders
+            ? combinedFolders
+            : Array.from(new Set([...prevFolders, ...combinedFolders]))
+          saveFolders(finalFolders)
+          return finalFolders
+        })
+
+        saveNotes(loadedNotes)
+
+        if (!keepSelection && loadedNotes[0]) {
+          setCurrentNoteId(loadedNotes[0].id)
+          setTabs([{ id: `tab_${loadedNotes[0].id}`, noteId: loadedNotes[0].id, title: loadedNotes[0].title, type: loadedNotes[0].type }])
+          setActiveTabId(`tab_${loadedNotes[0].id}`)
+        } else if (!keepSelection && loadedNotes.length === 0) {
+          setCurrentNoteId('')
+          setTabs([])
+          setActiveTabId('')
+        }
+
+        return loadedNotes
+      })
+
+      setTasks(loadTasks(currentPath))
+      setTaskSettings(loadTaskSettings(currentPath))
     } catch (err) {
       console.error('Error refreshing vault:', err)
     }
@@ -880,16 +896,20 @@ export const App: React.FC = () => {
     saveNotes(updated)
   }
 
-  const handleCreateFolder = (fullFolderPath: string) => {
-    if (!folders.includes(fullFolderPath)) {
-      const updated = [...folders, fullFolderPath]
-      setFolders(updated)
-      saveFolders(updated)
+  const handleCreateFolder = async (fullFolderPath: string) => {
+    const normalized = fullFolderPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    if (!normalized) return
 
-      // Electron disk folder creation
-      if (window.electronAPI?.isElectron && vaultPath) {
-        window.electronAPI.createFolder({ vaultPath, folderPath: fullFolderPath })
-      }
+    setFolders(prev => {
+      if (prev.includes(normalized)) return prev
+      const updated = [...prev, normalized]
+      saveFolders(updated)
+      return updated
+    })
+
+    // Electron disk folder creation
+    if (window.electronAPI?.isElectron && vaultPath) {
+      await window.electronAPI.createFolder({ vaultPath, folderPath: normalized })
     }
   }
 
@@ -1091,9 +1111,17 @@ export const App: React.FC = () => {
         if (selected) {
           localStorage.setItem('pyrite_electron_vault_path', selected)
           setVaultPath(selected)
-          const files = await window.electronAPI.readVault(selected)
-          if (files.length > 0) {
-            const loadedNotes: Note[] = files.map((f, i) => ({
+          const [files, diskFolders] = await Promise.all([
+            window.electronAPI.readVault(selected),
+            window.electronAPI.readFolders ? window.electronAPI.readFolders(selected) : Promise.resolve<string[]>([])
+          ])
+          const safeFiles = files || []
+          const diskFolderList = diskFolders || []
+          const noteFolders = safeFiles.map(f => f.folder).filter(Boolean)
+          const combinedFolders = Array.from(new Set([...diskFolderList, ...noteFolders]))
+
+          if (safeFiles.length > 0) {
+            const loadedNotes: Note[] = safeFiles.map((f, i) => ({
               id: `note_disk_${i}_${Date.now()}`,
               title: f.title,
               folder: f.folder,
@@ -1110,15 +1138,19 @@ export const App: React.FC = () => {
               createdAt: f.createdAt,
               updatedAt: f.updatedAt
             }))
-            const loadedFolders = Array.from(new Set(loadedNotes.map(n => n.folder).filter(Boolean)))
             setNotes(loadedNotes)
-            setFolders(loadedFolders.length > 0 ? loadedFolders : ['Início'])
+            setFolders(combinedFolders.length > 0 ? combinedFolders : ['Início'])
             saveNotes(loadedNotes)
+            saveFolders(combinedFolders.length > 0 ? combinedFolders : ['Início'])
             if (loadedNotes[0]) {
               handleSelectNote(loadedNotes[0].id)
             }
             alert(`Cofre carregado com sucesso!\n${loadedNotes.length} notas carregadas de:\n${selected}`)
           } else {
+            setNotes([])
+            setFolders(combinedFolders.length > 0 ? combinedFolders : ['Início'])
+            saveNotes([])
+            saveFolders(combinedFolders.length > 0 ? combinedFolders : ['Início'])
             alert(`Pasta selecionada como cofre ativo:\n${selected}\n(Nenhuma nota .md encontrada ainda nesta pasta)`)
           }
         }
@@ -1164,9 +1196,17 @@ export const App: React.FC = () => {
   const handleSwitchVault = async (targetPath: string) => {
     try {
       if (window.electronAPI?.isElectron) {
-        const files = await window.electronAPI.readVault(targetPath)
-        if (files.length > 0) {
-          const loadedNotes: Note[] = files.map((f, i) => ({
+        const [files, diskFolders] = await Promise.all([
+          window.electronAPI.readVault(targetPath),
+          window.electronAPI.readFolders ? window.electronAPI.readFolders(targetPath) : Promise.resolve<string[]>([])
+        ])
+        const safeFiles = files || []
+        const diskFolderList = diskFolders || []
+        const noteFolders = safeFiles.map(f => f.folder).filter(Boolean)
+        const combinedFolders = Array.from(new Set([...diskFolderList, ...noteFolders]))
+
+        if (safeFiles.length > 0) {
+          const loadedNotes: Note[] = safeFiles.map((f, i) => ({
             id: `note_disk_${i}_${Date.now()}`,
             title: f.title,
             folder: f.folder,
@@ -1183,11 +1223,10 @@ export const App: React.FC = () => {
             createdAt: f.createdAt,
             updatedAt: f.updatedAt
           }))
-          const loadedFolders = Array.from(new Set(loadedNotes.map(n => n.folder).filter(Boolean)))
           setNotes(loadedNotes)
-          setFolders(loadedFolders)
+          setFolders(combinedFolders)
           saveNotes(loadedNotes)
-          saveFolders(loadedFolders)
+          saveFolders(combinedFolders)
           setTasks(loadTasks(targetPath))
           setTaskSettings(loadTaskSettings(targetPath))
           if (loadedNotes[0]) {
@@ -1197,9 +1236,9 @@ export const App: React.FC = () => {
           }
         } else {
           setNotes([])
-          setFolders([])
+          setFolders(combinedFolders)
           saveNotes([])
-          saveFolders([])
+          saveFolders(combinedFolders)
           setCurrentNoteId('')
           setTabs([])
           setActiveTabId('')

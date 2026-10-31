@@ -1036,47 +1036,160 @@ html.light .dark-theme-zone *::after,
 .light .dark-theme-zone *::after {
   color-scheme: dark !important;
 }
+
 .light .dark-theme-zone,
 html.light .dark-theme-zone {
   background-color: #111114 !important;
   color: #f4f4f5 !important;
 }
-.light .dark-theme-zone .bg-\[\#18181d\]\/90,
-.light .dark-theme-zone .bg-\[\#18181d\]\/92,
-.light .dark-theme-zone .bg-\[\#18181d\]\/95,
-.light .dark-theme-zone .bg-\[\#1e1e22\]\/95,
-.light .dark-theme-zone .bg-\[\#181820\],
-.light .dark-theme-zone .bg-\[\#18181c\],
-.light .dark-theme-zone .bg-\[\#18181d\],
-.light .dark-theme-zone .bg-\[\#1a1a1e\],
-.light .dark-theme-zone .bg-\[\#15151a\],
-.light .dark-theme-zone .bg-\[\#131317\],
-.light .dark-theme-zone .bg-\[\#16161a\],
+
+/* Backgrounds exatos dos Nodes, Widgets e Menus do Canvas (Imunes ao modo claro) */
 .light .dark-theme-zone .bg-\[\#111114\],
-.light .dark-theme-zone .bg-zinc-900,
-.light .dark-theme-zone .bg-zinc-900\/80,
-.light .dark-theme-zone .bg-zinc-900\/60,
-.light .dark-theme-zone .bg-zinc-800,
-.light .dark-theme-zone .bg-zinc-800\/80,
-html.light .dark-theme-zone .bg-\[\#18181d\]\/90,
-html.light .dark-theme-zone .bg-\[\#18181d\]\/92,
-html.light .dark-theme-zone .bg-\[\#18181d\]\/95,
-html.light .dark-theme-zone .bg-\[\#1e1e22\]\/95,
-html.light .dark-theme-zone .bg-\[\#181820\],
-html.light .dark-theme-zone .bg-\[\#18181c\],
-html.light .dark-theme-zone .bg-\[\#18181d\],
-html.light .dark-theme-zone .bg-\[\#1a1a1e\],
-html.light .dark-theme-zone .bg-\[\#15151a\],
-html.light .dark-theme-zone .bg-\[\#131317\],
-html.light .dark-theme-zone .bg-\[\#16161a\],
-html.light .dark-theme-zone .bg-\[\#111114\],
-html.light .dark-theme-zone .bg-zinc-900,
-html.light .dark-theme-zone .bg-zinc-900\/80,
-html.light .dark-theme-zone .bg-zinc-900\/60,
-html.light .dark-theme-zone .bg-zinc-800,
-html.light .dark-theme-zone .bg-zinc-800\/80 {
-  background-color: var(--tw-bg-opacity, 1) !important;
+html.light .dark-theme-zone .bg-\[\#111114\] {
+  background-color: #111114 !important;
 }
+.light .dark-theme-zone .bg-\[\#131317\],
+html.light .dark-theme-zone .bg-\[\#131317\] {
+  background-color: #131317 !important;
+}
+.light .dark-theme-zone .bg-\[\#15151a\],
+html.light .dark-theme-zone .bg-\[\#15151a\] {
+  background-color: #15151a !important;
+}
+.light .dark-theme-zone .bg-\[\#16161c\],
+html.light .dark-theme-zone .bg-\[\#16161c\] {
+  background-color: #16161c !important;
+}
+.light .dark-theme-zone .bg-\[\#18181c\],
+html.light .dark-theme-zone .bg-\[\#18181c\] {
+  background-color: #18181c !important;
+}
+.light .dark-theme-zone .bg-\[\#18181d\],
+html.light .dark-theme-zone .bg-\[\#18181d\] {
+  background-color: #18181d !important;
+}
+.light .dark-theme-zone .bg-\[\#18181d\]\/90,
+html.light .dark-theme-zone .bg-\[\#18181d\]\/90 {
+  background-color: rgba(24, 24, 29, 0.9) !important;
+}
+.light .dark-theme-zone .bg-\[\#18181d\]\/92,
+html.light .dark-theme-zone .bg-\[\#18181d\]\/92 {
+  background-color: rgba(24, 24, 29, 0.92) !important;
+}
+.light .dark-theme-zone .bg-\[\#18181d\]\/95,
+html.light .dark-theme-zone .bg-\[\#18181d\]\/95 {
+  background-color: rgba(24, 24, 29, 0.95) !important;
+}
+.light .dark-theme-zone .bg-\[\#18181f\],
+html.light .dark-theme-zone .bg-\[\#18181f\] {
+  background-color: #18181f !important;
+}
+.light .dark-theme-zone .bg-\[\#181820\],
+html.light .dark-theme-zone .bg-\[\#181820\] {
+  background-color: #181820 !important;
+}
+.light .dark-theme-zone .bg-\[\#18181e\],
+html.light .dark-theme-zone .bg-\[\#18181e\] {
+  background-color: #18181e !important;
+}
+.light .dark-theme-zone .bg-\[\#1a1a1e\],
+html.light .dark-theme-zone .bg-\[\#1a1a1e\] {
+  background-color: #1a1a1e !important;
+}
+.light .dark-theme-zone .bg-\[\#1a1a22\],
+html.light .dark-theme-zone .bg-\[\#1a1a22\] {
+  background-color: #1a1a22 !important;
+}
+.light .dark-theme-zone .bg-\[\#1c1c20\],
+html.light .dark-theme-zone .bg-\[\#1c1c20\] {
+  background-color: #1c1c20 !important;
+}
+.light .dark-theme-zone .bg-\[\#1c1c24\],
+html.light .dark-theme-zone .bg-\[\#1c1c24\] {
+  background-color: #1c1c24 !important;
+}
+.light .dark-theme-zone .bg-\[\#1e1e26\],
+html.light .dark-theme-zone .bg-\[\#1e1e26\] {
+  background-color: #1e1e26 !important;
+}
+.light .dark-theme-zone .bg-\[\#22222c\],
+html.light .dark-theme-zone .bg-\[\#22222c\] {
+  background-color: #22222c !important;
+}
+.light .dark-theme-zone .bg-\[\#22222e\],
+html.light .dark-theme-zone .bg-\[\#22222e\] {
+  background-color: #22222e !important;
+}
+.light .dark-theme-zone .hover\:bg-\[\#22222c\]:hover,
+html.light .dark-theme-zone .hover\:bg-\[\#22222c\]:hover {
+  background-color: #22222c !important;
+}
+.light .dark-theme-zone .hover\:bg-\[\#22222e\]:hover,
+html.light .dark-theme-zone .hover\:bg-\[\#22222e\]:hover {
+  background-color: #22222e !important;
+}
+.light .dark-theme-zone .bg-\[\#1e1e22\]\/95,
+html.light .dark-theme-zone .bg-\[\#1e1e22\]\/95 {
+  background-color: rgba(30, 30, 34, 0.95) !important;
+}
+.light .dark-theme-zone .bg-zinc-800,
+html.light .dark-theme-zone .bg-zinc-800 {
+  background-color: #27272a !important;
+}
+.light .dark-theme-zone .bg-zinc-800\/80,
+html.light .dark-theme-zone .bg-zinc-800\/80 {
+  background-color: rgba(39, 39, 42, 0.8) !important;
+}
+.light .dark-theme-zone .bg-zinc-900,
+html.light .dark-theme-zone .bg-zinc-900 {
+  background-color: #18181b !important;
+}
+.light .dark-theme-zone .bg-zinc-900\/80,
+html.light .dark-theme-zone .bg-zinc-900\/80 {
+  background-color: rgba(24, 24, 27, 0.8) !important;
+}
+.light .dark-theme-zone .bg-zinc-900\/60,
+html.light .dark-theme-zone .bg-zinc-900\/60 {
+  background-color: rgba(24, 24, 27, 0.6) !important;
+}
+.light .dark-theme-zone .bg-black\/20,
+html.light .dark-theme-zone .bg-black\/20 {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+}
+.light .dark-theme-zone .bg-black\/30,
+html.light .dark-theme-zone .bg-black\/30 {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+}
+.light .dark-theme-zone .bg-black\/40,
+html.light .dark-theme-zone .bg-black\/40 {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+}
+.light .dark-theme-zone .bg-black\/50,
+html.light .dark-theme-zone .bg-black\/50 {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+}
+.light .dark-theme-zone textarea.bg-transparent,
+html.light .dark-theme-zone textarea.bg-transparent {
+  background-color: transparent !important;
+}
+.light .dark-theme-zone input.bg-transparent,
+html.light .dark-theme-zone input.bg-transparent {
+  background-color: transparent !important;
+}
+.light .dark-theme-zone input,
+html.light .dark-theme-zone input,
+.light .dark-theme-zone textarea,
+html.light .dark-theme-zone textarea,
+.light .dark-theme-zone select,
+html.light .dark-theme-zone select {
+  color-scheme: dark !important;
+  color: #f4f4f5 !important;
+}
+.light .dark-theme-zone .placeholder-zinc-500::placeholder,
+html.light .dark-theme-zone .placeholder-zinc-500::placeholder {
+  color: #71717a !important;
+}
+
 .light .dark-theme-zone .border-zinc-700\/80,
 .light .dark-theme-zone .border-zinc-700,
 .light .dark-theme-zone .border-zinc-800,
@@ -1085,19 +1198,35 @@ html.light .dark-theme-zone .border-zinc-700\/80,
 html.light .dark-theme-zone .border-zinc-700,
 html.light .dark-theme-zone .border-zinc-800,
 html.light .dark-theme-zone [class*="border-white"] {
-  border-color: rgba(63, 63, 70, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }
+
+.light .dark-theme-zone .text-white, html.light .dark-theme-zone .text-white { color: #ffffff !important; }
 .light .dark-theme-zone .text-zinc-100, html.light .dark-theme-zone .text-zinc-100 { color: #f4f4f5 !important; }
 .light .dark-theme-zone .text-zinc-200, html.light .dark-theme-zone .text-zinc-200 { color: #e4e4e7 !important; }
 .light .dark-theme-zone .text-zinc-300, html.light .dark-theme-zone .text-zinc-300 { color: #d4d4d8 !important; }
 .light .dark-theme-zone .text-zinc-400, html.light .dark-theme-zone .text-zinc-400 { color: #a1a1aa !important; }
 .light .dark-theme-zone .text-zinc-500, html.light .dark-theme-zone .text-zinc-500 { color: #71717a !important; }
+.light .dark-theme-zone .text-zinc-600, html.light .dark-theme-zone .text-zinc-600 { color: #52525b !important; }
+
 .light .dark-theme-zone .hover\:bg-zinc-800:hover,
 .light .dark-theme-zone .hover\:bg-zinc-800\/80:hover,
 html.light .dark-theme-zone .hover\:bg-zinc-800:hover,
 html.light .dark-theme-zone .hover\:bg-zinc-800\/80:hover {
   background-color: rgba(39, 39, 42, 0.8) !important;
   color: #ffffff !important;
+}
+.light .dark-theme-zone .hover\:bg-white\/\[0\.06\]:hover,
+html.light .dark-theme-zone .hover\:bg-white\/\[0\.06\]:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+.light .dark-theme-zone .hover\:bg-white\/\[0\.08\]:hover,
+html.light .dark-theme-zone .hover\:bg-white\/\[0\.08\]:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+.light .dark-theme-zone .hover\:bg-white\/\[0\.14\]:hover,
+html.light .dark-theme-zone .hover\:bg-white\/\[0\.14\]:hover {
+  background-color: rgba(255, 255, 255, 0.14) !important;
 }
 
 /* =========================================================================

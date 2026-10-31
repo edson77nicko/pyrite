@@ -242,7 +242,8 @@ function scanVaultDirectory(dir: string, baseDir: string): VaultFileResult[] {
       entry.name === 'build' ||
       entry.name === 'out' ||
       entry.name === '.next' ||
-      entry.name === 'vendor'
+      entry.name === 'vendor' ||
+      entry.name === 'release'
     ) continue
 
     if (entry.isDirectory()) {
@@ -267,6 +268,38 @@ function scanVaultDirectory(dir: string, baseDir: string): VaultFileResult[] {
         console.error('Error reading file:', fullPath, err)
       }
     }
+  }
+  return results
+}
+
+function scanVaultDirectories(dir: string, baseDir: string): string[] {
+  const results: string[] = []
+  if (!fs.existsSync(dir)) return results
+
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      if (
+        entry.name.startsWith('.') ||
+        entry.name === 'node_modules' ||
+        entry.name === 'dist' ||
+        entry.name === 'build' ||
+        entry.name === 'out' ||
+        entry.name === '.next' ||
+        entry.name === 'vendor' ||
+        entry.name === 'release'
+      ) continue
+
+      const fullPath = path.join(dir, entry.name)
+      const relDir = path.relative(baseDir, fullPath).replace(/\\/g, '/')
+      if (relDir && relDir !== '.') {
+        results.push(relDir)
+      }
+      results.push(...scanVaultDirectories(fullPath, baseDir))
+    }
+  } catch (err) {
+    console.error('Error scanning vault directories:', dir, err)
   }
   return results
 }
@@ -308,6 +341,11 @@ ipcMain.handle('vault:readVault', (_event, vaultPath: string) => {
   if (!vaultPath || !fs.existsSync(vaultPath)) return []
   setupVaultWatcher(vaultPath)
   return scanVaultDirectory(vaultPath, vaultPath)
+})
+
+ipcMain.handle('vault:readFolders', (_event, vaultPath: string) => {
+  if (!vaultPath || !fs.existsSync(vaultPath)) return []
+  return scanVaultDirectories(vaultPath, vaultPath)
 })
 
 ipcMain.handle('vault:importHtml', async (_event, { vaultPath, targetFolder }: { vaultPath: string; targetFolder?: string }) => {

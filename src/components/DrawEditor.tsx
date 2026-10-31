@@ -2684,6 +2684,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
               height: `${dataTaskEl.height}px`,
               left: 0,
               top: 0,
+              backgroundColor: '#15151a',
               WebkitFontSmoothing: 'antialiased',
               MozOsxFontSmoothing: 'grayscale',
               boxShadow: '0 20px 45px -10px rgba(0,0,0,0.7)'
@@ -2774,6 +2775,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
             <div
               onPointerDown={(e) => handleCardHeaderPointerDown(e, dataTaskEl.id)}
               className="p-3 pb-2.5 bg-[#181820] flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/[0.06] relative"
+              style={{ backgroundColor: '#181820' }}
             >
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.05] text-zinc-200 font-medium text-[11px] pointer-events-none select-none">
@@ -2803,7 +2805,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
                   </button>
 
                   {dataTaskHeaderBoardMenu === dataTaskEl.id && (
-                    <div className="absolute left-0 top-full mt-1.5 w-52 bg-[#1c1c24] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-50 text-xs flex flex-col gap-1 max-h-60 overflow-y-auto">
+                    <div
+                      className="absolute left-0 top-full mt-1.5 w-52 bg-[#1c1c24] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-50 text-xs flex flex-col gap-1 max-h-60 overflow-y-auto"
+                      style={{ backgroundColor: '#1c1c24', color: '#f4f4f5' }}
+                    >
                       <span className="text-[10px] text-zinc-400 px-2 py-0.5 font-medium">Grupos de Tarefas</span>
                       <button
                         type="button"
@@ -3083,7 +3088,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
                   {(taskSettings.statuses || []).map(status => {
                     const statusTasks = filteredTasks.filter(t => t.statusId === status.id)
                     return (
-                      <div key={status.id} className="w-48 shrink-0 bg-[#16161c] rounded-xl p-2.5 flex flex-col border border-white/[0.04]">
+                      <div
+                        key={status.id}
+                        className="w-48 shrink-0 bg-[#16161c] rounded-xl p-2.5 flex flex-col border border-white/[0.04]"
+                        style={{ backgroundColor: '#16161c' }}
+                      >
                         <div className="flex items-center justify-between pb-2 mb-2">
                           <div className="flex items-center gap-1.5 font-semibold text-[11px] text-zinc-200">
                             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: status.color }} />
@@ -3152,6 +3161,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
               height: `${noteEl.height}px`,
               left: 0,
               top: 0,
+              backgroundColor: '#15151a',
               WebkitFontSmoothing: 'antialiased',
               MozOsxFontSmoothing: 'grayscale',
               boxShadow: '0 20px 45px -10px rgba(0,0,0,0.7)'
@@ -3242,6 +3252,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
             <div
               onPointerDown={(e) => handleCardHeaderPointerDown(e, noteEl.id)}
               className="p-3 pb-2.5 bg-[#181820] flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/[0.06]"
+              style={{ backgroundColor: '#181820' }}
             >
               <div className="flex items-center gap-2 min-w-0 pointer-events-none">
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.05] text-zinc-100 font-semibold text-[11px] shrink-0">
@@ -3305,6 +3316,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
             {/* Scrollable Content Body with live text / markdown preview */}
             <div
               className="flex-1 overflow-y-auto p-4 select-text leading-relaxed font-sans text-zinc-300 text-[13px] bg-[#131317] scrollbar-thin scrollbar-thumb-zinc-700/60"
+              style={{ backgroundColor: '#131317' }}
               onPointerDown={() => {
                 if (tool === 'select' && !selectedIds.includes(noteEl.id)) {
                   setSelectedIds([noteEl.id])
@@ -3323,7 +3335,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
             </div>
 
             {/* Bottom Card Footer */}
-            <div className="px-3 py-2 border-t border-white/[0.06] bg-[#16161c] flex items-center justify-between text-[10px] text-zinc-500 font-mono shrink-0">
+            <div
+              className="px-3 py-2 border-t border-white/[0.06] bg-[#16161c] flex items-center justify-between text-[10px] text-zinc-500 font-mono shrink-0"
+              style={{ backgroundColor: '#16161c' }}
+            >
               <span>{displayContent.length} caracteres</span>
               <span>Documento acoplado</span>
             </div>
@@ -3342,7 +3357,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
           }}
         >
           {/* Main Horizontal Popover Bar */}
-          <div className="flex items-center gap-1 bg-[#1e1e22]/95 backdrop-blur-md border border-zinc-700/80 px-2 py-1.5 rounded-2xl shadow-2xl text-xs">
+          <div
+            className="flex items-center gap-1 bg-[#1e1e22]/95 backdrop-blur-md border border-zinc-700/80 px-2 py-1.5 rounded-2xl shadow-2xl text-xs whitespace-nowrap"
+            style={{ backgroundColor: 'rgba(30, 30, 34, 0.95)' }}
+          >
             {/* A. DATA-TASK WIDGET TOOLBAR */}
             {singleSelectedElement.type === 'data-task' ? (
               <>
@@ -3363,7 +3381,10 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
 
                   {/* Board Selection Popover */}
                   {openPopover === 'dataTaskBoard' && (
-                    <div className="absolute left-0 bottom-full mb-2 w-52 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1 max-h-60 overflow-y-auto">
+                    <div
+                      className="absolute left-0 bottom-full mb-2 w-52 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1 max-h-60 overflow-y-auto"
+                      style={{ backgroundColor: '#1a1a1e', color: '#f4f4f5' }}
+                    >
                       <span className="text-[10px] text-zinc-400 px-2 py-0.5 block font-medium">Conjuntos de Tarefas</span>
                       <button
                         onClick={() => {
@@ -3940,34 +3961,34 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
             ) : singleSelectedElement.type === 'note-card' ? (
               /* D. NOTE CARD TOOLBAR */
               <>
-                <div className="flex items-center gap-1.5 px-2 py-1 text-zinc-300">
-                  <FileText className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
-                  <span className="font-medium truncate max-w-[160px]">
+                <div className="flex items-center gap-1.5 px-2 py-1 text-zinc-300 shrink-0 select-none">
+                  <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
+                  <span className="font-medium truncate max-w-[150px] whitespace-nowrap">
                     {singleSelectedElement.noteTitle || 'Nota Acoplada'}
                   </span>
                 </div>
 
-                <div className="w-px h-4 bg-zinc-700/80 mx-0.5" />
+                <div className="w-px h-4 bg-zinc-700/80 mx-0.5 shrink-0" />
 
                 <button
                   type="button"
                   onClick={() => setIsImportNoteModalOpen(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer text-xs"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer text-xs whitespace-nowrap shrink-0"
                   title="Trocar nota acoplada"
                 >
-                  <Search className="w-3.5 h-3.5" />
-                  <span>Trocar nota</span>
+                  <Search className="w-3.5 h-3.5 shrink-0" />
+                  <span className="whitespace-nowrap">Trocar nota</span>
                 </button>
 
                 {onOpenNote && singleSelectedElement.noteId && (
                   <button
                     type="button"
                     onClick={() => onOpenNote(singleSelectedElement.noteId!)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer text-xs"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer text-xs whitespace-nowrap shrink-0"
                     title="Abrir nota no editor"
                   >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>Abrir</span>
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                    <span className="whitespace-nowrap">Abrir</span>
                   </button>
                 )}
               </>
@@ -5312,10 +5333,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
         >
           <div
             className="w-full max-w-xl bg-[#18181f] border border-zinc-700/80 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            style={{ backgroundColor: '#18181f', color: '#f4f4f5' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-[#1e1e26]">
+            <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-[#1e1e26]" style={{ backgroundColor: '#1e1e26' }}>
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-zinc-800 text-white shadow-xs" style={{ color: 'var(--accent)' }}>
                   <FileText className="w-4 h-4" />
@@ -5337,8 +5359,8 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
             </div>
 
             {/* Modal Search Bar */}
-            <div className="p-3 border-b border-zinc-800/80 bg-[#16161c]">
-              <div className="flex items-center bg-zinc-900 border border-zinc-700/80 rounded-xl px-3 py-2 focus-within:border-[var(--accent)] transition-colors">
+            <div className="p-3 border-b border-zinc-800/80 bg-[#16161c]" style={{ backgroundColor: '#16161c' }}>
+              <div className="flex items-center bg-zinc-900 border border-zinc-700/80 rounded-xl px-3 py-2 focus-within:border-[var(--accent)] transition-colors" style={{ backgroundColor: '#18181b', borderColor: 'rgba(63, 63, 70, 0.8)' }}>
                 <Search className="w-4 h-4 text-zinc-400 shrink-0 mr-2" />
                 <input
                   type="text"
@@ -5347,6 +5369,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
                   value={noteModalSearch}
                   onChange={(e) => setNoteModalSearch(e.target.value)}
                   className="w-full bg-transparent text-xs text-zinc-100 placeholder-zinc-500 outline-none"
+                  style={{ backgroundColor: 'transparent', color: '#f4f4f5' }}
                 />
                 {noteModalSearch && (
                   <button
@@ -5361,7 +5384,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
             </div>
 
             {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-3 text-xs">
+            <div className="flex-1 overflow-y-auto p-3 text-xs" style={{ backgroundColor: '#18181f' }}>
               {noteModalSearch.trim() !== '' ? (
                 /* Search Results Mode */
                 (() => {
@@ -5393,6 +5416,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
                             key={n.id}
                             onClick={() => handleImportNote(n)}
                             className="p-2.5 rounded-xl border border-zinc-800 bg-[#1c1c24] hover:bg-[#22222c] hover:border-zinc-700 transition-all cursor-pointer flex flex-col gap-1 group"
+                            style={{ backgroundColor: '#1c1c24' }}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2 truncate">
@@ -5487,6 +5511,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
                                   type="button"
                                   onClick={() => setNoteModalFolder(child.fullPath)}
                                   className="p-2.5 rounded-xl border border-zinc-800 bg-[#1a1a22] hover:bg-[#22222e] hover:border-zinc-700 transition-all cursor-pointer flex items-center justify-between text-left group"
+                                  style={{ backgroundColor: '#1a1a22' }}
                                 >
                                   <div className="flex items-center gap-2 truncate">
                                     <Folder className="w-4 h-4 shrink-0" style={{ color: 'var(--accent)' }} />
@@ -5524,6 +5549,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
                                   key={n.id}
                                   onClick={() => handleImportNote(n)}
                                   className="p-2.5 rounded-xl border border-zinc-800 bg-[#1c1c24] hover:bg-[#22222c] hover:border-zinc-700 transition-all cursor-pointer flex flex-col gap-1 group"
+                                  style={{ backgroundColor: '#1c1c24' }}
                                 >
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2 truncate">
@@ -5554,7 +5580,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="p-3 border-t border-zinc-800 bg-[#1a1a22] flex items-center justify-between text-xs">
+            <div className="p-3 border-t border-zinc-800 bg-[#1a1a22] flex items-center justify-between text-xs" style={{ backgroundColor: '#1a1a22' }}>
               <span className="text-zinc-500 text-[11px]">
                 Total de notas no cofre: <strong>{notes.length}</strong>
               </span>

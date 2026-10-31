@@ -434,9 +434,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleCreateFolderSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (newFolderName.trim()) {
-      const fullPath = parentForNewFolder ? `${parentForNewFolder}/${newFolderName.trim()}` : newFolderName.trim()
+    const trimmed = newFolderName.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    if (trimmed) {
+      const fullPath = parentForNewFolder ? `${parentForNewFolder}/${trimmed}` : trimmed
       onCreateFolder(fullPath)
+      if (parentForNewFolder) {
+        const parts = parentForNewFolder.split('/')
+        const toExpand: Record<string, boolean> = {}
+        let acc = ''
+        for (const part of parts) {
+          acc = acc ? `${acc}/${part}` : part
+          toExpand[acc] = false
+        }
+        setCollapsedFolders(prev => ({ ...prev, ...toExpand }))
+      }
       setNewFolderName('')
       setParentForNewFolder(null)
       setIsCreatingFolder(false)

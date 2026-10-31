@@ -21,6 +21,7 @@ export interface ElectronAPI {
   getDefaultPath: () => Promise<string>
   selectFolder: () => Promise<string | null>
   readVault: (vaultPath: string) => Promise<VaultFileItem[]>
+  readFolders?: (vaultPath: string) => Promise<string[]>
   saveFile: (params: {
     vaultPath: string
     folder: string
