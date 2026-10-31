@@ -1019,32 +1019,86 @@ html.light {
 }
 
 /* =========================================================================
-   PROTEÇÃO DO MODO DESIGN (Draw / Canvas)
-   Permanece no ambiente escuro criativo nativo sem bordas brancas
+   PROTEÇÃO TOTAL DO PYRITE DRAW / CANVAS CONTRA MODO CLARO
+   O Canvas e todos os seus componentes permanecem 100% no tema escuro nativo
    ========================================================================= */
+.dark-theme-zone,
+.dark-theme-zone *,
+.dark-theme-zone *::before,
+.dark-theme-zone *::after,
+html.light .dark-theme-zone,
+html.light .dark-theme-zone *,
+html.light .dark-theme-zone *::before,
+html.light .dark-theme-zone *::after,
 .light .dark-theme-zone,
-.light .dark-theme-zone * {
-  color-scheme: dark;
+.light .dark-theme-zone *,
+.light .dark-theme-zone *::before,
+.light .dark-theme-zone *::after {
+  color-scheme: dark !important;
 }
-.light .dark-theme-zone .bg-\[\#18181d\]\/90 {
-  background-color: rgba(24, 24, 29, 0.9) !important;
-}
-.light .dark-theme-zone .bg-\[\#111114\] {
+.light .dark-theme-zone,
+html.light .dark-theme-zone {
   background-color: #111114 !important;
+  color: #f4f4f5 !important;
 }
-.light .dark-theme-zone .bg-zinc-900\/60 {
-  background-color: rgba(24, 24, 27, 0.6) !important;
+.light .dark-theme-zone .bg-\[\#18181d\]\/90,
+.light .dark-theme-zone .bg-\[\#18181d\]\/92,
+.light .dark-theme-zone .bg-\[\#18181d\]\/95,
+.light .dark-theme-zone .bg-\[\#1e1e22\]\/95,
+.light .dark-theme-zone .bg-\[\#181820\],
+.light .dark-theme-zone .bg-\[\#18181c\],
+.light .dark-theme-zone .bg-\[\#18181d\],
+.light .dark-theme-zone .bg-\[\#1a1a1e\],
+.light .dark-theme-zone .bg-\[\#15151a\],
+.light .dark-theme-zone .bg-\[\#131317\],
+.light .dark-theme-zone .bg-\[\#16161a\],
+.light .dark-theme-zone .bg-\[\#111114\],
+.light .dark-theme-zone .bg-zinc-900,
+.light .dark-theme-zone .bg-zinc-900\/80,
+.light .dark-theme-zone .bg-zinc-900\/60,
+.light .dark-theme-zone .bg-zinc-800,
+.light .dark-theme-zone .bg-zinc-800\/80,
+html.light .dark-theme-zone .bg-\[\#18181d\]\/90,
+html.light .dark-theme-zone .bg-\[\#18181d\]\/92,
+html.light .dark-theme-zone .bg-\[\#18181d\]\/95,
+html.light .dark-theme-zone .bg-\[\#1e1e22\]\/95,
+html.light .dark-theme-zone .bg-\[\#181820\],
+html.light .dark-theme-zone .bg-\[\#18181c\],
+html.light .dark-theme-zone .bg-\[\#18181d\],
+html.light .dark-theme-zone .bg-\[\#1a1a1e\],
+html.light .dark-theme-zone .bg-\[\#15151a\],
+html.light .dark-theme-zone .bg-\[\#131317\],
+html.light .dark-theme-zone .bg-\[\#16161a\],
+html.light .dark-theme-zone .bg-\[\#111114\],
+html.light .dark-theme-zone .bg-zinc-900,
+html.light .dark-theme-zone .bg-zinc-900\/80,
+html.light .dark-theme-zone .bg-zinc-900\/60,
+html.light .dark-theme-zone .bg-zinc-800,
+html.light .dark-theme-zone .bg-zinc-800\/80 {
+  background-color: var(--tw-bg-opacity, 1) !important;
 }
 .light .dark-theme-zone .border-zinc-700\/80,
 .light .dark-theme-zone .border-zinc-700,
-.light .dark-theme-zone .border-zinc-800 {
-  border-color: rgba(63, 63, 70, 0.6) !important;
+.light .dark-theme-zone .border-zinc-800,
+.light .dark-theme-zone [class*="border-white"],
+html.light .dark-theme-zone .border-zinc-700\/80,
+html.light .dark-theme-zone .border-zinc-700,
+html.light .dark-theme-zone .border-zinc-800,
+html.light .dark-theme-zone [class*="border-white"] {
+  border-color: rgba(63, 63, 70, 0.7) !important;
 }
-.light .dark-theme-zone .text-zinc-100 { color: #f4f4f5 !important; }
-.light .dark-theme-zone .text-zinc-200 { color: #e4e4e7 !important; }
-.light .dark-theme-zone .text-zinc-300 { color: #d4d4d8 !important; }
-.light .dark-theme-zone .text-zinc-400 { color: #a1a1aa !important; }
-.light .dark-theme-zone .text-zinc-500 { color: #71717a !important; }
+.light .dark-theme-zone .text-zinc-100, html.light .dark-theme-zone .text-zinc-100 { color: #f4f4f5 !important; }
+.light .dark-theme-zone .text-zinc-200, html.light .dark-theme-zone .text-zinc-200 { color: #e4e4e7 !important; }
+.light .dark-theme-zone .text-zinc-300, html.light .dark-theme-zone .text-zinc-300 { color: #d4d4d8 !important; }
+.light .dark-theme-zone .text-zinc-400, html.light .dark-theme-zone .text-zinc-400 { color: #a1a1aa !important; }
+.light .dark-theme-zone .text-zinc-500, html.light .dark-theme-zone .text-zinc-500 { color: #71717a !important; }
+.light .dark-theme-zone .hover\:bg-zinc-800:hover,
+.light .dark-theme-zone .hover\:bg-zinc-800\/80:hover,
+html.light .dark-theme-zone .hover\:bg-zinc-800:hover,
+html.light .dark-theme-zone .hover\:bg-zinc-800\/80:hover {
+  background-color: rgba(39, 39, 42, 0.8) !important;
+  color: #ffffff !important;
+}
 
 /* =========================================================================
    GRAFO EM MODO CLARO (HUD Panels & Popups)

@@ -770,9 +770,13 @@ ipcMain.handle('vault:managePath', async (_event, params: { vaultPath: string; s
       const destination = checked(params.destination || '')
       if (source === destination) return { success: true }
       const relative = path.relative(source, destination)
-      if (fs.statSync(source).isDirectory() && !relative.startsWith('..') && !path.isAbsolute(relative)) throw new Error('Destino dentro da própria pasta.')
+      if (fs.existsSync(source) && fs.statSync(source).isDirectory() && !relative.startsWith('..') && !path.isAbsolute(relative)) throw new Error('Destino dentro da própria pasta.')
       if (fs.existsSync(destination)) throw new Error('Já existe um arquivo ou pasta no destino.')
       fs.mkdirSync(path.dirname(destination), { recursive: true })
+      if (!fs.existsSync(source)) {
+        fs.mkdirSync(destination, { recursive: true })
+        return { success: true }
+      }
       if (params.action === 'copy') fs.cpSync(source, destination, { recursive: true, force: false, errorOnExist: true })
       else fs.renameSync(source, destination)
     } else throw new Error('Operação inválida.')

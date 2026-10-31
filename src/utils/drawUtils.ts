@@ -906,7 +906,7 @@ export function renderElementToCanvas(
       const fontFamily = el.fontFamily === 'mono' ? 'monospace' : el.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'
       const fontWeight = el.isBold ? 'bold' : 'normal'
       ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`
-      ctx.fillStyle = '#18181b'
+      ctx.fillStyle = el.textColor || '#18181b'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
 
@@ -939,7 +939,7 @@ export function renderElementToCanvas(
               ctx.moveTo(textX, strikeY)
               ctx.lineTo(textX + textMetrics.width, strikeY)
               ctx.lineWidth = 1.5
-              ctx.strokeStyle = '#18181b'
+              ctx.strokeStyle = el.textColor || '#18181b'
               ctx.stroke()
             }
 
@@ -1176,7 +1176,7 @@ export function renderElementToCanvas(
       const fontFamily = el.fontFamily === 'mono' ? 'monospace' : el.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'
       const fontWeight = el.isBold ? 'bold' : 'normal'
       ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`
-      ctx.fillStyle = el.strokeColor || '#e4e4e7'
+      ctx.fillStyle = el.textColor || el.strokeColor || '#e4e4e7'
       ctx.textAlign = (el.textAlign || 'left') as CanvasTextAlign
       ctx.textBaseline = 'top'
 
@@ -1216,7 +1216,7 @@ export function renderElementToCanvas(
       const fontSize = el.fontSize || 16
       const fontFamily = el.fontFamily === 'mono' ? 'monospace' : el.fontFamily === 'handwriting' ? 'Caveat, cursive, sans-serif' : 'Inter, system-ui, sans-serif'
       ctx.font = `${fontSize}px ${fontFamily}`
-      ctx.fillStyle = el.strokeColor || '#f4f4f5'
+      ctx.fillStyle = el.textColor || el.strokeColor || '#f4f4f5'
       ctx.textAlign = (el.textAlign || 'center') as CanvasTextAlign
       ctx.textBaseline = 'middle'
 

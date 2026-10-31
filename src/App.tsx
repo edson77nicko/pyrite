@@ -985,7 +985,12 @@ export const App: React.FC = () => {
       const changed: Note = { ...note, id: action === 'copy' ? crypto.randomUUID() : note.id, title: name, folder: destinationFolder || 'Início', updatedAt: Date.now(), ...(action === 'copy' ? { createdAt: Date.now(), filePath: undefined } : {}) }
       if (api) {
         if (action !== 'copy' && note.filePath) {
-          const destination = vaultPath + '/' + (destinationFolder && destinationFolder !== 'Início' ? destinationFolder + '/' : '') + name + '.md'
+          const originalFileName = note.filePath.split(/[/\\]/).pop() || (note.type === 'html' ? `${name}.html` : note.type === 'draw' ? `${name}.draw.json` : note.type === 'mindmap' ? `${name}.mindmap.json` : `${name}.md`)
+          const targetFileName = action === 'rename'
+            ? (note.filePath.endsWith('.draw.json') ? `${name}.draw.json` : note.filePath.endsWith('.draw.md') ? `${name}.draw.md` : note.filePath.endsWith('.mindmap.json') ? `${name}.mindmap.json` : note.filePath.endsWith('.mindmap.md') ? `${name}.mindmap.md` : note.filePath.endsWith('.html') ? `${name}.html` : note.filePath.endsWith('.htm') ? `${name}.htm` : `${name}.md`)
+            : originalFileName
+          const destDir = destinationFolder && destinationFolder !== 'Início' ? destinationFolder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') + '/' : ''
+          const destination = vaultPath + '/' + destDir + targetFileName
           check(await api.managePath({ vaultPath: vaultPath!, source: note.filePath, destination, action: 'move' }))
           changed.filePath = destination
         } else {
@@ -1009,7 +1014,8 @@ export const App: React.FC = () => {
     const changed = notes.filter(n => inside(n.folder)).map(n => ({ ...n, folder: remap(n.folder), ...(action === 'copy' ? { id: crypto.randomUUID(), createdAt: Date.now() } : {}), filePath: api && n.filePath ? vaultPath + '/' + remap(n.folder) + '/' + n.filePath.split(/[\\/]/).pop() : undefined }))
     const next = action === 'copy' ? [...notes, ...changed] : notes.map(n => changed.find(c => c.id === n.id) || n)
     const affectedFolders = Array.from(new Set([folder, ...folders.filter(inside)]))
-    const nextFolders = action === 'copy' ? [...folders, ...affectedFolders.map(remap)] : [...folders.filter(f => !inside(f)), ...affectedFolders.map(remap)]
+    const extraParents = destinationFolder ? [destinationFolder] : []
+    const nextFolders = action === 'copy' ? [...folders, ...affectedFolders.map(remap)] : Array.from(new Set([...folders.filter(f => !inside(f)), ...extraParents, ...affectedFolders.map(remap)]))
     setNotes(next); saveNotes(next); setFolders(nextFolders); saveFolders(nextFolders)
   }
 
@@ -1434,6 +1440,10 @@ export const App: React.FC = () => {
                     onUpdateNote={handleUpdateNote}
                     notes={notes}
                     folders={folders}
+                    vaultPath={vaultPath || undefined}
+                    taskSettings={taskSettings}
+                    taskBoards={taskBoards}
+                    tasks={tasks}
                     onOpenNote={handleSelectNote}
                   />
                 ) : currentNote.type === 'html' ? (
@@ -1473,6 +1483,9 @@ export const App: React.FC = () => {
                   notes={notes}
                   currentNoteId={currentNoteId}
                   vaultPath={vaultPath || undefined}
+                  taskSettings={taskSettings}
+                  taskBoards={taskBoards}
+                  tasks={tasks}
                   onSelectNote={handleSelectNote}
                   onCreateDraw={(folder, title) => handleCreateNote(folder, title, 'draw')}
                   onUpdateNote={handleUpdateNote}

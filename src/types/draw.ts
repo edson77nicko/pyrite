@@ -70,6 +70,7 @@ export interface DrawElement {
   startBinding?: ElementBinding
   endBinding?: ElementBinding
   connectorStyle?: 'orthogonal' | 'straight'
+  textColor?: string
   isBold?: boolean
   isStrikethrough?: boolean
   isList?: boolean

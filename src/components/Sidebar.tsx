@@ -154,6 +154,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     | { type: 'folder'; fullPath: string }
     | null
   >(null)
+  const draggedItemRef = useRef<
+    | { type: 'note'; note: Note }
+    | { type: 'folder'; fullPath: string }
+    | null
+  >(null)
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
   const autoExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -170,32 +175,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [])
 
-  const isVaultRoot = (path?: string) => !path || path === 'Início' || path === 'Sem Pasta' || path.trim() === ''
+  const normPath = (p?: string) => (p || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').trim()
+
+  const isVaultRoot = (path?: string) => {
+    if (!path) return true
+    const clean = normPath(path).toLowerCase()
+    return clean === '' || clean === 'início' || clean === 'inicio' || clean === 'sem pasta'
+  }
 
   const canDropInto = (
     dragged: { type: 'note'; note: Note } | { type: 'folder'; fullPath: string } | null,
     targetFolder: string
   ): boolean => {
-    if (!dragged) return false
+    const item = dragged || draggedItemRef.current
+    if (!item) return false
     const targetIsRoot = isVaultRoot(targetFolder)
+    const normTarget = normPath(targetFolder)
 
-    if (dragged.type === 'note') {
-      const noteIsRoot = isVaultRoot(dragged.note.folder)
+    if (item.type === 'note') {
+      const noteFolder = normPath(item.note.folder)
+      const noteIsRoot = isVaultRoot(noteFolder)
       if (targetIsRoot && noteIsRoot) return false
-      if (!targetIsRoot && dragged.note.folder === targetFolder) return false
+      if (!targetIsRoot && noteFolder.toLowerCase() === normTarget.toLowerCase()) return false
       return true
     }
 
-    if (dragged.type === 'folder') {
-      const folderPath = dragged.fullPath
+    if (item.type === 'folder') {
+      const folderPath = normPath(item.fullPath)
       if (isVaultRoot(folderPath)) return false
-      if (folderPath === targetFolder) return false
-      if (targetFolder.startsWith(folderPath + '/')) return false
+      if (folderPath.toLowerCase() === normTarget.toLowerCase()) return false
+      if (normTarget.toLowerCase().startsWith(folderPath.toLowerCase() + '/')) return false
       const lastSlash = folderPath.lastIndexOf('/')
       const currentParent = lastSlash === -1 ? '' : folderPath.substring(0, lastSlash)
       const parentIsRoot = isVaultRoot(currentParent)
       if (targetIsRoot && parentIsRoot) return false
-      if (!targetIsRoot && currentParent === targetFolder) return false
+      if (!targetIsRoot && currentParent.toLowerCase() === normTarget.toLowerCase()) return false
       return true
     }
 
@@ -204,31 +218,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleFolderDragStart = (e: React.DragEvent, fullPath: string) => {
     e.stopPropagation()
-    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'folder', fullPath }))
+    const item = { type: 'folder' as const, fullPath }
+    draggedItemRef.current = item
+    setDraggedItem(item)
+    e.dataTransfer.setData('text/plain', JSON.stringify(item))
     e.dataTransfer.effectAllowed = 'move'
-    setDraggedItem({ type: 'folder', fullPath })
   }
 
   const handleNoteDragStart = (e: React.DragEvent, note: Note) => {
     e.stopPropagation()
+    const item = { type: 'note' as const, note }
+    draggedItemRef.current = item
+    setDraggedItem(item)
     e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'note', id: note.id }))
     e.dataTransfer.effectAllowed = 'move'
-    setDraggedItem({ type: 'note', note })
   }
 
   const handleDragEnd = () => {
+    draggedItemRef.current = null
     setDraggedItem(null)
     setDragOverTarget(null)
     clearAutoExpandTimer()
   }
 
   const handleFolderDragOver = (e: React.DragEvent, folderPath: string) => {
-    if (canDropInto(draggedItem, folderPath)) {
+    const dragged = draggedItemRef.current || draggedItem
+    if (canDropInto(dragged, folderPath)) {
       e.preventDefault()
       e.stopPropagation()
       e.dataTransfer.dropEffect = 'move'
-      if (dragOverTarget !== folderPath) {
-        setDragOverTarget(folderPath)
+      const norm = normPath(folderPath)
+      if (dragOverTarget !== norm) {
+        setDragOverTarget(norm)
       }
 
       // Auto-expand folder on hover if collapsed
@@ -245,7 +266,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleFolderDragLeave = (e: React.DragEvent, folderPath: string) => {
     if (e.currentTarget.contains(e.relatedTarget as Node)) return
-    if (dragOverTarget === folderPath) {
+    const norm = normPath(folderPath)
+    if (dragOverTarget === norm) {
       setDragOverTarget(null)
     }
     clearAutoExpandTimer()
@@ -253,12 +275,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleNoteDragOver = (e: React.DragEvent, note: Note) => {
     const targetFolder = isVaultRoot(note.folder) ? '' : note.folder
-    if (canDropInto(draggedItem, targetFolder)) {
+    const dragged = draggedItemRef.current || draggedItem
+    if (canDropInto(dragged, targetFolder)) {
       e.preventDefault()
       e.stopPropagation()
       e.dataTransfer.dropEffect = 'move'
-      if (dragOverTarget !== targetFolder) {
-        setDragOverTarget(targetFolder)
+      const norm = normPath(targetFolder)
+      if (dragOverTarget !== norm) {
+        setDragOverTarget(norm)
       }
     }
   }
@@ -266,7 +290,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const handleNoteDragLeave = (e: React.DragEvent, note: Note) => {
     if (e.currentTarget.contains(e.relatedTarget as Node)) return
     const targetFolder = isVaultRoot(note.folder) ? '' : note.folder
-    if (dragOverTarget === targetFolder) {
+    const norm = normPath(targetFolder)
+    if (dragOverTarget === norm) {
       setDragOverTarget(null)
     }
   }
@@ -276,14 +301,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
     e.stopPropagation()
     clearAutoExpandTimer()
 
-    const currentDrag = draggedItem
+    let currentDrag = draggedItemRef.current || draggedItem
+    draggedItemRef.current = null
     setDraggedItem(null)
     setDragOverTarget(null)
+
+    if (!currentDrag) {
+      try {
+        const raw = e.dataTransfer.getData('text/plain')
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed.type === 'folder' && parsed.fullPath) {
+            currentDrag = { type: 'folder', fullPath: parsed.fullPath }
+          } else if (parsed.type === 'note' && parsed.id) {
+            const found = notes.find(n => n.id === parsed.id)
+            if (found) currentDrag = { type: 'note', note: found }
+          }
+        }
+      } catch {}
+    }
 
     if (!currentDrag) return
     if (!canDropInto(currentDrag, targetFolder)) return
 
-    const dest = isVaultRoot(targetFolder) ? '' : targetFolder
+    const dest = isVaultRoot(targetFolder) ? '' : normPath(targetFolder)
 
     try {
       if (currentDrag.type === 'note') {
@@ -422,7 +463,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     // Normalize all folders and subfolder segments
     const allPathsSet = new Set<string>()
     for (const f of folders) {
-      const parts = f.split('/').filter(Boolean)
+      if (isVaultRoot(f)) continue
+      const parts = normPath(f).split('/').filter(Boolean)
       let accumulated = ''
       for (const part of parts) {
         accumulated = accumulated ? `${accumulated}/${part}` : part
@@ -432,8 +474,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     // Also include any folders mentioned by notes
     for (const n of filteredNotes) {
-      if (n.folder && n.folder !== 'Sem Pasta') {
-        const parts = n.folder.split('/').filter(Boolean)
+      if (n.folder && !isVaultRoot(n.folder)) {
+        const parts = normPath(n.folder).split('/').filter(Boolean)
         let accumulated = ''
         for (const part of parts) {
           accumulated = accumulated ? `${accumulated}/${part}` : part
@@ -456,8 +498,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     // Assign notes to their exact folder
     for (const note of filteredNotes) {
-      if (note.folder && nodeMap.has(note.folder)) {
-        nodeMap.get(note.folder)!.notes.push(note)
+      const nFolder = normPath(note.folder)
+      if (nFolder && !isVaultRoot(nFolder) && nodeMap.has(nFolder)) {
+        nodeMap.get(nFolder)!.notes.push(note)
       }
     }
 
@@ -511,7 +554,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }
 
   // Notes without a registered folder
-  const unassignedNotes = filteredNotes.filter(n => !n.folder || n.folder === 'Sem Pasta')
+  const unassignedNotes = filteredNotes.filter(n => isVaultRoot(n.folder))
 
   // Recursive Tree Node Renderer - High Density & Compact Indentation
   const renderFolderNode = (node: TreeNode) => {
@@ -519,8 +562,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const totalSubNotes = node.notes.length + node.children.reduce((acc, c) => acc + c.notes.length, 0)
     // Keep each nesting step small so deep folder trees remain readable.
     const indentPadding = 'ml-0.5 pl-0.5'
-    const isBeingDragged = draggedItem?.type === 'folder' && draggedItem.fullPath === node.fullPath
-    const isTargetFolder = dragOverTarget === node.fullPath
+    const isBeingDragged =
+      (draggedItem?.type === 'folder' && normPath(draggedItem.fullPath) === normPath(node.fullPath)) ||
+      (draggedItemRef.current?.type === 'folder' && normPath(draggedItemRef.current.fullPath) === normPath(node.fullPath))
+    const isTargetFolder = dragOverTarget !== null && dragOverTarget === normPath(node.fullPath)
     const isRootNode = isVaultRoot(node.fullPath)
 
     return (
@@ -536,15 +581,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onContextMenu={e => openContext(e, { folder: node.fullPath })}
           onClick={() => toggleFolder(node.fullPath)}
           title={node.fullPath}
-          className={`flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] font-medium group transition-all cursor-pointer ${
+          className={`flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] font-medium group transition-colors cursor-pointer select-none ${
             isBeingDragged
-              ? 'opacity-40 scale-[0.98] border border-dashed border-zinc-600'
+              ? 'opacity-40 border border-dashed border-zinc-600'
               : isTargetFolder
               ? 'ring-2 ring-[var(--accent)] bg-[var(--accent-glow-subtle)] text-zinc-100 shadow-xs'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
           }`}
+          style={{ WebkitUserDrag: !isRootNode ? 'element' : 'none' } as React.CSSProperties}
         >
-          <div className="flex items-center gap-1.5 truncate min-w-0">
+          <div className="flex items-center gap-1.5 truncate min-w-0 pointer-events-none">
             {isCollapsed ? (
               <Folder className="w-3.5 h-3.5 opacity-80 shrink-0 folder-icon-common" style={isTargetFolder ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
             ) : (
@@ -554,11 +600,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {isTargetFolder ? (
-            <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold text-zinc-950 shrink-0 shadow-xs animate-in fade-in duration-100" style={{ backgroundColor: 'var(--accent)' }}>
+            <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold text-zinc-950 shrink-0 shadow-xs animate-in fade-in duration-100 pointer-events-none select-none" style={{ backgroundColor: 'var(--accent)' }}>
               Mover para cá
             </span>
           ) : (
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ${draggedItem ? 'pointer-events-none' : ''}`}>
               <button
                 draggable={false}
                 onDragStart={e => e.stopPropagation()}
@@ -642,12 +688,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Folder Children (Subfolders & Notes) - Subtle Indented depth line */}
         {!isCollapsed && (
-          <div className={`relative ${indentPadding} border-l border-zinc-800/40 hover:border-zinc-700/60 transition-colors space-y-[1px]`}>
+          <div
+            onDragOver={(e) => handleFolderDragOver(e, node.fullPath)}
+            onDragLeave={(e) => handleFolderDragLeave(e, node.fullPath)}
+            onDrop={(e) => handleDrop(e, node.fullPath)}
+            className={`relative ${indentPadding} border-l border-zinc-800/40 hover:border-zinc-700/60 transition-colors space-y-[1px] ${
+              isTargetFolder ? 'bg-[var(--accent-glow-subtle)]/30 rounded-b-md' : ''
+            }`}
+          >
             {node.notes.length === 0 && node.children.length === 0 && (
               <div
-                onDragOver={(e) => handleFolderDragOver(e, node.fullPath)}
-                onDragLeave={(e) => handleFolderDragLeave(e, node.fullPath)}
-                onDrop={(e) => handleDrop(e, node.fullPath)}
                 className={`px-2 py-1 text-[10px] rounded transition-colors ${
                   isTargetFolder
                     ? 'border border-[var(--accent)] bg-[var(--accent-glow-subtle)] text-[var(--accent)] font-medium'
@@ -665,7 +715,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               const isMindMap = note.type === 'mindmap'
               const isHtml = note.type === 'html'
               const NoteIcon = isMindMap ? Brain : isDraw ? Palette : isHtml ? CodeXml : FileText
-              const isNoteDragged = draggedItem?.type === 'note' && draggedItem.note.id === note.id
+              const isNoteDragged =
+                (draggedItem?.type === 'note' && draggedItem.note.id === note.id) ||
+                (draggedItemRef.current?.type === 'note' && draggedItemRef.current.note.id === note.id)
               return (
                 <div
                   key={note.id}
@@ -678,14 +730,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onContextMenu={e => openContext(e, { note })}
                   onClick={() => onSelectNote(note.id)}
                   title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : isHtml ? 'Arquivo HTML' : 'Nota'})`}
-                  className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
+                  className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border select-none ${
                     isNoteDragged
-                      ? 'opacity-40 scale-[0.98] border-dashed border-zinc-600'
+                      ? 'opacity-40 border-dashed border-zinc-600'
                       : isActive
                       ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs app-sidebar-note-active'
                       : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                   }`}
-                  style={isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
+                  style={{
+                    WebkitUserDrag: 'element',
+                    ...(isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : {})
+                  } as React.CSSProperties}
                 >
                   <div className="flex items-center gap-1.5 truncate min-w-0">
                     <NoteIcon
@@ -1225,7 +1280,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="space-y-1.5 pt-2">
           <div
             onDragOver={(e) => {
-              if (canDropInto(draggedItem, '')) {
+              if (canDropInto(draggedItemRef.current || draggedItem, '')) {
                 e.preventDefault()
                 e.stopPropagation()
                 e.dataTransfer.dropEffect = 'move'
@@ -1254,7 +1309,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {/* Root Drop Banner when dragging non-root item */}
-          {draggedItem && canDropInto(draggedItem, '') && (
+          {canDropInto(draggedItemRef.current || draggedItem, '') && (
             <div
               onDragOver={(e) => {
                 e.preventDefault()
@@ -1273,7 +1328,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   : 'border-zinc-700/60 text-zinc-400 bg-zinc-900/30 hover:border-zinc-500 hover:text-zinc-200'
               }`}
             >
-              <div className="flex items-center justify-center gap-1.5">
+              <div className="flex items-center justify-center gap-1.5 pointer-events-none">
                 <Folder className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
                 <span>Mover para a raiz do cofre</span>
               </div>
@@ -1290,7 +1345,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="space-y-[1px]">
               {favoriteNotes.map(n => {
                 const isActive = n.id === currentNoteId
-                const isNoteDragged = draggedItem?.type === 'note' && draggedItem.note.id === n.id
+                const isNoteDragged =
+                  (draggedItem?.type === 'note' && draggedItem.note.id === n.id) ||
+                  (draggedItemRef.current?.type === 'note' && draggedItemRef.current.note.id === n.id)
                 return (
                   <div
                     key={`fav-${n.id}`}
@@ -1303,16 +1360,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onContextMenu={e => openContext(e, { note: n })}
                     onClick={() => onSelectNote(n.id)}
                     title={n.title}
-                    className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
+                    className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border select-none ${
                       isNoteDragged
-                        ? 'opacity-40 scale-[0.98] border-dashed border-zinc-600'
+                        ? 'opacity-40 border-dashed border-zinc-600'
                         : isActive
                         ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs app-sidebar-note-active'
                         : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                     }`}
-                    style={isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
+                    style={{
+                      WebkitUserDrag: 'element',
+                      ...(isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : {})
+                    } as React.CSSProperties}
                   >
-                    <div className="flex items-center gap-1.5 truncate min-w-0">
+                    <div className="flex items-center gap-1.5 truncate min-w-0 pointer-events-none">
                       <Star className="w-3 h-3 shrink-0" style={{ fill: 'var(--accent-icon, var(--accent))', color: 'var(--accent-icon, var(--accent))' }} />
                       <span className="truncate">{n.title}</span>
                     </div>
@@ -1333,7 +1393,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="pt-2 mt-1">
             <div
               onDragOver={(e) => {
-                if (canDropInto(draggedItem, '')) {
+                if (canDropInto(draggedItemRef.current || draggedItem, '')) {
                   e.preventDefault()
                   e.stopPropagation()
                   e.dataTransfer.dropEffect = 'move'
@@ -1358,7 +1418,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 const isMindMap = note.type === 'mindmap'
                 const isHtml = note.type === 'html'
                 const NoteIcon = isMindMap ? Brain : isDraw ? Palette : isHtml ? CodeXml : FileText
-                const isNoteDragged = draggedItem?.type === 'note' && draggedItem.note.id === note.id
+                const isNoteDragged =
+                  (draggedItem?.type === 'note' && draggedItem.note.id === note.id) ||
+                  (draggedItemRef.current?.type === 'note' && draggedItemRef.current.note.id === note.id)
                 return (
                   <div
                     key={note.id}
@@ -1371,14 +1433,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onContextMenu={e => openContext(e, { note })}
                     onClick={() => onSelectNote(note.id)}
                     title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : isHtml ? 'Arquivo HTML' : 'Nota'})`}
-                    className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border ${
+                    className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border select-none ${
                       isNoteDragged
-                        ? 'opacity-40 scale-[0.98] border-dashed border-zinc-600'
+                        ? 'opacity-40 border-dashed border-zinc-600'
                         : isActive
                         ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs app-sidebar-note-active'
                         : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                     }`}
-                    style={isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
+                    style={{
+                      WebkitUserDrag: 'element',
+                      ...(isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : {})
+                    } as React.CSSProperties}
                   >
                     <div className="flex items-center gap-1.5 truncate min-w-0">
                       <NoteIcon
@@ -1432,7 +1497,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Empty bottom area allows dropping into root */}
         <div
           onDragOver={(e) => {
-            if (canDropInto(draggedItem, '')) {
+            if (canDropInto(draggedItemRef.current || draggedItem, '')) {
               e.preventDefault()
               e.dataTransfer.dropEffect = 'move'
               if (dragOverTarget !== '') setDragOverTarget('')

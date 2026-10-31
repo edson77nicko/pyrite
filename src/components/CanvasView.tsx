@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import type { Note } from '../types'
+import type { Note, TaskSettings, TaskBoard, TaskItem } from '../types'
 import { DrawEditor } from './DrawEditor'
 import { Palette, Plus } from 'lucide-react'
 
@@ -7,6 +7,9 @@ interface CanvasViewProps {
   notes: Note[]
   currentNoteId?: string
   vaultPath?: string
+  taskSettings?: TaskSettings
+  taskBoards?: TaskBoard[]
+  tasks?: TaskItem[]
   onSelectNote: (noteId: string) => void
   onCreateDraw: (folder?: string, title?: string) => void
   onUpdateNote: (note: Note) => void
@@ -15,6 +18,10 @@ interface CanvasViewProps {
 export const CanvasView: React.FC<CanvasViewProps> = ({
   notes,
   currentNoteId,
+  vaultPath,
+  taskSettings,
+  taskBoards,
+  tasks,
   onSelectNote,
   onCreateDraw,
   onUpdateNote
@@ -121,6 +128,12 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
             key={activeDraw.id}
             note={activeDraw}
             onUpdateNote={onUpdateNote}
+            notes={notes}
+            vaultPath={vaultPath}
+            taskSettings={taskSettings}
+            taskBoards={taskBoards}
+            tasks={tasks}
+            onOpenNote={onSelectNote}
           />
         )}
       </div>

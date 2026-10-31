@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Note } from '../types'
 import type { DrawDocument, DrawElement, DrawElementType, DrawPoint, DrawTool } from '../types/draw'
-import type { TaskItem } from '../types/tasks'
+import type { TaskItem, TaskSettings, TaskBoard } from '../types/tasks'
 import {
   getElementBounds,
   isPointInElement,
@@ -15,7 +15,7 @@ import {
   drawRoundedOrthogonalPath,
   drawArrowhead
 } from '../utils/drawUtils'
-import { loadTasks, saveTasks, loadTaskSettings } from '../utils/taskStorage'
+import { loadTasks, saveTasks, loadTaskSettings, DEFAULT_BOARDS } from '../utils/taskStorage'
 import { CustomColorPickerPopover } from './CustomColorPickerPopover'
 import {
   MousePointer,
@@ -74,7 +74,11 @@ interface DrawEditorProps {
   onUpdateNote: (updatedNote: Note) => void
   notes?: Note[]
   folders?: string[]
-  onOpenNote?: (noteId: string) => void
+  vaultPath?: string
+  taskSettings?: TaskSettings
+  taskBoards?: TaskBoard[]
+  tasks?: TaskItem[]
+  onOpenNote?: (noteId: string, directNote?: Note) => void
 }
 
 // 11 Colors Line 1 (Solid vibrant - FigJam matching)
@@ -189,7 +193,17 @@ const SHAPE_OPTIONS: ShapeOption[] = [
   { type: 'cylinder', label: 'Cilindro', icon: Circle }
 ]
 
-export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, notes = [], folders = [], onOpenNote }) => {
+export const DrawEditor: React.FC<DrawEditorProps> = ({
+  note,
+  onUpdateNote,
+  notes = [],
+  folders = [],
+  vaultPath: propsVaultPath,
+  taskSettings: propsTaskSettings,
+  taskBoards: propsTaskBoards,
+  tasks: propsTasks,
+  onOpenNote
+}) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -203,9 +217,38 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
   const [noteModalSearch, setNoteModalSearch] = useState('')
   const [noteModalFolder, setNoteModalFolder] = useState('')
 
+  // Active Vault Key: props -> localStorage -> default
+  const effectiveVaultKey = useMemo(() => {
+    return propsVaultPath || (typeof localStorage !== 'undefined' ? localStorage.getItem('pyrite_electron_vault_path') : null) || 'default'
+  }, [propsVaultPath])
+
   // Tasks from vault
-  const [tasks, setTasks] = useState<TaskItem[]>(() => loadTasks())
-  const [taskSettings] = useState(() => loadTaskSettings())
+  const [tasks, setTasks] = useState<TaskItem[]>(() => propsTasks || loadTasks(effectiveVaultKey))
+  const [taskSettings, setTaskSettings] = useState<TaskSettings>(() => propsTaskSettings || loadTaskSettings(effectiveVaultKey))
+
+  // Effective Task Boards (from vault props, or settings, or default fallback)
+  const effectiveBoards: TaskBoard[] = useMemo(() => {
+    if (propsTaskBoards && propsTaskBoards.length > 0) return propsTaskBoards
+    if (taskSettings.boards && taskSettings.boards.length > 0) return taskSettings.boards
+    return DEFAULT_BOARDS
+  }, [propsTaskBoards, taskSettings.boards])
+
+  // Header dropdown board switcher state
+  const [dataTaskHeaderBoardMenu, setDataTaskHeaderBoardMenu] = useState<string | null>(null)
+
+  // Sync if props update
+  useEffect(() => {
+    if (propsTasks) setTasks(propsTasks)
+  }, [propsTasks])
+
+  useEffect(() => {
+    if (propsTaskSettings) setTaskSettings(propsTaskSettings)
+  }, [propsTaskSettings])
+
+  useEffect(() => {
+    if (!propsTasks) setTasks(loadTasks(effectiveVaultKey))
+    if (!propsTaskSettings) setTaskSettings(loadTaskSettings(effectiveVaultKey))
+  }, [effectiveVaultKey, propsTasks, propsTaskSettings])
 
   // Undo / Redo history
   const historyRef = useRef<DrawElement[][]>([doc.elements])
@@ -269,8 +312,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
   } | null>(null)
 
   // Popover state for floating selection toolbar
-  const [openPopover, setOpenPopover] = useState<'shape' | 'color' | 'typography' | 'stroke' | 'stickyColor' | 'stickySize' | 'dataTaskBoard' | 'tableColor' | 'tableTypography' | 'tableSize' | 'tableAlign' | null>(null)
+  const [openPopover, setOpenPopover] = useState<'shape' | 'color' | 'textColor' | 'typography' | 'stroke' | 'stickyColor' | 'stickySize' | 'dataTaskBoard' | 'tableColor' | 'tableTypography' | 'tableSize' | 'tableAlign' | null>(null)
   const [shapeSearch, setShapeSearch] = useState('')
+
+  // Text color picker target
+  const customPickerTarget = useRef<'color' | 'textColor' | 'stickyColor' | 'tableColor'>('color')
 
   // Custom Color Picker Popover (Matches Platform Settings)
   const [showCustomPicker, setShowCustomPicker] = useState(false)
@@ -304,7 +350,8 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
     currentX: number
     currentY: number
   } | null>(null)
-  const [hoveredHandle, setHoveredHandle] = useState<string | null>(null)
+  const [hoveredHandle, setHoveredHandle] = useState<{ elementId: string; handleId: 'top' | 'right' | 'bottom' | 'left' } | null>(null)
+  const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
 
   // Platform accent color helper
   const getAccentColor = useCallback(() => {
@@ -400,14 +447,15 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
 
   // Refresh tasks from storage
   const handleReloadTasks = () => {
-    setTasks(loadTasks())
+    setTasks(loadTasks(effectiveVaultKey))
+    setTaskSettings(loadTaskSettings(effectiveVaultKey))
   }
 
   // Toggle task complete from canvas widget
   const handleToggleTask = (taskId: string) => {
     const updated = tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed, updatedAt: Date.now() } : t)
     setTasks(updated)
-    saveTasks(updated)
+    saveTasks(updated, effectiveVaultKey)
   }
 
   // Render Loop
@@ -548,32 +596,48 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
             ctx.strokeRect(c.x - cornerHandleSize / 2, c.y - cornerHandleSize / 2, cornerHandleSize, cornerHandleSize)
           }
 
-          // Output connection handlers (N8N circular nodes with accent color)
-          const isConnectable = el.type !== 'text' && el.type !== 'table' && el.type !== 'note-card'
-          if (isConnectable) {
-            const connHandles = [
-              { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
-              { id: 'right', x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
-              { id: 'bottom', x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
-              { id: 'left', x: bounds.x, y: bounds.y + bounds.height / 2 }
-            ]
-
-            const connRadius = 4.5 / zoom
-
-            for (const h of connHandles) {
-              const isHovered = hoveredHandle === h.id
-              ctx.beginPath()
-              ctx.arc(h.x, h.y, isHovered ? connRadius * 1.5 : connRadius, 0, Math.PI * 2)
-              ctx.fillStyle = isHovered ? '#ffffff' : accent
-              ctx.fill()
-              ctx.strokeStyle = isHovered ? accent : '#ffffff'
-              ctx.lineWidth = 1.2 / zoom
-              ctx.stroke()
-            }
-          }
         }
 
         ctx.restore()
+      }
+    }
+
+    // Render circular connection handles for connectable elements (on hover or selection)
+    if (!editingText) {
+      for (const el of doc.elements) {
+        if (el.type === 'freedraw' || el.type === 'line' || el.type === 'arrow') continue
+        const isSelected = selectedIds.includes(el.id)
+        const isHovered = hoveredElementId === el.id
+        if (!isSelected && !isHovered) continue
+
+        const bounds = getElementBounds(el)
+        const connHandles = [
+          { id: 'top' as const, x: bounds.x + bounds.width / 2, y: bounds.y },
+          { id: 'right' as const, x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
+          { id: 'bottom' as const, x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
+          { id: 'left' as const, x: bounds.x, y: bounds.y + bounds.height / 2 }
+        ]
+
+        const baseRadius = 5.5 / zoom
+
+        for (const h of connHandles) {
+          const isHandleHovered = hoveredHandle?.elementId === el.id && hoveredHandle?.handleId === h.id
+          const r = isHandleHovered ? baseRadius * 1.4 : baseRadius
+
+          ctx.save()
+          ctx.beginPath()
+          ctx.arc(h.x, h.y, r, 0, Math.PI * 2)
+          ctx.fillStyle = isHandleHovered ? '#ffffff' : accent
+          ctx.shadowColor = 'rgba(0,0,0,0.5)'
+          ctx.shadowBlur = 4 / zoom
+          ctx.fill()
+
+          ctx.shadowBlur = 0
+          ctx.strokeStyle = isHandleHovered ? accent : '#ffffff'
+          ctx.lineWidth = (isHandleHovered ? 2 : 1.5) / zoom
+          ctx.stroke()
+          ctx.restore()
+        }
       }
     }
 
@@ -651,7 +715,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
     }
 
     ctx.restore()
-  }, [doc, selectedIds, editingText, hoveredHandle, getAccentColor])
+  }, [doc, selectedIds, editingText, hoveredHandle, hoveredElementId, getAccentColor])
 
   // Canvas size adjustment
   useEffect(() => {
@@ -936,29 +1000,34 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
               return
             }
 
-            // N8N Output Connection Nodes (Top, Right, Bottom, Left)
-            if (selEl.type !== 'text') {
-              const connHandles: Array<{ id: 'top' | 'right' | 'bottom' | 'left'; x: number; y: number }> = [
-                { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
-                { id: 'right', x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
-                { id: 'bottom', x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
-                { id: 'left', x: bounds.x, y: bounds.y + bounds.height / 2 }
-              ]
-
-              const connHit = connHandles.find(h => Math.hypot(h.x - world.x, h.y - world.y) <= margin)
-              if (connHit) {
-                activeConnector.current = {
-                  fromId: selEl.id,
-                  handleId: connHit.id,
-                  startX: connHit.x,
-                  startY: connHit.y,
-                  currentX: world.x,
-                  currentY: world.y
-                }
-                return
-              }
-            }
           }
+        }
+      }
+
+      // 2. Output Connection Nodes: Check ANY connectable element (selected or hovered)
+      const connMargin = 14 / doc.viewport.zoom
+      for (const el of doc.elements.slice().reverse()) {
+        if (el.type === 'freedraw' || el.type === 'line' || el.type === 'arrow') continue
+        const bounds = getElementBounds(el)
+        const connHandles: Array<{ id: 'top' | 'right' | 'bottom' | 'left'; x: number; y: number }> = [
+          { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
+          { id: 'right', x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
+          { id: 'bottom', x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
+          { id: 'left', x: bounds.x, y: bounds.y + bounds.height / 2 }
+        ]
+
+        const connHit = connHandles.find(h => Math.hypot(h.x - world.x, h.y - world.y) <= connMargin)
+        if (connHit) {
+          activeConnector.current = {
+            fromId: el.id,
+            handleId: connHit.id,
+            startX: connHit.x,
+            startY: connHit.y,
+            currentX: world.x,
+            currentY: world.y
+          }
+          isPointerDown.current = true
+          return
         }
       }
 
@@ -1045,8 +1114,8 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
     // Placing DATA-TASK directly on single click
     if (tool === 'data-task') {
       const id = 'data_task_' + crypto.randomUUID()
-      const defaultW = 600
-      const defaultH = 420
+      const defaultW = 840
+      const defaultH = 560
       const newElement: DrawElement = {
         id,
         type: 'data-task',
@@ -1075,7 +1144,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
     // Placing STICKY NOTE directly on single click
     if (tool === 'sticky') {
       const id = 'sticky_' + crypto.randomUUID()
-      const defaultSize = 180
+      const defaultSize = 200
       const newElement: DrawElement = {
         id,
         type: 'sticky',
@@ -1085,6 +1154,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
         height: defaultSize,
         strokeColor: '#18181b',
         backgroundColor: '#ffd8a8',
+        textColor: '#18181b',
         strokeWidth: 1,
         strokeStyle: 'solid',
         fillStyle: 'solid',
@@ -1095,7 +1165,6 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
       setDoc(prev => ({ ...prev, elements: nextElements }))
       setSelectedIds([id])
       setTool('select')
-      setEditingText({ id, x: newElement.x, y: newElement.y, width: defaultSize, height: defaultSize, text: '' })
       scheduleSave({ ...doc, elements: nextElements })
       pushHistory(nextElements)
       return
@@ -1235,25 +1304,40 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 }
               }
 
-              const connHandles = [
-                { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
-                { id: 'right', x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
-                { id: 'bottom', x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
-                { id: 'left', x: bounds.x, y: bounds.y + bounds.height / 2 }
-              ]
-
-              const hitConn = connHandles.find(h => Math.hypot(h.x - world.x, h.y - world.y) <= margin)
-              if (hitConn) {
-                setHoveredHandle(hitConn.id)
-                container.style.cursor = 'crosshair'
-                return
-              }
             }
           }
         }
 
+        // Global Connection Handles hover check across all elements
+        const connMargin = 12 / doc.viewport.zoom
+        let foundConn: { elementId: string; handleId: 'top' | 'right' | 'bottom' | 'left' } | null = null
+
+        for (const el of doc.elements.slice().reverse()) {
+          if (el.type === 'freedraw' || el.type === 'line' || el.type === 'arrow') continue
+          const bounds = getElementBounds(el)
+          const connHandles: Array<{ id: 'top' | 'right' | 'bottom' | 'left'; x: number; y: number }> = [
+            { id: 'top', x: bounds.x + bounds.width / 2, y: bounds.y },
+            { id: 'right', x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
+            { id: 'bottom', x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
+            { id: 'left', x: bounds.x, y: bounds.y + bounds.height / 2 }
+          ]
+          const hitConn = connHandles.find(h => Math.hypot(h.x - world.x, h.y - world.y) <= connMargin)
+          if (hitConn) {
+            foundConn = { elementId: el.id, handleId: hitConn.id }
+            break
+          }
+        }
+
+        if (foundConn) {
+          setHoveredHandle(foundConn)
+          setHoveredElementId(foundConn.elementId)
+          container.style.cursor = 'crosshair'
+          return
+        }
+
         setHoveredHandle(null)
         const hit = doc.elements.slice().reverse().find(el => isPointInElement(world, el))
+        setHoveredElementId(hit ? hit.id : null)
         container.style.cursor = hit ? 'move' : 'default'
       } else if (tool === 'eraser') {
         container.style.cursor = 'crosshair'
@@ -1622,11 +1706,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
           defaultWidth = 110
           defaultHeight = 120
         } else if (created.type === 'sticky') {
-          defaultWidth = 180
-          defaultHeight = 180
+          defaultWidth = 200
+          defaultHeight = 200
         } else if (created.type === 'data-task') {
-          defaultWidth = 580
-          defaultHeight = 420
+          defaultWidth = 840
+          defaultHeight = 560
         } else if (created.type === 'table') {
           defaultWidth = 520
           defaultHeight = 150
@@ -1644,6 +1728,7 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 width: defaultWidth,
                 height: defaultHeight,
                 backgroundColor: created.type === 'sticky' ? '#ffd8a8' : created.type === 'data-task' || created.type === 'table' ? '#18181b' : el.backgroundColor,
+                textColor: created.type === 'sticky' ? '#18181b' : el.textColor,
                 rows: created.type === 'table' ? 3 : el.rows,
                 cols: created.type === 'table' ? 4 : el.cols,
                 viewMode: created.type === 'data-task' ? 'calendar' : el.viewMode
@@ -2555,7 +2640,8 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full bg-[#111114] overflow-hidden select-none touch-none dark-theme-zone"
+      className="dark relative w-full h-full bg-[#111114] text-zinc-100 overflow-hidden select-none touch-none dark-theme-zone"
+      style={{ colorScheme: 'dark' }}
     >
       {/* 1. Main Canvas */}
       <canvas
@@ -2586,36 +2672,176 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 }
               }
             }}
+            onPointerEnter={() => setHoveredElementId(dataTaskEl.id)}
+            onPointerLeave={() => setHoveredElementId(null)}
             className={`absolute z-10 rounded-2xl bg-[#15151a] border border-white/[0.08] shadow-2xl flex flex-col overflow-hidden text-xs text-zinc-200 transition-shadow ${
               tool !== 'select' ? 'pointer-events-none' : 'pointer-events-auto'
             }`}
             style={{
-              transform: `translate3d(${screenPos.x}px, ${screenPos.y}px, 0)`,
-              width: `${dataTaskEl.width * doc.viewport.zoom}px`,
-              height: `${dataTaskEl.height * doc.viewport.zoom}px`,
+              transform: `translate3d(${Math.round(screenPos.x)}px, ${Math.round(screenPos.y)}px, 0) scale(${doc.viewport.zoom})`,
+              transformOrigin: '0 0',
+              width: `${dataTaskEl.width}px`,
+              height: `${dataTaskEl.height}px`,
               left: 0,
               top: 0,
-              willChange: 'transform',
+              WebkitFontSmoothing: 'antialiased',
+              MozOsxFontSmoothing: 'grayscale',
               boxShadow: '0 20px 45px -10px rgba(0,0,0,0.7)'
             }}
           >
+            {/* Top / Right / Bottom / Left Connection Nodes on DOM widget */}
+            {(selectedIds.includes(dataTaskEl.id) || hoveredElementId === dataTaskEl.id) && (
+              <>
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    const bounds = getElementBounds(dataTaskEl)
+                    activeConnector.current = {
+                      fromId: dataTaskEl.id,
+                      handleId: 'top',
+                      startX: bounds.x + bounds.width / 2,
+                      startY: bounds.y,
+                      currentX: bounds.x + bounds.width / 2,
+                      currentY: bounds.y
+                    }
+                    isPointerDown.current = true
+                  }}
+                  className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow-md cursor-crosshair z-30 hover:scale-125 transition-transform"
+                  style={{ borderColor: 'var(--accent)' }}
+                  title="Conectar"
+                />
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    const bounds = getElementBounds(dataTaskEl)
+                    activeConnector.current = {
+                      fromId: dataTaskEl.id,
+                      handleId: 'right',
+                      startX: bounds.x + bounds.width,
+                      startY: bounds.y + bounds.height / 2,
+                      currentX: bounds.x + bounds.width,
+                      currentY: bounds.y + bounds.height / 2
+                    }
+                    isPointerDown.current = true
+                  }}
+                  className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow-md cursor-crosshair z-30 hover:scale-125 transition-transform"
+                  style={{ borderColor: 'var(--accent)' }}
+                  title="Conectar"
+                />
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    const bounds = getElementBounds(dataTaskEl)
+                    activeConnector.current = {
+                      fromId: dataTaskEl.id,
+                      handleId: 'bottom',
+                      startX: bounds.x + bounds.width / 2,
+                      startY: bounds.y + bounds.height,
+                      currentX: bounds.x + bounds.width / 2,
+                      currentY: bounds.y + bounds.height
+                    }
+                    isPointerDown.current = true
+                  }}
+                  className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow-md cursor-crosshair z-30 hover:scale-125 transition-transform"
+                  style={{ borderColor: 'var(--accent)' }}
+                  title="Conectar"
+                />
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    const bounds = getElementBounds(dataTaskEl)
+                    activeConnector.current = {
+                      fromId: dataTaskEl.id,
+                      handleId: 'left',
+                      startX: bounds.x,
+                      startY: bounds.y + bounds.height / 2,
+                      currentX: bounds.x,
+                      currentY: bounds.y + bounds.height / 2
+                    }
+                    isPointerDown.current = true
+                  }}
+                  className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow-md cursor-crosshair z-30 hover:scale-125 transition-transform"
+                  style={{ borderColor: 'var(--accent)' }}
+                  title="Conectar"
+                />
+              </>
+            )}
             {/* Widget Top Header - Sleek Tonal Contrast + Drag Surface */}
             <div
               onPointerDown={(e) => handleCardHeaderPointerDown(e, dataTaskEl.id)}
-              className="p-3 pb-2.5 bg-[#181820] flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/[0.06]"
+              className="p-3 pb-2.5 bg-[#181820] flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/[0.06] relative"
             >
-              <div className="flex items-center gap-2 pointer-events-none">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.05] text-zinc-200 font-medium text-[11px]">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.05] text-zinc-200 font-medium text-[11px] pointer-events-none select-none">
                   <Database className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
                   <span>{currentView === 'calendar' ? 'Calendário' : currentView === 'kanban' ? 'Quadro' : 'Data Task'}</span>
                 </div>
 
-                <div className="flex items-center gap-1 text-[11px] text-zinc-400">
-                  <span>•</span>
-                  <span className="font-medium text-zinc-300">
-                    {taskSettings.boards?.find(b => b.id === currentBoardId)?.name || 'Geral'}
-                  </span>
-                  <span className="text-[10px] text-zinc-500">({filteredTasks.length} tarefas)</span>
+                {/* Interactive Board Selector in Header */}
+                <div className="relative" onPointerDown={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDataTaskHeaderBoardMenu(prev => prev === dataTaskEl.id ? null : dataTaskEl.id)
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/[0.08] text-[11px] text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                    title="Mudar conjunto / grupo de tarefas"
+                  >
+                    <span>•</span>
+                    <span className="font-semibold text-zinc-200 hover:underline">
+                      {currentBoardId === 'all'
+                        ? 'Todas as Tarefas'
+                        : (effectiveBoards.find(b => b.id === currentBoardId)?.name || 'Geral')}
+                    </span>
+                    <ChevronDown className="w-3 h-3 text-zinc-400" />
+                    <span className="text-[10px] text-zinc-500">({filteredTasks.length})</span>
+                  </button>
+
+                  {dataTaskHeaderBoardMenu === dataTaskEl.id && (
+                    <div className="absolute left-0 top-full mt-1.5 w-52 bg-[#1c1c24] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-50 text-xs flex flex-col gap-1 max-h-60 overflow-y-auto">
+                      <span className="text-[10px] text-zinc-400 px-2 py-0.5 font-medium">Grupos de Tarefas</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          updateElementProperty(dataTaskEl.id, 'boardId', 'all')
+                          setDataTaskHeaderBoardMenu(null)
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer flex items-center justify-between ${
+                          currentBoardId === 'all' ? 'text-white font-medium' : 'text-zinc-300 hover:bg-white/[0.06]'
+                        }`}
+                        style={currentBoardId === 'all' ? { backgroundColor: 'var(--accent)' } : undefined}
+                      >
+                        <span>Todas as Tarefas</span>
+                        <span className="text-[10px] text-zinc-400">({tasks.length})</span>
+                      </button>
+                      {effectiveBoards.map(b => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            updateElementProperty(dataTaskEl.id, 'boardId', b.id)
+                            setDataTaskHeaderBoardMenu(null)
+                          }}
+                          className={`px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer flex items-center justify-between ${
+                            currentBoardId === b.id ? 'text-white font-medium' : 'text-zinc-300 hover:bg-white/[0.06]'
+                          }`}
+                          style={currentBoardId === b.id ? { backgroundColor: 'var(--accent)' } : undefined}
+                        >
+                          <span className="truncate">{b.name}</span>
+                          <span className="text-[10px] text-zinc-400">
+                            ({tasks.filter(t => (t.boardId || 'default') === b.id).length})
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2914,19 +3140,104 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 }
               }
             }}
+            onPointerEnter={() => setHoveredElementId(noteEl.id)}
+            onPointerLeave={() => setHoveredElementId(null)}
             className={`absolute z-10 rounded-2xl bg-[#15151a] border border-white/[0.08] shadow-2xl flex flex-col overflow-hidden text-xs text-zinc-200 transition-shadow ${
               tool !== 'select' ? 'pointer-events-none' : 'pointer-events-auto'
             }`}
             style={{
-              transform: `translate3d(${screenPos.x}px, ${screenPos.y}px, 0)`,
-              width: `${noteEl.width * doc.viewport.zoom}px`,
-              height: `${noteEl.height * doc.viewport.zoom}px`,
+              transform: `translate3d(${Math.round(screenPos.x)}px, ${Math.round(screenPos.y)}px, 0) scale(${doc.viewport.zoom})`,
+              transformOrigin: '0 0',
+              width: `${noteEl.width}px`,
+              height: `${noteEl.height}px`,
               left: 0,
               top: 0,
-              willChange: 'transform',
+              WebkitFontSmoothing: 'antialiased',
+              MozOsxFontSmoothing: 'grayscale',
               boxShadow: '0 20px 45px -10px rgba(0,0,0,0.7)'
             }}
           >
+            {/* Top / Right / Bottom / Left Connection Nodes on NoteCard DOM widget */}
+            {(selectedIds.includes(noteEl.id) || hoveredElementId === noteEl.id) && (
+              <>
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    const bounds = getElementBounds(noteEl)
+                    activeConnector.current = {
+                      fromId: noteEl.id,
+                      handleId: 'top',
+                      startX: bounds.x + bounds.width / 2,
+                      startY: bounds.y,
+                      currentX: bounds.x + bounds.width / 2,
+                      currentY: bounds.y
+                    }
+                    isPointerDown.current = true
+                  }}
+                  className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow-md cursor-crosshair z-30 hover:scale-125 transition-transform"
+                  style={{ borderColor: 'var(--accent)' }}
+                  title="Conectar"
+                />
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    const bounds = getElementBounds(noteEl)
+                    activeConnector.current = {
+                      fromId: noteEl.id,
+                      handleId: 'right',
+                      startX: bounds.x + bounds.width,
+                      startY: bounds.y + bounds.height / 2,
+                      currentX: bounds.x + bounds.width,
+                      currentY: bounds.y + bounds.height / 2
+                    }
+                    isPointerDown.current = true
+                  }}
+                  className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow-md cursor-crosshair z-30 hover:scale-125 transition-transform"
+                  style={{ borderColor: 'var(--accent)' }}
+                  title="Conectar"
+                />
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    const bounds = getElementBounds(noteEl)
+                    activeConnector.current = {
+                      fromId: noteEl.id,
+                      handleId: 'bottom',
+                      startX: bounds.x + bounds.width / 2,
+                      startY: bounds.y + bounds.height,
+                      currentX: bounds.x + bounds.width / 2,
+                      currentY: bounds.y + bounds.height
+                    }
+                    isPointerDown.current = true
+                  }}
+                  className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow-md cursor-crosshair z-30 hover:scale-125 transition-transform"
+                  style={{ borderColor: 'var(--accent)' }}
+                  title="Conectar"
+                />
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    const bounds = getElementBounds(noteEl)
+                    activeConnector.current = {
+                      fromId: noteEl.id,
+                      handleId: 'left',
+                      startX: bounds.x,
+                      startY: bounds.y + bounds.height / 2,
+                      currentX: bounds.x,
+                      currentY: bounds.y + bounds.height / 2
+                    }
+                    isPointerDown.current = true
+                  }}
+                  className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow-md cursor-crosshair z-30 hover:scale-125 transition-transform"
+                  style={{ borderColor: 'var(--accent)' }}
+                  title="Conectar"
+                />
+              </>
+            )}
             {/* Top Card Header - Drag Surface */}
             <div
               onPointerDown={(e) => handleCardHeaderPointerDown(e, noteEl.id)}
@@ -3042,39 +3353,47 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                     title="Escolher Conjunto / Quadro de Tarefas"
                   >
                     <FolderOpen className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
-                    <span>{taskSettings.boards?.find(b => b.id === (singleSelectedElement.boardId || 'default'))?.name || 'Geral'}</span>
+                    <span>
+                      {singleSelectedElement.boardId === 'all'
+                        ? 'Todas as Tarefas'
+                        : (effectiveBoards.find(b => b.id === (singleSelectedElement.boardId || 'default'))?.name || 'Geral')}
+                    </span>
                     <ChevronDown className="w-3 h-3 text-zinc-400" />
                   </button>
 
                   {/* Board Selection Popover */}
                   {openPopover === 'dataTaskBoard' && (
-                    <div className="absolute left-0 bottom-full mb-2 w-48 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1">
-                      <span className="text-[10px] text-zinc-400 px-2 py-0.5 block">Conjuntos de Tarefas</span>
+                    <div className="absolute left-0 bottom-full mb-2 w-52 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1 max-h-60 overflow-y-auto">
+                      <span className="text-[10px] text-zinc-400 px-2 py-0.5 block font-medium">Conjuntos de Tarefas</span>
                       <button
                         onClick={() => {
                           updateSelectedProperty('boardId', 'all')
                           setOpenPopover(null)
                         }}
-                        className={`px-2.5 py-1.5 rounded text-left transition-colors cursor-pointer ${
+                        className={`px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer flex items-center justify-between ${
                           singleSelectedElement.boardId === 'all' ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
                         }`}
                         style={singleSelectedElement.boardId === 'all' ? { backgroundColor: 'var(--accent)' } : undefined}
                       >
-                        Todas as Tarefas
+                        <span>Todas as Tarefas</span>
+                        <span className="text-[10px] text-zinc-400">({tasks.length})</span>
                       </button>
-                      {(taskSettings.boards || []).map(b => (
+                      {effectiveBoards.map(b => (
                         <button
                           key={b.id}
                           onClick={() => {
                             updateSelectedProperty('boardId', b.id)
                             setOpenPopover(null)
                           }}
-                          className={`px-2.5 py-1.5 rounded text-left transition-colors cursor-pointer ${
+                          className={`px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer flex items-center justify-between ${
                             (singleSelectedElement.boardId || 'default') === b.id ? 'text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800'
                           }`}
                           style={(singleSelectedElement.boardId || 'default') === b.id ? { backgroundColor: 'var(--accent)' } : undefined}
                         >
-                          {b.name}
+                          <span className="truncate">{b.name}</span>
+                          <span className="text-[10px] text-zinc-400">
+                            ({tasks.filter(t => (t.boardId || 'default') === b.id).length})
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -3216,6 +3535,65 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                 >
                   <List className="w-3.5 h-3.5" />
                 </button>
+
+                <div className="w-px h-4 bg-zinc-700/80 mx-0.5" />
+
+                {/* 7. Cor do Texto para Sticky Note */}
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenPopover(prev => prev === 'textColor' ? null : 'textColor')}
+                    className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                      openPopover === 'textColor' ? 'bg-zinc-800 text-white shadow-xs' : ''
+                    }`}
+                    title="Cor do Texto"
+                  >
+                    <div className="flex flex-col items-center justify-center">
+                      <span className="font-bold text-[12px] leading-none">A</span>
+                      <div
+                        className="w-3 h-0.5 mt-0.5 rounded-full"
+                        style={{ backgroundColor: singleSelectedElement.textColor || '#18181b' }}
+                      />
+                    </div>
+                    <ChevronDown className="w-2.5 h-2.5 text-zinc-400" />
+                  </button>
+
+                  {/* Text Color Popover */}
+                  {openPopover === 'textColor' && (
+                    <div className="absolute left-0 bottom-full mb-2 w-52 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2.5 z-40">
+                      <span className="text-[10px] text-zinc-400 block mb-1.5">Cor do Texto</span>
+                      <div className="grid grid-cols-6 gap-1.5 mb-2">
+                        {['#18181b', '#ffffff', '#71717a', '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'].map(color => (
+                          <button
+                            key={color}
+                            onClick={() => {
+                              updateSelectedProperty('textColor', color)
+                              setOpenPopover(null)
+                            }}
+                            className="w-6 h-6 rounded-md border border-zinc-700/60 transition-transform hover:scale-110 cursor-pointer shadow-xs"
+                            style={{
+                              backgroundColor: color,
+                              borderColor: (singleSelectedElement.textColor || '#18181b') === color ? 'var(--accent)' : undefined
+                            }}
+                          />
+                        ))}
+                        <button
+                          ref={rainbowBtnRef}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            customPickerTarget.current = 'textColor'
+                            setShowCustomPicker(prev => !prev)
+                          }}
+                          className="w-6 h-6 rounded-md border border-zinc-700/60 transition-transform hover:scale-110 cursor-pointer shadow-xs"
+                          style={{
+                            background:
+                              'conic-gradient(from 180deg at 50% 50%, #FF0000 0deg, #FFA500 50deg, #FFFF00 100deg, #008000 150deg, #00FFFF 200deg, #0000FF 250deg, #EE82EE 300deg, #FF0000 360deg)'
+                          }}
+                          title="Cor personalizada (Color Picker)"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </>
             ) : singleSelectedElement.type === 'table' ? (
               /* C. TABLE TOOLBAR - Matching User Prints & FigJam Spec */
@@ -3955,6 +4333,64 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
                   )}
                 </div>
 
+                {/* Cor do Texto para Shapes & Text Elements */}
+                {!['line', 'arrow', 'freedraw'].includes(singleSelectedElement.type) && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setOpenPopover(prev => prev === 'textColor' ? null : 'textColor')}
+                      className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ${
+                        openPopover === 'textColor' ? 'bg-zinc-800 text-white shadow-xs' : ''
+                      }`}
+                      title="Cor do Texto"
+                    >
+                      <div className="flex flex-col items-center justify-center">
+                        <Type className="w-3.5 h-3.5" />
+                        <div
+                          className="w-3 h-0.5 mt-0.5 rounded-full"
+                          style={{ backgroundColor: singleSelectedElement.textColor || singleSelectedElement.strokeColor || '#f4f4f5' }}
+                        />
+                      </div>
+                      <ChevronDown className="w-2.5 h-2.5 text-zinc-400" />
+                    </button>
+
+                    {openPopover === 'textColor' && (
+                      <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2.5 z-40 text-xs">
+                        <span className="text-[10px] text-zinc-400 block mb-1.5">Cor do Texto</span>
+                        <div className="grid grid-cols-6 gap-1.5 mb-2">
+                          {['#ffffff', '#18181b', '#71717a', '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'].map(c => (
+                            <button
+                              key={c}
+                              onClick={() => {
+                                updateSelectedProperty('textColor', c)
+                                setOpenPopover(null)
+                              }}
+                              className="w-6 h-6 rounded-md border border-zinc-700/60 transition-transform hover:scale-110 cursor-pointer shadow-xs"
+                              style={{
+                                backgroundColor: c,
+                                borderColor: (singleSelectedElement.textColor || '#f4f4f5') === c ? 'var(--accent)' : undefined
+                              }}
+                            />
+                          ))}
+                          <button
+                            ref={rainbowBtnRef}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              customPickerTarget.current = 'textColor'
+                              setShowCustomPicker(prev => !prev)
+                            }}
+                            className="w-6 h-6 rounded-md border border-zinc-700/60 transition-transform hover:scale-110 cursor-pointer shadow-xs"
+                            style={{
+                              background:
+                                'conic-gradient(from 180deg at 50% 50%, #FF0000 0deg, #FFA500 50deg, #FFFF00 100deg, #008000 150deg, #00FFFF 200deg, #0000FF 250deg, #EE82EE 300deg, #FF0000 360deg)'
+                            }}
+                            title="Cor personalizada (Color Picker)"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Stroke Width selector (For lines, arrows, and borders) */}
                 {singleSelectedElement.type !== 'text' && (
                   <div className="relative">
@@ -4071,27 +4507,30 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
       {/* 5. Bottom Floating FigJam Main Toolbar */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#18181d]/92 backdrop-blur-md border border-zinc-700/80 px-2 py-1.5 rounded-2xl shadow-2xl z-20">
         {/* Pointer / Selection */}
-        <button
-          onClick={() => {
-            setTool('select')
-            setIsBottomShapesOpen(false)
-          }}
-          title="Seleção (V / 1)"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-            tool === 'select'
-              ? 'text-white font-semibold shadow-md scale-105'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-          }`}
-          style={tool === 'select' ? { backgroundColor: 'var(--accent)' } : undefined}
-        >
-          <MousePointer className="w-4 h-4 stroke-[2]" />
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => {
+              setTool('select')
+              setIsBottomShapesOpen(false)
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              tool === 'select'
+                ? 'text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+            style={tool === 'select' ? { backgroundColor: 'var(--accent)' } : undefined}
+          >
+            <MousePointer className="w-4 h-4 stroke-[2]" />
+          </button>
+          <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+            Selecionar
+          </span>
+        </div>
 
         {/* FORMAS (Single unified Shapes button with Popover!) */}
-        <div className="relative">
+        <div className="relative group flex items-center justify-center">
           <button
             onClick={() => setIsBottomShapesOpen(prev => !prev)}
-            title="Formas Geométricas (Clique para escolher)"
             className={`h-9 px-2.5 rounded-xl flex items-center gap-1 transition-all cursor-pointer ${
               ['rectangle', 'ellipse', 'diamond', 'triangle', 'triangleDown', 'roundedRect', 'parallelogram', 'cylinder'].includes(tool) || isBottomShapesOpen
                 ? 'text-white font-semibold shadow-md scale-105'
@@ -4106,6 +4545,11 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
             <Shapes className="w-4 h-4 stroke-[2]" />
             <ChevronDown className="w-3 h-3 text-zinc-300" />
           </button>
+          {!isBottomShapesOpen && (
+            <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+              Formas
+            </span>
+          )}
 
           {/* Bottom Shapes Popover */}
           {isBottomShapesOpen && (
@@ -4152,183 +4596,223 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
         </div>
 
         {/* NOTA / POST-IT (STICKY NOTE) */}
-        <button
-          onClick={() => {
-            setTool('sticky')
-            setSelectedIds([])
-            setIsBottomShapesOpen(false)
-          }}
-          title="Nota Adesiva / Post-it (N / S) - Clique na tela para criar"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-            tool === 'sticky'
-              ? 'text-white font-semibold shadow-md scale-105'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-          }`}
-          style={tool === 'sticky' ? { backgroundColor: 'var(--accent)' } : undefined}
-        >
-          <StickyNote className="w-4 h-4 stroke-[2]" />
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => {
+              setTool('sticky')
+              setSelectedIds([])
+              setIsBottomShapesOpen(false)
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              tool === 'sticky'
+                ? 'text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+            style={tool === 'sticky' ? { backgroundColor: 'var(--accent)' } : undefined}
+          >
+            <StickyNote className="w-4 h-4 stroke-[2]" />
+          </button>
+          <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+            Nota
+          </span>
+        </div>
 
         {/* DATA-TASK (Banco de dados de tarefas / Calendar Frame) */}
-        <button
-          onClick={() => {
-            setTool('data-task')
-            setSelectedIds([])
-            setIsBottomShapesOpen(false)
-          }}
-          title="Data Task - Banco de tarefas (K)"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-            tool === 'data-task'
-              ? 'text-white font-semibold shadow-md scale-105'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-          }`}
-          style={tool === 'data-task' ? { backgroundColor: 'var(--accent)' } : undefined}
-        >
-          <Database className="w-4 h-4 stroke-[2]" />
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => {
+              setTool('data-task')
+              setSelectedIds([])
+              setIsBottomShapesOpen(false)
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              tool === 'data-task'
+                ? 'text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+            style={tool === 'data-task' ? { backgroundColor: 'var(--accent)' } : undefined}
+          >
+            <Database className="w-4 h-4 stroke-[2]" />
+          </button>
+          <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+            Data Task
+          </span>
+        </div>
 
         {/* TABELA (FigJam Table tool) */}
-        <button
-          onClick={() => {
-            setTool('table')
-            setSelectedIds([])
-            setIsBottomShapesOpen(false)
-          }}
-          title="Tabela (B) - Clique ou arraste para definir tamanho"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-            tool === 'table'
-              ? 'text-white font-semibold shadow-md scale-105'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-          }`}
-          style={tool === 'table' ? { backgroundColor: 'var(--accent)' } : undefined}
-        >
-          <Table className="w-4 h-4 stroke-[2]" />
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => {
+              setTool('table')
+              setSelectedIds([])
+              setIsBottomShapesOpen(false)
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              tool === 'table'
+                ? 'text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+            style={tool === 'table' ? { backgroundColor: 'var(--accent)' } : undefined}
+          >
+            <Table className="w-4 h-4 stroke-[2]" />
+          </button>
+          <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+            Tabela
+          </span>
+        </div>
 
         {/* IMPORTAR NOTA / DOCUMENTO ACOPLADO */}
-        <button
-          onClick={() => {
-            setIsImportNoteModalOpen(true)
-            setIsBottomShapesOpen(false)
-          }}
-          title="Importar Nota do Cofre (Documento Acoplado)"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-            isImportNoteModalOpen
-              ? 'text-white font-semibold shadow-md scale-105'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-          }`}
-          style={isImportNoteModalOpen ? { backgroundColor: 'var(--accent)' } : undefined}
-        >
-          <FileText className="w-4 h-4 stroke-[2]" />
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => {
+              setIsImportNoteModalOpen(true)
+              setIsBottomShapesOpen(false)
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              isImportNoteModalOpen
+                ? 'text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+            style={isImportNoteModalOpen ? { backgroundColor: 'var(--accent)' } : undefined}
+          >
+            <FileText className="w-4 h-4 stroke-[2]" />
+          </button>
+          <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+            Documento
+          </span>
+        </div>
 
         {/* Seta / Conector */}
-        <button
-          onClick={() => {
-            setTool('arrow')
-            setSelectedIds([])
-            setIsBottomShapesOpen(false)
-          }}
-          title="Seta Livre (A / 5)"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-            tool === 'arrow'
-              ? 'text-white font-semibold shadow-md scale-105'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-          }`}
-          style={tool === 'arrow' ? { backgroundColor: 'var(--accent)' } : undefined}
-        >
-          <ArrowUpRight className="w-4 h-4 stroke-[2]" />
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => {
+              setTool('arrow')
+              setSelectedIds([])
+              setIsBottomShapesOpen(false)
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              tool === 'arrow'
+                ? 'text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+            style={tool === 'arrow' ? { backgroundColor: 'var(--accent)' } : undefined}
+          >
+            <ArrowUpRight className="w-4 h-4 stroke-[2]" />
+          </button>
+          <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+            Seta
+          </span>
+        </div>
 
         {/* Linha Reta */}
-        <button
-          onClick={() => {
-            setTool('line')
-            setSelectedIds([])
-            setIsBottomShapesOpen(false)
-          }}
-          title="Linha Reta (L / 6)"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-            tool === 'line'
-              ? 'text-white font-semibold shadow-md scale-105'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-          }`}
-          style={tool === 'line' ? { backgroundColor: 'var(--accent)' } : undefined}
-        >
-          <Minus className="w-4 h-4 stroke-[2]" />
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => {
+              setTool('line')
+              setSelectedIds([])
+              setIsBottomShapesOpen(false)
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              tool === 'line'
+                ? 'text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+            style={tool === 'line' ? { backgroundColor: 'var(--accent)' } : undefined}
+          >
+            <Minus className="w-4 h-4 stroke-[2]" />
+          </button>
+          <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+            Linha
+          </span>
+        </div>
 
         {/* Caneta / Freedraw */}
-        <button
-          onClick={() => {
-            setTool('freedraw')
-            setSelectedIds([])
-            setIsBottomShapesOpen(false)
-          }}
-          title="Lápis / Caneta (P / 7)"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-            tool === 'freedraw'
-              ? 'text-white font-semibold shadow-md scale-105'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-          }`}
-          style={tool === 'freedraw' ? { backgroundColor: 'var(--accent)' } : undefined}
-        >
-          <PenTool className="w-4 h-4 stroke-[2]" />
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => {
+              setTool('freedraw')
+              setSelectedIds([])
+              setIsBottomShapesOpen(false)
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              tool === 'freedraw'
+                ? 'text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+            style={tool === 'freedraw' ? { backgroundColor: 'var(--accent)' } : undefined}
+          >
+            <PenTool className="w-4 h-4 stroke-[2]" />
+          </button>
+          <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+            Desenho
+          </span>
+        </div>
 
         {/* Texto */}
-        <button
-          onClick={() => {
-            setTool('text')
-            setSelectedIds([])
-            setIsBottomShapesOpen(false)
-          }}
-          title="Texto (T / 8)"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-            tool === 'text'
-              ? 'text-white font-semibold shadow-md scale-105'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-          }`}
-          style={tool === 'text' ? { backgroundColor: 'var(--accent)' } : undefined}
-        >
-          <Type className="w-4 h-4 stroke-[2]" />
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => {
+              setTool('text')
+              setSelectedIds([])
+              setIsBottomShapesOpen(false)
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              tool === 'text'
+                ? 'text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+            style={tool === 'text' ? { backgroundColor: 'var(--accent)' } : undefined}
+          >
+            <Type className="w-4 h-4 stroke-[2]" />
+          </button>
+          <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+            Texto
+          </span>
+        </div>
 
         {/* Borracha */}
-        <button
-          onClick={() => {
-            setTool('eraser')
-            setSelectedIds([])
-            setIsBottomShapesOpen(false)
-          }}
-          title="Borracha (E / 9)"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-            tool === 'eraser'
-              ? 'text-white font-semibold shadow-md scale-105'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-          }`}
-          style={tool === 'eraser' ? { backgroundColor: 'var(--accent)' } : undefined}
-        >
-          <Eraser className="w-4 h-4 stroke-[2]" />
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => {
+              setTool('eraser')
+              setSelectedIds([])
+              setIsBottomShapesOpen(false)
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              tool === 'eraser'
+                ? 'text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+            style={tool === 'eraser' ? { backgroundColor: 'var(--accent)' } : undefined}
+          >
+            <Eraser className="w-4 h-4 stroke-[2]" />
+          </button>
+          <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+            Borracha
+          </span>
+        </div>
 
         {/* Pan */}
-        <button
-          onClick={() => {
-            setTool('pan')
-            setSelectedIds([])
-            setIsBottomShapesOpen(false)
-          }}
-          title="Mover Tela (H / Espaço)"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-            tool === 'pan'
-              ? 'text-white font-semibold shadow-md scale-105'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
-          }`}
-          style={tool === 'pan' ? { backgroundColor: 'var(--accent)' } : undefined}
-        >
-          <Hand className="w-4 h-4 stroke-[2]" />
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => {
+              setTool('pan')
+              setSelectedIds([])
+              setIsBottomShapesOpen(false)
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              tool === 'pan'
+                ? 'text-white font-semibold shadow-md scale-105'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80'
+            }`}
+            style={tool === 'pan' ? { backgroundColor: 'var(--accent)' } : undefined}
+          >
+            <Hand className="w-4 h-4 stroke-[2]" />
+          </button>
+          <span className="pointer-events-none absolute -top-8.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#18181f] text-zinc-200 text-[11px] font-medium border border-zinc-700/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+            Mover
+          </span>
+        </div>
       </div>
 
       {/* 6. Top Right Floating Export & Actions Panel */}
@@ -4406,44 +4890,58 @@ export const DrawEditor: React.FC<DrawEditorProps> = ({ note, onUpdateNote, note
       </div>
 
       {/* 8. In-place Overlay Text Editor for Shapes, Sticky & Pure Text */}
-      {editingText && (
-        <div
-          className="absolute z-30"
-          style={{
-            left: `${worldToScreen(editingText.x, editingText.y).x}px`,
-            top: `${worldToScreen(editingText.x, editingText.y).y}px`,
-            width: `${Math.max(40, editingText.width) * doc.viewport.zoom}px`,
-            height: editingText.isShape ? `${editingText.height * doc.viewport.zoom}px` : undefined,
-            display: editingText.isShape ? 'flex' : undefined,
-            alignItems: editingText.isShape ? 'center' : undefined,
-            justifyContent: editingText.isShape ? 'center' : undefined
-          }}
-        >
-          <textarea
-            ref={textInputRef}
-            value={editingText.text}
-            onChange={e => setEditingText(prev => prev ? { ...prev, text: e.target.value } : null)}
-            onBlur={handleFinishEditingText}
-            onKeyDown={e => {
-              if (e.key === 'Escape') {
-                e.preventDefault()
-                handleFinishEditingText()
-              }
-            }}
-            placeholder={editingText.isShape ? 'Adicionar texto...' : 'Digite algo...'}
-            className={`text-zinc-100 outline-none p-2 resize-none font-sans ${
-              editingText.isShape
-                ? 'bg-transparent border-none w-full max-h-full leading-tight text-center'
-                : 'bg-[#18181d]/95 rounded-lg shadow-2xl w-full leading-snug border'
-            }`}
+      {editingText && (() => {
+        const targetEl = doc.elements.find(el => el.id === editingText.id)
+        const isSticky = targetEl?.type === 'sticky'
+        const activeTextColor = targetEl?.textColor || (isSticky ? '#18181b' : (targetEl?.strokeColor && targetEl.strokeColor !== '#ffffff' ? targetEl.strokeColor : '#f4f4f5'))
+        const activeFontSize = (targetEl?.fontSize || fontSize) * doc.viewport.zoom
+        const activeFontFamily = targetEl?.fontFamily || fontFamily
+
+        return (
+          <div
+            className="absolute z-30"
             style={{
-              fontSize: `${fontSize * doc.viewport.zoom}px`,
-              lineHeight: 1.25,
-              borderColor: 'var(--accent)'
+              left: `${worldToScreen(editingText.x, editingText.y).x}px`,
+              top: `${worldToScreen(editingText.x, editingText.y).y}px`,
+              width: `${Math.max(40, editingText.width) * doc.viewport.zoom}px`,
+              height: editingText.isShape ? `${editingText.height * doc.viewport.zoom}px` : undefined,
+              display: editingText.isShape ? 'flex' : undefined,
+              alignItems: isSticky ? 'flex-start' : 'center',
+              justifyContent: isSticky ? 'flex-start' : 'center'
             }}
-          />
-        </div>
-      )}
+          >
+            <textarea
+              ref={textInputRef}
+              value={editingText.text}
+              onChange={e => setEditingText(prev => prev ? { ...prev, text: e.target.value } : null)}
+              onBlur={handleFinishEditingText}
+              onKeyDown={e => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  handleFinishEditingText()
+                }
+              }}
+              placeholder={editingText.isShape ? 'Adicionar texto...' : 'Digite algo...'}
+              className={`outline-none resize-none ${
+                editingText.isShape
+                  ? `bg-transparent border-none w-full max-h-full leading-tight ${isSticky ? 'text-left' : 'text-center'}`
+                  : 'bg-[#18181d]/95 rounded-lg shadow-2xl w-full leading-snug border'
+              }`}
+              style={{
+                color: activeTextColor,
+                caretColor: activeTextColor,
+                fontFamily: activeFontFamily === 'mono' ? 'monospace' : activeFontFamily === 'handwriting' ? 'Caveat, cursive' : 'sans-serif',
+                fontSize: `${activeFontSize}px`,
+                fontWeight: targetEl?.isBold ? 'bold' : 'normal',
+                textDecoration: targetEl?.isStrikethrough ? 'line-through' : 'none',
+                lineHeight: 1.3,
+                padding: isSticky ? `${16 * doc.viewport.zoom}px` : '8px',
+                borderColor: 'var(--accent)'
+              }}
+            />
+          </div>
+        )
+      })()}
 
       {/* 9. In-place Overlay Text Editor for Table Cells (Transparent background matching FigJam) */}
       {editingTableCell && (
