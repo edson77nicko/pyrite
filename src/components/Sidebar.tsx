@@ -94,6 +94,9 @@ const renderBoardIcon = (iconName?: string, className = "w-3.5 h-3.5 shrink-0") 
   }
 }
 
+// Module-level drag tracker to guarantee persistence across React render frames
+let activeDragItem: { type: 'note'; note: Note } | { type: 'folder'; fullPath: string } | null = null
+
 export const Sidebar: React.FC<SidebarProps> = ({
   notes,
   folders,
@@ -161,6 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   >(null)
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
   const autoExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const justDraggedRef = useRef(false)
 
   const clearAutoExpandTimer = () => {
     if (autoExpandTimerRef.current) {
@@ -187,7 +191,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     dragged: { type: 'note'; note: Note } | { type: 'folder'; fullPath: string } | null,
     targetFolder: string
   ): boolean => {
-    const item = dragged || draggedItemRef.current
+    const item = dragged || activeDragItem || draggedItemRef.current
     if (!item) return false
     const targetIsRoot = isVaultRoot(targetFolder)
     const normTarget = normPath(targetFolder)
@@ -219,30 +223,60 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const handleFolderDragStart = (e: React.DragEvent, fullPath: string) => {
     e.stopPropagation()
     const item = { type: 'folder' as const, fullPath }
+    activeDragItem = item
     draggedItemRef.current = item
-    setDraggedItem(item)
-    e.dataTransfer.setData('text/plain', JSON.stringify(item))
-    e.dataTransfer.effectAllowed = 'move'
+    try {
+      e.dataTransfer.setData('text/plain', JSON.stringify(item))
+      e.dataTransfer.setData('application/json', JSON.stringify(item))
+    } catch {}
+    e.dataTransfer.effectAllowed = 'copyMove'
+    // Defer state update so Chromium doesn't cancel drag on DOM re-render
+    setTimeout(() => {
+      setDraggedItem(item)
+    }, 0)
   }
 
   const handleNoteDragStart = (e: React.DragEvent, note: Note) => {
     e.stopPropagation()
     const item = { type: 'note' as const, note }
+    activeDragItem = item
     draggedItemRef.current = item
-    setDraggedItem(item)
-    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'note', id: note.id }))
-    e.dataTransfer.effectAllowed = 'move'
+    try {
+      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'note', id: note.id }))
+      e.dataTransfer.setData('application/json', JSON.stringify({ type: 'note', id: note.id }))
+    } catch {}
+    e.dataTransfer.effectAllowed = 'copyMove'
+    // Defer state update so Chromium doesn't cancel drag on DOM re-render
+    setTimeout(() => {
+      setDraggedItem(item)
+    }, 0)
   }
 
   const handleDragEnd = () => {
-    draggedItemRef.current = null
-    setDraggedItem(null)
-    setDragOverTarget(null)
-    clearAutoExpandTimer()
+    justDraggedRef.current = true
+    setTimeout(() => {
+      justDraggedRef.current = false
+    }, 150)
+    // Defer clearing so any concurrent drop handler finishes cleanly
+    setTimeout(() => {
+      activeDragItem = null
+      draggedItemRef.current = null
+      setDraggedItem(null)
+      setDragOverTarget(null)
+      clearAutoExpandTimer()
+    }, 50)
+  }
+
+  const handleFolderDragEnter = (e: React.DragEvent, folderPath: string) => {
+    const dragged = activeDragItem || draggedItemRef.current || draggedItem
+    if (canDropInto(dragged, folderPath)) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
   }
 
   const handleFolderDragOver = (e: React.DragEvent, folderPath: string) => {
-    const dragged = draggedItemRef.current || draggedItem
+    const dragged = activeDragItem || draggedItemRef.current || draggedItem
     if (canDropInto(dragged, folderPath)) {
       e.preventDefault()
       e.stopPropagation()
@@ -273,9 +307,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     clearAutoExpandTimer()
   }
 
+  const handleNoteDragEnter = (e: React.DragEvent, note: Note) => {
+    const targetFolder = isVaultRoot(note.folder) ? '' : note.folder
+    const dragged = activeDragItem || draggedItemRef.current || draggedItem
+    if (canDropInto(dragged, targetFolder)) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+  }
+
   const handleNoteDragOver = (e: React.DragEvent, note: Note) => {
     const targetFolder = isVaultRoot(note.folder) ? '' : note.folder
-    const dragged = draggedItemRef.current || draggedItem
+    const dragged = activeDragItem || draggedItemRef.current || draggedItem
     if (canDropInto(dragged, targetFolder)) {
       e.preventDefault()
       e.stopPropagation()
@@ -301,25 +344,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
     e.stopPropagation()
     clearAutoExpandTimer()
 
-    let currentDrag = draggedItemRef.current || draggedItem
-    draggedItemRef.current = null
-    setDraggedItem(null)
-    setDragOverTarget(null)
+    let currentDrag = activeDragItem || draggedItemRef.current || draggedItem
 
     if (!currentDrag) {
       try {
-        const raw = e.dataTransfer.getData('text/plain')
+        const raw = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain')
         if (raw) {
           const parsed = JSON.parse(raw)
           if (parsed.type === 'folder' && parsed.fullPath) {
             currentDrag = { type: 'folder', fullPath: parsed.fullPath }
-          } else if (parsed.type === 'note' && parsed.id) {
-            const found = notes.find(n => n.id === parsed.id)
+          } else if (parsed.type === 'note' && (parsed.id || parsed.note?.id)) {
+            const noteId = parsed.id || parsed.note?.id
+            const found = notes.find(n => n.id === noteId)
             if (found) currentDrag = { type: 'note', note: found }
           }
         }
       } catch {}
     }
+
+    activeDragItem = null
+    draggedItemRef.current = null
+    setDraggedItem(null)
+    setDragOverTarget(null)
 
     if (!currentDrag) return
     if (!canDropInto(currentDrag, targetFolder)) return
@@ -586,11 +632,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           draggable={!isRootNode}
           onDragStart={(e) => handleFolderDragStart(e, node.fullPath)}
           onDragEnd={handleDragEnd}
+          onDragEnter={(e) => handleFolderDragEnter(e, node.fullPath)}
           onDragOver={(e) => handleFolderDragOver(e, node.fullPath)}
           onDragLeave={(e) => handleFolderDragLeave(e, node.fullPath)}
           onDrop={(e) => handleDrop(e, node.fullPath)}
           onContextMenu={e => openContext(e, { folder: node.fullPath })}
-          onClick={() => toggleFolder(node.fullPath)}
+          onClick={() => {
+            if (justDraggedRef.current) return
+            toggleFolder(node.fullPath)
+          }}
           title={node.fullPath}
           className={`flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] font-medium group transition-colors cursor-pointer select-none ${
             isBeingDragged
@@ -601,7 +651,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }`}
           style={{ WebkitUserDrag: !isRootNode ? 'element' : 'none' } as React.CSSProperties}
         >
-          <div className="flex items-center gap-1.5 truncate min-w-0 pointer-events-none">
+          <div className="flex items-center gap-1.5 truncate min-w-0">
             {isCollapsed ? (
               <Folder className="w-3.5 h-3.5 opacity-80 shrink-0 folder-icon-common" style={isTargetFolder ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
             ) : (
@@ -700,6 +750,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Folder Children (Subfolders & Notes) - Subtle Indented depth line */}
         {!isCollapsed && (
           <div
+            onDragEnter={(e) => handleFolderDragEnter(e, node.fullPath)}
             onDragOver={(e) => handleFolderDragOver(e, node.fullPath)}
             onDragLeave={(e) => handleFolderDragLeave(e, node.fullPath)}
             onDrop={(e) => handleDrop(e, node.fullPath)}
@@ -735,11 +786,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   draggable={true}
                   onDragStart={(e) => handleNoteDragStart(e, note)}
                   onDragEnd={handleDragEnd}
+                  onDragEnter={(e) => handleNoteDragEnter(e, note)}
                   onDragOver={(e) => handleNoteDragOver(e, note)}
                   onDragLeave={(e) => handleNoteDragLeave(e, note)}
                   onDrop={(e) => handleNoteDrop(e, note)}
                   onContextMenu={e => openContext(e, { note })}
-                  onClick={() => onSelectNote(note.id)}
+                  onClick={() => {
+                    if (justDraggedRef.current) return
+                    onSelectNote(note.id)
+                  }}
                   title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : isHtml ? 'Arquivo HTML' : 'Nota'})`}
                   className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border select-none ${
                     isNoteDragged
@@ -810,7 +865,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <div
       style={{ width: `${sidebarWidth}px` }}
-      className="app-sidebar relative my-2 bg-[#121215] rounded-r-2xl border-y border-r border-zinc-800 flex flex-col select-none shrink-0 text-xs overflow-hidden shadow-lg"
+      className="app-sidebar app-no-drag relative my-2 bg-[#121215] rounded-r-2xl border-y border-r border-zinc-800 flex flex-col select-none shrink-0 text-xs overflow-hidden shadow-lg"
     >
       {/* 1. Vault Header */}
       <div className="app-sidebar-header p-2 border-b border-zinc-800/60 bg-[#0f0f12] flex items-center justify-between gap-1">
@@ -1290,8 +1345,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* PARTE 2: DOCUMENTOS */}
         <div className="space-y-1.5 pt-2">
           <div
+            onDragEnter={(e) => {
+              if (canDropInto(activeDragItem || draggedItemRef.current || draggedItem, '')) {
+                e.preventDefault()
+                e.stopPropagation()
+              }
+            }}
             onDragOver={(e) => {
-              if (canDropInto(draggedItemRef.current || draggedItem, '')) {
+              if (canDropInto(activeDragItem || draggedItemRef.current || draggedItem, '')) {
                 e.preventDefault()
                 e.stopPropagation()
                 e.dataTransfer.dropEffect = 'move'
@@ -1320,8 +1381,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {/* Root Drop Banner when dragging non-root item */}
-          {canDropInto(draggedItemRef.current || draggedItem, '') && (
+          {canDropInto(activeDragItem || draggedItemRef.current || draggedItem, '') && (
             <div
+              onDragEnter={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
               onDragOver={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -1365,11 +1430,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     draggable={true}
                     onDragStart={(e) => handleNoteDragStart(e, n)}
                     onDragEnd={handleDragEnd}
+                    onDragEnter={(e) => handleNoteDragEnter(e, n)}
                     onDragOver={(e) => handleNoteDragOver(e, n)}
                     onDragLeave={(e) => handleNoteDragLeave(e, n)}
                     onDrop={(e) => handleNoteDrop(e, n)}
                     onContextMenu={e => openContext(e, { note: n })}
-                    onClick={() => onSelectNote(n.id)}
+                    onClick={() => {
+                      if (justDraggedRef.current) return
+                      onSelectNote(n.id)
+                    }}
                     title={n.title}
                     className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border select-none ${
                       isNoteDragged
@@ -1383,7 +1452,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ...(isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : {})
                     } as React.CSSProperties}
                   >
-                    <div className="flex items-center gap-1.5 truncate min-w-0 pointer-events-none">
+                    <div className="flex items-center gap-1.5 truncate min-w-0">
                       <Star className="w-3 h-3 shrink-0" style={{ fill: 'var(--accent-icon, var(--accent))', color: 'var(--accent-icon, var(--accent))' }} />
                       <span className="truncate">{n.title}</span>
                     </div>
@@ -1403,8 +1472,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {unassignedNotes.length > 0 && (
           <div className="pt-2 mt-1">
             <div
+              onDragEnter={(e) => {
+                if (canDropInto(activeDragItem || draggedItemRef.current || draggedItem, '')) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }
+              }}
               onDragOver={(e) => {
-                if (canDropInto(draggedItemRef.current || draggedItem, '')) {
+                if (canDropInto(activeDragItem || draggedItemRef.current || draggedItem, '')) {
                   e.preventDefault()
                   e.stopPropagation()
                   e.dataTransfer.dropEffect = 'move'
@@ -1438,11 +1513,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     draggable={true}
                     onDragStart={(e) => handleNoteDragStart(e, note)}
                     onDragEnd={handleDragEnd}
+                    onDragEnter={(e) => handleNoteDragEnter(e, note)}
                     onDragOver={(e) => handleNoteDragOver(e, note)}
                     onDragLeave={(e) => handleNoteDragLeave(e, note)}
                     onDrop={(e) => handleNoteDrop(e, note)}
                     onContextMenu={e => openContext(e, { note })}
-                    onClick={() => onSelectNote(note.id)}
+                    onClick={() => {
+                      if (justDraggedRef.current) return
+                      onSelectNote(note.id)
+                    }}
                     title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : isHtml ? 'Arquivo HTML' : 'Nota'})`}
                     className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border select-none ${
                       isNoteDragged
@@ -1507,9 +1586,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Empty bottom area allows dropping into root */}
         <div
-          onDragOver={(e) => {
-            if (canDropInto(draggedItemRef.current || draggedItem, '')) {
+          onDragEnter={(e) => {
+            if (canDropInto(activeDragItem || draggedItemRef.current || draggedItem, '')) {
               e.preventDefault()
+              e.stopPropagation()
+            }
+          }}
+          onDragOver={(e) => {
+            if (canDropInto(activeDragItem || draggedItemRef.current || draggedItem, '')) {
+              e.preventDefault()
+              e.stopPropagation()
               e.dataTransfer.dropEffect = 'move'
               if (dragOverTarget !== '') setDragOverTarget('')
             }
