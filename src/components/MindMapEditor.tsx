@@ -89,6 +89,7 @@ const SHAPES: { id: MindMapShape; label: string }[] = [
 ]
 
 const CANVAS_BG_OPTIONS = [
+  { id: '#121215', label: 'Pyrita Dark (Padrão)', isLight: false },
   { id: '#09090b', label: 'Dark Grafite', isLight: false },
   { id: '#0f172a', label: 'Slate Azulado', isLight: false },
   { id: '#1e293b', label: 'Cinza Escuro', isLight: false },
@@ -273,7 +274,7 @@ export const MindMapEditor: React.FC<MindMapEditorProps> = ({
 
   // Current Theme definition
   const currentTheme = MINDMAP_THEMES[doc.theme] || MINDMAP_THEMES['pyrite-classic']
-  const currentCanvasBg = doc.canvasBg || currentTheme.bg || '#0f172a'
+  const currentCanvasBg = doc.canvasBg || currentTheme.bg || '#121215'
   const isCanvasLight = currentCanvasBg === '#ffffff' || currentCanvasBg === '#f4f4f5'
 
   // Synchronization with external changes (e.g. AI Assistant or file reload)

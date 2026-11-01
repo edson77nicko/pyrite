@@ -85,7 +85,7 @@ export function VaultSwitcherModal({ isOpen, currentVaultPath, onClose, onSelect
   })
   const button = 'flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-40 disabled:cursor-wait'
   return <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-6" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose() }}>
-    <section role="dialog" aria-modal="true" aria-label="Gerenciar cofres" className="relative w-full max-w-[900px] h-[590px] max-h-[90vh] flex rounded-2xl border border-white/10 bg-[#121214] text-zinc-200 shadow-2xl overflow-hidden">
+    <section role="dialog" aria-modal="true" aria-label="Gerenciar cofres" className="relative w-full max-w-[900px] h-[590px] max-h-[90vh] flex rounded-2xl border border-white/10 bg-[#121215] text-zinc-200 shadow-2xl overflow-hidden">
       <button disabled={busy} onClick={onClose} aria-label="Fechar gerenciador de cofres" className="absolute right-3 top-3 p-2 rounded-lg hover:bg-white/5 disabled:opacity-40"><X size={18}/></button>
       <aside className="w-[310px] shrink-0 bg-[#0c0c0e] border-r border-white/10 flex flex-col">
         <h2 className="p-5 text-sm font-semibold">Seus cofres ({catalog.vaults.length})</h2>

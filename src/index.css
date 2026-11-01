@@ -49,7 +49,7 @@ html, body, #root {
   padding: 0;
   overflow: hidden;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background-color: #121214;
+  background-color: #121215;
   color: #e4e4e7;
   user-select: none;
 }
@@ -1493,7 +1493,8 @@ html.light .dark-theme-zone .hover\:bg-white\/\[0\.14\]:hover {
    TAREFAS & KANBAN EM MODO CLARO
    ========================================================================= */
 .light .app-tasks-pane,
-.light .app-tasks-pane .bg-\[\#121214\] {
+.light .app-tasks-pane .bg-\[\#121214\],
+.light .app-tasks-pane .bg-\[\#121215\] {
   background-color: #EEF0F3 !important;
 }
 .light .app-tasks-header {
@@ -1513,7 +1514,9 @@ html.light .dark-theme-zone .hover\:bg-white\/\[0\.14\]:hover {
   border: 1px solid #E2E4E8 !important;
 }
 .light .kanban-column-header span.bg-\[\#121214\],
-.light span.bg-\[\#121214\] {
+.light .kanban-column-header span.bg-\[\#121215\],
+.light span.bg-\[\#121214\],
+.light span.bg-\[\#121215\] {
   background-color: #E2E5E9 !important;
   color: #68707D !important;
   border: 1px solid #D8DCE2 !important;

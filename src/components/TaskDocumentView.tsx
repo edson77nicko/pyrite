@@ -247,7 +247,7 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
   const todayStr = new Date().toISOString().slice(0, 10)
 
   return (
-    <div className="w-full h-full flex bg-[#121214] text-zinc-100 select-none overflow-hidden relative">
+    <div className="w-full h-full flex bg-[#121215] text-zinc-100 select-none overflow-hidden relative">
       {/* 1. Left Vertical Rail (Coluna em pé com nome da tarefa deitado e botão voltar) */}
       <aside
         onClick={onClose}
@@ -292,7 +292,7 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
       </aside>
 
       {/* 2. Main Document Page Area */}
-      <div className="flex-1 h-full flex flex-col overflow-hidden bg-[#121214] task-document-body">
+      <div className="flex-1 h-full flex flex-col overflow-hidden bg-[#121215] task-document-body">
         {/* Top Header / Breadcrumb toolbar */}
         <div className="h-11 px-6 bg-[#0e0e11] border-b border-zinc-800/70 flex items-center justify-between shrink-0 task-document-header">
           <div className="flex items-center gap-2 text-xs text-zinc-400 min-w-0">

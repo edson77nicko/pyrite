@@ -501,7 +501,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   return (
     <div className="w-full h-full flex overflow-hidden">
-      <div className="app-tasks-pane flex-1 min-w-0 h-full flex flex-col bg-[#121214] text-zinc-100 select-none overflow-hidden">
+      <div className="app-tasks-pane flex-1 min-w-0 h-full flex flex-col bg-[#121215] text-zinc-100 select-none overflow-hidden">
         {/* 1. Header Toolbar - Seamless with Notes and Agent */}
       <div className="app-tasks-header h-12 px-5 bg-[#0e0e11] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
         {/* Left: Title & Counters */}
@@ -660,7 +660,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {/* 2. Main Content: Lista or Kanban */}
       {viewMode === 'list' ? (
         /* LIST / TABLE VIEW - Refined, subtle selection & expandable subtasks */
-        <div className="flex-1 overflow-x-auto overflow-y-auto custom-chat-scrollbar p-0 bg-[#121214] rounded-bl-2xl">
+        <div className="flex-1 overflow-x-auto overflow-y-auto custom-chat-scrollbar p-0 bg-[#121215] rounded-bl-2xl">
           <table className="w-full text-left text-xs border-separate border-spacing-0 table-fixed min-w-full">
             <thead className="sticky top-0 z-20 bg-[#18181b] shadow-[0_1px_0_rgba(255,255,255,0.04)]">
               <tr className="text-zinc-300 uppercase text-[10.5px] tracking-wider font-semibold border-b border-zinc-800/80">
@@ -1309,7 +1309,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
       ) : (
         /* KANBAN BOARD VIEW - Distinct Contrast, Refined Header & Cards */
-        <div className="flex-1 overflow-x-auto overflow-y-hidden custom-chat-scrollbar p-5 flex gap-4 items-start bg-[#121214] rounded-bl-2xl">
+        <div className="flex-1 overflow-x-auto overflow-y-hidden custom-chat-scrollbar p-5 flex gap-4 items-start bg-[#121215] rounded-bl-2xl">
           {kanbanColumns.map(statusCol => {
                 const colTasks = filteredTasks.filter(t => getTaskColumnId(t) === statusCol.id)
                 const isAdding = addingInColumnId === statusCol.id
@@ -1363,7 +1363,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <span className="text-xs font-semibold text-zinc-100 truncate tracking-wide">
                           {statusCol.name}
                         </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-medium bg-[#121214] text-zinc-400 shrink-0">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-medium bg-[#121215] text-zinc-400 shrink-0">
                           {colTasks.length}
                         </span>
                       </div>
