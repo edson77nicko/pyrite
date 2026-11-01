@@ -33,7 +33,7 @@ export interface ElectronAPI {
     type?: string
     filePath?: string
     expectedRevisionHash?: string
-  }) => Promise<{ success: boolean; filePath?: string; updatedAt?: number; revisionHash?: string; conflict?: boolean; currentRevisionHash?: string; error?: string }>
+  }) => Promise<{ success: boolean; filePath?: string; updatedAt?: number; revisionHash?: string; conflict?: boolean; alreadyExists?: boolean; existingFilePath?: string; currentRevisionHash?: string; error?: string }>
   deleteFile: (filePath: string, vaultPath?: string) => Promise<{ success: boolean; error?: string }>
   createFolder: (params: { vaultPath: string; folderPath: string }) => Promise<{ success: boolean; error?: string }>
   revealInExplorer: (filePath: string) => Promise<void>

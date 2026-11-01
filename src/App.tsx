@@ -6,7 +6,9 @@ import {
   saveNotes,
   loadFolders,
   saveFolders,
-  extractTags
+  extractTags,
+  computeDeterministicNoteId,
+  getDemoCommercialSeedNotes
 } from './utils/vault'
 import { createEmptyDrawDocument, isDrawContent, serializeDrawDocument } from './utils/drawUtils'
 import { createEmptyMindMapDocument, isMindMapContent, parseMindMapDocument, serializeMindMapDocument } from './utils/mindMapUtils'
@@ -70,11 +72,11 @@ export const App: React.FC = () => {
 
       setNotes(prevNotes => {
         const existingMap = new Map(prevNotes.map(n => [n.filePath || `${n.folder}/${n.title}`, n]))
-        const loadedNotes: Note[] = safeFiles.map((f, i) => {
+        const loadedNotes: Note[] = safeFiles.map((f) => {
           const key = f.filePath || `${f.folder}/${f.title}`
           const existing = existingMap.get(key)
           return {
-            id: existing ? existing.id : `note_disk_${i}_${Date.now()}`,
+            id: existing ? existing.id : computeDeterministicNoteId(f.folder, f.title),
             title: f.title,
             folder: f.folder,
             content: f.content,
@@ -1602,7 +1604,15 @@ export const App: React.FC = () => {
                   folders={folders}
                   vaultPath={vaultPath}
                   onOpenNote={(noteId: string) => handleSelectNote(noteId)}
-                  onCreateCommittedNote={async ({ folder, title, content, type = 'note' }) => {
+                  onCreateCommittedNote={async ({
+                    folder,
+                    title,
+                    content,
+                    type = 'note',
+                    exclusive = true,
+                    overwriteExistingNoteId,
+                    expectedRevisionHash
+                  }) => {
                     const targetFolder = folder || 'Propostas'
                     const isMind = type === 'mindmap' || isMindMapContent(content)
                     const finalContent = isMind
@@ -1618,17 +1628,62 @@ export const App: React.FC = () => {
                         folder: targetFolder,
                         title,
                         content: finalContent,
+                        exclusive,
+                        expectedRevisionHash,
                         type: isMind ? 'mindmap' : type
                       })
                       if (!res.success) {
-                        return { success: false, error: res.error || 'Falha ao gravar arquivo no cofre.' }
+                        return {
+                          success: false,
+                          alreadyExists: res.alreadyExists,
+                          conflict: res.conflict,
+                          error: res.error || 'Falha ao gravar arquivo no cofre.'
+                        }
                       }
                       filePath = res.filePath
                       revisionHash = res.revisionHash
                     }
 
+                    if (overwriteExistingNoteId) {
+                      let updatedNoteObj: Note | undefined
+                      setNotes(prev => {
+                        const next = prev.map(n => {
+                          if (n.id === overwriteExistingNoteId) {
+                            updatedNoteObj = {
+                              ...n,
+                              title,
+                              folder: targetFolder,
+                              content: finalContent,
+                              filePath: filePath || n.filePath,
+                              updatedAt: Date.now()
+                            }
+                            return updatedNoteObj
+                          }
+                          return n
+                        })
+                        saveNotes(next)
+                        return next
+                      })
+                      return {
+                        success: true,
+                        note: updatedNoteObj || {
+                          id: overwriteExistingNoteId,
+                          title,
+                          content: finalContent,
+                          folder: targetFolder,
+                          filePath,
+                          tags: ['proposta', 'comercial'],
+                          type: isMind ? 'mindmap' : type,
+                          createdAt: Date.now(),
+                          updatedAt: Date.now()
+                        },
+                        filePath,
+                        revisionHash
+                      }
+                    }
+
                     const newNote: Note = {
-                      id: `${type}_${Date.now()}`,
+                      id: computeDeterministicNoteId(targetFolder, title),
                       title,
                       content: finalContent,
                       folder: targetFolder,
@@ -1640,7 +1695,8 @@ export const App: React.FC = () => {
                     }
 
                     setNotes(prev => {
-                      const next = [newNote, ...prev]
+                      const withoutSameId = prev.filter(n => n.id !== newNote.id)
+                      const next = [newNote, ...withoutSameId]
                       saveNotes(next)
                       return next
                     })
@@ -1656,6 +1712,17 @@ export const App: React.FC = () => {
                   onCreateTask={handleCreateTask}
                   preselectedNoteForBinding={preselectedNoteForBinding}
                   onClearPreselectedNote={() => setPreselectedNoteForBinding(null)}
+                  onLoadDemoSeedNotes={() => {
+                    const demoNotes = getDemoCommercialSeedNotes()
+                    setNotes(prev => {
+                      const existingIds = new Set(prev.map(n => n.id))
+                      const toAdd = demoNotes.filter(dn => !existingIds.has(dn.id))
+                      if (toAdd.length === 0) return prev
+                      const next = [...toAdd, ...prev]
+                      saveNotes(next)
+                      return next
+                    })
+                  }}
                 />
               )}
             </div>

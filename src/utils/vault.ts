@@ -376,6 +376,40 @@ Quando o container externo e a subsuperfície interna seguem rigorosamente a reg
 
 export const INITIAL_FOLDERS = ['Início', 'Comercial', 'Clientes', 'Propostas', 'Engenharia', 'Metodologia', 'Criatividade', 'Inovação', 'Quizzes', 'Design System']
 
+export function getDemoCommercialSeedNotes(): Note[] {
+  return INITIAL_NOTES.filter(n =>
+    [
+      'note-proposal-template',
+      'note-services-catalog',
+      'note-commercial-rules',
+      'note-briefing-joao',
+      'note-briefing-maria'
+    ].includes(n.id)
+  )
+}
+
+export function computeDeterministicNoteId(folder: string, title: string): string {
+  const normTitle = title.toLowerCase().trim()
+  if (normTitle === 'modelo de proposta comercial') return 'note-proposal-template'
+  if (normTitle === 'catálogo de serviços e preços') return 'note-services-catalog'
+  if (normTitle === 'regras comerciais e descontos') return 'note-commercial-rules'
+  if (normTitle === 'briefing - joão silva (construtora horizonte)') return 'note-briefing-joao'
+  if (normTitle === 'briefing - maria oliveira (atelier botânico)') return 'note-briefing-maria'
+  if (normTitle === 'bem-vindo ao pyrite') return 'note-welcome'
+
+  const canonical = `${(folder || 'Início').toLowerCase().trim()}/${normTitle}`
+  let h1 = 0xdeadbeef ^ canonical.length
+  let h2 = 0x41c6ce57 ^ canonical.length
+  for (let i = 0; i < canonical.length; i++) {
+    const ch = canonical.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return `note_${(h2 >>> 0).toString(16).padStart(8, '0')}${(h1 >>> 0).toString(16).padStart(8, '0')}`
+}
+
 export function loadNotes(): Note[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
@@ -400,45 +434,6 @@ export function loadNotes(): Note[] {
         return n
       })
 
-      const targetArtifactNote = INITIAL_NOTES.find(n => n.id === 'note-design-artifacts')!
-      const artifactIdx = cleaned.findIndex(n => n.id === 'note-design-artifacts')
-      if (artifactIdx === -1) {
-        cleaned.unshift(targetArtifactNote)
-        modified = true
-      } else if (!cleaned[artifactIdx].content.includes(':::kpi')) {
-        cleaned[artifactIdx] = targetArtifactNote
-        modified = true
-      }
-
-      const quizIndex = cleaned.findIndex(n => n.id === 'note-quiz-checklist')
-      const targetQuiz = INITIAL_NOTES.find(n => n.id === 'note-quiz-checklist')!
-      if (quizIndex === -1) {
-        const merged = [targetQuiz, ...cleaned]
-        saveNotes(merged)
-        return merged
-      } else if (!cleaned[quizIndex].content.includes('Tabela de Métricas')) {
-        cleaned[quizIndex] = targetQuiz
-        saveNotes(cleaned)
-        return cleaned
-      }
-
-      const commercialSeedIds = [
-        'note-proposal-template',
-        'note-services-catalog',
-        'note-commercial-rules',
-        'note-briefing-joao',
-        'note-briefing-maria'
-      ]
-      for (const seedId of commercialSeedIds) {
-        if (!cleaned.some(n => n.id === seedId)) {
-          const seedNote = INITIAL_NOTES.find(n => n.id === seedId)
-          if (seedNote) {
-            cleaned.unshift(seedNote)
-            modified = true
-          }
-        }
-      }
-
       if (modified) {
         saveNotes(cleaned)
       }
@@ -447,8 +442,9 @@ export function loadNotes(): Note[] {
   } catch (err) {
     console.error('Failed to load notes from localStorage', err)
   }
-  saveNotes(INITIAL_NOTES)
-  return INITIAL_NOTES
+  const baseNotes = INITIAL_NOTES.filter(n => n.id !== 'note-briefing-joao' && n.id !== 'note-briefing-maria')
+  saveNotes(baseNotes)
+  return baseNotes
 }
 
 export function saveNotes(notes: Note[]): void {

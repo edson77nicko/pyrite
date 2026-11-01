@@ -47,7 +47,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true,
+      sandbox: false,
     },
   })
 
@@ -102,12 +102,44 @@ ipcMain.handle('window:isMaximized', () => {
 })
 
 // IPC: Local Vault & File System (Phase 2)
+// Registro de cofres autorizados na sessão para impedir gravação/exclusão fora do cofre autorizado (P0)
+const authorizedVaults = new Set<string>()
+
+function registerAuthorizedVault(vaultPath?: string | null) {
+  if (!vaultPath || !path.isAbsolute(vaultPath)) return
+  try {
+    const resolved = fs.existsSync(vaultPath) ? fs.realpathSync(vaultPath) : path.resolve(vaultPath)
+    authorizedVaults.add(resolved.toLowerCase())
+  } catch {
+    authorizedVaults.add(path.resolve(vaultPath).toLowerCase())
+  }
+}
+
+function assertAuthorizedVault(vaultPath?: string | null): string {
+  if (!vaultPath || !path.isAbsolute(vaultPath)) {
+    throw new Error('Cofre não informado ou inválido.')
+  }
+  const realOrResolved = (fs.existsSync(vaultPath) ? fs.realpathSync(vaultPath) : path.resolve(vaultPath)).toLowerCase()
+  if (!authorizedVaults.has(realOrResolved)) {
+    // Permitir se estiver dentro da pasta padrão de cofres do usuário ou se for o default vault
+    const docs = app.getPath('documents')
+    const defaultVault = path.resolve(path.join(docs, 'Pyrite Vault')).toLowerCase()
+    if (realOrResolved === defaultVault) {
+      authorizedVaults.add(realOrResolved)
+    } else {
+      throw new Error('Cofre não autorizado nesta sessão.')
+    }
+  }
+  return vaultPath
+}
+
 ipcMain.handle('vault:getDefaultPath', () => {
   const docs = app.getPath('documents')
   const defaultPath = path.join(docs, 'Pyrite Vault')
   if (!fs.existsSync(defaultPath)) {
     fs.mkdirSync(defaultPath, { recursive: true })
   }
+  registerAuthorizedVault(defaultPath)
   return defaultPath
 })
 
@@ -120,6 +152,7 @@ ipcMain.handle('vault:selectFolder', async () => {
   if (result.canceled || result.filePaths.length === 0) {
     return null
   }
+  registerAuthorizedVault(result.filePaths[0])
   return result.filePaths[0]
 })
 
@@ -135,10 +168,14 @@ ipcMain.handle('vault:openInExplorer', (_event, folderPath: string) => {
   }
 })
 
-ipcMain.handle('agents:readStore', (_event, vaultPath: string) => readMultiAgentStore(vaultPath))
+ipcMain.handle('agents:readStore', (_event, vaultPath: string) => {
+  registerAuthorizedVault(vaultPath)
+  return readMultiAgentStore(assertAuthorizedVault(vaultPath))
+})
 ipcMain.handle('agents:writeStore', async (_event, vaultPath: string, state) => {
   try {
-    return await writeMultiAgentStore(vaultPath, state)
+    registerAuthorizedVault(vaultPath)
+    return await writeMultiAgentStore(assertAuthorizedVault(vaultPath), state)
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) }
   }
@@ -215,13 +252,20 @@ ipcMain.handle('vault:getKnownVaults', async () => {
   for (const vault of await vaultLibrary.listManagedVaults()) {
     if (!vaults.some(item => path.resolve(item.path).toLowerCase() === path.resolve(vault.path).toLowerCase())) vaults.push(vault)
   }
+  for (const v of vaults) {
+    registerAuthorizedVault(v.path)
+  }
   return vaults
 })
 
 // IPC: Create a new vault folder on disk with starter note
 ipcMain.handle('vault:createVault', async (_event, { parentPath, vaultName }: { parentPath: string; vaultName: string }) => {
   try {
-    return { success: true, ...await vaultLibrary.createVault(parentPath, vaultName) }
+    const created = await vaultLibrary.createVault(parentPath, vaultName)
+    if (created.vault?.path) {
+      registerAuthorizedVault(created.vault.path)
+    }
+    return { success: true, ...created }
   } catch (err: any) {
     return { success: false, error: err.message }
   }
@@ -349,12 +393,14 @@ function setupVaultWatcher(vaultPath: string) {
 
 ipcMain.handle('vault:readVault', (_event, vaultPath: string) => {
   if (!vaultPath || !fs.existsSync(vaultPath)) return []
+  registerAuthorizedVault(vaultPath)
   setupVaultWatcher(vaultPath)
   return scanVaultDirectory(vaultPath, vaultPath)
 })
 
 ipcMain.handle('vault:readFolders', (_event, vaultPath: string) => {
   if (!vaultPath || !fs.existsSync(vaultPath)) return []
+  registerAuthorizedVault(vaultPath)
   return scanVaultDirectories(vaultPath, vaultPath)
 })
 
@@ -416,6 +462,7 @@ ipcMain.handle('vault:importHtml', async (_event, { vaultPath, targetFolder }: {
 
 ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content, exclusive, type, filePath: explicitFilePath, expectedRevisionHash }: { vaultPath: string; folder: string; title: string; content: string; exclusive?: boolean; type?: string; filePath?: string; expectedRevisionHash?: string }) => {
   try {
+    assertAuthorizedVault(vaultPath)
     const safeTitle = title.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Sem título'
     const rawTargetDir = folder && folder !== 'Início' ? path.join(vaultPath, folder.replace(/\//g, path.sep)) : vaultPath
     const targetDir = resolveConfinedPath(vaultPath, rawTargetDir)
@@ -431,6 +478,18 @@ ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content, e
         ? (safeTitle.toLowerCase().endsWith('.html') || safeTitle.toLowerCase().endsWith('.htm') ? safeTitle : `${safeTitle}.html`)
         : `${safeTitle}.md`
       filePath = resolveConfinedPath(vaultPath, path.join(targetDir, baseName))
+    }
+
+    if (exclusive && fs.existsSync(filePath)) {
+      const currentDiskContent = fs.readFileSync(filePath, 'utf-8')
+      const currentHash = computeContentHash(currentDiskContent)
+      return {
+        success: false,
+        alreadyExists: true,
+        existingFilePath: filePath,
+        currentRevisionHash: currentHash,
+        error: `Já existe um documento "${safeTitle}" na pasta "${folder || 'Início'}". Escolha criar como nova revisão ou aprovar a substituição.`
+      }
     }
 
     if (expectedRevisionHash && fs.existsSync(filePath)) {
@@ -458,7 +517,20 @@ ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content, e
 
 ipcMain.handle('vault:deleteFile', async (_event, filePath: string, vaultPath?: string) => {
   try {
-    const checkedPath = vaultPath ? resolveConfinedPath(vaultPath, filePath) : path.resolve(filePath)
+    let effectiveVault = vaultPath
+    if (!effectiveVault) {
+      // Buscar o cofre autorizado que contém este arquivo; rejeitar se não pertencer a nenhum cofre autorizado
+      const resolvedTarget = path.resolve(filePath)
+      for (const v of authorizedVaults) {
+        const rel = path.relative(v, resolvedTarget.toLowerCase())
+        if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+          effectiveVault = v
+          break
+        }
+      }
+    }
+    const verifiedVault = assertAuthorizedVault(effectiveVault)
+    const checkedPath = resolveConfinedPath(verifiedVault, filePath)
     if (fs.existsSync(checkedPath)) {
       await shell.trashItem(checkedPath)
       return { success: true }
@@ -472,6 +544,7 @@ ipcMain.handle('vault:deleteFile', async (_event, filePath: string, vaultPath?: 
 
 ipcMain.handle('vault:createFolder', (_event, { vaultPath, folderPath }: { vaultPath: string; folderPath: string }) => {
   try {
+    assertAuthorizedVault(vaultPath)
     const targetDir = resolveConfinedPath(vaultPath, path.join(vaultPath, folderPath.replace(/\//g, path.sep)))
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true })

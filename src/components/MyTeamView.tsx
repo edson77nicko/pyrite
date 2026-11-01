@@ -1,48 +1,55 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import type {
+  AgentActionPermission,
+  AgentArtifact,
   AgentProfileVersion,
   AgentRun,
-  AgentArtifact,
+  AutomationVersion,
   ContextBinding,
   ContextRole,
   MultiAgentStoreState,
-  AgentActionPermission
+  ProjectContext,
+  ProposalStatus
 } from '../types/agents'
 import type { Note, NoteType, TaskItem } from '../types'
 import {
   ROLE_LABELS,
-  updateAgentProfileWithVersion,
-  generateAgentDraftFromPrompt,
+  computeHashSync,
   executeAgentRun,
-  computeHashSync
+  executeWorkflowRun,
+  formatCentsBRL,
+  generateAgentDraftFromPrompt,
+  updateAgentProfileWithVersion,
+  DEMO_PROJECTS,
+  INITIAL_TEAMS,
+  INITIAL_WORKFLOWS
 } from '../utils/multiAgentEngine'
 import { MarkdownRenderer } from './MarkdownRenderer'
+import { TeamCanvasEditor } from './TeamCanvasEditor'
+import { WorkflowCanvasEditor } from './WorkflowCanvasEditor'
+import { RoutineCanvasEditor } from './RoutineCanvasEditor'
 import {
+  Bot,
   Users,
+  GitBranch,
+  Clock,
+  Activity,
   Plus,
-  Search,
   Play,
-  SlidersHorizontal,
-  Copy,
-  Pause,
-  History,
-  Sparkles,
+  FlaskConical,
+  BookOpen,
+  Settings,
   CheckCircle2,
   AlertTriangle,
+  XCircle,
+  Sparkles,
   FileText,
-  Folder,
-  ShieldCheck,
-  ChevronRight,
-  ChevronDown,
-  X,
-  Check,
   Trash2,
-  Brain,
-  ListTodo,
-  Zap,
-  Eye,
-  Layers,
-  ArrowRight
+  X,
+  Briefcase,
+  ShieldAlert,
+  RefreshCw,
+  StopCircle
 } from 'lucide-react'
 
 interface MyTeamViewProps {
@@ -57,41 +64,34 @@ interface MyTeamViewProps {
     title: string
     content: string
     type?: NoteType
-  }) => Promise<{ success: boolean; note?: Note; filePath?: string; revisionHash?: string; error?: string }>
+    exclusive?: boolean
+    overwriteExistingNoteId?: string
+    expectedRevisionHash?: string
+  }) => Promise<{
+    success: boolean
+    note?: Note
+    filePath?: string
+    revisionHash?: string
+    alreadyExists?: boolean
+    conflict?: boolean
+    error?: string
+  }>
   onCreateTask: (title?: string, initialData?: Partial<TaskItem>) => TaskItem
   preselectedNoteForBinding?: { noteId: string; role: ContextRole } | null
   onClearPreselectedNote?: () => void
+  onLoadDemoSeedNotes?: () => void
 }
 
-const ACTION_LABELS: Record<AgentActionPermission, { label: string; summary: string }> = {
-  read_context: {
-    label: 'Ler referências vinculadas',
-    summary: 'Pode consultar apenas as notas e pastas autorizadas'
-  },
-  prepare_draft: {
-    label: 'Preparar rascunhos e novas notas',
-    summary: 'Pode preparar rascunhos na pasta de destino autorizada'
-  },
-  propose_patch: {
-    label: 'Propor alterações em notas existentes',
-    summary: 'Precisa da sua aprovação para alterar notas existentes'
-  },
-  create_tasks: {
-    label: 'Criar tarefas de acompanhamento',
-    summary: 'Pode gerar tarefas vinculadas à entrega'
-  },
-  edit_mindmap: {
-    label: 'Criar/editar mapas mentais por ID',
-    summary: 'Pode criar mapas mentais preservando nós existentes'
-  },
-  edit_diagram: {
-    label: 'Criar/editar diagramas por ID',
-    summary: 'Pode criar diagramas e fluxos visuais'
-  },
-  delegate_team: {
-    label: 'Coordenar e delegar para especialistas',
-    summary: 'Pode distribuir subtarefas para especialistas da equipe'
-  }
+type PrimarySection = 'agents' | 'teams' | 'workflows' | 'routines' | 'activity'
+
+const ACTION_PERMISSION_LABELS: Record<AgentActionPermission, string> = {
+  read_context: 'Ler notas e referências vinculadas',
+  prepare_draft: 'Preparar novos documentos na pasta de destino',
+  propose_patch: 'Propor edições em notas existentes (exige aprovação)',
+  create_tasks: 'Criar tarefas de acompanhamento',
+  edit_mindmap: 'Criar ou editar Mapas Mentais por ID',
+  edit_diagram: 'Criar ou editar Diagramas por ID',
+  delegate_team: 'Coordenar e delegar para equipe de especialistas'
 }
 
 export const MyTeamView: React.FC<MyTeamViewProps> = ({
@@ -103,283 +103,541 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   onCreateCommittedNote,
   onCreateTask,
   preselectedNoteForBinding,
-  onClearPreselectedNote
+  onClearPreselectedNote,
+  onLoadDemoSeedNotes
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'team' | 'runs' | 'automations' | 'projects'>('team')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [roleFilter, setRoleFilter] = useState<string>('all')
+  const [activeSection, setActiveSection] = useState<PrimarySection>('agents')
+  const [selectedAgentId, setSelectedAgentId] = useState<string>(() => store.agents[0]?.id || '')
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(() => store.runs[0]?.id || null)
 
-  // Active workspace panel: Running / Testing an agent or viewing a Run
-  const [selectedAgentId, setSelectedAgentId] = useState<string>(store.agents[0]?.id || 'agent-proposal-specialist')
-  const [activeRunId, setActiveRunId] = useState<string | null>(store.runs[0]?.id || null)
+  // Seleções nos 3 Canvases
+  const teams = store.teams?.length ? store.teams : INITIAL_TEAMS
+  const workflows = store.workflows?.length ? store.workflows : INITIAL_WORKFLOWS
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(() => teams[0]?.id || '')
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(() => workflows[0]?.id || '')
+  const [selectedRoutineId, setSelectedRoutineId] = useState<string>(() => store.automations[0]?.id || '')
 
-  // Execution Composer State
-  const [promptInput, setPromptInput] = useState(
-    'Prepare uma proposta para João, para criação de site com manutenção mensal'
-  )
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('proj-joao-horizonte')
+  // Pedido atual e contexto temporário (request_context)
+  const [promptInput, setPromptInput] = useState('')
   const [extraNoteIds, setExtraNoteIds] = useState<string[]>([])
-  const [useTeamCoordination, setUseTeamCoordination] = useState<boolean>(false)
-  const [isExecuting, setIsExecuting] = useState<boolean>(false)
-  const [userAnswerInputs, setUserAnswerInputs] = useState<Record<string, string>>({})
-  const [commitBanner, setCommitBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [useTeamDelegation, setUseTeamDelegation] = useState(false)
+  const [isExecuting, setIsExecuting] = useState(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
-  // Agent Creator / Editor Modal State
-  const [isCreatorOpen, setIsCreatorOpen] = useState(false)
-  const [creatorMode, setCreatorMode] = useState<'guided' | 'conversation'>('guided')
-  const [conversationPrompt, setConversationPrompt] = useState(
-    'Quero alguém que prepare propostas comerciais com meu modelo, meus serviços e minhas regras de preço'
-  )
-  const [conversationExplanation, setConversationExplanation] = useState<string | null>(null)
-  const [editingAgent, setEditingAgent] = useState<AgentProfileVersion | null>(null)
-  const [showAdvancedConfig, setShowAdvancedConfig] = useState(false)
+  // Respostas a perguntas pendentes e resolução de conflitos de preços
+  const [answerInputs, setAnswerInputs] = useState<Record<string, string>>({})
+  const [conflictChoices, setConflictChoices] = useState<
+    Record<string, { chosenValue: string; chosenPriceCents: number }>
+  >({})
 
-  // Bind note from Editor ("Usar com um agente")
-  React.useEffect(() => {
+  // Gavetas e Modais Secundários (para manter a área principal limpa!)
+  const [isKnowledgeDrawerOpen, setIsKnowledgeDrawerOpen] = useState(false)
+  const [isConfigDrawerOpen, setIsConfigDrawerOpen] = useState(false)
+  const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false)
+  const [isNewAgentModalOpen, setIsNewAgentModalOpen] = useState(false)
+  const [newAgentTab, setNewAgentTab] = useState<'guided' | 'conversation'>('guided')
+
+  // Modal de seleção de agente quando o usuário clica em "Usar com um agente" no Editor
+  const [pendingNoteBindModal, setPendingNoteBindModal] = useState<{
+    noteId: string
+    role: ContextRole
+    targetAgentId: string
+  } | null>(null)
+
+  // Modal de colisão de arquivo existente (Achado 2)
+  const [overwritePrompt, setOverwritePrompt] = useState<{
+    run: AgentRun
+    finalApproval: boolean
+    existingTitle: string
+    folder: string
+    content: string
+    type: NoteType
+  } | null>(null)
+
+  const [statusBanner, setStatusBanner] = useState<{
+    type: 'success' | 'warning' | 'error'
+    text: string
+  } | null>(null)
+
+  // Estado de formulário para Novo Agente
+  const [convDescription, setConvDescription] = useState('')
+  const [newAgentDraft, setNewAgentDraft] = useState<AgentProfileVersion | null>(null)
+
+  // Estado de formulário para Novo Projeto/Cliente (Achado 10)
+  const [editingProject, setEditingProject] = useState<ProjectContext | null>(null)
+  const [projName, setProjName] = useState('')
+  const [projClient, setProjClient] = useState('')
+  const [projDesc, setProjDesc] = useState('')
+  const [projBriefingIds, setProjBriefingIds] = useState<string[]>([])
+
+  // Estado para adicionar vínculo de conhecimento
+  const [bindNoteId, setBindNoteId] = useState<string>('')
+  const [bindRole, setBindRole] = useState<ContextRole>('permanent_ref')
+  const [bindPolicy, setBindPolicy] = useState<'follow_latest' | 'pin_revision'>('follow_latest')
+
+  const storeRef = useRef(store)
+  storeRef.current = store
+
+  const selectedAgent = store.agents.find(a => a.id === selectedAgentId) || store.agents[0]
+  const selectedProject = store.projects.find(p => p.id === selectedProjectId)
+  const activeRun = store.runs.find(r => r.id === selectedRunId) || store.runs[0] || null
+
+  // 1. Tratar "Usar com um agente" vindo do Editor (Achados 3 e 10):
+  // Permite escolher QUAL agente receberá a nota, e quando o papel é `request_context`,
+  // anexa APENAS ao pedido atual (`extraNoteIds`) sem alterar o perfil permanente do agente!
+  useEffect(() => {
     if (preselectedNoteForBinding) {
-      const targetNote = notes.find(n => n.id === preselectedNoteForBinding.noteId)
-      const targetAgent = store.agents.find(a => a.id === selectedAgentId) || store.agents[0]
-      if (targetNote && targetAgent) {
-        const exists = targetAgent.knowledgeBindings.some(b => b.noteId === targetNote.id)
-        if (!exists) {
-          const newBinding: ContextBinding = {
-            id: `bind_${Date.now()}`,
-            targetType: 'note',
-            noteId: targetNote.id,
-            noteTitle: targetNote.title,
-            role: preselectedNoteForBinding.role,
-            required: preselectedNoteForBinding.role === 'template',
-            precedence: preselectedNoteForBinding.role === 'template' ? 100 : 80,
-            updatePolicy: 'follow_latest'
-          }
-          const updatedAgent: AgentProfileVersion = {
-            ...targetAgent,
-            knowledgeBindings: [...targetAgent.knowledgeBindings, newBinding]
-          }
-          const nextStore = updateAgentProfileWithVersion(store, updatedAgent)
-          onUpdateStore(nextStore)
-          setCommitBanner({
-            type: 'success',
-            message: `Nota "${targetNote.title}" vinculada a "${targetAgent.name}" (v${updatedAgent.version + 1}) como ${ROLE_LABELS[preselectedNoteForBinding.role].label}!`
-          })
-          setTimeout(() => setCommitBanner(null), 5000)
-        }
-      }
+      setPendingNoteBindModal({
+        noteId: preselectedNoteForBinding.noteId,
+        role: preselectedNoteForBinding.role,
+        targetAgentId: selectedAgentId || store.agents[0]?.id || ''
+      })
       onClearPreselectedNote?.()
     }
   }, [preselectedNoteForBinding])
 
-  const selectedAgent = useMemo(
-    () => store.agents.find(a => a.id === selectedAgentId) || store.agents[0],
-    [store.agents, selectedAgentId]
-  )
-
-  const activeRun = useMemo(
-    () => store.runs.find(r => r.id === activeRunId) || null,
-    [store.runs, activeRunId]
-  )
-
-  const filteredAgents = useMemo(() => {
-    return store.agents.filter(a => {
-      const matchesQuery =
-        a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.roleDescription.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesRole = roleFilter === 'all' || a.specialistRole === roleFilter
-      return matchesQuery && matchesRole
-    })
-  }, [store.agents, searchQuery, roleFilter])
-
-  // Open Guided or Conversational Creator
-  const handleOpenCreateAgent = (mode: 'guided' | 'conversation' = 'guided') => {
-    setCreatorMode(mode)
-    setConversationExplanation(null)
-    const blank: AgentProfileVersion = {
-      id: `agent_${Date.now()}`,
-      version: 1,
-      name: 'Novo Especialista',
-      icon: '🤖',
-      color: '#c59b27',
-      specialistRole: 'proposal_specialist',
-      roleDescription: 'Preparar propostas e documentos seguindo meu modelo e referências autorizadas.',
-      workStyle: {
-        tone: 'Profissional, claro e objetivo',
-        rules: [
-          'Preservar notas de modelo originais intactas',
-          'Consultar apenas notas e pastas explicitamente autorizadas'
-        ],
-        requiredQuestions: ['Qual é o cliente ou projeto?', 'Qual o escopo principal?'],
-        guardrails: ['Precisa da aprovação do usuário para alterar notas existentes']
-      },
-      knowledgeBindings: [],
-      allowedActions: ['read_context', 'prepare_draft', 'create_tasks'],
-      deliverables: {
-        targetFolder: 'Propostas',
-        namingPattern: 'Proposta - {cliente}',
-        outputTypes: ['note', 'tasks'],
-        requireApprovalForExisting: true
-      },
-      aiConfig: { useDefault: true, temperature: 0.3 },
-      limits: {
-        maxDurationSec: 60,
-        maxSteps: 6,
-        maxSubtasks: 4,
-        maxDelegationDepth: 2,
-        allowDelegation: false
-      },
-      triggerMode: 'on_demand',
-      state: 'available',
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    }
-    setEditingAgent(blank)
-    setIsCreatorOpen(true)
-  }
-
-  const handleGenerateFromConversation = () => {
-    if (!conversationPrompt.trim()) return
-    const { draft, explanation } = generateAgentDraftFromPrompt(conversationPrompt, notes)
-    setEditingAgent(draft)
-    setConversationExplanation(explanation)
-  }
-
-  const handleSaveAgentProfile = async () => {
-    if (!editingAgent || !editingAgent.name.trim()) return
-    const nextStore = updateAgentProfileWithVersion(store, editingAgent)
-    const res = await onUpdateStore(nextStore)
-    if (res.success) {
-      setSelectedAgentId(editingAgent.id)
-      setIsCreatorOpen(false)
-      setEditingAgent(null)
-      setCommitBanner({
-        type: 'success',
-        message: `Perfil "${editingAgent.name}" salvo com sucesso!`
-      })
-      setTimeout(() => setCommitBanner(null), 4000)
-    } else {
-      setCommitBanner({
-        type: 'error',
-        message: res.error || 'Erro ao salvar perfil do agente.'
-      })
-    }
-  }
-
-  const handleDuplicateAgent = async (agent: AgentProfileVersion) => {
-    const copy: AgentProfileVersion = {
-      ...structuredClone(agent),
-      id: `agent_${Date.now()}`,
-      version: 1,
-      name: `${agent.name} (Cópia)`,
-      state: 'available',
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    }
-    const nextStore: MultiAgentStoreState = {
-      ...store,
-      agents: [copy, ...store.agents],
-      agentHistoryVersions: [...store.agentHistoryVersions, copy]
-    }
-    await onUpdateStore(nextStore)
-    setSelectedAgentId(copy.id)
-  }
-
-  const handleTogglePauseAgent = async (agent: AgentProfileVersion) => {
-    const nextState = agent.state === 'paused' ? 'available' : 'paused'
-    const updated: AgentProfileVersion = { ...agent, state: nextState, updatedAt: Date.now() }
-    const nextStore: MultiAgentStoreState = {
-      ...store,
-      agents: store.agents.map(a => (a.id === agent.id ? updated : a))
-    }
-    await onUpdateStore(nextStore)
-  }
-
-  const handleDeleteAgent = async (agent: AgentProfileVersion) => {
-    if (agent.state === 'working') {
-      setCommitBanner({
-        type: 'error',
-        message: 'Interrompa as execuções ativas deste agente antes de excluir o perfil.'
-      })
+  const handleConfirmNoteFromEditor = async () => {
+    if (!pendingNoteBindModal) return
+    const { noteId, role, targetAgentId } = pendingNoteBindModal
+    const targetNote = notes.find(n => n.id === noteId)
+    const targetAgent = store.agents.find(a => a.id === targetAgentId)
+    if (!targetNote || !targetAgent) {
+      setPendingNoteBindModal(null)
       return
     }
-    // Excluir um perfil não apaga propostas/notas produzidas e mantém agentHistoryVersions para auditoria!
-    const remaining = store.agents.filter(a => a.id !== agent.id)
-    const nextStore: MultiAgentStoreState = {
-      ...store,
-      agents: remaining
+
+    setSelectedAgentId(targetAgent.id)
+    setActiveSection('agents')
+
+    if (role === 'request_context') {
+      // Anexar SOMENTE à execução/pedido atual!
+      setExtraNoteIds(prev => (prev.includes(noteId) ? prev : [...prev, noteId]))
+      setStatusBanner({
+        type: 'success',
+        text: `A nota "${targetNote.title}" foi anexada apenas para este pedido com ${targetAgent.name} (não altera o perfil permanente).`
+      })
+      setPendingNoteBindModal(null)
+      return
     }
-    await onUpdateStore(nextStore)
-    if (selectedAgentId === agent.id && remaining[0]) {
-      setSelectedAgentId(remaining[0].id)
+
+    // Para papéis permanentes (template, permanent_ref, project_context), vincular ao agente escolhido
+    const existing = targetAgent.knowledgeBindings.some(b => b.noteId === targetNote.id && b.role === role)
+    if (!existing) {
+      const newBinding: ContextBinding = {
+        id: `bind_${Date.now()}`,
+        targetType: 'note',
+        noteId: targetNote.id,
+        noteTitle: targetNote.title,
+        folderPath: targetNote.folder,
+        projectId: role === 'project_context' ? selectedProjectId || undefined : undefined,
+        role,
+        required: role === 'template',
+        precedence: role === 'template' ? 100 : 80,
+        updatePolicy: 'follow_latest'
+      }
+      const updatedAgent: AgentProfileVersion = {
+        ...targetAgent,
+        knowledgeBindings: [...targetAgent.knowledgeBindings, newBinding]
+      }
+      const nextStore = updateAgentProfileWithVersion(store, updatedAgent)
+      await onUpdateStore(nextStore)
+      setStatusBanner({
+        type: 'success',
+        text: `Nota "${targetNote.title}" vinculada a ${targetAgent.name} como "${ROLE_LABELS[role].label}".`
+      })
+    }
+    setPendingNoteBindModal(null)
+  }
+
+  // 2. Motor de Agendamento e Eventos de Rotinas em Tempo Real (Achado 8)
+  useEffect(() => {
+    const checkSchedulesAndEvents = async () => {
+      const currentStore = storeRef.current
+      if (isExecuting) return
+      const now = Date.now()
+
+      for (const routine of currentStore.automations) {
+        if (!routine.active) continue
+
+        // Verificar limite diário
+        const todayStart = new Date()
+        todayStart.setHours(0, 0, 0, 0)
+        const runsToday = routine.recentRunIds.filter(rId => {
+          const r = currentStore.runs.find(item => item.id === rId)
+          return r && r.startedAt >= todayStart.getTime()
+        }).length
+        if (runsToday >= (routine.maxRunsPerDay || 10)) continue
+
+        // Gatilho 1: Agendamento Semanal (`weekly_schedule`)
+        if (routine.triggerKind === 'weekly_schedule' && routine.scheduleConfig) {
+          const nextTime = routine.nextRunAt ? new Date(routine.nextRunAt).getTime() : 0
+          if (nextTime > 0 && now >= nextTime) {
+            await executeRoutineDirectly(routine, false, 'Execução automática agendada da rotina semanal.')
+            return
+          }
+        }
+
+        // Gatilho 2: Novo Briefing adicionado na pasta monitorada (`briefing_added`)
+        if (routine.triggerKind === 'briefing_added' && routine.watchFolder) {
+          const candidateNotes = notes.filter(
+            n =>
+              n.folder === routine.watchFolder &&
+              (n.title.toLowerCase().includes('briefing') || n.tags.includes('briefing')) &&
+              now - n.updatedAt < 60000 && // Estabilizado recentemente
+              now - n.updatedAt >= 1500
+          )
+          if (candidateNotes.length > 0) {
+            const latest = candidateNotes[0]
+            const fingerprint = `${latest.id}_${latest.updatedAt}`
+            if (routine.lastEventFingerprint !== fingerprint) {
+              await executeRoutineDirectly(
+                routine,
+                false,
+                `Preparar proposta comercial a partir do novo briefing: ${latest.title}`,
+                [latest],
+                 fingerprint
+              )
+              return
+            }
+          }
+        }
+      }
+    }
+
+    const timer = setInterval(checkSchedulesAndEvents, 25000)
+    return () => clearInterval(timer)
+  }, [notes, isExecuting])
+
+  // Execução direta de uma rotina sem depender de estado assíncrono `selectedAgent` (Corrige Achado 8!)
+  const executeRoutineDirectly = async (
+    routine: AutomationVersion,
+    isTest: boolean,
+    customPrompt?: string,
+    extraNotes?: Note[],
+    eventFingerprint?: string
+  ) => {
+    const currentStore = storeRef.current
+    const targetAgent =
+      currentStore.agents.find(a => a.id === routine.agentId) || currentStore.agents[0]
+    if (!targetAgent) return
+
+    const routineProject = routine.projectContextId
+      ? currentStore.projects.find(p => p.id === routine.projectContextId)
+      : selectedProject
+
+    setIsExecuting(true)
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    try {
+      const promptText =
+        customPrompt ||
+        `Execução da rotina "${routine.name}": ${routine.description}`
+
+      let run: AgentRun
+      if (routine.targetKind === 'workflow' && routine.workflowId) {
+        const wf = workflows.find(w => w.id === routine.workflowId) || workflows[0]
+        run = await executeWorkflowRun({
+          workflow: wf,
+          allAgents: currentStore.agents,
+          allNotes: notes,
+          allProjects: currentStore.projects,
+          prompt: promptText,
+          projectContext: routineProject,
+          isTestRun: isTest || routine.requireApproval
+        })
+      } else {
+        const teamDef =
+          routine.targetKind === 'team' && routine.teamId
+            ? teams.find(t => t.id === routine.teamId)
+            : undefined
+        run = await executeAgentRun({
+          agent: {
+            ...targetAgent,
+            deliverables: {
+              ...targetAgent.deliverables,
+              targetFolder: routine.targetFolder || targetAgent.deliverables.targetFolder
+            }
+          },
+          allAgents: currentStore.agents,
+          allNotes: notes,
+          allProjects: currentStore.projects,
+          prompt: promptText,
+          isTestRun: isTest || routine.requireApproval,
+          projectContext: routineProject,
+          extraRequestNotes: extraNotes,
+          teamDefinition: teamDef,
+          abortSignal: controller.signal
+        })
+      }
+
+      const updatedAutomations = currentStore.automations.map(a =>
+        a.id === routine.id
+          ? {
+              ...a,
+              lastTriggeredAt: Date.now(),
+              lastEventFingerprint: eventFingerprint || a.lastEventFingerprint,
+              recentRunIds: [run.id, ...a.recentRunIds.slice(0, 19)]
+            }
+          : a
+      )
+
+      const nextStore: MultiAgentStoreState = {
+        ...currentStore,
+        runs: [run, ...currentStore.runs],
+        automations: updatedAutomations
+      }
+      await onUpdateStore(nextStore)
+      setSelectedRunId(run.id)
+      setSelectedAgentId(targetAgent.id)
+      setActiveSection('agents')
+      setStatusBanner({
+        type: 'success',
+        text: `Rotina "${routine.name}" executada com o agente ${targetAgent.name}. Revise o resultado abaixo.`
+      })
+    } finally {
+      setIsExecuting(false)
+      abortControllerRef.current = null
     }
   }
 
-  // Run or Test Agent (Seção 2 & Seção 4)
-  const handleRunOrTestAgent = async (isTestRun: boolean, customAnswers?: Record<string, string>) => {
+  // 3. Executar ou Testar Agente (com persistência prévia em `running`, suporte a cancelamento e atualização in-place da mesma Run)
+  const handleRunAgent = async (opts: {
+    isTest: boolean
+    overridePrompt?: string
+    overrideProjectId?: string
+    existingRunToUpdate?: AgentRun
+  }) => {
     if (!selectedAgent) return
-    if (selectedAgent.state === 'paused') {
-      setCommitBanner({
-        type: 'error',
-        message: `O agente "${selectedAgent.name}" está pausado. Retome-o antes de iniciar um pedido.`
+    const effectiveProjectId =
+      opts.overrideProjectId !== undefined ? opts.overrideProjectId : selectedProjectId
+    const effectiveProject = store.projects.find(p => p.id === effectiveProjectId)
+    const effectivePrompt = (
+      opts.overridePrompt ??
+      opts.existingRunToUpdate?.prompt ??
+      promptInput
+    ).trim()
+
+    if (!effectivePrompt) {
+      setStatusBanner({
+        type: 'warning',
+        text: 'Descreva o pedido ou objetivo antes de acionar o agente.'
       })
       return
     }
 
     setIsExecuting(true)
-    setCommitBanner(null)
+    setStatusBanner(null)
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    const attachedNotes = notes.filter(n =>
+      (opts.existingRunToUpdate?.extraNoteIds || extraNoteIds).includes(n.id)
+    )
+
+    const mergedAnswers = {
+      ...(opts.existingRunToUpdate?.userAnswers || {}),
+      ...answerInputs
+    }
+    const mergedConflicts = {
+      ...(opts.existingRunToUpdate?.conflictResolutions || {}),
+      ...conflictChoices
+    }
 
     try {
-      const projectContext = store.projects.find(p => p.id === selectedProjectId)
-      const extraNotes = notes.filter(n => extraNoteIds.includes(n.id))
-
-      const runResult = await executeAgentRun({
+      const resultRun = await executeAgentRun({
         agent: selectedAgent,
         allAgents: store.agents,
         allNotes: notes,
-        prompt: promptInput,
-        isTestRun,
-        projectContext,
-        extraRequestNotes: extraNotes,
-        userAnswers: customAnswers || userAnswerInputs,
-        useTeamDelegation: useTeamCoordination || selectedAgent.specialistRole === 'coordinator'
+        allProjects: store.projects,
+        prompt: effectivePrompt,
+        isTestRun: opts.isTest,
+        projectContext: effectiveProject,
+        explicitClientName: effectiveProject?.clientName,
+        extraRequestNotes: attachedNotes,
+        userAnswers: Object.keys(mergedAnswers).length > 0 ? mergedAnswers : undefined,
+        conflictResolutions: Object.keys(mergedConflicts).length > 0 ? mergedConflicts : undefined,
+        useTeamDelegation,
+        existingRunId: opts.existingRunToUpdate?.id,
+        abortSignal: controller.signal,
+        onRunStarted: async initialRunning => {
+          const current = storeRef.current
+          const exists = current.runs.some(r => r.id === initialRunning.id)
+          const nextRuns = exists
+            ? current.runs.map(r => (r.id === initialRunning.id ? initialRunning : r))
+            : [initialRunning, ...current.runs]
+          await onUpdateStore({ ...current, runs: nextRuns })
+        }
       })
 
-      const nextStore: MultiAgentStoreState = {
-        ...store,
-        runs: [runResult, ...store.runs.filter(r => r.id !== runResult.id)]
-      }
-      await onUpdateStore(nextStore)
-      setActiveRunId(runResult.id)
-    } catch (err: any) {
-      setCommitBanner({
-        type: 'error',
-        message: err?.message || 'Falha durante a execução do agente.'
+      const latestStore = storeRef.current
+      const existsInStore = latestStore.runs.some(r => r.id === resultRun.id)
+      const finalRuns = existsInStore
+        ? latestStore.runs.map(r => (r.id === resultRun.id ? resultRun : r))
+        : [resultRun, ...latestStore.runs]
+
+      await onUpdateStore({
+        ...latestStore,
+        runs: finalRuns
       })
+      setSelectedRunId(resultRun.id)
+      setAnswerInputs({})
     } finally {
       setIsExecuting(false)
+      abortControllerRef.current = null
     }
   }
 
-  // Salvar Proposta / Entrega como Nota Real no Cofre com confirmação pós-gravação (P0 & Seção 4 Etapa 8)
-  const handleCommitRunDeliverable = async (run: AgentRun) => {
-    if (!run.draftContent) return
-    const targetFolder = selectedAgent?.deliverables.targetFolder || 'Propostas'
-    const baseTitle =
-      run.changeSet?.operations[0]?.targetTitle ||
-      `Proposta Comercial - ${run.clientName || 'Cliente'} - ${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}`
+  const handleCancelActiveExecution = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      setStatusBanner({
+        type: 'warning',
+        text: 'Execução cancelada pelo usuário.'
+      })
+    }
+  }
 
-    // P0: Só confirma sucesso APÓS o recibo real de gravação
-    const commitRes = await onCreateCommittedNote({
-      folder: targetFolder,
-      title: baseTitle,
-      content: run.draftContent,
-      type: 'note'
-    })
-
-    if (!commitRes.success) {
-      setCommitBanner({
-        type: 'error',
-        message: `Falha ao gravar no cofre: ${commitRes.error || 'Erro de escrita em disco'}`
+  // 4. Salvar Rascunho vs Aprovar Proposta Final com Proteção Exclusiva contra Sobrescrita (Achados 2 e 7)
+  const handleCommitDeliverable = async (
+    run: AgentRun,
+    finalApproval: boolean,
+    conflictStrategy?: 'new_revision' | 'overwrite'
+  ) => {
+    const primaryOp = run.changeSet?.operations[0]
+    if (!primaryOp) {
+      setStatusBanner({
+        type: 'warning',
+        text: 'Esta execução não possui operação de escrita autorizada (verifique as permissões do agente).'
       })
       return
+    }
+
+    if (primaryOp.status === 'committed' && !conflictStrategy) {
+      setStatusBanner({
+        type: 'warning',
+        text: 'Esta entrega já foi salva no cofre. Faça uma nova execução ou edite a nota aberta.'
+      })
+      return
+    }
+
+    // Bloquear aprovação final se houver informações obrigatórias faltantes, placeholders não preenchidos ou conflitos sem decisão (Achado 7)
+    const hasMissing = Boolean(run.calculation && run.calculation.missingFields.length > 0)
+    const hasUnresolvedConflicts = Boolean(
+      run.calculation && run.calculation.conflicts.some(c => c.resolution === 'unresolved')
+    )
+    const hasFixedViolations = Boolean(
+      run.calculation && run.calculation.fixedSectionViolations.length > 0
+    )
+
+    if (finalApproval && (hasMissing || hasUnresolvedConflicts || hasFixedViolations)) {
+      setStatusBanner({
+        type: 'error',
+        text: 'Não é possível aprovar como versão final enquanto houver campos obrigatórios pendentes, conflitos de preços ou violação de seção fixa. Resolva abaixo ou salve apenas como rascunho.'
+      })
+      return
+    }
+
+    const frozenFolder = primaryOp.targetFolder || 'Propostas'
+    let targetTitle = primaryOp.targetTitle
+    const contentToSave = primaryOp.contentPreview || run.draftContent || ''
+    const noteType: NoteType =
+      primaryOp.type === 'create_mindmap'
+        ? 'mindmap'
+        : primaryOp.type === 'create_diagram'
+        ? 'draw'
+        : 'note'
+
+    const existingNoteInVault = notes.find(
+      n =>
+        n.folder.toLowerCase() === frozenFolder.toLowerCase() &&
+        n.title.toLowerCase() === targetTitle.toLowerCase()
+    )
+
+    if (conflictStrategy === 'new_revision') {
+      const revNum =
+        notes.filter(
+          n =>
+            n.folder.toLowerCase() === frozenFolder.toLowerCase() &&
+            n.title.toLowerCase().startsWith(targetTitle.toLowerCase())
+        ).length + 1
+      targetTitle = `${targetTitle} (v${revNum})`
+    } else if (!conflictStrategy && existingNoteInVault) {
+      // Solicitar decisão explícita antes de sobrescrever documento existente no cofre!
+      setOverwritePrompt({
+        run,
+        finalApproval,
+        existingTitle: targetTitle,
+        folder: frozenFolder,
+        content: contentToSave,
+        type: noteType
+      })
+      return
+    }
+
+    const res = await onCreateCommittedNote({
+      folder: frozenFolder,
+      title: targetTitle,
+      content: contentToSave,
+      type: noteType,
+      exclusive: conflictStrategy !== 'overwrite',
+      overwriteExistingNoteId: conflictStrategy === 'overwrite' ? existingNoteInVault?.id : undefined,
+      expectedRevisionHash:
+        conflictStrategy === 'overwrite' && existingNoteInVault
+          ? computeHashSync(existingNoteInVault.content)
+          : undefined
+    })
+
+    if (res.alreadyExists && !conflictStrategy) {
+      setOverwritePrompt({
+        run,
+        finalApproval,
+        existingTitle: targetTitle,
+        folder: frozenFolder,
+        content: contentToSave,
+        type: noteType
+      })
+      return
+    }
+
+    if (!res.success || !res.note) {
+      setStatusBanner({
+        type: 'error',
+        text: res.error || 'Falha ao gravar a entrega no cofre.'
+      })
+      return
+    }
+
+    const proposalStatus: ProposalStatus = finalApproval
+      ? 'approved'
+      : hasMissing || hasUnresolvedConflicts
+      ? 'pending_info'
+      : 'draft'
+
+    // Criar tarefas reais derivadas dos itens do escopo se for aprovação final e o agente tiver permissão `create_tasks` (Achado 10)
+    const runAgent = store.agents.find(a => a.id === run.agentId)
+    if (finalApproval && runAgent?.allowedActions.includes('create_tasks')) {
+      const scopeItems = run.calculation?.items || []
+      if (scopeItems.length > 0) {
+        for (const item of scopeItems) {
+          onCreateTask(`Entregar ${item.serviceName} — ${run.clientName || targetTitle}`, {
+            description: `${item.description} (Valor: ${formatCentsBRL(item.totalCents)} • Fonte: [[${item.sourceNoteTitle}]])`,
+            contextNoteId: res.note.id,
+            contextNoteTitle: res.note.title,
+            priority: 'high',
+            tags: ['proposta', 'escopo']
+          })
+        }
+      } else {
+        onCreateTask(`Acompanhar entrega: ${targetTitle}`, {
+          description: `Documento vinculado: [[${targetTitle}]]`,
+          contextNoteId: res.note.id,
+          contextNoteTitle: res.note.title,
+          priority: 'medium',
+          tags: ['agente']
+        })
+      }
     }
 
     const newArtifact: AgentArtifact = {
@@ -387,36 +645,45 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       runId: run.id,
       agentId: run.agentId,
       agentVersion: run.agentVersion,
-      title: baseTitle,
-      folder: targetFolder,
-      noteId: commitRes.note?.id,
-      filePath: commitRes.filePath,
-      artifactType: 'proposal',
-      proposalStatus: 'approved',
+      title: targetTitle,
+      folder: frozenFolder,
+      noteId: res.note.id,
+      filePath: res.filePath,
+      artifactType:
+        noteType === 'mindmap'
+          ? 'mindmap'
+          : noteType === 'draw'
+          ? 'draw'
+          : run.calculation
+          ? 'proposal'
+          : 'note',
+      proposalStatus,
       clientName: run.clientName,
       projectId: run.projectContextId,
       sourceSnapshots: run.sourceSnapshots,
       calculation: run.calculation,
-      revisionHash: commitRes.revisionHash || computeHashSync(run.draftContent),
+      revisionHash: res.revisionHash || computeHashSync(contentToSave),
       createdAt: Date.now()
     }
 
     const updatedRun: AgentRun = {
       ...run,
-      isTestRun: false,
       status: 'completed',
-      proposalStatus: 'approved',
-      artifacts: [newArtifact, ...run.artifacts],
+      proposalStatus,
+      completedAt: Date.now(),
+      updatedAt: Date.now(),
       changeSet: run.changeSet
         ? {
             ...run.changeSet,
-            operations: run.changeSet.operations.map((op, i) =>
-              i === 0
+            operations: run.changeSet.operations.map((op, idx) =>
+              idx === 0
                 ? {
                     ...op,
+                    targetTitle,
                     status: 'committed',
                     commitReceipt: {
-                      filePath: commitRes.filePath,
+                      noteId: res.note?.id,
+                      filePath: res.filePath,
                       revisionHash: newArtifact.revisionHash,
                       committedAt: Date.now()
                     }
@@ -425,1420 +692,1429 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             )
           }
         : undefined,
-      updatedAt: Date.now()
+      artifacts: [newArtifact, ...run.artifacts]
     }
 
-    const nextStore: MultiAgentStoreState = {
+    await onUpdateStore({
       ...store,
       runs: store.runs.map(r => (r.id === run.id ? updatedRun : r)),
       artifacts: [newArtifact, ...store.artifacts]
-    }
-    await onUpdateStore(nextStore)
+    })
 
-    setCommitBanner({
+    setOverwritePrompt(null)
+    setStatusBanner({
       type: 'success',
-      message: `Nota "${baseTitle}" gravada e confirmada em "${targetFolder}" (Recibo #${newArtifact.revisionHash.slice(0, 8)})!`
+      text: finalApproval
+        ? `Proposta aprovada e salva em "${frozenFolder}/${targetTitle}".`
+        : `Rascunho salvo em "${frozenFolder}/${targetTitle}".`
     })
-    setTimeout(() => setCommitBanner(null), 6000)
   }
 
-  // Ações separadas pós-proposta (Seção 4 Etapa 9): Gerar Tarefas de Acompanhamento, Mapa Mental ou Diagrama
-  const handleGenerateFollowUpTasks = async (run: AgentRun) => {
-    const clientLabel = run.clientName || 'Cliente'
-    const linkedNote = run.artifacts[0]
-    const tasksToCreate = [
-      `Enviar proposta comercial revisada para ${clientLabel}`,
-      `Fazer follow-up comercial em 48h com ${clientLabel}`,
-      `Coletar assinatura e comprovante de entrada (40%) — ${clientLabel}`,
-      `Agendar reunião de Kick-off e alinhamento de escopo — ${clientLabel}`
+  // 5. Carregar Exemplos de Demonstração sob demanda (sem poluir o espaço principal com botões fixos de João/Maria)
+  const handleLoadDemoExamples = async () => {
+    onLoadDemoSeedNotes?.()
+    const existingIds = new Set(store.projects.map(p => p.id))
+    const mergedProjects = [
+      ...store.projects,
+      ...DEMO_PROJECTS.filter(dp => !existingIds.has(dp.id))
     ]
-
-    for (const title of tasksToCreate) {
-      onCreateTask(title, {
-        priority: 'high',
-        tags: ['proposta', 'comercial'],
-        contextNoteId: linkedNote?.noteId,
-        contextNoteTitle: linkedNote?.title || `Proposta - ${clientLabel}`,
-        description: `Gerada a partir da proposta de ${clientLabel} (Run ${run.id}).`
-      })
+    await onUpdateStore({
+      ...store,
+      projects: mergedProjects,
+      demoExamplesLoaded: true
+    })
+    if (mergedProjects[0]) {
+      setSelectedProjectId(mergedProjects[0].id)
     }
-
-    setCommitBanner({
+    setStatusBanner({
       type: 'success',
-      message: `4 tarefas de acompanhamento criadas e vinculadas a "${linkedNote?.title || clientLabel}"!`
+      text: 'Exemplos de demonstração carregados (Projetos João Silva e Maria Oliveira disponíveis no seletor de cliente).'
     })
-    setTimeout(() => setCommitBanner(null), 4000)
   }
 
-  const handleGenerateScopeMindMap = async (run: AgentRun) => {
-    const clientLabel = run.clientName || 'Cliente'
-    const items = run.calculation?.items || []
-    const outlineLines = [
-      `# Escopo do Projeto — ${clientLabel}`,
-      `## Entregáveis Comerciais`,
-      ...items.map(it => `  - ${it.serviceName} (R$ ${it.total.toFixed(2)})`),
-      `## Condições e Prazos`,
-      `  - Total Líquido: R$ ${(run.calculation?.netTotal || 0).toFixed(2)}`,
-      `  - Parcelamento: ${run.calculation?.installments || 1}x`,
-      `## Próximas Etapas`,
-      `  - [ ] Aprovação da Proposta`,
-      `  - [ ] Kick-off e Briefing Técnico`,
-      `  - [ ] Desenvolvimento e Revisão`,
-      `  - [ ] Entrega Final e Homologação`
-    ]
-
-    const res = await onCreateCommittedNote({
-      folder: selectedAgent?.deliverables.targetFolder || 'Propostas',
-      title: `Mapa de Escopo - ${clientLabel}`,
-      content: outlineLines.join('\n'),
-      type: 'mindmap'
-    })
-
-    if (res.success) {
-      setCommitBanner({
-        type: 'success',
-        message: `Mapa Mental "Mapa de Escopo - ${clientLabel}" criado com sucesso!`
-      })
-      setTimeout(() => setCommitBanner(null), 4000)
+  // 6. CRUD de Projetos / Clientes (Achado 10)
+  const handleSaveProject = async () => {
+    if (!projClient.trim() || !projName.trim()) return
+    const nextProj: ProjectContext = {
+      id: editingProject?.id || `proj_${Date.now()}`,
+      name: projName.trim(),
+      clientName: projClient.trim(),
+      description: projDesc.trim(),
+      folderPath: 'Clientes',
+      briefingNoteIds: projBriefingIds,
+      createdAt: editingProject?.createdAt || Date.now(),
+      updatedAt: Date.now()
     }
+    const exists = store.projects.some(p => p.id === nextProj.id)
+    const nextProjects = exists
+      ? store.projects.map(p => (p.id === nextProj.id ? nextProj : p))
+      : [nextProj, ...store.projects]
+    await onUpdateStore({ ...store, projects: nextProjects })
+    setSelectedProjectId(nextProj.id)
+    setEditingProject(null)
+    setProjName('')
+    setProjClient('')
+    setProjDesc('')
+    setProjBriefingIds([])
   }
 
-  // Presets rápidos para validar a jornada de Dois Clientes Distintos (João vs Maria) sem vazamento
-  const handleQuickPresetClient = (preset: 'joao' | 'maria' | 'team_project') => {
-    setUserAnswerInputs({})
-    if (preset === 'joao') {
-      setSelectedAgentId('agent-proposal-specialist')
-      setSelectedProjectId('proj-joao-horizonte')
-      setPromptInput('Prepare uma proposta para João, para criação de site com manutenção mensal')
-      setUseTeamCoordination(false)
-    } else if (preset === 'maria') {
-      setSelectedAgentId('agent-proposal-specialist')
-      setSelectedProjectId('proj-maria-botanico')
-      setPromptInput('Faça outra proposta para Maria, com loja virtual e identidade visual à vista no PIX')
-      setUseTeamCoordination(false)
-    } else {
-      setSelectedAgentId('agent-team-coordinator')
-      setSelectedProjectId('proj-joao-horizonte')
-      setPromptInput('Transforme estas notas em um projeto completo com proposta, síntese, tarefas e mapa mental')
-      setUseTeamCoordination(true)
+  // 7. Adicionar vínculo de nota ao Agente com suporte real a `pin_revision` (Achado 6)
+  const handleAddKnowledgeBinding = async () => {
+    if (!selectedAgent || !bindNoteId) return
+    const targetNote = notes.find(n => n.id === bindNoteId)
+    if (!targetNote) return
+
+    const newBind: ContextBinding = {
+      id: `bind_${Date.now()}`,
+      targetType: 'note',
+      noteId: targetNote.id,
+      noteTitle: targetNote.title,
+      folderPath: targetNote.folder,
+      projectId: bindRole === 'project_context' ? selectedProjectId || undefined : undefined,
+      role: bindRole,
+      required: bindRole === 'template',
+      precedence: bindRole === 'template' ? 100 : 85,
+      updatePolicy: bindPolicy,
+      pinnedHash: bindPolicy === 'pin_revision' ? computeHashSync(targetNote.content) : undefined,
+      pinnedContentSnapshot: bindPolicy === 'pin_revision' ? targetNote.content : undefined
     }
+
+    const updatedAgent: AgentProfileVersion = {
+      ...selectedAgent,
+      knowledgeBindings: [...selectedAgent.knowledgeBindings, newBind]
+    }
+    await onUpdateStore(updateAgentProfileWithVersion(store, updatedAgent))
+    setBindNoteId('')
   }
+
+  const primaryOpCommitted = activeRun?.changeSet?.operations[0]?.status === 'committed'
+  const canApproveFinal =
+    activeRun &&
+    (!activeRun.calculation ||
+      (activeRun.calculation.missingFields.length === 0 &&
+        activeRun.calculation.conflicts.every(c => c.resolution !== 'unresolved') &&
+        activeRun.calculation.fixedSectionViolations.length === 0))
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#0f0f12] text-zinc-100 overflow-hidden select-none">
-      {/* Top Header of "Minha Equipe" */}
-      <header className="flex items-center justify-between px-6 py-3.5 bg-[#121216] border-b border-zinc-800/80 shrink-0">
-        <div className="flex items-center gap-3">
+    <div className="flex h-full w-full bg-[#0d0d11] text-zinc-100 overflow-hidden">
+      {/* Navegação Lateral Esquerda Limpa (5 destinos principais inspirados no OpenBot) */}
+      <aside className="w-56 border-r border-zinc-800/80 bg-[#121217] flex flex-col justify-between p-3.5 shrink-0">
+        <div className="space-y-5">
+          <div className="px-2 pt-1 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-zinc-100 tracking-tight">Minha Equipe</h2>
+              <p className="text-xs text-zinc-400">Agentes, fluxos e rotinas</p>
+            </div>
+          </div>
+
+          <nav className="space-y-1">
+            {[
+              { id: 'agents' as PrimarySection, label: 'Agentes', icon: Bot, count: store.agents.length },
+              { id: 'teams' as PrimarySection, label: 'Equipes', icon: Users, count: teams.length },
+              { id: 'workflows' as PrimarySection, label: 'Fluxos', icon: GitBranch, count: workflows.length },
+              { id: 'routines' as PrimarySection, label: 'Rotinas', icon: Clock, count: store.automations.length },
+              {
+                id: 'activity' as PrimarySection,
+                label: 'Atividade',
+                icon: Activity,
+                count: store.runs.length
+              }
+            ].map(item => {
+              const Icon = item.icon
+              const isActive = activeSection === item.id
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveSection(item.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-[#c59b27]/15 text-[#c59b27] border border-[#c59b27]/40'
+                      : 'text-zinc-300 hover:bg-zinc-800/60 hover:text-white border border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Icon className="w-4 h-4" />
+                    <span>{item.label}</span>
+                  </div>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-900/90 text-zinc-400">
+                    {item.count}
+                  </span>
+                </button>
+              )
+            })}
+          </nav>
+
+          {/* Seletor discreto de Cliente / Projeto Ativo */}
+          <div className="pt-3 border-t border-zinc-800/80 space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-semibold text-zinc-400">Cliente / Projeto</span>
+              <button
+                type="button"
+                onClick={() => setIsProjectsModalOpen(true)}
+                className="text-xs text-[#c59b27] hover:underline cursor-pointer"
+              >
+                Gerenciar
+              </button>
+            </div>
+            <select
+              value={selectedProjectId}
+              onChange={e => setSelectedProjectId(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-2 text-xs text-zinc-200 focus:outline-none focus:border-[#c59b27]"
+            >
+              <option value="">Sem cliente fixo (Por pedido)</option>
+              {store.projects.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.clientName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Rodapé da barra lateral: Explorar exemplos sob demanda */}
+        <div className="pt-3 border-t border-zinc-800/80 space-y-2">
+          <button
+            type="button"
+            onClick={handleLoadDemoExamples}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/60 text-xs text-zinc-300 hover:text-white cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#c59b27]" />
+            <span>Explorar Exemplos</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Conteúdo Principal de acordo com a seção selecionada */}
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {statusBanner && (
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center border shadow-sm"
-            style={{
-              backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
-              borderColor: 'rgba(197, 155, 39, 0.35)',
-              color: 'var(--accent, #c59b27)'
-            }}
+            className={`px-6 py-2.5 border-b flex items-center justify-between text-xs ${
+              statusBanner.type === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                : statusBanner.type === 'warning'
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                : 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+            }`}
           >
-            <Users className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold tracking-tight text-zinc-100">Minha Equipe</h1>
-              <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                Multiagentes & Conhecimento Vinculado
-              </span>
-            </div>
-            <p className="text-xs text-zinc-400">
-              Crie especialistas, escolha quais notas eles consultam por papel e revise entregas com rastreabilidade.
-            </p>
-          </div>
-        </div>
-
-        {/* Sub-navigation Tabs + Create Agent Buttons */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-zinc-900/90 p-1 rounded-xl border border-zinc-800">
+            <span>{statusBanner.text}</span>
             <button
-              onClick={() => setActiveSubTab('team')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeSubTab === 'team'
-                  ? 'bg-zinc-800 text-white shadow-xs'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
+              type="button"
+              onClick={() => setStatusBanner(null)}
+              className="text-zinc-400 hover:text-white cursor-pointer"
             >
-              <Users className="w-3.5 h-3.5 text-[#c59b27]" />
-              <span>Especialistas ({store.agents.length})</span>
-            </button>
-            <button
-              onClick={() => setActiveSubTab('runs')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeSubTab === 'runs'
-                  ? 'bg-zinc-800 text-white shadow-xs'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <History className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Execuções & Auditoria ({store.runs.length})</span>
-            </button>
-            <button
-              onClick={() => setActiveSubTab('projects')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeSubTab === 'projects'
-                  ? 'bg-zinc-800 text-white shadow-xs'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Folder className="w-3.5 h-3.5 text-purple-400" />
-              <span>Clientes & Contextos ({store.projects.length})</span>
-            </button>
-            <button
-              onClick={() => setActiveSubTab('automations')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeSubTab === 'automations'
-                  ? 'bg-zinc-800 text-white shadow-xs'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>Rotinas & Automações ({store.automations.length})</span>
+              <X className="w-4 h-4" />
             </button>
           </div>
+        )}
 
-          <button
-            onClick={() => handleOpenCreateAgent('conversation')}
-            className="px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/80 flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Descreva o assistente desejado e receba uma configuração pronta para revisar"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Criar por Conversa</span>
-          </button>
-
-          <button
-            onClick={() => handleOpenCreateAgent('guided')}
-            className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-black flex items-center gap-1.5 transition-all shadow-sm cursor-pointer hover:opacity-95"
-            style={{ backgroundColor: 'var(--accent, #c59b27)' }}
-          >
-            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Criar Agente</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Feedback Banner */}
-      {commitBanner && (
-        <div
-          className={`px-6 py-2.5 text-xs font-medium flex items-center justify-between border-b shrink-0 ${
-            commitBanner.type === 'success'
-              ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-              : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {commitBanner.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-            )}
-            <span>{commitBanner.message}</span>
-          </div>
-          <button onClick={() => setCommitBanner(null)} className="text-zinc-400 hover:text-white cursor-pointer">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-
-      {/* Main Content Split */}
-      {activeSubTab === 'team' && (
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left Column: Agent Cards List & Filters */}
-          <div className="w-[410px] border-r border-zinc-800/80 flex flex-col bg-[#101014] shrink-0">
-            {/* Search & Filter Bar */}
-            <div className="p-3.5 border-b border-zinc-800/80 space-y-2.5">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Buscar especialista por nome ou função..."
-                  className="w-full pl-8 pr-3 py-1.5 bg-zinc-900/90 border border-zinc-800 rounded-xl text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[#c59b27]"
-                />
+        {/* SEÇÃO 1: AGENTES (Foco limpo na conversa/pedido e no resultado) */}
+        {activeSection === 'agents' && selectedAgent && (
+          <div className="flex-1 flex overflow-hidden">
+            {/* Lista compacta de Agentes */}
+            <div className="w-64 border-r border-zinc-800/80 bg-[#111116] flex flex-col overflow-hidden shrink-0">
+              <div className="p-3.5 border-b border-zinc-800/80 flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  Especialistas
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewAgentDraft(null)
+                    setConvDescription('')
+                    setIsNewAgentModalOpen(true)
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#c59b27] text-black font-semibold text-xs hover:bg-[#d4a930] cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Novo agente</span>
+                </button>
               </div>
-              <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
-                {[
-                  { id: 'all', label: 'Todos' },
-                  { id: 'proposal_specialist', label: 'Propostas' },
-                  { id: 'coordinator', label: 'Coordenador' },
-                  { id: 'knowledge_curator', label: 'Curador' },
-                  { id: 'project_planner', label: 'Planejador' },
-                  { id: 'reviewer', label: 'Revisor' }
-                ].map(f => (
-                  <button
-                    key={f.id}
-                    onClick={() => setRoleFilter(f.id)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap cursor-pointer transition-colors ${
-                      roleFilter === f.id
-                        ? 'bg-[#c59b27]/20 text-[#d4af37] border border-[#c59b27]/40'
-                        : 'bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 border border-zinc-800/60'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </div>
 
-            {/* Agent Cards Scroll Area */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2.5 custom-chat-scrollbar">
-              {filteredAgents.map(agent => {
-                const isSelected = agent.id === selectedAgent?.id
-                const stateBadge =
-                  agent.state === 'working'
-                    ? { text: 'Trabalhando', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/30' }
-                    : agent.state === 'waiting_user'
-                    ? { text: 'Aguardando você', cls: 'bg-purple-500/15 text-purple-300 border-purple-500/30' }
-                    : agent.state === 'paused'
-                    ? { text: 'Pausado', cls: 'bg-zinc-800 text-zinc-400 border-zinc-700' }
-                    : { text: 'Disponível', cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' }
-
-                return (
-                  <div
-                    key={agent.id}
-                    onClick={() => setSelectedAgentId(agent.id)}
-                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#17171f] border-[#c59b27]/60 shadow-lg'
-                        : 'bg-[#131319] border-zinc-800/80 hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
+                {store.agents.map(agent => {
+                  const isSelected = agent.id === selectedAgent.id
+                  return (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      onClick={() => setSelectedAgentId(agent.id)}
+                      className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#191922] border-[#c59b27]/60 shadow-md'
+                          : 'bg-transparent border-transparent hover:bg-zinc-900/70'
+                      }`}
+                    >
                       <div className="flex items-center gap-2.5">
-                        <div
-                          className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 border"
-                          style={{
-                            backgroundColor: `${agent.color}18`,
-                            borderColor: `${agent.color}45`
-                          }}
-                        >
-                          {agent.icon}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <h3 className="text-xs font-bold text-zinc-100">{agent.name}</h3>
-                            <span className="text-[10px] font-mono text-zinc-500">v{agent.version}</span>
+                        <span className="text-xl">{agent.icon}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-zinc-100 truncate">
+                            {agent.name}
                           </div>
-                          <span className={`inline-block mt-0.5 px-2 py-0.2 text-[10px] rounded-full border ${stateBadge.cls}`}>
-                            {stateBadge.text}
-                          </span>
+                          <div className="text-xs text-zinc-400 truncate mt-0.5">
+                            {agent.knowledgeBindings.length} fonte(s) • Pasta {agent.deliverables.targetFolder}
+                          </div>
                         </div>
                       </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
 
-                      {/* Card quick actions: Editar, Duplicar, Pausar, Excluir */}
-                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                        <button
-                          onClick={() => {
-                            setEditingAgent(structuredClone(agent))
-                            setCreatorMode('guided')
-                            setIsCreatorOpen(true)
-                          }}
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
-                          title="Editar perfil (cria nova versão)"
-                        >
-                          <SlidersHorizontal className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDuplicateAgent(agent)}
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
-                          title="Duplicar agente"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleTogglePauseAgent(agent)}
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 transition-colors cursor-pointer"
-                          title={agent.state === 'paused' ? 'Retomar agente' : 'Pausar agente'}
-                        >
-                          <Pause className="w-3.5 h-3.5" />
-                        </button>
-                        {agent.id !== 'agent-proposal-specialist' && (
-                          <button
-                            onClick={() => handleDeleteAgent(agent)}
-                            className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 transition-colors cursor-pointer"
-                            title="Excluir perfil (preserva notas e histórico)"
+            {/* Área Central do Agente: Cabeçalho limpo + Caixa de Pedido + Resultado */}
+            <div className="flex-1 flex flex-col overflow-hidden bg-[#0e0e12]">
+              {/* Cabeçalho do Agente Selecionado */}
+              <div className="px-6 py-4 border-b border-zinc-800/80 bg-[#131319] flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-3xl">{selectedAgent.icon}</span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-lg font-bold text-zinc-100 truncate">
+                        {selectedAgent.name}
+                      </h1>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                        Disponível
+                      </span>
+                    </div>
+                    <p className="text-sm text-zinc-400 truncate max-w-2xl mt-0.5">
+                      {selectedAgent.roleDescription}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Botões para abrir Conhecimento e Configurações sob demanda */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsKnowledgeDrawerOpen(v => !v)
+                      setIsConfigDrawerOpen(false)
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer ${
+                      isKnowledgeDrawerOpen
+                        ? 'border-[#c59b27] bg-[#c59b27]/15 text-[#c59b27]'
+                        : 'border-zinc-700/80 bg-zinc-900 text-zinc-200 hover:border-zinc-500'
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>Conhecimento ({selectedAgent.knowledgeBindings.length})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsConfigDrawerOpen(v => !v)
+                      setIsKnowledgeDrawerOpen(false)
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer ${
+                      isConfigDrawerOpen
+                        ? 'border-[#c59b27] bg-[#c59b27]/15 text-[#c59b27]'
+                        : 'border-zinc-700/80 bg-zinc-900 text-zinc-200 hover:border-zinc-500'
+                    }`}
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>Configurações</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Corpo Rolável: Pedido e Resultado da Execução */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 max-w-5xl mx-auto w-full">
+                {/* Card de Pedido ao Agente */}
+                <div className="p-5 rounded-2xl border border-zinc-800/90 bg-[#14141b] space-y-4 shadow-lg">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-zinc-200">
+                      Novo Pedido para {selectedAgent.name}
+                    </span>
+                    {selectedProject && (
+                      <span className="text-xs px-2.5 py-1 rounded-lg bg-violet-500/15 border border-violet-500/30 text-violet-200">
+                        Cliente isolado: <strong>{selectedProject.clientName}</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    value={promptInput}
+                    onChange={e => setPromptInput(e.target.value)}
+                    placeholder={`Ex: Gere uma proposta comercial para ${
+                      selectedProject?.clientName || 'o cliente'
+                    } incluindo Site Institucional e Manutenção Mensal no prazo de 3 semanas...`}
+                    className="w-full bg-zinc-900/90 border border-zinc-700/80 rounded-xl p-3.5 text-base text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#c59b27] leading-relaxed"
+                  />
+
+                  {/* Notas anexadas apenas a este pedido (`request_context`) */}
+                  {extraNoteIds.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-zinc-400">Anexadas somente a este pedido:</span>
+                      {extraNoteIds.map(id => {
+                        const n = notes.find(item => item.id === id)
+                        if (!n) return null
+                        return (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-xs text-cyan-200"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                            <span>{n.title}</span>
+                            <button
+                              type="button"
+                              onClick={() => setExtraNoteIds(prev => prev.filter(x => x !== id))}
+                              className="hover:text-white cursor-pointer"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                    <div className="flex items-center gap-4">
+                      {selectedAgent.limits.allowDelegation &&
+                        selectedAgent.allowedActions.includes('delegate_team') && (
+                          <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={useTeamDelegation}
+                              onChange={e => setUseTeamDelegation(e.target.checked)}
+                              className="accent-[#c59b27]"
+                            />
+                            <span>Incluir revisão e especialistas da equipe</span>
+                          </label>
                         )}
-                      </div>
                     </div>
 
-                    <p className="text-[11px] text-zinc-400 mt-2 line-clamp-2 leading-relaxed">
-                      {agent.roleDescription}
-                    </p>
+                    <div className="flex items-center gap-2.5">
+                      {isExecuting && (
+                        <button
+                          type="button"
+                          onClick={handleCancelActiveExecution}
+                          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-rose-500/50 bg-rose-500/10 text-rose-300 text-xs font-medium cursor-pointer"
+                        >
+                          <StopCircle className="w-4 h-4" />
+                          <span>Cancelar Execução</span>
+                        </button>
+                      )}
 
-                    {/* Linked Notes by Role */}
-                    {agent.knowledgeBindings.length > 0 && (
-                      <div className="mt-2.5 flex flex-wrap gap-1">
-                        {agent.knowledgeBindings.map(b => (
-                          <span
-                            key={b.id}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-300"
-                            title={`${ROLE_LABELS[b.role].label}: ${b.noteTitle}`}
-                          >
-                            <span
-                              className="w-1.5 h-1.5 rounded-full"
-                              style={{ backgroundColor: ROLE_LABELS[b.role].badgeColor }}
-                            />
-                            <span className="truncate max-w-[140px]">{b.noteTitle}</span>
+                      <button
+                        type="button"
+                        disabled={isExecuting}
+                        onClick={() => handleRunAgent({ isTest: true })}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-zinc-700 bg-zinc-800/80 hover:bg-zinc-700 text-sm font-medium text-zinc-100 cursor-pointer disabled:opacity-50"
+                      >
+                        <FlaskConical className="w-4 h-4 text-amber-400" />
+                        <span>Testar Agente</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isExecuting}
+                        onClick={() => handleRunAgent({ isTest: false })}
+                        className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-[#c59b27] hover:bg-[#d4a930] text-black font-semibold text-sm cursor-pointer disabled:opacity-50"
+                      >
+                        <Play className="w-4 h-4 fill-current" />
+                        <span>Executar Pedido</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Resultado da Execução Ativa */}
+                {activeRun && (
+                  <div className="rounded-2xl border border-zinc-800/90 bg-[#14141b] overflow-hidden shadow-xl space-y-5 p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-base font-bold text-zinc-100">
+                            Resultado — {activeRun.agentName}
                           </span>
+                          <span
+                            className={`text-xs px-2.5 py-0.5 rounded-full font-medium border ${
+                              activeRun.status === 'completed'
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                : activeRun.status === 'waiting_user' || activeRun.status === 'waiting_approval'
+                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                            }`}
+                          >
+                            {activeRun.status === 'completed'
+                              ? 'Pronto para revisão'
+                              : activeRun.status === 'waiting_user'
+                              ? 'Aguardando informações'
+                              : activeRun.status === 'waiting_approval'
+                              ? 'Aguardando sua aprovação'
+                              : activeRun.status === 'cancelled'
+                              ? 'Cancelada'
+                              : 'Atenção necessária'}
+                          </span>
+                          {activeRun.isTestRun && (
+                            <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300">
+                              Modo de Teste (Nada foi gravado no disco)
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-400 mt-1">
+                          Pedido: "{activeRun.prompt}"
+                        </p>
+                      </div>
+
+                      {/* Ações de Gravação Separadas: Rascunho vs Aprovação Final (Achados 2 e 7) */}
+                      {activeRun.changeSet && activeRun.changeSet.operations.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={primaryOpCommitted}
+                            onClick={() => handleCommitDeliverable(activeRun, false)}
+                            className="px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-100 cursor-pointer disabled:opacity-40"
+                          >
+                            {primaryOpCommitted ? 'Já salvo no cofre' : 'Salvar como Rascunho'}
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={primaryOpCommitted || !canApproveFinal}
+                            onClick={() => handleCommitDeliverable(activeRun, true)}
+                            title={
+                              !canApproveFinal
+                                ? 'Resolva as pendências ou conflitos abaixo antes de aprovar a versão final'
+                                : 'Aprovar proposta final e gerar tarefas do escopo'
+                            }
+                            className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Aprovar e Salvar Proposta Final
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Erro se faltar modelo obrigatório */}
+                    {activeRun.error && (
+                      <div className="p-4 rounded-xl border border-rose-500/40 bg-rose-500/10 text-sm text-rose-200 flex items-start gap-3">
+                        <XCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                        <div>{activeRun.error}</div>
+                      </div>
+                    )}
+
+                    {/* Resolução Interativa de Conflitos de Preços entre Fontes (Achado 7) */}
+                    {activeRun.calculation && activeRun.calculation.conflicts.length > 0 && (
+                      <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-3">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-amber-200">
+                          <ShieldAlert className="w-4 h-4 text-amber-400" />
+                          <span>Divergência de preços encontrada nas notas de referência</span>
+                        </div>
+                        {activeRun.calculation.conflicts.map(c => (
+                          <div
+                            key={c.id}
+                            className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs"
+                          >
+                            <div>
+                              <div className="font-semibold text-zinc-100">{c.field}</div>
+                              <div className="text-zinc-400 mt-0.5">
+                                Escolha qual valor adotar para liberar a aprovação final:
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setConflictChoices(prev => ({
+                                    ...prev,
+                                    [c.id]: { chosenValue: c.valueA, chosenPriceCents: c.priceACents }
+                                  }))
+                                }
+                                className={`px-3 py-1.5 rounded-lg border cursor-pointer ${
+                                  conflictChoices[c.id]?.chosenPriceCents === c.priceACents ||
+                                  c.chosenPriceCents === c.priceACents
+                                    ? 'border-[#c59b27] bg-[#c59b27]/20 text-white font-semibold'
+                                    : 'border-zinc-700 bg-zinc-800 text-zinc-300'
+                                }`}
+                              >
+                                {c.sourceA}: {c.valueA}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setConflictChoices(prev => ({
+                                    ...prev,
+                                    [c.id]: { chosenValue: c.valueB, chosenPriceCents: c.priceBCents }
+                                  }))
+                                }
+                                className={`px-3 py-1.5 rounded-lg border cursor-pointer ${
+                                  conflictChoices[c.id]?.chosenPriceCents === c.priceBCents ||
+                                  c.chosenPriceCents === c.priceBCents
+                                    ? 'border-[#c59b27] bg-[#c59b27]/20 text-white font-semibold'
+                                    : 'border-zinc-700 bg-zinc-800 text-zinc-300'
+                                }`}
+                              >
+                                {c.sourceB}: {c.valueB}
+                              </button>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     )}
 
-                    {/* Human-friendly permission summary */}
-                    <div className="mt-2.5 pt-2 border-t border-zinc-800/70 flex items-center justify-between text-[10px] text-zinc-500">
-                      <span>📁 Pode preparar rascunhos em "{agent.deliverables.targetFolder}"</span>
-                      <span>🔒 Aprovação p/ existentes</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Right Column: Active Agent Workbench (Context Chips, Prompt, Test vs Run, Preview & Audit) */}
-          {selectedAgent && (
-            <div className="flex-1 flex flex-col overflow-y-auto custom-chat-scrollbar bg-[#0d0d11] p-6 space-y-5">
-              {/* Selected Agent Summary Card & Quick Scenario Switcher */}
-              <div className="bg-[#14141b] border border-zinc-800/90 rounded-2xl p-4 space-y-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl border"
-                      style={{
-                        backgroundColor: `${selectedAgent.color}18`,
-                        borderColor: `${selectedAgent.color}45`
-                      }}
-                    >
-                      {selectedAgent.icon}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-sm font-bold text-white">{selectedAgent.name}</h2>
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-mono bg-zinc-800 text-zinc-300">
-                          Versão {selectedAgent.version}
-                        </span>
-                        <span className="text-[11px] text-zinc-400">
-                          • Destino padrão: <strong className="text-zinc-200">{selectedAgent.deliverables.targetFolder}</strong>
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-400 mt-0.5">{selectedAgent.roleDescription}</p>
-                    </div>
-                  </div>
-
-                  {/* Quick Journey Presets (João vs Maria vs Equipe) */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-[10px] text-zinc-500 mr-1">Exemplos rápidos:</span>
-                    <button
-                      onClick={() => handleQuickPresetClient('joao')}
-                      className="px-2.5 py-1 rounded-lg text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 cursor-pointer transition-colors"
-                    >
-                      Cliente 1: João (Site + Manutenção)
-                    </button>
-                    <button
-                      onClick={() => handleQuickPresetClient('maria')}
-                      className="px-2.5 py-1 rounded-lg text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 cursor-pointer transition-colors"
-                    >
-                      Cliente 2: Maria (Loja Virtual PIX)
-                    </button>
-                    <button
-                      onClick={() => handleQuickPresetClient('team_project')}
-                      className="px-2.5 py-1 rounded-lg text-[11px] bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 cursor-pointer transition-colors"
-                    >
-                      Equipe: Notas → Projeto
-                    </button>
-                  </div>
-                </div>
-
-                {/* Knowledge & Context Chips with Explicit Roles (Seção 3) */}
-                <div className="pt-3 border-t border-zinc-800/80 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-zinc-300 flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-[#c59b27]" />
-                      Fontes e Referências Autorizadas para este Pedido (por Papel):
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <label className="text-[11px] text-zinc-400">Cliente / Projeto:</label>
-                      <select
-                        value={selectedProjectId}
-                        onChange={e => setSelectedProjectId(e.target.value)}
-                        className="bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[#c59b27]"
-                      >
-                        <option value="">-- Escolher pelo pedido --</option>
-                        {store.projects.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.clientName} — {p.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Role Chips */}
-                  <div className="flex flex-wrap gap-2">
-                    {selectedAgent.knowledgeBindings.map(bind => {
-                      const foundNote = notes.find(
-                        n => (bind.noteId && n.id === bind.noteId) || n.title.toLowerCase() === bind.noteTitle.toLowerCase()
-                      )
-                      const roleMeta = ROLE_LABELS[bind.role]
-                      return (
-                        <div
-                          key={bind.id}
-                          onClick={() => foundNote && onOpenNote(foundNote.id)}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs cursor-pointer transition-all ${
-                            foundNote
-                              ? 'bg-zinc-900/90 border-zinc-800 hover:border-zinc-600 text-zinc-200'
-                              : 'bg-rose-950/30 border-rose-500/40 text-rose-300'
-                          }`}
-                          title={roleMeta.description}
-                        >
-                          <span
-                            className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
-                            style={{
-                              backgroundColor: `${roleMeta.badgeColor}20`,
-                              color: roleMeta.badgeColor
-                            }}
-                          >
-                            {roleMeta.label}
-                          </span>
-                          <span className="font-medium">
-                            {foundNote ? foundNote.title : `${bind.noteTitle} (Referência indisponível)`}
-                          </span>
-                        </div>
-                      )
-                    })}
-
-                    {/* Selected Client/Project Context Chip */}
-                    {selectedProjectId &&
-                      (() => {
-                        const proj = store.projects.find(p => p.id === selectedProjectId)
-                        if (!proj) return null
-                        return proj.briefingNoteIds.map(bId => {
-                          const bNote = notes.find(n => n.id === bId)
-                          if (!bNote) return null
-                          return (
-                            <div
-                              key={bId}
-                              onClick={() => onOpenNote(bNote.id)}
-                              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border bg-purple-950/20 border-purple-500/40 text-xs text-purple-200 cursor-pointer"
-                            >
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-500/20 text-purple-300">
-                                Contexto do Cliente
-                              </span>
-                              <span className="font-medium">{bNote.title}</span>
-                            </div>
-                          )
-                        })
-                      })()}
-
-                    {/* Attach single request note selector */}
-                    <select
-                      value=""
-                      onChange={e => {
-                        const val = e.target.value
-                        if (val && !extraNoteIds.includes(val)) {
-                          setExtraNoteIds([...extraNoteIds, val])
-                        }
-                      }}
-                      className="bg-zinc-900/70 border border-dashed border-zinc-700 rounded-xl px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
-                    >
-                      <option value="">+ Anexar nota apenas p/ este pedido</option>
-                      {notes.map(n => (
-                        <option key={n.id} value={n.id}>
-                          {n.title} ({n.folder})
-                        </option>
-                      ))}
-                    </select>
-
-                    {extraNoteIds.map(id => {
-                      const n = notes.find(item => item.id === id)
-                      if (!n) return null
-                      return (
-                        <div
-                          key={id}
-                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-cyan-950/30 border border-cyan-500/40 text-xs text-cyan-200"
-                        >
-                          <span className="text-[10px] font-semibold text-cyan-400">Contexto deste pedido:</span>
-                          <span>{n.title}</span>
-                          <button
-                            onClick={() => setExtraNoteIds(extraNoteIds.filter(x => x !== id))}
-                            className="hover:text-white cursor-pointer"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Request Input & Execution Buttons ("Testar antes de usar" vs "Executar Pedido") */}
-                <div className="pt-2 space-y-2.5">
-                  <textarea
-                    value={promptInput}
-                    onChange={e => setPromptInput(e.target.value)}
-                    rows={2}
-                    placeholder="Descreva o pedido para o especialista..."
-                    className="w-full p-3 rounded-xl bg-[#0b0b0f] border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#c59b27] resize-none"
-                  />
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4 text-[11px] text-zinc-400">
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={useTeamCoordination || selectedAgent.specialistRole === 'coordinator'}
-                          onChange={e => setUseTeamCoordination(e.target.checked)}
-                          className="rounded accent-[#c59b27]"
-                        />
-                        <span>Incluir revisão e especialistas da equipe (Planejador, Cartógrafo e Revisor)</span>
-                      </label>
-                      <span className="text-zinc-500">
-                        • Privacidade: somente as notas listadas nos chips acima entram na execução.
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        disabled={isExecuting}
-                        onClick={() => handleRunOrTestAgent(true)}
-                        className="px-3.5 py-2 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                        title="Simula o rascunho, fontes e cálculos sem modificar os documentos do cofre"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Testar Agente (Sem Gravar)</span>
-                      </button>
-
-                      <button
-                        disabled={isExecuting}
-                        onClick={() => handleRunOrTestAgent(false)}
-                        className="px-4 py-2 rounded-xl text-xs font-semibold text-black flex items-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50"
-                        style={{ backgroundColor: 'var(--accent, #c59b27)' }}
-                      >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>{isExecuting ? 'Preparando Entrega...' : 'Preparar Proposta / Entrega'}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Active Run Result & Preview Surface */}
-              {activeRun && (
-                <div className="bg-[#14141b] border border-zinc-800/90 rounded-2xl overflow-hidden flex flex-col">
-                  {/* Run Status Header */}
-                  <div className="px-5 py-3.5 bg-[#181822] border-b border-zinc-800 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                          activeRun.status === 'completed'
-                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                            : activeRun.status === 'waiting_user'
-                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                            : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                        }`}
-                      >
-                        {activeRun.isTestRun
-                          ? 'Modo de Teste (Simulação sem escrita)'
-                          : activeRun.proposalStatus === 'approved'
-                          ? 'Proposta Salva e Confirmada'
-                          : activeRun.status === 'waiting_user'
-                          ? 'Rascunho com Pendências'
-                          : 'Rascunho Pronto para Revisão'}
-                      </span>
-                      <span className="text-xs font-semibold text-zinc-200">
-                        {activeRun.agentName} (v{activeRun.agentVersion})
-                      </span>
-                      {activeRun.clientName && (
-                        <span className="text-xs text-zinc-400">
-                          • Cliente: <strong className="text-white">{activeRun.clientName}</strong>
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Save / Commit Actions */}
-                    <div className="flex items-center gap-2">
-                      {activeRun.draftContent && (
-                        <button
-                          onClick={() => handleCommitRunDeliverable(activeRun)}
-                          className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-                        >
-                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                          <span>
-                            {activeRun.isTestRun
-                              ? 'Salvar Resultado do Teste como Nota'
-                              : 'Aprovar e Salvar Nova Nota em "' + selectedAgent.deliverables.targetFolder + '"'}
-                          </span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Error or Missing Mandatory Template Alert */}
-                  {activeRun.error && (
-                    <div className="m-5 p-4 rounded-xl bg-rose-950/40 border border-rose-500/40 text-xs text-rose-200 flex items-start gap-3">
-                      <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-                      <div>
-                        <div className="font-bold text-rose-300 mb-1">Execução bloqueada por referência obrigatória</div>
-                        <p>{activeRun.error}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Clarifying Questions / Missing Commercial Fields (Seção 4 - Etapas 3 e 4) */}
-                  {activeRun.clarifyingQuestions.length > 0 && (
-                    <div className="mx-5 mt-5 p-4 rounded-xl bg-amber-950/25 border border-amber-500/40 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                    {/* Perguntas Essenciais e Campos Obrigatórios Faltantes — Atualiza a MESMA Run (Achado 7) */}
+                    {activeRun.clarifyingQuestions.length > 0 && (
+                      <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-3">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-amber-200">
                           <AlertTriangle className="w-4 h-4 text-amber-400" />
-                          <span>Informações essenciais pendentes para conclusão final:</span>
+                          <span>Informações necessárias para concluir a versão final</span>
                         </div>
-                        <span className="text-[11px] text-amber-400/80">
-                          Você pode responder abaixo para atualizar ou continuar como rascunho
-                        </span>
-                      </div>
-                      <ul className="list-disc list-inside text-xs text-amber-200/90 space-y-1">
-                        {activeRun.clarifyingQuestions.map((q, i) => (
-                          <li key={i}>{q}</li>
-                        ))}
-                      </ul>
-                      <div className="grid grid-cols-3 gap-2 pt-1">
-                        <input
-                          type="text"
-                          placeholder="Cliente (ex: João Silva)"
-                          value={userAnswerInputs.cliente || ''}
-                          onChange={e => setUserAnswerInputs({ ...userAnswerInputs, cliente: e.target.value })}
-                          className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-200"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Prazo (ex: 3 semanas)"
-                          value={userAnswerInputs.prazo || ''}
-                          onChange={e => setUserAnswerInputs({ ...userAnswerInputs, prazo: e.target.value })}
-                          className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-200"
-                        />
-                        <button
-                          onClick={() => handleRunOrTestAgent(activeRun.isTestRun, userAnswerInputs)}
-                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs cursor-pointer"
-                        >
-                          Atualizar Proposta com Respostas
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Audit Grid: Sources Snapshot + Review Checklist + Team Subagents */}
-                  <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-4 border-b border-zinc-800/80">
-                    {/* 1. Sources & Version Hashes */}
-                    <div className="bg-[#101016] border border-zinc-800/80 rounded-xl p-3.5 space-y-2">
-                      <h4 className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-[#c59b27]" />
-                        <span>Snapshots das Fontes Consultadas ({activeRun.sourceSnapshots.length})</span>
-                      </h4>
-                      <div className="space-y-1.5">
-                        {activeRun.sourceSnapshots.map(snap => (
-                          <div
-                            key={snap.sourceId}
-                            onClick={() => snap.available && onOpenNote(snap.sourceId)}
-                            className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-zinc-900/70 border border-zinc-800/80 text-[11px] cursor-pointer hover:border-zinc-700"
-                          >
-                            <div className="flex items-center gap-2 truncate">
-                              <span
-                                className="w-2 h-2 rounded-full shrink-0"
-                                style={{ backgroundColor: ROLE_LABELS[snap.role].badgeColor }}
-                              />
-                              <span className="text-zinc-200 font-medium truncate">{snap.title}</span>
-                              <span className="text-[10px] text-zinc-500">({ROLE_LABELS[snap.role].label})</span>
-                            </div>
-                            <span className="font-mono text-[10px] text-zinc-400 shrink-0">
-                              rev #{snap.hash.slice(0, 8)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 2. Verification & Guardrail Checklist */}
-                    <div className="bg-[#101016] border border-zinc-800/80 rounded-xl p-3.5 space-y-2">
-                      <h4 className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Revisão de Consistência, Preços e Isolamento</span>
-                      </h4>
-                      <div className="space-y-1.5">
-                        {activeRun.reviewChecklist.map((chk, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-start gap-2 px-2.5 py-1.5 rounded-lg bg-zinc-900/70 border border-zinc-800/80 text-[11px]"
-                          >
-                            {chk.passed ? (
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                            ) : (
-                              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                            )}
-                            <div>
-                              <div className="font-semibold text-zinc-200">{chk.label}</div>
-                              <div className="text-[10px] text-zinc-400">{chk.detail}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Team Subagent Steps (if coordinated run) */}
-                  {activeRun.subagentSteps.length > 0 && (
-                    <div className="px-5 py-3.5 bg-[#111118] border-b border-zinc-800/80 space-y-2">
-                      <h4 className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5" />
-                        <span>Trabalho Coordenado da Equipe de Especialistas ({activeRun.subagentSteps.length} etapas)</span>
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {activeRun.subagentSteps.map(step => (
-                          <div
-                            key={step.id}
-                            className="p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-start gap-2.5 text-xs"
-                          >
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                            <div>
-                              <div className="font-semibold text-zinc-200">{step.specialistName}</div>
-                              <div className="text-[11px] text-zinc-400">{step.summary}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Follow-up Linked Actions (Seção 4 Etapa 9: Tarefas, Mapa do Projeto) */}
-                  {activeRun.draftContent && (
-                    <div className="px-5 py-3 bg-[#15151e] border-b border-zinc-800 flex items-center justify-between">
-                      <span className="text-xs text-zinc-300 font-medium">
-                        Ações complementares vinculadas a esta proposta:
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleGenerateFollowUpTasks(activeRun)}
-                          className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 border border-zinc-700 flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <ListTodo className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Gerar Tarefas de Acompanhamento</span>
-                        </button>
-                        <button
-                          onClick={() => handleGenerateScopeMindMap(activeRun)}
-                          className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 border border-zinc-700 flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Brain className="w-3.5 h-3.5 text-[#c59b27]" />
-                          <span>Gerar Mapa Mental do Escopo</span>
-                        </button>
-                        {activeRun.artifacts[0]?.noteId && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <input
+                            type="text"
+                            placeholder="Cliente (se pendente)..."
+                            value={answerInputs.cliente || ''}
+                            onChange={e =>
+                              setAnswerInputs(prev => ({ ...prev, cliente: e.target.value }))
+                            }
+                            className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Prazo estimado (ex: 4 semanas)..."
+                            value={answerInputs.prazo || ''}
+                            onChange={e =>
+                              setAnswerInputs(prev => ({ ...prev, prazo: e.target.value }))
+                            }
+                            className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
+                          />
+                        </div>
+                        <div className="flex justify-end">
                           <button
-                            onClick={() => onOpenNote(activeRun.artifacts[0].noteId!)}
-                            className="px-3 py-1.5 rounded-lg bg-[#c59b27]/20 hover:bg-[#c59b27]/30 text-xs text-[#d4af37] border border-[#c59b27]/40 flex items-center gap-1.5 cursor-pointer"
+                            type="button"
+                            onClick={() =>
+                              handleRunAgent({
+                                isTest: activeRun.isTestRun,
+                                existingRunToUpdate: activeRun
+                              })
+                            }
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer"
                           >
-                            <ArrowRight className="w-3.5 h-3.5" />
-                            <span>Abrir Nota Criada no Editor</span>
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Atualizar Esta Execução com as Respostas</span>
                           </button>
-                        )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Resumo Financeiro Determinístico em Centavos */}
+                    {activeRun.calculation && activeRun.calculation.items.length > 0 && (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800">
+                          <div className="text-xs text-zinc-400">Subtotal Bruto</div>
+                          <div className="text-base font-bold text-zinc-100 mt-0.5">
+                            {formatCentsBRL(activeRun.calculation.grossTotalCents)}
+                          </div>
+                        </div>
+                        <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800">
+                          <div className="text-xs text-zinc-400">Descontos Autorizados</div>
+                          <div className="text-base font-bold text-emerald-400 mt-0.5">
+                            - {formatCentsBRL(activeRun.calculation.totalDiscountCents)}
+                          </div>
+                        </div>
+                        <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-[#c59b27]/40">
+                          <div className="text-xs text-zinc-400">Valor Líquido Final</div>
+                          <div className="text-base font-bold text-[#c59b27] mt-0.5">
+                            {formatCentsBRL(activeRun.calculation.netTotalCents)}
+                          </div>
+                        </div>
+                        <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800">
+                          <div className="text-xs text-zinc-400">Entrada & Parcelas</div>
+                          <div className="text-xs font-semibold text-zinc-200 mt-1">
+                            {activeRun.calculation.downPaymentCents > 0 &&
+                            activeRun.calculation.installments > 1
+                              ? `Entrada ${formatCentsBRL(activeRun.calculation.downPaymentCents)} + ${
+                                  activeRun.calculation.installments
+                                }x ${formatCentsBRL(activeRun.calculation.installmentValueCents)}`
+                              : `${activeRun.calculation.installments}x de ${formatCentsBRL(
+                                  activeRun.calculation.installmentValueCents
+                                )}`}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fontes Usadas (Linguagem humana, sem hashes técnicos poluindo a tela principal) */}
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                        Fontes Usadas nesta Execução
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {activeRun.sourceSnapshots.map(snap => (
+                          <button
+                            key={snap.sourceId}
+                            type="button"
+                            disabled={!snap.available}
+                            onClick={() => onOpenNote(snap.sourceId)}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs transition-colors ${
+                              snap.available
+                                ? 'border-zinc-800 bg-zinc-900/80 hover:border-zinc-600 text-zinc-200 cursor-pointer'
+                                : 'border-rose-500/40 bg-rose-500/10 text-rose-300 cursor-not-allowed'
+                            }`}
+                          >
+                            <FileText className="w-3.5 h-3.5 text-[#c59b27]" />
+                            <span className="font-medium">{snap.title}</span>
+                            <span className="text-zinc-400">({ROLE_LABELS[snap.role].label})</span>
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  )}
 
-                  {/* Rendered Proposal / Deliverable Preview */}
-                  {activeRun.draftContent && (
-                    <div className="p-6 bg-[#0f0f14] select-text">
-                      <div className="max-w-3xl mx-auto bg-[#14141b] border border-zinc-800/90 rounded-2xl p-6 shadow-inner">
-                        <MarkdownRenderer
-                          content={activeRun.draftContent}
-                          onNavigate={(title: string) => {
-                            const target = notes.find(n => n.title.toLowerCase() === title.toLowerCase())
-                            if (target) onOpenNote(target.id)
-                          }}
-                        />
+                    {/* Etapas de Especialistas da Equipe (se acionados) */}
+                    {activeRun.subagentSteps.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                          Colaboração da Equipe ({activeRun.subagentSteps.length} especialistas)
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {activeRun.subagentSteps.map(step => (
+                            <div
+                              key={step.id}
+                              className="p-3.5 rounded-xl border border-zinc-800 bg-zinc-900/60 space-y-1.5"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-semibold text-zinc-100">
+                                  {step.specialistName}
+                                </span>
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                              </div>
+                              <p className="text-xs text-zinc-300 leading-relaxed">{step.summary}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+                    )}
 
-      {/* SubTab 2: Execuções & Auditoria (Histórico de Runs e Versões de Perfil) */}
-      {activeSubTab === 'runs' && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-chat-scrollbar">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-zinc-100">Histórico de Execuções, Snapshots e Entregas</h2>
-              <p className="text-xs text-zinc-400">
-                Cada execução preserva a versão exata do perfil do agente e os hashes das notas consultadas.
-              </p>
-            </div>
-          </div>
-
-          {store.runs.length === 0 ? (
-            <div className="p-12 text-center bg-[#14141b] border border-zinc-800 rounded-2xl text-xs text-zinc-500">
-              Nenhuma execução registrada ainda. Selecione um agente na aba Especialistas e clique em Testar ou Preparar Proposta.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {store.runs.map(run => (
-                <div
-                  key={run.id}
-                  className="p-4 rounded-2xl bg-[#14141b] border border-zinc-800/90 flex items-center justify-between gap-4"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-white">
-                        {run.agentName} (v{run.agentVersion})
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-800 text-zinc-300">
-                        {run.isTestRun ? 'TESTE' : run.proposalStatus?.toUpperCase() || run.status.toUpperCase()}
-                      </span>
-                      {run.clientName && (
-                        <span className="text-xs text-amber-400 font-medium">Cliente: {run.clientName}</span>
-                      )}
-                    </div>
-                    <p className="text-xs text-zinc-300">"{run.prompt}"</p>
-                    <div className="flex items-center gap-3 text-[11px] text-zinc-500">
-                      <span>Fontes auditadas: {run.sourceSnapshots.length}</span>
-                      {run.calculation && (
-                        <span>Total calculado: R$ {run.calculation.netTotal.toFixed(2)}</span>
-                      )}
-                      <span>{new Date(run.startedAt).toLocaleString('pt-BR')}</span>
-                    </div>
+                    {/* Prévia do Documento Gerado */}
+                    {activeRun.draftContent && (
+                      <div className="rounded-xl border border-zinc-800 bg-[#101015] p-6">
+                        <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-4">
+                          Prévia do Documento
+                        </div>
+                        <div className="prose prose-invert max-w-none text-base leading-relaxed">
+                          <MarkdownRenderer
+                            content={activeRun.draftContent}
+                            onNavigate={(title: string) => {
+                              const found = notes.find(
+                                n => n.title.toLowerCase().trim() === title.toLowerCase().trim()
+                              )
+                              if (found) onOpenNote(found.id)
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setSelectedAgentId(run.agentId)
-                        setActiveRunId(run.id)
-                        setActiveSubTab('team')
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 cursor-pointer"
-                    >
-                      Inspecionar Prévia & Fontes
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* SubTab 3: Clientes & Contextos de Projeto (Seção 3 & 4) */}
-      {activeSubTab === 'projects' && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-chat-scrollbar">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-zinc-100">Contextos por Cliente / Projeto</h2>
-              <p className="text-xs text-zinc-400">
-                Isolamento garantido: cada projeto vincula apenas os briefings daquele cliente, impedindo vazamento entre propostas.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {store.projects.map(proj => (
-              <div key={proj.id} className="p-4 rounded-2xl bg-[#14141b] border border-zinc-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-purple-400">
-                      Cliente Isolado
-                    </span>
-                    <h3 className="text-sm font-bold text-white">{proj.clientName}</h3>
-                    <p className="text-xs text-zinc-400">{proj.name}</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setSelectedProjectId(proj.id)
-                      setActiveSubTab('team')
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-[#c59b27]/20 hover:bg-[#c59b27]/30 text-[#d4af37] border border-[#c59b27]/40 text-xs font-medium cursor-pointer"
-                  >
-                    Gerar Proposta p/ este Cliente
-                  </button>
-                </div>
-
-                <div className="pt-2 border-t border-zinc-800/80 space-y-1.5">
-                  <span className="text-[11px] text-zinc-400">Notas de Briefing vinculadas:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {proj.briefingNoteIds.map(id => {
-                      const n = notes.find(item => item.id === id)
-                      return (
-                        <button
-                          key={id}
-                          onClick={() => n && onOpenNote(n.id)}
-                          className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-200 hover:border-[#c59b27] cursor-pointer flex items-center gap-1.5"
-                        >
-                          <FileText className="w-3 h-3 text-purple-400" />
-                          <span>{n ? n.title : id}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* SubTab 4: Rotinas & Automações Configuráveis (Seção 7) */}
-      {activeSubTab === 'automations' && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-chat-scrollbar">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-zinc-100">Rotinas e Automações Locais</h2>
-              <p className="text-xs text-zinc-400">
-                Gatilhos com fuso IANA (America/Sao_Paulo), estabilização de arquivos, prevenção de auto-disparo e opção de testar/pausar.
-              </p>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 gap-3">
-            {store.automations.map(auto => {
-              const assignedAgent = store.agents.find(a => a.id === auto.agentId)
-              return (
-                <div
-                  key={auto.id}
-                  className="p-4 rounded-2xl bg-[#14141b] border border-zinc-800 flex items-center justify-between gap-4"
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`w-2 h-2 rounded-full ${
-                          auto.active ? 'bg-emerald-400' : 'bg-zinc-600'
-                        }`}
-                      />
-                      <h3 className="text-sm font-bold text-white">{auto.name}</h3>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-800 text-zinc-400">
-                        v{auto.version}
-                      </span>
-                    </div>
-                    <p className="text-xs text-zinc-400">{auto.description}</p>
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500">
-                      <span>
-                        🤖 Agente: <strong className="text-zinc-300">{assignedAgent?.name || auto.agentId}</strong>
-                      </span>
-                      <span>
-                        📁 Destino: <strong className="text-zinc-300">{auto.targetFolder}</strong>
-                      </span>
-                      {auto.scheduleConfig && (
-                        <span>
-                          🕒 Fuso: <strong className="text-zinc-300">{auto.scheduleConfig.timezone}</strong> (Política perdida:{' '}
-                          {auto.scheduleConfig.missedPolicy === 'run_once_on_open'
-                            ? 'Executar 1x ao reabrir'
-                            : 'Pular'})
-                        </span>
-                      )}
-                      {auto.nextRunAt && (
-                        <span>
-                          📅 Próxima execução:{' '}
-                          <strong className="text-amber-400">
-                            {new Date(auto.nextRunAt).toLocaleString('pt-BR')}
-                          </strong>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => {
-                        setSelectedAgentId(auto.agentId)
-                        setActiveSubTab('team')
-                        handleRunOrTestAgent(true)
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 border border-zinc-700 cursor-pointer"
-                    >
-                      Testar Rotina
-                    </button>
-                    <button
-                      onClick={async () => {
-                        const updated = store.automations.map(item =>
-                          item.id === auto.id ? { ...item, active: !item.active, updatedAt: Date.now() } : item
-                        )
-                        await onUpdateStore({ ...store, automations: updated })
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border cursor-pointer ${
-                        auto.active
-                          ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                          : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                      }`}
-                    >
-                      {auto.active ? 'Pausar' : 'Ativar'}
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Criar / Editar Agente (Criação Guiada & Criação por Conversa - Seção 2) */}
-      {isCreatorOpen && editingAgent && (
-        <div
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => setIsCreatorOpen(false)}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            className="w-full max-w-2xl max-h-[90vh] bg-[#14141c] border border-zinc-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-          >
-            {/* Modal Header */}
-            <div className="px-6 py-4 bg-[#181822] border-b border-zinc-800 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{editingAgent.icon}</span>
-                <div>
-                  <h3 className="text-sm font-bold text-white">
-                    {store.agents.some(a => a.id === editingAgent.id)
-                      ? `Editar Agente (${editingAgent.name} → v${editingAgent.version + 1})`
-                      : 'Criar Especialista da Equipe'}
+            {/* Gaveta Direita 1: Conhecimento Vinculado */}
+            {isKnowledgeDrawerOpen && (
+              <div className="w-96 border-l border-zinc-800/80 bg-[#14141b] p-5 overflow-y-auto space-y-5 shrink-0">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-zinc-100">
+                    Conhecimento de {selectedAgent.name}
                   </h3>
-                  <p className="text-[11px] text-zinc-400">
-                    Escolha o caminho guiado ou descreva por conversa. Nenhuma permissão oculta é concedida.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex bg-zinc-900 p-0.5 rounded-lg border border-zinc-800 text-xs">
                   <button
-                    onClick={() => setCreatorMode('guided')}
-                    className={`px-2.5 py-1 rounded-md cursor-pointer ${
-                      creatorMode === 'guided' ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-400'
-                    }`}
+                    type="button"
+                    onClick={() => setIsKnowledgeDrawerOpen(false)}
+                    className="text-zinc-400 hover:text-white cursor-pointer"
                   >
-                    Criação Guiada
-                  </button>
-                  <button
-                    onClick={() => setCreatorMode('conversation')}
-                    className={`px-2.5 py-1 rounded-md cursor-pointer ${
-                      creatorMode === 'conversation' ? 'bg-zinc-800 text-amber-300 font-medium' : 'text-zinc-400'
-                    }`}
-                  >
-                    Por Conversa
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
-                <button
-                  onClick={() => setIsCreatorOpen(false)}
-                  className="p-1 text-zinc-400 hover:text-white cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
 
-            {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-5 custom-chat-scrollbar">
-              {/* Conversational Builder Box */}
-              {creatorMode === 'conversation' && (
-                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-3">
-                  <label className="block text-xs font-semibold text-amber-300">
-                    Descreva o assistente que você deseja criar:
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={conversationPrompt}
-                      onChange={e => setConversationPrompt(e.target.value)}
-                      placeholder="Ex: Quero alguém que prepare propostas comerciais com meu modelo, meus serviços e minhas regras de preço"
-                      className="flex-1 px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-zinc-100"
-                    />
-                    <button
-                      onClick={handleGenerateFromConversation}
-                      className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs cursor-pointer shrink-0"
+                <div className="space-y-2.5">
+                  {selectedAgent.knowledgeBindings.map(bind => (
+                    <div
+                      key={bind.id}
+                      className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/70 space-y-1.5"
                     >
-                      Gerar Configuração
-                    </button>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-zinc-100 truncate">
+                          {bind.noteTitle}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const updated: AgentProfileVersion = {
+                              ...selectedAgent,
+                              knowledgeBindings: selectedAgent.knowledgeBindings.filter(
+                                b => b.id !== bind.id
+                              )
+                            }
+                            await onUpdateStore(updateAgentProfileWithVersion(store, updated))
+                          }}
+                          className="text-zinc-500 hover:text-rose-400 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-zinc-400">
+                        <span
+                          className="px-2 py-0.5 rounded font-medium"
+                          style={{
+                            backgroundColor: `${ROLE_LABELS[bind.role].badgeColor}22`,
+                            color: ROLE_LABELS[bind.role].badgeColor
+                          }}
+                        >
+                          {ROLE_LABELS[bind.role].label}
+                        </span>
+                        <span>
+                          •{' '}
+                          {bind.updatePolicy === 'pin_revision'
+                            ? 'Revisão fixada'
+                            : 'Acompanha nota atual'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Adicionar nova nota de referência */}
+                <div className="pt-4 border-t border-zinc-800 space-y-3">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                    Vincular Nota do Cofre
                   </div>
-                  {conversationExplanation && (
-                    <p className="text-[11px] text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 rounded-lg px-3 py-2">
-                      ✨ {conversationExplanation}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* 1. Nome, Ícone e Cor */}
-              <div className="grid grid-cols-12 gap-3">
-                <div className="col-span-2">
-                  <label className="block text-[11px] text-zinc-400 mb-1">Ícone</label>
-                  <input
-                    type="text"
-                    value={editingAgent.icon}
-                    onChange={e => setEditingAgent({ ...editingAgent, icon: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-center text-base"
-                  />
-                </div>
-                <div className="col-span-7">
-                  <label className="block text-[11px] text-zinc-400 mb-1">Nome do Agente</label>
-                  <input
-                    type="text"
-                    value={editingAgent.name}
-                    onChange={e => setEditingAgent({ ...editingAgent, name: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
-                  />
-                </div>
-                <div className="col-span-3">
-                  <label className="block text-[11px] text-zinc-400 mb-1">Pasta de Entregas</label>
                   <select
-                    value={editingAgent.deliverables.targetFolder}
-                    onChange={e =>
-                      setEditingAgent({
-                        ...editingAgent,
-                        deliverables: { ...editingAgent.deliverables, targetFolder: e.target.value }
-                      })
-                    }
-                    className="w-full px-2.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-200"
+                    value={bindNoteId}
+                    onChange={e => setBindNoteId(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100"
                   >
-                    {Array.from(new Set(['Propostas', 'Projetos', 'Comercial', ...folders])).map(f => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* 2. Função */}
-              <div>
-                <label className="block text-[11px] text-zinc-400 mb-1">
-                  Função (O resultado que ele deve ajudar a produzir)
-                </label>
-                <textarea
-                  rows={2}
-                  value={editingAgent.roleDescription}
-                  onChange={e => setEditingAgent({ ...editingAgent, roleDescription: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 resize-none"
-                />
-              </div>
-
-              {/* 3. Conhecimento: Notas vinculadas com Papel */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-zinc-200">
-                    Conhecimento Autorizado (Notas e o Papel de cada referência)
-                  </label>
-                </div>
-
-                {/* Add Note Binding Row */}
-                <div className="flex gap-2">
-                  <select
-                    id="new-bind-note"
-                    defaultValue=""
-                    className="flex-1 px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-200"
-                  >
-                    <option value="">Selecionar uma nota do cofre para vincular...</option>
+                    <option value="">Selecione uma nota...</option>
                     {notes.map(n => (
                       <option key={n.id} value={n.id}>
                         {n.title} ({n.folder})
                       </option>
                     ))}
                   </select>
+
                   <select
-                    id="new-bind-role"
-                    defaultValue="permanent_ref"
-                    className="px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-200"
+                    value={bindRole}
+                    onChange={e => setBindRole(e.target.value as ContextRole)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100"
                   >
-                    <option value="template">Modelo a seguir</option>
-                    <option value="permanent_ref">Referência permanente</option>
-                    <option value="project_context">Contexto do cliente/projeto</option>
+                    {(['template', 'permanent_ref', 'project_context'] as ContextRole[]).map(r => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r].label}
+                      </option>
+                    ))}
                   </select>
+
+                  <select
+                    value={bindPolicy}
+                    onChange={e => setBindPolicy(e.target.value as 'follow_latest' | 'pin_revision')}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100"
+                  >
+                    <option value="follow_latest">Acompanhar versão mais recente da nota</option>
+                    <option value="pin_revision">Fixar revisão atual (Snapshot imutável)</option>
+                  </select>
+
                   <button
                     type="button"
-                    onClick={() => {
-                      const noteSel = document.getElementById('new-bind-note') as HTMLSelectElement
-                      const roleSel = document.getElementById('new-bind-role') as HTMLSelectElement
-                      const nId = noteSel?.value
-                      const role = (roleSel?.value || 'permanent_ref') as ContextRole
-                      const found = notes.find(n => n.id === nId)
-                      if (!found) return
-                      const newBind: ContextBinding = {
-                        id: `bind_${Date.now()}`,
-                        targetType: 'note',
-                        noteId: found.id,
-                        noteTitle: found.title,
-                        role,
-                        required: role === 'template',
-                        precedence: role === 'template' ? 100 : 80,
-                        updatePolicy: 'follow_latest'
-                      }
-                      setEditingAgent({
-                        ...editingAgent,
-                        knowledgeBindings: [...editingAgent.knowledgeBindings, newBind]
-                      })
-                      noteSel.value = ''
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 border border-zinc-700 cursor-pointer"
+                    disabled={!bindNoteId}
+                    onClick={handleAddKnowledgeBinding}
+                    className="w-full py-2 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer disabled:opacity-40"
                   >
-                    + Vincular
+                    Vincular Conhecimento
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Gaveta Direita 2: Configurações e Permissões do Agente */}
+            {isConfigDrawerOpen && (
+              <div className="w-96 border-l border-zinc-800/80 bg-[#14141b] p-5 overflow-y-auto space-y-5 shrink-0">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-zinc-100">
+                    Configurações de {selectedAgent.name}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfigDrawerOpen(false)}
+                    className="text-zinc-400 hover:text-white cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
 
-                {/* Bound List */}
-                <div className="space-y-1.5">
-                  {editingAgent.knowledgeBindings.map(b => (
-                    <div
-                      key={b.id}
-                      className="flex items-center justify-between px-3 py-2 rounded-xl bg-zinc-900/80 border border-zinc-800 text-xs"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="px-2 py-0.5 rounded text-[10px] font-semibold"
-                          style={{
-                            backgroundColor: `${ROLE_LABELS[b.role].badgeColor}20`,
-                            color: ROLE_LABELS[b.role].badgeColor
-                          }}
-                        >
-                          {ROLE_LABELS[b.role].label}
-                        </span>
-                        <span className="text-zinc-200 font-medium">{b.noteTitle}</span>
-                      </div>
-                      <button
-                        onClick={() =>
-                          setEditingAgent({
-                            ...editingAgent,
-                            knowledgeBindings: editingAgent.knowledgeBindings.filter(x => x.id !== b.id)
-                          })
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Pasta de Entrega Autorizada</label>
+                  <select
+                    value={selectedAgent.deliverables.targetFolder}
+                    onChange={async e => {
+                      const updated: AgentProfileVersion = {
+                        ...selectedAgent,
+                        deliverables: {
+                          ...selectedAgent.deliverables,
+                          targetFolder: e.target.value
                         }
-                        className="text-zinc-500 hover:text-rose-400 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                      }
+                      await onUpdateStore(updateAgentProfileWithVersion(store, updated))
+                    }}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100"
+                  >
+                    {folders.map(f => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
 
-              {/* 4. Ações Permitidas (Linguagem Humana - Seção 2) */}
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-zinc-200">
-                  Ações Permitidas e Garantias
-                </label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {(Object.keys(ACTION_LABELS) as AgentActionPermission[]).map(perm => {
-                    const checked = editingAgent.allowedActions.includes(perm)
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                    Permissões Autorizadas
+                  </div>
+                  {(Object.keys(ACTION_PERMISSION_LABELS) as AgentActionPermission[]).map(perm => {
+                    const checked = selectedAgent.allowedActions.includes(perm)
                     return (
                       <label
                         key={perm}
-                        className="flex items-start gap-2 p-2.5 rounded-xl bg-zinc-900/70 border border-zinc-800 cursor-pointer text-xs"
+                        className="flex items-center gap-2.5 p-2 rounded-lg border border-zinc-800 bg-zinc-900/60 text-xs text-zinc-200 cursor-pointer"
                       >
                         <input
                           type="checkbox"
                           checked={checked}
-                          onChange={e => {
-                            const next = e.target.checked
-                              ? [...editingAgent.allowedActions, perm]
-                              : editingAgent.allowedActions.filter(x => x !== perm)
-                            setEditingAgent({ ...editingAgent, allowedActions: next })
+                          onChange={async () => {
+                            const nextPerms = checked
+                              ? selectedAgent.allowedActions.filter(p => p !== perm)
+                              : [...selectedAgent.allowedActions, perm]
+                            const updated: AgentProfileVersion = {
+                              ...selectedAgent,
+                              allowedActions: nextPerms
+                            }
+                            await onUpdateStore(updateAgentProfileWithVersion(store, updated))
                           }}
-                          className="mt-0.5 accent-[#c59b27]"
+                          className="accent-[#c59b27]"
                         />
-                        <div>
-                          <div className="font-medium text-zinc-200">{ACTION_LABELS[perm].label}</div>
-                          <div className="text-[10px] text-zinc-400">{ACTION_LABELS[perm].summary}</div>
-                        </div>
+                        <span>{ACTION_PERMISSION_LABELS[perm]}</span>
                       </label>
                     )
                   })}
                 </div>
               </div>
+            )}
+          </div>
+        )}
 
-              {/* 5. Configurações Avançadas Recolhidas */}
-              <div className="border-t border-zinc-800 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAdvancedConfig(v => !v)}
-                  className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer"
+        {/* SEÇÃO 2: EQUIPES (Canvas 1) */}
+        {activeSection === 'teams' && (
+          <TeamCanvasEditor
+            teams={teams}
+            agents={store.agents}
+            selectedTeamId={selectedTeamId}
+            onSelectTeam={setSelectedTeamId}
+            onSaveTeam={async updatedTeam => {
+              const exists = teams.some(t => t.id === updatedTeam.id)
+              const nextTeams = exists
+                ? teams.map(t => (t.id === updatedTeam.id ? updatedTeam : t))
+                : [...teams, updatedTeam]
+              await onUpdateStore({ ...store, teams: nextTeams })
+            }}
+            onDeleteTeam={async teamId => {
+              const nextTeams = teams.filter(t => t.id !== teamId)
+              await onUpdateStore({ ...store, teams: nextTeams })
+              if (nextTeams[0]) setSelectedTeamId(nextTeams[0].id)
+            }}
+            onRunTeam={async (team, isTest, prompt) => {
+              const coord =
+                store.agents.find(a => a.id === team.coordinatorAgentId) || store.agents[0]
+              if (!coord) return
+              setIsExecuting(true)
+              try {
+                const run = await executeAgentRun({
+                  agent: coord,
+                  allAgents: store.agents,
+                  allNotes: notes,
+                  allProjects: store.projects,
+                  prompt,
+                  isTestRun: isTest,
+                  projectContext: selectedProject,
+                  explicitClientName: selectedProject?.clientName,
+                  useTeamDelegation: true,
+                  teamDefinition: team
+                })
+                await onUpdateStore({
+                  ...store,
+                  runs: [run, ...store.runs]
+                })
+                setSelectedRunId(run.id)
+                setSelectedAgentId(coord.id)
+                setActiveSection('agents')
+              } finally {
+                setIsExecuting(false)
+              }
+            }}
+            isExecuting={isExecuting}
+          />
+        )}
+
+        {/* SEÇÃO 3: FLUXOS (Canvas 2) */}
+        {activeSection === 'workflows' && (
+          <WorkflowCanvasEditor
+            workflows={workflows}
+            agents={store.agents}
+            notes={notes}
+            folders={folders}
+            selectedWorkflowId={selectedWorkflowId}
+            latestNodeStates={activeRun?.workflowNodeStates}
+            onSelectWorkflow={setSelectedWorkflowId}
+            onSaveWorkflow={async updatedWf => {
+              const exists = workflows.some(w => w.id === updatedWf.id)
+              const nextWfs = exists
+                ? workflows.map(w => (w.id === updatedWf.id ? updatedWf : w))
+                : [...workflows, updatedWf]
+              await onUpdateStore({ ...store, workflows: nextWfs })
+            }}
+            onDeleteWorkflow={async wfId => {
+              const nextWfs = workflows.filter(w => w.id !== wfId)
+              await onUpdateStore({ ...store, workflows: nextWfs })
+              if (nextWfs[0]) setSelectedWorkflowId(nextWfs[0].id)
+            }}
+            onRunWorkflow={async (wf, isTest, prompt) => {
+              setIsExecuting(true)
+              try {
+                const run = await executeWorkflowRun({
+                  workflow: wf,
+                  allAgents: store.agents,
+                  allNotes: notes,
+                  allProjects: store.projects,
+                  prompt,
+                  projectContext: selectedProject,
+                  explicitClientName: selectedProject?.clientName,
+                  isTestRun: isTest
+                })
+                await onUpdateStore({
+                  ...store,
+                  runs: [run, ...store.runs]
+                })
+                setSelectedRunId(run.id)
+                setStatusBanner({
+                  type: 'success',
+                  text: `Fluxo "${wf.name}" executado. Veja o status de cada bloco no Canvas ou abra em Agentes para aprovar.`
+                })
+              } finally {
+                setIsExecuting(false)
+              }
+            }}
+            isExecuting={isExecuting}
+          />
+        )}
+
+        {/* SEÇÃO 4: ROTINAS (Canvas 3: Modo Simples + Modo Visual Sincronizados) */}
+        {activeSection === 'routines' && (
+          <RoutineCanvasEditor
+            automations={store.automations}
+            agents={store.agents}
+            teams={teams}
+            workflows={workflows}
+            projects={store.projects}
+            folders={folders}
+            selectedRoutineId={selectedRoutineId}
+            onSelectRoutine={setSelectedRoutineId}
+            onSaveRoutine={async updatedAuto => {
+              const exists = store.automations.some(a => a.id === updatedAuto.id)
+              const nextAutos = exists
+                ? store.automations.map(a => (a.id === updatedAuto.id ? updatedAuto : a))
+                : [...store.automations, updatedAuto]
+              await onUpdateStore({ ...store, automations: nextAutos })
+            }}
+            onDeleteRoutine={async autoId => {
+              const nextAutos = store.automations.filter(a => a.id !== autoId)
+              await onUpdateStore({ ...store, automations: nextAutos })
+              if (nextAutos[0]) setSelectedRoutineId(nextAutos[0].id)
+            }}
+            onTestRoutine={routine => executeRoutineDirectly(routine, true)}
+            isExecuting={isExecuting}
+          />
+        )}
+
+        {/* SEÇÃO 5: ATIVIDADE & HISTÓRICO */}
+        {activeSection === 'activity' && (
+          <div className="flex-1 overflow-y-auto p-6 max-w-5xl mx-auto w-full space-y-6">
+            <div>
+              <h2 className="text-lg font-bold text-zinc-100">Atividade e Entregas</h2>
+              <p className="text-sm text-zinc-400">
+                Histórico de execuções, fontes consultadas e documentos gerados pela sua equipe.
+              </p>
+            </div>
+
+            {store.runs.length === 0 ? (
+              <div className="p-8 rounded-2xl border border-zinc-800 bg-[#14141b] text-center text-sm text-zinc-400">
+                Nenhuma atividade registrada neste cofre ainda.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {store.runs.map(run => (
+                  <div
+                    key={run.id}
+                    className="p-4 rounded-xl border border-zinc-800 bg-[#14141b] flex flex-wrap items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-zinc-100">{run.agentName}</span>
+                        {run.clientName && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
+                            {run.clientName}
+                          </span>
+                        )}
+                        <span className="text-xs text-zinc-500">
+                          {new Date(run.startedAt).toLocaleString('pt-BR')}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-400">{run.prompt}</p>
+                      <div className="text-xs text-zinc-500">
+                        Fontes usadas: {run.sourceSnapshots.filter(s => s.available).map(s => s.title).join(', ') || 'Nenhuma'}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedRunId(run.id)
+                        setSelectedAgentId(run.agentId)
+                        setActiveSection('agents')
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg border border-zinc-700 hover:border-[#c59b27] text-xs font-medium text-zinc-200 cursor-pointer"
+                    >
+                      Ver Detalhes
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* Modal 1: Escolher Agente ao clicar em "Usar com um agente" no Editor (Achado 10) */}
+      {pendingNoteBindModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-[#15151d] p-6 space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold text-zinc-100">Usar nota com qual agente?</h3>
+            <p className="text-xs text-zinc-400">
+              Papel selecionado: <strong>{ROLE_LABELS[pendingNoteBindModal.role].label}</strong>
+            </p>
+            <select
+              value={pendingNoteBindModal.targetAgentId}
+              onChange={e =>
+                setPendingNoteBindModal({ ...pendingNoteBindModal, targetAgentId: e.target.value })
+              }
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100"
+            >
+              {store.agents.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.icon} {a.name}
+                </option>
+              ))}
+            </select>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPendingNoteBindModal(null)}
+                className="px-4 py-2 rounded-lg border border-zinc-700 text-xs text-zinc-300 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmNoteFromEditor}
+                className="px-4 py-2 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 2: Proteção contra Sobrescrita de Entrega Existente (Achado 2) */}
+      {overwritePrompt && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-amber-500/40 bg-[#15151d] p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-2 text-amber-300 font-bold text-base">
+              <AlertTriangle className="w-5 h-5" />
+              <span>Documento já existe na pasta "{overwritePrompt.folder}"</span>
+            </div>
+            <p className="text-sm text-zinc-300 leading-relaxed">
+              Já existe uma entrega chamada <strong>"{overwritePrompt.existingTitle}"</strong>. Para proteger seus documentos anteriores, escolha como deseja salvar:
+            </p>
+            <div className="flex flex-wrap justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setOverwritePrompt(null)}
+                className="px-3.5 py-2 rounded-lg border border-zinc-700 text-xs text-zinc-300 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  handleCommitDeliverable(
+                    overwritePrompt.run,
+                    overwritePrompt.finalApproval,
+                    'overwrite'
+                  )
+                }
+                className="px-3.5 py-2 rounded-lg border border-amber-500/50 bg-amber-500/10 text-xs font-medium text-amber-200 cursor-pointer"
+              >
+                Substituir Arquivo Existente
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  handleCommitDeliverable(
+                    overwritePrompt.run,
+                    overwritePrompt.finalApproval,
+                    'new_revision'
+                  )
+                }
+                className="px-4 py-2 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer"
+              >
+                Salvar como Nova Revisão (Recomendado)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Gerenciar Clientes / Projetos (CRUD Completo - Achado 10) */}
+      {isProjectsModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-zinc-800 bg-[#15151d] p-6 space-y-5 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Briefcase className="w-5 h-5 text-[#c59b27]" />
+                <h3 className="text-base font-bold text-zinc-100">Clientes e Projetos</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsProjectsModalOpen(false)}
+                className="text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input
+                type="text"
+                placeholder="Nome do Cliente (ex: Construtora Horizonte)"
+                value={projClient}
+                onChange={e => setProjClient(e.target.value)}
+                className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
+              />
+              <input
+                type="text"
+                placeholder="Nome do Projeto (ex: Site Institucional)"
+                value={projName}
+                onChange={e => setProjName(e.target.value)}
+                className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-zinc-400 mb-1.5">
+                Notas de Briefing deste Cliente (Isolamento estrito)
+              </label>
+              <div className="max-h-36 overflow-y-auto space-y-1 p-2 rounded-lg border border-zinc-800 bg-zinc-900/60">
+                {notes.map(n => {
+                  const checked = projBriefingIds.includes(n.id)
+                  return (
+                    <label key={n.id} className="flex items-center gap-2 text-xs text-zinc-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setProjBriefingIds(prev =>
+                            checked ? prev.filter(x => x !== n.id) : [...prev, n.id]
+                          )
+                        }
+                        className="accent-[#c59b27]"
+                      />
+                      <span>
+                        {n.title} ({n.folder})
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleSaveProject}
+                className="px-4 py-2 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer"
+              >
+                {editingProject ? 'Atualizar Cliente/Projeto' : 'Adicionar Cliente/Projeto'}
+              </button>
+            </div>
+
+            <div className="space-y-2 pt-3 border-t border-zinc-800">
+              {store.projects.map(p => (
+                <div
+                  key={p.id}
+                  className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/60 flex items-center justify-between text-xs"
                 >
-                  {showAdvancedConfig ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                  <span>Configurações avançadas (Modelo de IA, limites de orçamento e acionamento)</span>
-                </button>
-
-                {showAdvancedConfig && (
-                  <div className="mt-3 grid grid-cols-3 gap-3 p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs">
-                    <div>
-                      <label className="block text-[10px] text-zinc-400 mb-1">Padrão de Nome da Entrega</label>
-                      <input
-                        type="text"
-                        value={editingAgent.deliverables.namingPattern}
-                        onChange={e =>
-                          setEditingAgent({
-                            ...editingAgent,
-                            deliverables: { ...editingAgent.deliverables, namingPattern: e.target.value }
-                          })
-                        }
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-200"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-zinc-400 mb-1">Limite de Subtarefas</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={8}
-                        value={editingAgent.limits.maxSubtasks}
-                        onChange={e =>
-                          setEditingAgent({
-                            ...editingAgent,
-                            limits: { ...editingAgent.limits, maxSubtasks: Number(e.target.value) || 4 }
-                          })
-                        }
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-200"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-zinc-400 mb-1">Acionamento</label>
-                      <select
-                        value={editingAgent.triggerMode}
-                        onChange={e =>
-                          setEditingAgent({ ...editingAgent, triggerMode: e.target.value as any })
-                        }
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-200"
-                      >
-                        <option value="on_demand">Somente por pedido</option>
-                        <option value="by_project">Por projeto selecionado</option>
-                        <option value="routine">Por rotina autorizada</option>
-                      </select>
+                  <div>
+                    <div className="font-semibold text-zinc-100">{p.clientName}</div>
+                    <div className="text-zinc-400">
+                      {p.name} • {p.briefingNoteIds.length} nota(s) vinculada(s)
                     </div>
                   </div>
-                )}
-              </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingProject(p)
+                        setProjClient(p.clientName)
+                        setProjName(p.name)
+                        setProjDesc(p.description || '')
+                        setProjBriefingIds(p.briefingNoteIds)
+                      }}
+                      className="px-2.5 py-1 rounded border border-zinc-700 text-zinc-200 cursor-pointer"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const next = store.projects.filter(item => item.id !== p.id)
+                        await onUpdateStore({ ...store, projects: next })
+                        if (selectedProjectId === p.id) setSelectedProjectId('')
+                      }}
+                      className="text-rose-400 hover:underline cursor-pointer"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Novo Agente (Guiado ou Por Conversa dentro de um único modal limpo) */}
+      {isNewAgentModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-zinc-800 bg-[#15151d] p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-zinc-100">Criar Novo Agente</h3>
+              <button
+                type="button"
+                onClick={() => setIsNewAgentModalOpen(false)}
+                className="text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {/* Modal Footer */}
-            <div className="px-6 py-3.5 bg-[#181822] border-t border-zinc-800 flex items-center justify-between">
-              <span className="text-[11px] text-zinc-400">
-                🔒 Precisa da sua aprovação para alterar notas existentes.
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsCreatorOpen(false)}
-                  className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSaveAgentProfile}
-                  className="px-4 py-1.5 rounded-xl text-xs font-semibold text-black cursor-pointer"
-                  style={{ backgroundColor: 'var(--accent, #c59b27)' }}
-                >
-                  Salvar Perfil do Agente
-                </button>
-              </div>
+            <div className="flex gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setNewAgentTab('conversation')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
+                  newAgentTab === 'conversation' ? 'bg-zinc-800 text-white' : 'text-zinc-400'
+                }`}
+              >
+                Criar por Conversa
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewAgentTab('guided')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
+                  newAgentTab === 'guided' ? 'bg-zinc-800 text-white' : 'text-zinc-400'
+                }`}
+              >
+                Configuração Guiada
+              </button>
             </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs text-zinc-400">
+                Descreva o que este agente deve fazer e quais entregas ele deve produzir:
+              </label>
+              <textarea
+                rows={3}
+                value={convDescription}
+                onChange={e => setConvDescription(e.target.value)}
+                placeholder="Ex: Preciso de um especialista que leia meu modelo comercial e tabela de preços e monte propostas sem alterar o modelo original..."
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-sm text-zinc-100"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (!convDescription.trim()) return
+                  const generated = generateAgentDraftFromPrompt(convDescription, notes)
+                  setNewAgentDraft(generated.draft)
+                }}
+                className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-100 cursor-pointer"
+              >
+                Gerar Proposta de Configuração Segura
+              </button>
+            </div>
+
+            {newAgentDraft && (
+              <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/70 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Nome do Agente</label>
+                    <input
+                      type="text"
+                      value={newAgentDraft.name}
+                      onChange={e =>
+                        setNewAgentDraft({ ...newAgentDraft, name: e.target.value })
+                      }
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Pasta de Entrega</label>
+                    <select
+                      value={newAgentDraft.deliverables.targetFolder}
+                      onChange={e =>
+                        setNewAgentDraft({
+                          ...newAgentDraft,
+                          deliverables: {
+                            ...newAgentDraft.deliverables,
+                            targetFolder: e.target.value
+                          }
+                        })
+                      }
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-100"
+                    >
+                      {folders.map(f => (
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const nextStore = updateAgentProfileWithVersion(store, newAgentDraft)
+                      await onUpdateStore(nextStore)
+                      setSelectedAgentId(newAgentDraft.id)
+                      setIsNewAgentModalOpen(false)
+                    }}
+                    className="px-5 py-2 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer"
+                  >
+                    Salvar e Ativar Agente
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

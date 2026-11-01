@@ -1,5 +1,5 @@
 // ==========================================
-// Pyrite Multi-Agent, Team & Automation Contracts
+// Pyrite Multi-Agent, Team, Workflow & Automation Contracts
 // ==========================================
 
 export type ContextRole =
@@ -63,11 +63,13 @@ export interface ContextBinding {
   noteTitle: string
   folderPath?: string
   filePath?: string
+  projectId?: string     // Se vinculado a um projeto/cliente específico
   role: ContextRole
   required: boolean
-  precedence: number // Maior valor tem precedência configurada se autorizado; conflitos geram alerta por padrão
+  precedence: number     // Maior valor tem precedência configurada se autorizado; conflitos geram alerta por padrão
   updatePolicy: 'follow_latest' | 'pin_revision'
   pinnedHash?: string
+  pinnedContentSnapshot?: string // Mantém o conteúdo fixado para recuperação determinística em pin_revision
 }
 
 export interface ProjectContext {
@@ -137,6 +139,8 @@ export interface SourceSnapshot {
   capturedAt: number
   contentSnapshot: string // Snapshot local com retenção para reprodução fiel
   available: boolean
+  revisionMismatch?: boolean
+  expectedPinnedHash?: string
 }
 
 export interface CommercialLineItem {
@@ -144,33 +148,59 @@ export interface CommercialLineItem {
   serviceName: string
   description: string
   quantity: number
+  recurrence: 'one_time' | 'monthly'
   unitPrice: number
+  unitPriceCents: number
   discountPercent: number
   subtotal: number
+  subtotalCents: number
   discountAmount: number
+  discountAmountCents: number
   total: number
+  totalCents: number
+  timeframe?: string
   sourceNoteTitle: string
+}
+
+export interface CommercialConflict {
+  id: string
+  serviceKey: string
+  field: string
+  sourceA: string
+  valueA: string
+  priceACents: number
+  sourceB: string
+  valueB: string
+  priceBCents: number
+  resolution: 'unresolved' | 'user_decided' | 'precedence_rule'
+  chosenValue?: string
+  chosenPriceCents?: number
 }
 
 export interface CommercialCalculationResult {
   items: CommercialLineItem[]
   grossTotal: number
+  grossTotalCents: number
   totalDiscount: number
+  totalDiscountCents: number
   netTotal: number
+  netTotalCents: number
+  monthlyRecurringTotal: number
+  monthlyRecurringTotalCents: number
+  downPaymentPercent: number
+  downPaymentAmount: number
+  downPaymentCents: number
+  financedBalance: number
+  financedBalanceCents: number
   installments: number
   installmentValue: number
+  installmentValueCents: number
   currency: string
-  conflicts: {
-    field: string
-    sourceA: string
-    valueA: string
-    sourceB: string
-    valueB: string
-    resolution: 'unresolved' | 'user_decided' | 'precedence_rule'
-    chosenValue?: string
-  }[]
+  conflicts: CommercialConflict[]
   missingFields: string[]
+  unfilledPlaceholders: string[]
   fixedSectionViolations: string[]
+  appliedRuleSource?: string
 }
 
 export interface ChangeSetOperation {
@@ -183,6 +213,7 @@ export interface ChangeSetOperation {
   contentPreview: string
   status: 'pending' | 'approved' | 'rejected' | 'committed' | 'conflict' | 'failed'
   commitReceipt?: {
+    noteId?: string
     filePath?: string
     revisionHash: string
     committedAt: number
@@ -240,6 +271,107 @@ export interface SubagentStep {
   startedAt: number
   endedAt?: number
   outputPreview?: string
+  findings?: string[]
+}
+
+// ==========================================
+// Canvas 1: Equipes (Team Builder)
+// ==========================================
+
+export interface TeamMemberNode {
+  id: string
+  agentId: string
+  position: { x: number; y: number }
+  roleInTeam: 'coordinator' | 'specialist' | 'reviewer'
+  contextScope: ContextRole[]
+  allowedOutputTypes: ('note' | 'tasks' | 'mindmap' | 'draw')[]
+  requireUserReview?: boolean
+}
+
+export interface TeamEdge {
+  id: string
+  sourceNodeId: string
+  targetNodeId: string
+  relation: 'delegates_to' | 'reviews_output' | 'depends_on'
+  label?: string
+}
+
+export interface TeamDefinition {
+  id: string
+  version: number
+  name: string
+  description: string
+  coordinatorAgentId: string
+  nodes: TeamMemberNode[]
+  edges: TeamEdge[]
+  maxParallelSubtasks: number
+  createdAt: number
+  updatedAt: number
+}
+
+// ==========================================
+// Canvas 2: Fluxos de Trabalho (Workflow Builder)
+// ==========================================
+
+export type WorkflowNodeKind =
+  | 'input'        // Entrada / Pedido
+  | 'read_note'    // Consultar Nota ou Pasta
+  | 'run_agent'    // Executar Agente
+  | 'condition'    // Verificar Condição
+  | 'approval'     // Solicitar Aprovação
+  | 'deliverable'  // Criar ou Atualizar Entrega
+  | 'finish'       // Finalizar
+
+export interface WorkflowNode {
+  id: string
+  kind: WorkflowNodeKind
+  label: string
+  position: { x: number; y: number }
+  config: {
+    noteId?: string
+    noteTitle?: string
+    folderPath?: string
+    contextRole?: ContextRole
+    agentId?: string
+    teamId?: string
+    conditionType?: 'no_missing_fields' | 'no_price_conflicts' | 'net_total_above' | 'always'
+    conditionThreshold?: number
+    targetFolder?: string
+    outputType?: 'note' | 'tasks' | 'mindmap' | 'draw'
+    namingPattern?: string
+    approvalMessage?: string
+  }
+}
+
+export interface WorkflowEdge {
+  id: string
+  sourceNodeId: string
+  targetNodeId: string
+  branch?: 'default' | 'true' | 'false' | 'approved' | 'rejected'
+  label?: string
+}
+
+export interface WorkflowDefinition {
+  id: string
+  version: number
+  publishedVersion?: number
+  status: 'draft' | 'published'
+  name: string
+  description: string
+  nodes: WorkflowNode[]
+  edges: WorkflowEdge[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface WorkflowNodeExecution {
+  nodeId: string
+  label: string
+  kind: WorkflowNodeKind
+  status: 'pending' | 'running' | 'waiting_approval' | 'completed' | 'skipped' | 'failed'
+  outputSummary?: string
+  startedAt?: number
+  endedAt?: number
 }
 
 export interface AgentRun {
@@ -248,16 +380,21 @@ export interface AgentRun {
   agentId: string
   agentName: string
   agentVersion: number
+  teamId?: string
+  workflowId?: string
+  workflowNodeStates?: WorkflowNodeExecution[]
   isTestRun: boolean // Se true, não grava em disco até ação explícita do usuário
   prompt: string
   clientName?: string
   projectContextId?: string
+  extraNoteIds?: string[]
   status: RunStatus
   proposalStatus?: ProposalStatus
   sourceSnapshots: SourceSnapshot[]
   missingReferences: string[]
   clarifyingQuestions: string[]
   userAnswers?: Record<string, string>
+  conflictResolutions?: Record<string, { chosenValue: string; chosenPriceCents: number }>
   calculation?: CommercialCalculationResult
   draftContent?: string
   reviewChecklist: {
@@ -274,6 +411,10 @@ export interface AgentRun {
   updatedAt: number
   completedAt?: number
 }
+
+// ==========================================
+// Canvas 3: Rotinas (Simple + Visual Canvas)
+// ==========================================
 
 export type AutomationTriggerKind =
   | 'meeting_completed'  // Ao concluir uma reunião
@@ -296,14 +437,31 @@ export interface AutomationVersion {
     missedPolicy: 'skip' | 'run_once_on_open'
   }
   watchFolder?: string
+  targetKind?: 'agent' | 'team' | 'workflow'
   agentId: string
   agentVersion: number
+  teamId?: string
+  workflowId?: string
+  projectContextId?: string
   targetFolder: string
   requireApproval: boolean
   maxRunsPerDay: number
   lastTriggeredAt?: number
+  lastEventFingerprint?: string
   nextRunAt?: string
   recentRunIds: string[]
+  visualLayout?: {
+    triggerX: number
+    triggerY: number
+    contextX: number
+    contextY: number
+    executorX: number
+    executorY: number
+    approvalX: number
+    approvalY: number
+    outputX: number
+    outputY: number
+  }
   createdAt: number
   updatedAt: number
 }
@@ -325,9 +483,12 @@ export interface MultiAgentStoreState {
   version: number
   agents: AgentProfileVersion[]
   agentHistoryVersions: AgentProfileVersion[]
+  teams?: TeamDefinition[]
+  workflows?: WorkflowDefinition[]
   projects: ProjectContext[]
   runs: AgentRun[]
   artifacts: AgentArtifact[]
   automations: AutomationVersion[]
   mailboxQueue: AgentQueueDelivery[]
+  demoExamplesLoaded?: boolean
 }

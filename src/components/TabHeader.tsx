@@ -55,7 +55,9 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
   onExportVault,
   onReorderTabs
 }) => {
-  const isElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
+  const isElectron =
+    typeof window !== 'undefined' &&
+    (Boolean(window.electronAPI?.isElectron) || navigator.userAgent.toLowerCase().includes('electron'))
   const isMac = isElectron && window.electronAPI?.platform === 'darwin'
   const [isMaximized, setIsMaximized] = useState(false)
   const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatusData | null>(null)
@@ -320,27 +322,30 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
 
         {/* Native Electron Window Controls (Minimize, Maximize, Close - Windows/Linux only) */}
         {isElectron && !isMac && (
-          <div className="flex items-center h-full ml-1.5 pl-1.5 border-l border-zinc-800/80">
+          <div className="flex items-center h-full ml-1.5 pl-1.5 border-l border-zinc-800/80 shrink-0">
             <button
+              type="button"
               onClick={handleMinimize}
-              className="h-7 w-7 flex items-center justify-center rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
+              className="h-7 w-7 flex items-center justify-center rounded text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors cursor-pointer shrink-0"
               title="Minimizar Janela"
             >
-              <Minus className="w-3.5 h-3.5" />
+              <Minus className="w-3.5 h-3.5 shrink-0" />
             </button>
             <button
+              type="button"
               onClick={handleMaximize}
-              className="h-7 w-7 flex items-center justify-center rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
+              className="h-7 w-7 flex items-center justify-center rounded text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors cursor-pointer shrink-0"
               title={isMaximized ? "Restaurar Janela" : "Maximizar Janela"}
             >
-              {isMaximized ? <Copy className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+              {isMaximized ? <Copy className="w-3.5 h-3.5 shrink-0" /> : <Square className="w-3.5 h-3.5 shrink-0" />}
             </button>
             <button
+              type="button"
               onClick={handleClose}
-              className="h-7 w-7 flex items-center justify-center rounded text-zinc-400 hover:text-white hover:bg-rose-600 transition-colors"
+              className="h-7 w-7 flex items-center justify-center rounded text-zinc-300 hover:text-white hover:bg-rose-600 transition-colors cursor-pointer shrink-0"
               title="Fechar Pyrite"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4 shrink-0" />
             </button>
           </div>
         )}
