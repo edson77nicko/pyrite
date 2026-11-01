@@ -150,6 +150,17 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
     onUpdateTask({ ...task, endDate, deadline: endDate, updatedAt: Date.now() })
   }
 
+  const handleRangeChange = (startDate: string | undefined, endDate: string | undefined) => {
+    onUpdateTask({
+      ...task,
+      startDate,
+      date: startDate,
+      endDate,
+      deadline: endDate,
+      updatedAt: Date.now()
+    })
+  }
+
   const handleContextSelect = (note: Note | null) => {
     onUpdateTask({
       ...task,
@@ -550,7 +561,9 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
                   {isStartDatePickerOpen && (
                     <CustomDatePickerPopover
                       value={task.startDate || task.date}
+                      endDate={task.endDate || task.deadline}
                       anchorEl={startDateBtnRef.current}
+                      onRangeChange={handleRangeChange}
                       onChange={handleStartDateChange}
                       onClose={() => setIsStartDatePickerOpen(false)}
                       align="left"
@@ -591,8 +604,10 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
 
                   {isEndDatePickerOpen && (
                     <CustomDatePickerPopover
-                      value={task.endDate || task.deadline}
+                      value={task.startDate || task.date}
+                      endDate={task.endDate || task.deadline}
                       anchorEl={endDateBtnRef.current}
+                      onRangeChange={handleRangeChange}
                       onChange={handleEndDateChange}
                       onClose={() => setIsEndDatePickerOpen(false)}
                       align="left"

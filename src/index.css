@@ -2130,18 +2130,27 @@ html.light .dark-theme-zone .hover\:bg-white\/\[0\.14\]:hover {
 }
 .light .custom-datepicker-popover .bg-\[\#191920\],
 .light .custom-datepicker-popover .bg-\[\#16161c\],
-.light .custom-datepicker-popover .bg-\[\#121217\] {
+.light .custom-datepicker-popover .bg-\[\#121217\],
+.light .custom-datepicker-popover .bg-\[\#1e1e27\] {
   background-color: #FAFBFC !important;
   border: 1px solid #E5E7EB !important;
   color: #252830 !important;
 }
-.light .custom-datepicker-popover button:hover {
+.light .custom-datepicker-popover button:not([style*="background-color"]):hover {
   background-color: #F1F3F5 !important;
   color: #1E293B !important;
 }
 .light .custom-datepicker-popover .text-zinc-100,
-.light .custom-datepicker-popover .text-zinc-200 {
+.light .custom-datepicker-popover .text-zinc-200,
+.light .custom-datepicker-popover .text-zinc-300 {
   color: #252830 !important;
+}
+.light .custom-datepicker-popover .text-zinc-400,
+.light .custom-datepicker-popover .text-zinc-500 {
+  color: #64748B !important;
+}
+.light .custom-datepicker-popover .text-zinc-600 {
+  color: #94A3B8 !important;
 }
 
 /* Checkbox e Listas Fluidas: texto subsequente inicia no começo da página */

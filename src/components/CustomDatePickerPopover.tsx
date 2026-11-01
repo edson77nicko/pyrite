@@ -8,15 +8,18 @@ import {
   Clock,
   Repeat,
   Trash2,
-  Info
+  X
 } from 'lucide-react'
 
-interface CustomDatePickerPopoverProps {
-  value?: string // format: YYYY-MM-DD or YYYY-MM-DD HH:mm
-  onChange: (value: string | undefined) => void
+export interface CustomDatePickerPopoverProps {
+  value?: string // format: YYYY-MM-DD or YYYY-MM-DD HH:mm (Start date or single date)
+  endDate?: string // format: YYYY-MM-DD or YYYY-MM-DD HH:mm (End date for range)
+  onChange?: (value: string | undefined) => void
+  onRangeChange?: (startDate: string | undefined, endDate: string | undefined) => void
   onClose: () => void
   align?: 'left' | 'right'
   anchorEl?: HTMLElement | null
+  isRange?: boolean
 }
 
 const MONTH_NAMES = [
@@ -24,12 +27,35 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ]
 
-const MONTH_NAMES_EN = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
+const MONTH_NAMES_SHORT = [
+  'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+  'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
 ]
 
-const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
+
+function pad(n: number) {
+  return String(n).padStart(2, '0')
+}
+
+function formatDateStr(y: number, m: number, d: number) {
+  return `${String(y).padStart(4, '0')}-${pad(m + 1)}-${pad(d)}`
+}
+
+function parseDatePart(val?: string) {
+  if (!val) return null
+  const [datePart, timePart] = val.split(' ')
+  const [y, m, d] = (datePart || '').split('-').map(Number)
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return null
+  return {
+    year: y,
+    month: m - 1,
+    day: d,
+    dateStr: formatDateStr(y, m - 1, d),
+    hasTime: Boolean(timePart),
+    time: timePart || '12:00'
+  }
+}
 
 function calculateCoords(el: HTMLElement | null, align: 'left' | 'right') {
   if (!el || typeof window === 'undefined') {
@@ -38,7 +64,7 @@ function calculateCoords(el: HTMLElement | null, align: 'left' | 'right') {
 
   const rect = el.getBoundingClientRect()
   const popoverWidth = 440
-  const popoverHeight = 360
+  const popoverHeight = 350
 
   let left = align === 'right' ? rect.right - popoverWidth : rect.left
   if (left + popoverWidth > window.innerWidth - 16) {
@@ -58,14 +84,17 @@ function calculateCoords(el: HTMLElement | null, align: 'left' | 'right') {
 
 export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = ({
   value,
+  endDate,
   onChange,
+  onRangeChange,
   onClose,
   align = 'right',
-  anchorEl
+  anchorEl,
+  isRange = true
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Calculate coordinates synchronously on mount to immediately spawn in the exact position
+  // Calculate coordinates synchronously on mount
   const [coords, setCoords] = useState(() => calculateCoords(anchorEl || null, align))
 
   useLayoutEffect(() => {
@@ -91,40 +120,30 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
     }
   }, [anchorEl, align])
 
-  // Parse initial date
-  const parsed = useMemo(() => {
-    if (!value) {
-      const now = new Date()
-      return {
-        year: now.getFullYear(),
-        month: now.getMonth(),
-        day: now.getDate(),
-        hasTime: false,
-        time: '12:00'
-      }
-    }
-    const [datePart, timePart] = value.split(' ')
-    const [y, m, d] = (datePart || '').split('-').map(Number)
-    const valid = !isNaN(y) && !isNaN(m) && !isNaN(d)
-    const now = new Date()
-    return {
-      year: valid ? y : now.getFullYear(),
-      month: valid ? m - 1 : now.getMonth(),
-      day: valid ? d : now.getDate(),
-      hasTime: Boolean(timePart),
-      time: timePart || '12:00'
-    }
-  }, [value])
+  // Parse initial dates
+  const initialStart = useMemo(() => parseDatePart(value), [value])
+  const initialEnd = useMemo(() => parseDatePart(endDate), [endDate])
 
-  const [selectedYear, setSelectedYear] = useState<number | null>(value ? parsed.year : null)
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(value ? parsed.month : null)
-  const [selectedDay, setSelectedDay] = useState<number | null>(value ? parsed.day : null)
+  const [rangeStart, setRangeStart] = useState<string | null>(initialStart ? initialStart.dateStr : null)
+  const [rangeEnd, setRangeEnd] = useState<string | null>(initialEnd ? initialEnd.dateStr : null)
+  const [isSelectingEnd, setIsSelectingEnd] = useState<boolean>(false)
+  const [hoverDate, setHoverDate] = useState<string | null>(null)
 
-  const [viewYear, setViewYear] = useState<number>(parsed.year)
-  const [viewMonth, setViewMonth] = useState<number>(parsed.month)
+  // Calendar View month/year
+  const [viewYear, setViewYear] = useState<number>(() => {
+    if (initialStart) return initialStart.year
+    if (initialEnd) return initialEnd.year
+    return new Date().getFullYear()
+  })
 
-  const [includeTime, setIncludeTime] = useState<boolean>(parsed.hasTime)
-  const [timeValue, setTimeValue] = useState<string>(parsed.time)
+  const [viewMonth, setViewMonth] = useState<number>(() => {
+    if (initialStart) return initialStart.month
+    if (initialEnd) return initialEnd.month
+    return new Date().getMonth()
+  })
+
+  const [includeTime, setIncludeTime] = useState<boolean>(Boolean(initialStart?.hasTime))
+  const [timeValue, setTimeValue] = useState<string>(initialStart?.time || '12:00')
   const [isRepeat, setIsRepeat] = useState<boolean>(false)
 
   const [showMonthSelect, setShowMonthSelect] = useState(false)
@@ -163,163 +182,266 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
     }
   }
 
-  // Days calculations
+  // Days calculations (42 slots: previous month tail + current month + next month lead)
   const calendarDays = useMemo(() => {
     const firstDayIndex = (new Date(viewYear, viewMonth, 1).getDay() + 6) % 7
     const daysInCurrentMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
     const daysInPrevMonth = new Date(viewYear, viewMonth, 0).getDate()
 
-    const days: { day: number; isCurrent: boolean; monthOffset: number }[] = []
+    const days: { day: number; isCurrent: boolean; monthOffset: number; dateStr: string }[] = []
 
+    // Previous month tail
     for (let i = firstDayIndex - 1; i >= 0; i--) {
-      days.push({ day: daysInPrevMonth - i, isCurrent: false, monthOffset: -1 })
+      const d = daysInPrevMonth - i
+      let m = viewMonth - 1
+      let y = viewYear
+      if (m < 0) {
+        m = 11
+        y -= 1
+      }
+      days.push({ day: d, isCurrent: false, monthOffset: -1, dateStr: formatDateStr(y, m, d) })
     }
 
+    // Current month
     for (let i = 1; i <= daysInCurrentMonth; i++) {
-      days.push({ day: i, isCurrent: true, monthOffset: 0 })
+      days.push({ day: i, isCurrent: true, monthOffset: 0, dateStr: formatDateStr(viewYear, viewMonth, i) })
     }
 
+    // Next month lead
     const remaining = 42 - days.length
     for (let i = 1; i <= remaining; i++) {
-      days.push({ day: i, isCurrent: false, monthOffset: 1 })
+      let m = viewMonth + 1
+      let y = viewYear
+      if (m > 11) {
+        m = 0
+        y += 1
+      }
+      days.push({ day: i, isCurrent: false, monthOffset: 1, dateStr: formatDateStr(y, m, i) })
     }
 
     return days
   }, [viewYear, viewMonth])
 
-  const handleSelectDay = (day: number, monthOffset: number) => {
-    let targetMonth = viewMonth + monthOffset
-    let targetYear = viewYear
-
-    if (targetMonth < 0) {
-      targetMonth = 11
-      targetYear -= 1
-    } else if (targetMonth > 11) {
-      targetMonth = 0
-      targetYear += 1
+  // Effective display range (considering hover during step 2)
+  const { displayStart, displayEnd } = useMemo(() => {
+    if (isSelectingEnd && rangeStart && hoverDate) {
+      if (rangeStart <= hoverDate) {
+        return { displayStart: rangeStart, displayEnd: hoverDate }
+      } else {
+        return { displayStart: hoverDate, displayEnd: rangeStart }
+      }
     }
+    if (rangeStart && rangeEnd) {
+      if (rangeStart <= rangeEnd) {
+        return { displayStart: rangeStart, displayEnd: rangeEnd }
+      } else {
+        return { displayStart: rangeEnd, displayEnd: rangeStart }
+      }
+    }
+    if (rangeStart) {
+      return { displayStart: rangeStart, displayEnd: null }
+    }
+    return { displayStart: null, displayEnd: null }
+  }, [rangeStart, rangeEnd, isSelectingEnd, hoverDate])
 
-    setSelectedYear(targetYear)
-    setSelectedMonth(targetMonth)
-    setSelectedDay(day)
-
+  // Select day handler - Immediate definition, no confirmation button required!
+  const handleSelectDay = (clickedDateStr: string, monthOffset: number) => {
+    // If clicking a day from another month, sync the view month
     if (monthOffset !== 0) {
-      setViewYear(targetYear)
+      let targetMonth = viewMonth + monthOffset
+      let targetYear = viewYear
+      if (targetMonth < 0) {
+        targetMonth = 11
+        targetYear -= 1
+      } else if (targetMonth > 11) {
+        targetMonth = 0
+        targetYear += 1
+      }
       setViewMonth(targetMonth)
-    }
-  }
-
-  const isSelected = (day: number, monthOffset: number) => {
-    let targetMonth = viewMonth + monthOffset
-    let targetYear = viewYear
-
-    if (targetMonth < 0) {
-      targetMonth = 11
-      targetYear -= 1
-    } else if (targetMonth > 11) {
-      targetMonth = 0
-      targetYear += 1
+      setViewYear(targetYear)
     }
 
-    return selectedYear === targetYear && selectedMonth === targetMonth && selectedDay === day
-  }
-
-  const isToday = (day: number, monthOffset: number) => {
-    const now = new Date()
-    let targetMonth = viewMonth + monthOffset
-    let targetYear = viewYear
-
-    if (targetMonth < 0) {
-      targetMonth = 11
-      targetYear -= 1
-    } else if (targetMonth > 11) {
-      targetMonth = 0
-      targetYear += 1
-    }
-
-    return (
-      now.getFullYear() === targetYear &&
-      now.getMonth() === targetMonth &&
-      now.getDate() === day
-    )
-  }
-
-  // Quick Preset Actions
-  const setQuickDate = (daysFromNow: number) => {
-    const d = new Date()
-    d.setDate(d.getDate() + daysFromNow)
-    setSelectedYear(d.getFullYear())
-    setSelectedMonth(d.getMonth())
-    setSelectedDay(d.getDate())
-    setViewYear(d.getFullYear())
-    setViewMonth(d.getMonth())
-  }
-
-  const handleSetToday = () => setQuickDate(0)
-  const handleSetTomorrow = () => setQuickDate(1)
-  const handleSetNextWeek = () => setQuickDate(7)
-  const handleSetNextMonth = () => {
-    const d = new Date()
-    d.setMonth(d.getMonth() + 1)
-    setSelectedYear(d.getFullYear())
-    setSelectedMonth(d.getMonth())
-    setSelectedDay(d.getDate())
-    setViewYear(d.getFullYear())
-    setViewMonth(d.getMonth())
-  }
-
-  const handleConfirm = () => {
-    if (selectedYear === null || selectedMonth === null || selectedDay === null) {
-      onChange(undefined)
+    // Mode: Single Date (isRange === false)
+    if (!isRange) {
+      const fullVal = includeTime && timeValue ? `${clickedDateStr} ${timeValue}` : clickedDateStr
+      onChange?.(fullVal)
       onClose()
       return
     }
-    const yStr = String(selectedYear)
-    const mStr = String(selectedMonth + 1).padStart(2, '0')
-    const dStr = String(selectedDay).padStart(2, '0')
-    let result = `${yStr}-${mStr}-${dStr}`
-    if (includeTime && timeValue) {
-      result += ` ${timeValue}`
+
+    // Mode: Range (1st click defines start immediately; 2nd click defines end & finishes)
+    if (!isSelectingEnd || !rangeStart) {
+      // 1st click: Set start date immediately!
+      const startVal = includeTime && timeValue ? `${clickedDateStr} ${timeValue}` : clickedDateStr
+      setRangeStart(clickedDateStr)
+      setRangeEnd(null)
+      setIsSelectingEnd(true)
+
+      // Immediately define start date in parent
+      if (onRangeChange) {
+        onRangeChange(startVal, undefined)
+      }
+      if (onChange) {
+        onChange(startVal)
+      }
+    } else {
+      // 2nd click: Set end date, order correctly, define immediately and close!
+      let finalStart = rangeStart
+      let finalEnd = clickedDateStr
+
+      if (clickedDateStr < rangeStart) {
+        finalStart = clickedDateStr
+        finalEnd = rangeStart
+      }
+
+      const startVal = includeTime && timeValue ? `${finalStart} ${timeValue}` : finalStart
+      const endVal = finalEnd
+
+      setRangeStart(finalStart)
+      setRangeEnd(finalEnd)
+      setIsSelectingEnd(false)
+      setHoverDate(null)
+
+      if (onRangeChange) {
+        onRangeChange(startVal, endVal)
+      }
+      if (onChange) {
+        onChange(startVal)
+      }
+
+      // Range selection is complete, close popover immediately
+      onClose()
     }
-    onChange(result)
+  }
+
+  // Quick Presets - Define immediately and close
+  const applyPreset = (startDateStr: string, endDateStr?: string) => {
+    const sVal = includeTime && timeValue ? `${startDateStr} ${timeValue}` : startDateStr
+    const eVal = endDateStr || undefined
+
+    setRangeStart(startDateStr)
+    setRangeEnd(endDateStr || null)
+    setIsSelectingEnd(false)
+    setHoverDate(null)
+
+    if (onRangeChange) {
+      onRangeChange(sVal, eVal)
+    }
+    if (onChange) {
+      onChange(sVal)
+    }
     onClose()
+  }
+
+  const handleSetToday = () => {
+    const now = new Date()
+    const dStr = formatDateStr(now.getFullYear(), now.getMonth(), now.getDate())
+    applyPreset(dStr, dStr)
+  }
+
+  const handleSetTomorrow = () => {
+    const d = new Date()
+    d.setDate(d.getDate() + 1)
+    const dStr = formatDateStr(d.getFullYear(), d.getMonth(), d.getDate())
+    applyPreset(dStr, dStr)
+  }
+
+  const handleSetNextWeek = () => {
+    const now = new Date()
+    const nextW = new Date()
+    nextW.setDate(now.getDate() + 7)
+    const startStr = formatDateStr(now.getFullYear(), now.getMonth(), now.getDate())
+    const endStr = formatDateStr(nextW.getFullYear(), nextW.getMonth(), nextW.getDate())
+    applyPreset(startStr, endStr)
+  }
+
+  const handleSetNextMonth = () => {
+    const now = new Date()
+    const nextM = new Date()
+    nextM.setMonth(now.getMonth() + 1)
+    const startStr = formatDateStr(now.getFullYear(), now.getMonth(), now.getDate())
+    const endStr = formatDateStr(nextM.getFullYear(), nextM.getMonth(), nextM.getDate())
+    applyPreset(startStr, endStr)
   }
 
   const handleRemove = () => {
-    onChange(undefined)
+    setRangeStart(null)
+    setRangeEnd(null)
+    setIsSelectingEnd(false)
+    setHoverDate(null)
+    if (onRangeChange) {
+      onRangeChange(undefined, undefined)
+    }
+    if (onChange) {
+      onChange(undefined)
+    }
     onClose()
   }
 
-  // Formatted date string for top pill
-  const formattedHeaderDate = useMemo(() => {
-    if (selectedYear === null || selectedMonth === null || selectedDay === null) {
-      return 'Selecionar data'
+  // Header display string
+  const headerLabel = useMemo(() => {
+    if (displayStart && displayEnd && displayStart !== displayEnd) {
+      const [, sm, sd] = displayStart.split('-')
+      const [, em, ed] = displayEnd.split('-')
+      const sMonthName = MONTH_NAMES_SHORT[Number(sm) - 1] || sm
+      const eMonthName = MONTH_NAMES_SHORT[Number(em) - 1] || em
+      return `${Number(sd)} ${sMonthName} → ${Number(ed)} ${eMonthName}`
     }
-    const monthEn = MONTH_NAMES_EN[selectedMonth] || 'October'
-    return `${monthEn} ${selectedDay}, ${selectedYear}`
-  }, [selectedYear, selectedMonth, selectedDay])
+    if (displayStart) {
+      const [sy, sm, sd] = displayStart.split('-')
+      const sMonthName = MONTH_NAMES_SHORT[Number(sm) - 1] || sm
+      if (isSelectingEnd) {
+        return `${Number(sd)} ${sMonthName}, ${sy} → selecione o término`
+      }
+      return `${Number(sd)} ${sMonthName}, ${sy}`
+    }
+    return 'Selecionar período'
+  }, [displayStart, displayEnd, isSelectingEnd])
+
+  const rangeDayCount = useMemo(() => {
+    if (!displayStart || !displayEnd || displayStart === displayEnd) return null
+    const msStart = new Date(displayStart).getTime()
+    const msEnd = new Date(displayEnd).getTime()
+    const days = Math.round(Math.abs(msEnd - msStart) / (1000 * 60 * 60 * 24)) + 1
+    return days
+  }, [displayStart, displayEnd])
+
+  const todayStr = useMemo(() => {
+    const now = new Date()
+    return formatDateStr(now.getFullYear(), now.getMonth(), now.getDate())
+  }, [])
 
   const popoverContent = (
     <div
       ref={containerRef}
       data-popover-portal="true"
-      className="custom-datepicker-popover fixed z-[99999] bg-[#121216] rounded-2xl shadow-md border border-zinc-800/80 p-4 text-xs select-none animate-in fade-in duration-75"
+      className="custom-datepicker-popover fixed z-[99999] bg-[#121216] rounded-2xl shadow-xl border border-zinc-800/80 p-4 text-xs select-none animate-in fade-in duration-75"
       style={{
         top: coords.top,
         left: coords.left,
-        width: '440px'
+        width: '450px'
       }}
     >
       <div className="flex gap-3.5">
-        {/* Left Column: Calendar & Controls */}
-        <div className="flex-1 flex flex-col space-y-3">
-          {/* Top Date Display Pill - Sober depth, no white borders */}
+        {/* Left Column: Calendar & Range Grid */}
+        <div className="flex-1 flex flex-col space-y-2.5">
+          {/* Top Date Display Pill */}
           <div className="bg-[#191920] rounded-xl px-3 py-2 flex items-center justify-between text-zinc-100">
             <div className="flex items-center gap-2 font-medium">
               <CalendarIcon className="w-3.5 h-3.5 text-zinc-400" />
-              <span>{formattedHeaderDate}</span>
+              <span className="text-xs truncate">{headerLabel}</span>
             </div>
-            <Info className="w-3.5 h-3.5 text-zinc-500" />
+            {rangeDayCount && (
+              <span
+                className="text-[10px] px-2 py-0.5 rounded font-medium shrink-0 ml-2"
+                style={{
+                  backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
+                  color: 'var(--accent, #c59b27)'
+                }}
+              >
+                {rangeDayCount} {rangeDayCount === 1 ? 'dia' : 'dias'}
+              </span>
+            )}
           </div>
 
           {/* Month & Year Selectors with Chevrons */}
@@ -414,20 +536,64 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
             ))}
           </div>
 
-          {/* Days Grid */}
-          <div className="grid grid-cols-7 gap-y-1 gap-x-0.5 text-center text-xs">
+          {/* Days Grid with Range Ribbon Connectors */}
+          <div
+            className="grid grid-cols-7 gap-y-1 text-center text-xs"
+            onMouseLeave={() => setHoverDate(null)}
+          >
             {calendarDays.map((item, idx) => {
-              const active = isSelected(item.day, item.monthOffset)
-              const currentDayToday = isToday(item.day, item.monthOffset)
+              const dStr = item.dateStr
+              const isStart = Boolean(displayStart && dStr === displayStart)
+              const isEnd = Boolean(displayEnd && dStr === displayEnd)
+              const isSameDayRange = isStart && isEnd
+              const isInRange = Boolean(displayStart && displayEnd && dStr > displayStart && dStr < displayEnd)
+              const currentDayToday = dStr === todayStr
+              const isMonday = idx % 7 === 0
+              const isSunday = idx % 7 === 6
 
               return (
-                <div key={idx} className="flex items-center justify-center">
+                <div
+                  key={idx}
+                  className="relative flex items-center justify-center h-8"
+                  onMouseEnter={() => {
+                    if (isSelectingEnd) {
+                      setHoverDate(dStr)
+                    }
+                  }}
+                >
+                  {/* Range Connector Ribbons */}
+                  {displayStart && displayEnd && displayStart !== displayEnd && (
+                    <>
+                      {/* Fully in-range ribbon connecting the middle */}
+                      {isInRange && (
+                        <div
+                          className={`absolute inset-y-1 inset-x-0 bg-[var(--accent,#c59b27)]/20 z-0 ${
+                            isMonday ? 'rounded-l-md' : ''
+                          } ${isSunday ? 'rounded-r-md' : ''}`}
+                        />
+                      )}
+
+                      {/* Right ribbon for start date */}
+                      {isStart && !isSameDayRange && !isSunday && (
+                        <div className="absolute inset-y-1 right-0 left-1/2 bg-[var(--accent,#c59b27)]/20 z-0" />
+                      )}
+
+                      {/* Left ribbon for end date */}
+                      {isEnd && !isSameDayRange && !isMonday && (
+                        <div className="absolute inset-y-1 left-0 right-1/2 bg-[var(--accent,#c59b27)]/20 z-0" />
+                      )}
+                    </>
+                  )}
+
+                  {/* Day Button */}
                   <button
                     type="button"
-                    onClick={() => handleSelectDay(item.day, item.monthOffset)}
-                    className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors cursor-pointer text-xs ${
-                      active
+                    onClick={() => handleSelectDay(dStr, item.monthOffset)}
+                    className={`relative z-10 w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer text-xs ${
+                      isStart || isEnd
                         ? 'font-bold shadow-md'
+                        : isInRange
+                        ? 'text-zinc-100 font-semibold'
                         : item.isCurrent
                         ? currentDayToday
                           ? 'text-zinc-100 font-bold bg-[#1e1e28]'
@@ -435,9 +601,9 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
                         : 'text-zinc-600 hover:text-zinc-400 font-normal'
                     }`}
                     style={
-                      active
+                      isStart || isEnd
                         ? {
-                            backgroundColor: 'var(--accent, #ffffff)',
+                            backgroundColor: 'var(--accent, #c59b27)',
                             color: '#09090b'
                           }
                         : undefined
@@ -451,7 +617,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
           </div>
         </div>
 
-        {/* Right Column: Presets & Controls - Elegant dark surface without harsh vertical line */}
+        {/* Right Column: Presets & Controls */}
         <div className="w-40 bg-[#16161c] rounded-xl p-3 flex flex-col justify-between space-y-3">
           {/* Presets List */}
           <div className="space-y-1">
@@ -502,7 +668,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
                 className={`w-7 h-4 rounded-full p-0.5 transition-colors cursor-pointer flex items-center ${
                   includeTime ? 'bg-zinc-200 justify-end' : 'bg-zinc-800 justify-start'
                 }`}
-                style={includeTime ? { backgroundColor: 'var(--accent, #ffffff)' } : undefined}
+                style={includeTime ? { backgroundColor: 'var(--accent, #c59b27)' } : undefined}
               >
                 <span className="w-3 h-3 rounded-full bg-zinc-950 block shadow-xs" />
               </button>
@@ -530,7 +696,7 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
                 className={`w-7 h-4 rounded-full p-0.5 transition-colors cursor-pointer flex items-center ${
                   isRepeat ? 'bg-zinc-200 justify-end' : 'bg-zinc-800 justify-start'
                 }`}
-                style={isRepeat ? { backgroundColor: 'var(--accent, #ffffff)' } : undefined}
+                style={isRepeat ? { backgroundColor: 'var(--accent, #c59b27)' } : undefined}
               >
                 <span className="w-3 h-3 rounded-full bg-zinc-950 block shadow-xs" />
               </button>
@@ -551,25 +717,20 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
         </div>
       </div>
 
-      {/* Footer Actions: Cancel & Confirm */}
-      <div className="flex items-center justify-end gap-2 pt-3 mt-1">
+      {/* Footer Status Bar: Informative, minimal, no confirmation button needed */}
+      <div className="flex items-center justify-between pt-2.5 mt-2 border-t border-zinc-800/40 text-[11px] text-zinc-400">
+        <span className="text-zinc-500">
+          {isSelectingEnd
+            ? 'Clique na 2ª data para definir o término'
+            : 'Clique para definir início, ou selecione intervalo'}
+        </span>
         <button
           type="button"
           onClick={onClose}
-          className="px-3.5 py-1.5 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a22] transition-colors cursor-pointer text-xs font-medium"
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-[#1a1a22] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-xs"
         >
-          Cancelar
-        </button>
-        <button
-          type="button"
-          onClick={handleConfirm}
-          className="px-4 py-1.5 rounded-xl font-semibold transition-all cursor-pointer shadow-md text-xs"
-          style={{
-            backgroundColor: 'var(--accent, #ffffff)',
-            color: '#09090b'
-          }}
-        >
-          Confirmar
+          <X className="w-3 h-3" />
+          <span>Fechar</span>
         </button>
       </div>
     </div>

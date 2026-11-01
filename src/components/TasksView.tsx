@@ -1069,7 +1069,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             className={`px-3 py-2 text-zinc-300 relative whitespace-nowrap border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
                           >
                             <div className="inline-block">
-                              {task.deadline ? (
+                              {task.deadline || task.startDate || task.date ? (
                                 <div
                                   className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-zinc-800/40 transition-colors cursor-pointer whitespace-nowrap"
                                   onClick={e => {
@@ -1084,8 +1084,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                   }}
                                 >
                                   <Calendar className="w-3 h-3 text-zinc-500 shrink-0" />
-                                  <span className="text-[11px] font-mono shrink-0 whitespace-nowrap">{task.deadline}</span>
-                                  {task.deadline.slice(0, 10) === todayStr && (
+                                  <span className="text-[11px] font-mono shrink-0 whitespace-nowrap">
+                                    {(task.startDate || task.date) && (task.endDate || task.deadline) && (task.startDate || task.date) !== (task.endDate || task.deadline)
+                                      ? `${(task.startDate || task.date)!.slice(5)} → ${(task.endDate || task.deadline)!.slice(5)}`
+                                      : (task.endDate || task.deadline || task.startDate || task.date)}
+                                  </span>
+                                  {(task.deadline?.slice(0, 10) === todayStr || task.endDate?.slice(0, 10) === todayStr) && (
                                     <span
                                       className="text-[9.5px] px-1.5 py-0.2 rounded font-medium shrink-0 whitespace-nowrap leading-none"
                                       style={{
@@ -1114,10 +1118,28 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
                             {editingDeadlineTaskId === task.id && deadlineAnchorEl && (
                               <CustomDatePickerPopover
-                                value={task.deadline}
+                                value={task.startDate || task.date}
+                                endDate={task.endDate || task.deadline}
                                 anchorEl={deadlineAnchorEl}
+                                onRangeChange={(start, end) => {
+                                  onUpdateTask({
+                                    ...task,
+                                    startDate: start,
+                                    date: start,
+                                    endDate: end,
+                                    deadline: end || start,
+                                    updatedAt: Date.now()
+                                  })
+                                  setEditingDeadlineTaskId(null)
+                                  setDeadlineAnchorEl(null)
+                                }}
                                 onChange={newDeadline => {
-                                  onUpdateTask({ ...task, deadline: newDeadline, updatedAt: Date.now() })
+                                  onUpdateTask({
+                                    ...task,
+                                    deadline: newDeadline,
+                                    endDate: newDeadline,
+                                    updatedAt: Date.now()
+                                  })
                                   setEditingDeadlineTaskId(null)
                                   setDeadlineAnchorEl(null)
                                 }}

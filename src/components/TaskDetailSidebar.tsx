@@ -228,6 +228,17 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
     onUpdateTask({ ...task, deadline, endDate: deadline, updatedAt: Date.now() })
   }
 
+  const handleRangeChange = (startDate: string | undefined, endDate: string | undefined) => {
+    onUpdateTask({
+      ...task,
+      date: startDate,
+      startDate: startDate,
+      endDate: endDate,
+      deadline: endDate,
+      updatedAt: Date.now()
+    })
+  }
+
   const handleContextSelect = (note: Note | null) => {
     onUpdateTask({
       ...task,
@@ -542,6 +553,8 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               {isDatePickerOpen && (
                 <CustomDatePickerPopover
                   value={task.startDate || task.date}
+                  endDate={task.endDate || task.deadline}
+                  onRangeChange={handleRangeChange}
                   onChange={handleDateChange}
                   onClose={() => setIsDatePickerOpen(false)}
                   anchorEl={dateBtnRef.current}
@@ -583,7 +596,9 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               )}
               {isDeadlinePickerOpen && (
                 <CustomDatePickerPopover
-                  value={task.endDate || task.deadline}
+                  value={task.startDate || task.date}
+                  endDate={task.endDate || task.deadline}
+                  onRangeChange={handleRangeChange}
                   onChange={handleDeadlineChange}
                   onClose={() => setIsDeadlinePickerOpen(false)}
                   anchorEl={deadlineBtnRef.current}

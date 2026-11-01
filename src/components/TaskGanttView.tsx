@@ -697,9 +697,29 @@ export const TaskGanttView: React.FC<TaskGanttViewProps> = ({
             (() => {
               const t = tasks.find(x => x.id === editingDateTask.id)
               if (!t) return undefined
-              return editingDateTask.field === 'start' ? (t.startDate || t.date) : (t.endDate || t.deadline)
+              return t.startDate || t.date
             })()
           }
+          endDate={
+            (() => {
+              const t = tasks.find(x => x.id === editingDateTask.id)
+              if (!t) return undefined
+              return t.endDate || t.deadline
+            })()
+          }
+          onRangeChange={(start, end) => {
+            const t = tasks.find(x => x.id === editingDateTask.id)
+            if (t) {
+              onUpdateTask({
+                ...t,
+                startDate: start,
+                date: start,
+                endDate: end,
+                deadline: end || start,
+                updatedAt: Date.now()
+              })
+            }
+          }}
           onChange={val => {
             const t = tasks.find(x => x.id === editingDateTask.id)
             if (t) {
