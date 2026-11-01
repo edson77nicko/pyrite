@@ -11,7 +11,7 @@ interface SettingsModalProps {
 }
 
 const ACCENT_COLORS: string[] = [
-  '#c59b27', // Pirita Gold (Padrão)
+  '#c59b27', // Pyrite Gold (Padrão)
   '#d4af37', // Metallic Gold
   '#eab308', // Yellow
   '#f59e0b', // Amber

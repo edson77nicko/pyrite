@@ -48,7 +48,8 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [isPriorityDropdownOpen, setIsPriorityDropdownOpen] = useState(false)
   const [isContextPickerOpen, setIsContextPickerOpen] = useState(false)
-  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
+  const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false)
+  const [isEndDatePickerOpen, setIsEndDatePickerOpen] = useState(false)
   const [isAddingTag, setIsAddingTag] = useState(false)
   const [newTagInput, setNewTagInput] = useState('')
 
@@ -62,7 +63,8 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
   const [isBursting, setIsBursting] = useState(false)
   const [burstingSubtaskId, setBurstingSubtaskId] = useState<string | null>(null)
 
-  const dateBtnRef = useRef<HTMLButtonElement>(null)
+  const startDateBtnRef = useRef<HTMLButtonElement>(null)
+  const endDateBtnRef = useRef<HTMLButtonElement>(null)
   const statusBtnRef = useRef<HTMLButtonElement>(null)
   const priorityBtnRef = useRef<HTMLButtonElement>(null)
 
@@ -140,8 +142,12 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
     setIsPriorityDropdownOpen(false)
   }
 
-  const handleDeadlineChange = (deadline: string | undefined) => {
-    onUpdateTask({ ...task, deadline, updatedAt: Date.now() })
+  const handleStartDateChange = (startDate: string | undefined) => {
+    onUpdateTask({ ...task, startDate, date: startDate, updatedAt: Date.now() })
+  }
+
+  const handleEndDateChange = (endDate: string | undefined) => {
+    onUpdateTask({ ...task, endDate, deadline: endDate, updatedAt: Date.now() })
   }
 
   const handleContextSelect = (note: Note | null) => {
@@ -511,21 +517,24 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
                 </div>
               </div>
 
-              {/* Deadline / Prazo Row */}
+              {/* Start Date / Início Row */}
               <div className="grid grid-cols-[120px_1fr] items-center gap-2">
                 <span className="text-zinc-500 flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>Prazo</span>
+                  <span>Início</span>
                 </span>
                 <div className="relative inline-block">
                   <button
-                    ref={dateBtnRef}
+                    ref={startDateBtnRef}
                     type="button"
-                    onClick={() => setIsDatePickerOpen(o => !o)}
+                    onClick={() => {
+                      setIsStartDatePickerOpen(o => !o)
+                      setIsEndDatePickerOpen(false)
+                    }}
                     className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer font-mono text-zinc-300"
                   >
-                    <span>{task.deadline || 'Definir prazo...'}</span>
-                    {task.deadline && task.deadline.slice(0, 10) === todayStr && (
+                    <span>{task.startDate || task.date || 'Definir início...'}</span>
+                    {(task.startDate || task.date) && (task.startDate || task.date)!.slice(0, 10) === todayStr && (
                       <span
                         className="text-[9.5px] px-1.5 py-0.2 rounded font-medium font-sans"
                         style={{
@@ -538,12 +547,54 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
                     )}
                   </button>
 
-                  {isDatePickerOpen && (
+                  {isStartDatePickerOpen && (
                     <CustomDatePickerPopover
-                      value={task.deadline}
-                      anchorEl={dateBtnRef.current}
-                      onChange={handleDeadlineChange}
-                      onClose={() => setIsDatePickerOpen(false)}
+                      value={task.startDate || task.date}
+                      anchorEl={startDateBtnRef.current}
+                      onChange={handleStartDateChange}
+                      onClose={() => setIsStartDatePickerOpen(false)}
+                      align="left"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* End Date / Término Row */}
+              <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                <span className="text-zinc-500 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>Término</span>
+                </span>
+                <div className="relative inline-block">
+                  <button
+                    ref={endDateBtnRef}
+                    type="button"
+                    onClick={() => {
+                      setIsEndDatePickerOpen(o => !o)
+                      setIsStartDatePickerOpen(false)
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer font-mono text-zinc-300"
+                  >
+                    <span>{task.endDate || task.deadline || 'Definir término...'}</span>
+                    {(task.endDate || task.deadline) && (task.endDate || task.deadline)!.slice(0, 10) === todayStr && (
+                      <span
+                        className="text-[9.5px] px-1.5 py-0.2 rounded font-medium font-sans"
+                        style={{
+                          backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
+                          color: 'var(--accent, #c59b27)'
+                        }}
+                      >
+                        Hoje
+                      </span>
+                    )}
+                  </button>
+
+                  {isEndDatePickerOpen && (
+                    <CustomDatePickerPopover
+                      value={task.endDate || task.deadline}
+                      anchorEl={endDateBtnRef.current}
+                      onChange={handleEndDateChange}
+                      onClose={() => setIsEndDatePickerOpen(false)}
                       align="left"
                     />
                   )}

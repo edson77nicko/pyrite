@@ -61,7 +61,9 @@ export interface TaskItem {
   statusId: string
   priority: TaskPriority
   date?: string
+  startDate?: string
   deadline?: string
+  endDate?: string
   contextNoteId?: string
   contextNoteTitle?: string
   tags: string[]

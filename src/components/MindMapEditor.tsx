@@ -89,7 +89,7 @@ const SHAPES: { id: MindMapShape; label: string }[] = [
 ]
 
 const CANVAS_BG_OPTIONS = [
-  { id: '#121215', label: 'Pyrita Dark (Padrão)', isLight: false },
+  { id: '#121215', label: 'Pyrite Dark (Padrão)', isLight: false },
   { id: '#09090b', label: 'Dark Grafite', isLight: false },
   { id: '#0f172a', label: 'Slate Azulado', isLight: false },
   { id: '#1e293b', label: 'Cinza Escuro', isLight: false },

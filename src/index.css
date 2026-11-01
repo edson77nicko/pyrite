@@ -2230,5 +2230,30 @@ body {
   font-size: 17px !important;
 }
 
+/* =========================================================================
+   GANTT TIMELINE EM MODO CLARO
+   ========================================================================= */
+.light .gantt-container {
+  background-color: #f0f0f3 !important;
+}
+.light .gantt-header {
+  background-color: #ebebed !important;
+  border-color: #dcdde0 !important;
+  color: #27272a !important;
+}
+.light .gantt-weekend {
+  background-color: rgba(0, 0, 0, 0.03) !important;
+}
+.light .gantt-row {
+  border-color: #e4e4e7 !important;
+}
+.light .gantt-row:hover {
+  background-color: #f7f7fa !important;
+}
+.light .gantt-row.is-selected {
+  background-color: #ededf2 !important;
+}
+
+
 
 

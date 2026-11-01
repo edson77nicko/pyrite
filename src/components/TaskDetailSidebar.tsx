@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   X,
   Calendar,
-  Hourglass,
   Flag,
   Compass,
   ExternalLink,
@@ -222,11 +221,11 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   }
 
   const handleDateChange = (date: string | undefined) => {
-    onUpdateTask({ ...task, date, updatedAt: Date.now() })
+    onUpdateTask({ ...task, date, startDate: date, updatedAt: Date.now() })
   }
 
   const handleDeadlineChange = (deadline: string | undefined) => {
-    onUpdateTask({ ...task, deadline, updatedAt: Date.now() })
+    onUpdateTask({ ...task, deadline, endDate: deadline, updatedAt: Date.now() })
   }
 
   const handleContextSelect = (note: Note | null) => {
@@ -521,11 +520,11 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
             </div>
           </div>
 
-          {/* Date with Custom Date Picker floating via Portal */}
+          {/* Start Date / Início */}
           <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-xs relative">
             <div className="flex items-center gap-1.5 text-zinc-400">
               <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-              <span>Data</span>
+              <span>Início</span>
             </div>
             <div className="relative">
               <button
@@ -537,12 +536,12 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                 }}
                 className="w-full flex items-center justify-between bg-[#1b1b20] hover:bg-[#222228] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
               >
-                <span>{task.date || 'Definir data...'}</span>
+                <span>{task.startDate || task.date || 'Definir início...'}</span>
                 <Calendar className="w-3.5 h-3.5 text-zinc-500" />
               </button>
               {isDatePickerOpen && (
                 <CustomDatePickerPopover
-                  value={task.date}
+                  value={task.startDate || task.date}
                   onChange={handleDateChange}
                   onClose={() => setIsDatePickerOpen(false)}
                   anchorEl={dateBtnRef.current}
@@ -552,11 +551,11 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
             </div>
           </div>
 
-          {/* Deadline with Custom Date Picker floating via Portal */}
+          {/* End Date / Término */}
           <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-xs relative">
             <div className="flex items-center gap-1.5 text-zinc-400">
-              <Hourglass className="w-3.5 h-3.5 text-zinc-500" />
-              <span>Prazo</span>
+              <Calendar className="w-3.5 h-3.5 text-zinc-500" />
+              <span>Término</span>
             </div>
             <div className="relative flex items-center gap-1.5">
               <button
@@ -568,10 +567,10 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                 }}
                 className="flex-1 flex items-center justify-between bg-[#1b1b20] hover:bg-[#222228] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
               >
-                <span>{task.deadline || 'Definir prazo...'}</span>
-                <Hourglass className="w-3.5 h-3.5 text-zinc-500" />
+                <span>{task.endDate || task.deadline || 'Definir término...'}</span>
+                <Calendar className="w-3.5 h-3.5 text-zinc-500" />
               </button>
-              {task.deadline && task.deadline.slice(0, 10) === new Date().toISOString().slice(0, 10) && (
+              {(task.endDate || task.deadline) && (task.endDate || task.deadline)!.slice(0, 10) === new Date().toISOString().slice(0, 10) && (
                 <span
                   className="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
                   style={{
@@ -584,7 +583,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
               )}
               {isDeadlinePickerOpen && (
                 <CustomDatePickerPopover
-                  value={task.deadline}
+                  value={task.endDate || task.deadline}
                   onChange={handleDeadlineChange}
                   onClose={() => setIsDeadlinePickerOpen(false)}
                   anchorEl={deadlineBtnRef.current}

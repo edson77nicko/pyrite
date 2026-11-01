@@ -277,7 +277,6 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
     setCustomSkills(newSkills)
     try {
       localStorage.setItem('pyrite_agent_custom_skills_v1', JSON.stringify(newSkills))
-      localStorage.setItem('pyrita_agent_custom_skills_v1', JSON.stringify(newSkills))
     } catch (err) {
       console.error('Failed to save custom skills to localStorage', err)
     }
@@ -794,7 +793,6 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                               onSelectSpecialty(s.id)
                               try {
                                 localStorage.setItem('pyrite_ai_specialty', s.id)
-                                localStorage.setItem('pyrita_ai_specialty', s.id)
                               } catch {}
                             }}
                             className={`px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${

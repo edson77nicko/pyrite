@@ -7,6 +7,7 @@ import { Pill } from './TaskCustomPropertyField'
 import { TaskSettingsModal } from './TaskSettingsModal'
 import { TaskDocumentView } from './TaskDocumentView'
 import { TaskDetailSidebar } from './TaskDetailSidebar'
+import { TaskGanttView } from './TaskGanttView'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import {
   StatusBadge,
@@ -20,12 +21,13 @@ import {
   Plus,
   Settings,
   Search,
-  Hourglass,
+  Calendar,
   Flag,
   Compass,
   Trash2,
   List,
   Kanban,
+  GanttChart,
   SlidersHorizontal,
   ChevronDown,
   ChevronRight,
@@ -50,7 +52,7 @@ interface TasksViewProps {
   onOpenNote: (noteId: string) => void
 }
 
-type ViewMode = 'list' | 'kanban'
+type ViewMode = 'list' | 'kanban' | 'gantt'
 type KanbanGroupBy = string
 
 const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
@@ -568,6 +570,27 @@ export const TasksView: React.FC<TasksViewProps> = ({
               <Kanban className="w-3.5 h-3.5" />
               <span>Kanban</span>
             </button>
+
+            <button
+              onClick={() => setViewMode('gantt')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
+                viewMode === 'gantt'
+                  ? 'shadow-xs font-semibold'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              style={
+                viewMode === 'gantt'
+                  ? {
+                      backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                      color: 'var(--accent, #c59b27)'
+                    }
+                  : undefined
+              }
+              title="Visualização em Gantt"
+            >
+              <GanttChart className="w-3.5 h-3.5" />
+              <span>Gantt</span>
+            </button>
           </div>
 
           {/* Kanban column grouping setting */}
@@ -657,8 +680,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Main Content: Lista or Kanban */}
-      {viewMode === 'list' ? (
+      {/* 2. Main Content: Lista, Kanban ou Gantt */}
+      {viewMode === 'list' && (
         /* LIST / TABLE VIEW - Refined, subtle selection & expandable subtasks */
         <div className="flex-1 overflow-x-auto overflow-y-auto custom-chat-scrollbar p-0 bg-[#121215] rounded-bl-2xl">
           <table className="w-full text-left text-xs border-separate border-spacing-0 table-fixed min-w-full">
@@ -1060,7 +1083,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                     }
                                   }}
                                 >
-                                  <Hourglass className="w-3 h-3 text-zinc-500 shrink-0" />
+                                  <Calendar className="w-3 h-3 text-zinc-500 shrink-0" />
                                   <span className="text-[11px] font-mono shrink-0 whitespace-nowrap">{task.deadline}</span>
                                   {task.deadline.slice(0, 10) === todayStr && (
                                     <span
@@ -1307,8 +1330,23 @@ export const TasksView: React.FC<TasksViewProps> = ({
             </tbody>
           </table>
         </div>
-      ) : (
-        /* KANBAN BOARD VIEW - Distinct Contrast, Refined Header & Cards */
+      )}
+
+      {/* GANTT TIMELINE VIEW - Compact, high-density candles with full platform identity */}
+      {viewMode === 'gantt' && (
+        <TaskGanttView
+          tasks={filteredTasks}
+          settings={settings}
+          allNotes={_allNotes}
+          selectedTaskId={selectedTaskId || null}
+          onSelectTask={onSelectTask}
+          onUpdateTask={onUpdateTask}
+          onCreateTask={onCreateTask}
+        />
+      )}
+
+      {/* KANBAN BOARD VIEW - Distinct Contrast, Refined Header & Cards */}
+      {viewMode === 'kanban' && (
         <div className="flex-1 overflow-x-auto overflow-y-hidden custom-chat-scrollbar p-5 flex gap-4 items-start bg-[#121215] rounded-bl-2xl">
           {kanbanColumns.map(statusCol => {
                 const colTasks = filteredTasks.filter(t => getTaskColumnId(t) === statusCol.id)
@@ -1501,7 +1539,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               {/* Deadline - Never wraps */}
                               {task.deadline && (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-800/80 text-zinc-300 whitespace-nowrap">
-                                  <Hourglass className="w-2.5 h-2.5 text-zinc-500 shrink-0" />
+                                  <Calendar className="w-2.5 h-2.5 text-zinc-500 shrink-0" />
                                   <span className="font-mono shrink-0 whitespace-nowrap">{task.deadline}</span>
                                   {task.deadline.slice(0, 10) === todayStr && (
                                     <span

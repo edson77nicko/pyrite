@@ -78,9 +78,7 @@ async function run() {
 
   // Files to upload
   const releaseDir = path.join(__dirname, '..', 'release');
-  const exeCandidate = fs.existsSync(path.join(releaseDir, `Pyrite Setup ${version}.exe`))
-    ? path.join(releaseDir, `Pyrite Setup ${version}.exe`)
-    : path.join(releaseDir, `Pyrita Setup ${version}.exe`);
+  const exeCandidate = path.join(releaseDir, `Pyrite Setup ${version}.exe`);
 
   const filesToUpload = [
     {
