@@ -685,7 +685,7 @@ export const HtmlEditor: React.FC<HtmlEditorProps> = ({ note, onUpdateNote, them
                     key={refreshKey}
                     srcDoc={renderedContent}
                     title="HTML Preview Desktop"
-                    sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups"
+                    sandbox="allow-scripts allow-modals allow-forms allow-popups"
                     className="w-full h-full border-0 rounded-none m-0 p-0 block bg-white"
                   />
                 </div>
@@ -723,7 +723,7 @@ export const HtmlEditor: React.FC<HtmlEditorProps> = ({ note, onUpdateNote, them
                       key={refreshKey}
                       srcDoc={renderedContent}
                       title={`HTML Preview ${activeDeviceConfig.shortName}`}
-                      sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups"
+                      sandbox="allow-scripts allow-modals allow-forms allow-popups"
                       className="w-full h-full border-none bg-white"
                     />
                   </div>

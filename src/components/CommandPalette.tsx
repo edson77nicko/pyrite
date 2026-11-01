@@ -12,6 +12,7 @@ import {
   Palette,
   CheckCircle2,
   Brain,
+  Users,
   Sun,
   CodeXml
 } from 'lucide-react'
@@ -108,6 +109,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       subtitle: 'Gerenciar tarefas, propriedades e notas vinculadas',
       icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" />,
       action: () => onChangeViewMode('tasks')
+    },
+    {
+      id: 'cmd-open-agents',
+      title: 'Abrir Minha Equipe (Multiagentes & Propostas)',
+      subtitle: 'Gerenciar especialistas, notas por papel, propostas comerciais e rotinas',
+      icon: <Users className="w-4 h-4 text-[#c59b27]" />,
+      action: () => onChangeViewMode('agents')
     },
     {
       id: 'cmd-open-canvas',

@@ -79,8 +79,9 @@ export interface TabItem {
 export * from './draw'
 export * from './mindmap'
 export * from './tasks'
+export * from './agents'
 
-export type ViewMode = 'editor' | 'graph' | 'canvas' | 'tasks'
+export type ViewMode = 'editor' | 'graph' | 'canvas' | 'tasks' | 'agents'
 
 // Updated: Only Live Preview and Reading Mode (no split mode!)
 export type EditorDisplayMode = 'live' | 'reading'

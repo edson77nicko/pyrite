@@ -14,6 +14,8 @@ const electronAPI = {
   platform: process.platform,
   readCanvas: (vaultPath: string) => ipcRenderer.invoke('canvas:read', vaultPath),
   writeCanvas: (vaultPath: string, document: import('../src/utils/canvasBoards').CanvasDocument) => ipcRenderer.invoke('canvas:write', vaultPath, document),
+  readAgentsStore: (vaultPath: string) => ipcRenderer.invoke('agents:readStore', vaultPath) as Promise<import('../src/types/agents').MultiAgentStoreState | null>,
+  writeAgentsStore: (vaultPath: string, state: import('../src/types/agents').MultiAgentStoreState) => ipcRenderer.invoke('agents:writeStore', vaultPath, state) as Promise<{ success: boolean; revisionHash?: string; updatedAt?: number; error?: string }>,
   managePath: (params: { vaultPath: string; source: string; destination?: string; action: 'copy' | 'move' | 'delete' | 'open' }) => ipcRenderer.invoke('vault:managePath', params),
 
   // Window Controls
@@ -34,10 +36,10 @@ const electronAPI = {
   selectFolder: () => ipcRenderer.invoke('vault:selectFolder') as Promise<string | null>,
   readVault: (vaultPath: string) => ipcRenderer.invoke('vault:readVault', vaultPath) as Promise<VaultFileItem[]>,
   readFolders: (vaultPath: string) => ipcRenderer.invoke('vault:readFolders', vaultPath) as Promise<string[]>,
-  saveFile: (params: { vaultPath: string; folder: string; title: string; content: string; exclusive?: boolean; type?: string; filePath?: string }) =>
-    ipcRenderer.invoke('vault:saveFile', params) as Promise<{ success: boolean; filePath?: string; updatedAt?: number; error?: string }>,
-  deleteFile: (filePath: string) =>
-    ipcRenderer.invoke('vault:deleteFile', filePath) as Promise<{ success: boolean; error?: string }>,
+  saveFile: (params: { vaultPath: string; folder: string; title: string; content: string; exclusive?: boolean; type?: string; filePath?: string; expectedRevisionHash?: string }) =>
+    ipcRenderer.invoke('vault:saveFile', params) as Promise<{ success: boolean; filePath?: string; updatedAt?: number; revisionHash?: string; conflict?: boolean; currentRevisionHash?: string; error?: string }>,
+  deleteFile: (filePath: string, vaultPath?: string) =>
+    ipcRenderer.invoke('vault:deleteFile', filePath, vaultPath) as Promise<{ success: boolean; error?: string }>,
   createFolder: (params: { vaultPath: string; folderPath: string }) =>
     ipcRenderer.invoke('vault:createFolder', params) as Promise<{ success: boolean; error?: string }>,
   revealInExplorer: (filePath: string) => ipcRenderer.invoke('vault:revealInExplorer', filePath),

@@ -13,6 +13,7 @@ import {
   Palette,
   CheckCircle2,
   Brain,
+  Users,
   Sun,
   Moon
 } from 'lucide-react'
@@ -132,6 +133,20 @@ export const Ribbon: React.FC<RibbonProps> = ({
           title="Tarefas do Workspace"
         >
           <CheckCircle2 className="w-4 h-4" />
+        </button>
+
+        {/* Minha Equipe (Multiagentes, Propostas & Automações) */}
+        <button
+          onClick={() => onChangeView('agents')}
+          style={currentView === 'agents' ? { backgroundColor: 'var(--accent-subtle, var(--accent-glow-subtle))', color: 'var(--accent-icon, var(--accent))' } : undefined}
+          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
+            currentView === 'agents'
+              ? 'app-ribbon-active shadow-none'
+              : 'text-zinc-400 hover:text-[var(--accent-icon,var(--accent))] hover:bg-zinc-800/50'
+          }`}
+          title="Minha Equipe (Agentes, Especialistas e Propostas)"
+        >
+          <Users className="w-4 h-4" />
         </button>
 
         {/* Mapas Mentais */}

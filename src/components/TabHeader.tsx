@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   Pin,
   Brain,
+  Users,
   CodeXml
 } from 'lucide-react'
 
@@ -108,10 +109,11 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           const isGraphTab = tab.noteId === '__graph__'
           const isCanvasTab = tab.noteId === '__canvas__'
           const isTasksTab = tab.noteId === '__tasks__'
+          const isAgentsTab = tab.noteId === '__agents__'
           const isDrawTab = tab.type === 'draw'
           const isMindMapTab = tab.type === 'mindmap'
           const isHtmlTab = tab.type === 'html'
-          const TabIcon = isGraphTab ? Share2 : isTasksTab ? CheckCircle2 : isMindMapTab ? Brain : isHtmlTab ? CodeXml : (isCanvasTab || isDrawTab) ? Palette : FileText
+          const TabIcon = isGraphTab ? Share2 : isTasksTab ? CheckCircle2 : isAgentsTab ? Users : isMindMapTab ? Brain : isHtmlTab ? CodeXml : (isCanvasTab || isDrawTab) ? Palette : FileText
           const isBeingDragged = draggedTabId === tab.id
           const isDragTarget = dragOverTabId === tab.id && draggedTabId !== tab.id
 

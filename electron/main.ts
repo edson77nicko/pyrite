@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { autoUpdater } from 'electron-updater'
 import { createVaultLibrary } from './vaultLibrary'
 import { readCanvas, writeCanvas } from './canvasStorage'
+import { readMultiAgentStore, writeMultiAgentStore, resolveConfinedPath, computeContentHash } from './agentStorage'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -46,7 +47,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
+      sandbox: true,
     },
   })
 
@@ -123,14 +124,23 @@ ipcMain.handle('vault:selectFolder', async () => {
 })
 
 ipcMain.handle('vault:revealInExplorer', (_event, fullPath: string) => {
-  if (fs.existsSync(fullPath)) {
+  if (fullPath && path.isAbsolute(fullPath) && fs.existsSync(fullPath)) {
     shell.showItemInFolder(fullPath)
   }
 })
 
 ipcMain.handle('vault:openInExplorer', (_event, folderPath: string) => {
-  if (fs.existsSync(folderPath)) {
+  if (folderPath && path.isAbsolute(folderPath) && fs.existsSync(folderPath)) {
     shell.openPath(folderPath)
+  }
+})
+
+ipcMain.handle('agents:readStore', (_event, vaultPath: string) => readMultiAgentStore(vaultPath))
+ipcMain.handle('agents:writeStore', async (_event, vaultPath: string, state) => {
+  try {
+    return await writeMultiAgentStore(vaultPath, state)
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
   }
 })
 
@@ -404,37 +414,53 @@ ipcMain.handle('vault:importHtml', async (_event, { vaultPath, targetFolder }: {
   return { success: true, files: imported }
 })
 
-ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content, exclusive, type, filePath: explicitFilePath }: { vaultPath: string; folder: string; title: string; content: string; exclusive?: boolean; type?: string; filePath?: string }) => {
+ipcMain.handle('vault:saveFile', (_event, { vaultPath, folder, title, content, exclusive, type, filePath: explicitFilePath, expectedRevisionHash }: { vaultPath: string; folder: string; title: string; content: string; exclusive?: boolean; type?: string; filePath?: string; expectedRevisionHash?: string }) => {
   try {
     const safeTitle = title.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Sem título'
-    const targetDir = folder && folder !== 'Início' ? path.join(vaultPath, folder.replace(/\//g, path.sep)) : vaultPath
+    const rawTargetDir = folder && folder !== 'Início' ? path.join(vaultPath, folder.replace(/\//g, path.sep)) : vaultPath
+    const targetDir = resolveConfinedPath(vaultPath, rawTargetDir)
 
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true })
     }
 
-    let filePath = explicitFilePath
+    let filePath = explicitFilePath ? resolveConfinedPath(vaultPath, explicitFilePath) : undefined
     if (!filePath) {
       const isHtml = type === 'html' || safeTitle.toLowerCase().endsWith('.html') || safeTitle.toLowerCase().endsWith('.htm')
       const baseName = isHtml
         ? (safeTitle.toLowerCase().endsWith('.html') || safeTitle.toLowerCase().endsWith('.htm') ? safeTitle : `${safeTitle}.html`)
         : `${safeTitle}.md`
-      filePath = path.join(targetDir, baseName)
+      filePath = resolveConfinedPath(vaultPath, path.join(targetDir, baseName))
+    }
+
+    if (expectedRevisionHash && fs.existsSync(filePath)) {
+      const currentDiskContent = fs.readFileSync(filePath, 'utf-8')
+      const currentHash = computeContentHash(currentDiskContent)
+      if (currentHash !== expectedRevisionHash) {
+        return {
+          success: false,
+          conflict: true,
+          currentRevisionHash: currentHash,
+          error: 'Conflito de revisão: o arquivo foi modificado externamente ou por outra execução.'
+        }
+      }
     }
 
     fs.writeFileSync(filePath, content, { encoding: 'utf-8', flag: exclusive ? 'wx' : 'w' })
     const stats = fs.statSync(filePath)
-    return { success: true, filePath, updatedAt: stats.mtimeMs }
+    const revisionHash = computeContentHash(content)
+    return { success: true, filePath, updatedAt: stats.mtimeMs, revisionHash }
   } catch (err: any) {
     console.error('Failed to save file to vault:', err)
     return { success: false, error: err.message }
   }
 })
 
-ipcMain.handle('vault:deleteFile', async (_event, filePath: string) => {
+ipcMain.handle('vault:deleteFile', async (_event, filePath: string, vaultPath?: string) => {
   try {
-    if (fs.existsSync(filePath)) {
-      await shell.trashItem(filePath)
+    const checkedPath = vaultPath ? resolveConfinedPath(vaultPath, filePath) : path.resolve(filePath)
+    if (fs.existsSync(checkedPath)) {
+      await shell.trashItem(checkedPath)
       return { success: true }
     }
     return { success: false, error: 'File not found' }
@@ -446,7 +472,7 @@ ipcMain.handle('vault:deleteFile', async (_event, filePath: string) => {
 
 ipcMain.handle('vault:createFolder', (_event, { vaultPath, folderPath }: { vaultPath: string; folderPath: string }) => {
   try {
-    const targetDir = path.join(vaultPath, folderPath.replace(/\//g, path.sep))
+    const targetDir = resolveConfinedPath(vaultPath, path.join(vaultPath, folderPath.replace(/\//g, path.sep)))
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true })
     }
@@ -522,9 +548,13 @@ ipcMain.handle('updater:quitAndInstall', () => {
 // IPC: Secure AI Storage & LLM Chat Handlers
 // ==========================================
 
+// Memoria somente na sessao quando criptografia do SO (safeStorage) estiver indisponivel (P0)
+const sessionMemoryApiKeys = new Map<string, string>()
+
 interface StoredAiConfig {
   encryptedKey?: string
   isEncrypted?: boolean
+  sessionOnly?: boolean
   model: string
   multimodal: boolean
   updatedAt: number
@@ -613,9 +643,14 @@ ipcMain.handle('ai:saveConfig', async (_event, params: {
         const encrypted = safeStorage.encryptString(key)
         entry.encryptedKey = encrypted.toString('base64')
         entry.isEncrypted = true
+        entry.sessionOnly = false
+        sessionMemoryApiKeys.delete(p)
       } else {
-        entry.encryptedKey = Buffer.from(key, 'utf-8').toString('base64')
+        // P0: Nunca gravar chave em base64 no disco quando safeStorage indisponível; manter somente na sessão em memória
+        delete entry.encryptedKey
         entry.isEncrypted = false
+        entry.sessionOnly = true
+        sessionMemoryApiKeys.set(p, key)
       }
     } catch (err: any) {
       console.error('[AI Storage] Encryption error:', err)
@@ -632,10 +667,11 @@ ipcMain.handle('ai:getAllConfigs', async () => {
   const summary: Record<string, { model: string; multimodal: boolean; hasKey: boolean; isEncrypted: boolean }> = {}
 
   for (const [key, val] of Object.entries(creds.providers || {})) {
+    const hasMemoryKey = sessionMemoryApiKeys.has(key)
     summary[key] = {
       model: val.model,
       multimodal: !!val.multimodal,
-      hasKey: !!val.encryptedKey && val.encryptedKey.length > 0,
+      hasKey: (!!val.encryptedKey && val.encryptedKey.length > 0) || hasMemoryKey,
       isEncrypted: !!val.isEncrypted
     }
   }
@@ -649,9 +685,11 @@ ipcMain.handle('ai:getAllConfigs', async () => {
 ipcMain.handle('ai:deleteKey', async (_event, provider: string) => {
   const creds = readAiCredentials()
   const p = (provider || '').toLowerCase()
+  sessionMemoryApiKeys.delete(p)
   if (creds.providers?.[p]) {
     delete creds.providers[p].encryptedKey
     delete creds.providers[p].isEncrypted
+    delete creds.providers[p].sessionOnly
     saveAiCredentials(creds)
   }
   return { success: true }
@@ -666,22 +704,25 @@ ipcMain.handle('ai:chat', async (_event, params: {
   const creds = readAiCredentials()
   const p = (params.provider || creds.activeProvider || 'openrouter').toLowerCase()
   const entry = creds.providers?.[p]
+  const memoryKey = sessionMemoryApiKeys.get(p)
 
-  if (!entry?.encryptedKey && p !== 'ollama') {
+  if (!entry?.encryptedKey && !memoryKey && p !== 'ollama') {
     return {
       success: false,
       error: `Chave de API não configurada para o provedor ${p.toUpperCase()}. Abra as configurações de IA para adicionar sua chave.`
     }
   }
 
-  let apiKey = ''
-  if (entry?.encryptedKey) {
+  let apiKey = memoryKey || ''
+  if (!apiKey && entry?.encryptedKey) {
     try {
       if (entry.isEncrypted && safeStorage.isEncryptionAvailable()) {
         const buf = Buffer.from(entry.encryptedKey, 'base64')
         apiKey = safeStorage.decryptString(buf)
-      } else {
+      } else if (!entry.isEncrypted) {
         apiKey = Buffer.from(entry.encryptedKey, 'base64').toString('utf-8')
+      } else {
+        return { success: false, error: 'Criptografia do sistema indisponível para recuperar a chave salva.' }
       }
     } catch (err: any) {
       return { success: false, error: 'Falha ao descriptografar a chave do Windows DPAPI: ' + err.message }

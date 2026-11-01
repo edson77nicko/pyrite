@@ -10,6 +10,8 @@ export interface VaultFileItem {
 export interface ElectronAPI {
   readCanvas: (vaultPath: string) => Promise<import('../utils/canvasBoards').CanvasDocument | null>
   writeCanvas: (vaultPath: string, document: import('../utils/canvasBoards').CanvasDocument) => Promise<{ success: boolean; error?: string }>
+  readAgentsStore?: (vaultPath: string) => Promise<import('./agents').MultiAgentStoreState | null>
+  writeAgentsStore?: (vaultPath: string, state: import('./agents').MultiAgentStoreState) => Promise<{ success: boolean; revisionHash?: string; updatedAt?: number; error?: string }>
   managePath: (params: { vaultPath: string; source: string; destination?: string; action: 'copy' | 'move' | 'delete' | 'open' }) => Promise<{ success: boolean; error?: string }>
   isElectron: boolean
   platform?: string
@@ -30,8 +32,9 @@ export interface ElectronAPI {
     exclusive?: boolean
     type?: string
     filePath?: string
-  }) => Promise<{ success: boolean; filePath?: string; updatedAt?: number; error?: string }>
-  deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
+    expectedRevisionHash?: string
+  }) => Promise<{ success: boolean; filePath?: string; updatedAt?: number; revisionHash?: string; conflict?: boolean; currentRevisionHash?: string; error?: string }>
+  deleteFile: (filePath: string, vaultPath?: string) => Promise<{ success: boolean; error?: string }>
   createFolder: (params: { vaultPath: string; folderPath: string }) => Promise<{ success: boolean; error?: string }>
   revealInExplorer: (filePath: string) => Promise<void>
   openInExplorer: (folderPath: string) => Promise<void>

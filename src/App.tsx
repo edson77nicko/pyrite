@@ -1,6 +1,6 @@
 import type { SidebarAction } from './components/SidebarMenu'
 import React, { useState, useEffect } from 'react'
-import type { Note, NoteType, ViewMode, EditorDisplayMode, TabItem, AppSettings, TaskItem, TaskSettings, TaskBoard } from './types'
+import type { Note, NoteType, ViewMode, EditorDisplayMode, TabItem, AppSettings, TaskItem, TaskSettings, TaskBoard, MultiAgentStoreState, ContextRole } from './types'
 import {
   loadNotes,
   saveNotes,
@@ -11,6 +11,7 @@ import {
 import { createEmptyDrawDocument, isDrawContent, serializeDrawDocument } from './utils/drawUtils'
 import { createEmptyMindMapDocument, isMindMapContent, parseMindMapDocument, serializeMindMapDocument } from './utils/mindMapUtils'
 import { loadTasks, saveTasks, loadTaskSettings, saveTaskSettings, DEFAULT_BOARDS } from './utils/taskStorage'
+import { loadMultiAgentStoreSync, saveMultiAgentStore } from './utils/multiAgentEngine'
 import { Ribbon } from './components/Ribbon'
 import { TabHeader } from './components/TabHeader'
 import { Sidebar } from './components/Sidebar'
@@ -22,6 +23,7 @@ import { HtmlEditor } from './components/HtmlEditor'
 import { GraphView } from './components/GraphView'
 import { CanvasView } from './components/CanvasView'
 import { TasksView } from './components/TasksView'
+import { MyTeamView } from './components/MyTeamView'
 import { CommandPalette } from './components/CommandPalette'
 import { AiAssistant } from './components/AiAssistant'
 import { StatusBar } from './components/StatusBar'
@@ -119,6 +121,14 @@ export const App: React.FC = () => {
 
       setTasks(loadTasks(currentPath))
       setTaskSettings(loadTaskSettings(currentPath))
+      if (api.readAgentsStore) {
+        const diskStore = await api.readAgentsStore(currentPath)
+        if (diskStore && diskStore.agents?.length) {
+          setAgentStore(diskStore)
+        } else {
+          setAgentStore(loadMultiAgentStoreSync(currentPath))
+        }
+      }
     } catch (err) {
       console.error('Error refreshing vault:', err)
     }
@@ -208,6 +218,15 @@ export const App: React.FC = () => {
   const [taskSettings, setTaskSettings] = useState<TaskSettings>(() => loadTaskSettings(vaultPath || 'default'))
   const [activeBoardId, setActiveBoardId] = useState<string>('default')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+
+  // Multi-Agent & Team Store State
+  const [agentStore, setAgentStore] = useState<MultiAgentStoreState>(() => loadMultiAgentStoreSync(vaultPath || 'default'))
+  const [preselectedNoteForBinding, setPreselectedNoteForBinding] = useState<{ noteId: string; role: ContextRole } | null>(null)
+
+  const handleUpdateAgentStore = async (nextStore: MultiAgentStoreState) => {
+    setAgentStore(nextStore)
+    return await saveMultiAgentStore(nextStore, vaultPath)
+  }
 
   const taskBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
 
@@ -431,6 +450,24 @@ export const App: React.FC = () => {
       return
     }
 
+    if (view === 'agents') {
+      setTabs(prev => {
+        const existing = prev.find(t => t.noteId === '__agents__')
+        if (existing) {
+          setActiveTabId(existing.id)
+          return prev
+        }
+        const agentsTab: TabItem = {
+          id: 'tab_agents',
+          noteId: '__agents__',
+          title: 'Minha Equipe'
+        }
+        setActiveTabId(agentsTab.id)
+        return [...prev, agentsTab]
+      })
+      return
+    }
+
     // Switching back to editor: activate current note's tab
     const noteTab = tabs.find(t => t.noteId === currentNoteId)
     if (noteTab) {
@@ -462,9 +499,9 @@ export const App: React.FC = () => {
       }
       setActiveTabId(newTab.id)
 
-      // If exceeding MAX_TABS, evict the oldest regular note tab (never evict Graph, Canvas or Tasks tabs!)
+      // If exceeding MAX_TABS, evict the oldest regular note tab (never evict Graph, Canvas, Tasks or Agents tabs!)
       if (prev.length >= MAX_TABS) {
-        const firstNoteIdx = prev.findIndex(t => t.noteId !== '__graph__' && t.noteId !== '__canvas__' && t.noteId !== '__tasks__')
+        const firstNoteIdx = prev.findIndex(t => t.noteId !== '__graph__' && t.noteId !== '__canvas__' && t.noteId !== '__tasks__' && t.noteId !== '__agents__')
         if (firstNoteIdx !== -1) {
           const next = [...prev]
           next.splice(firstNoteIdx, 1)
@@ -487,6 +524,8 @@ export const App: React.FC = () => {
       setCurrentView('canvas')
     } else if (tab.noteId === '__tasks__') {
       setCurrentView('tasks')
+    } else if (tab.noteId === '__agents__') {
+      setCurrentView('agents')
     } else {
       setCurrentNoteId(tab.noteId)
       setCurrentView('editor')
@@ -514,6 +553,8 @@ export const App: React.FC = () => {
         setCurrentView('canvas')
       } else if (nextTab.noteId === '__tasks__') {
         setCurrentView('tasks')
+      } else if (nextTab.noteId === '__agents__') {
+        setCurrentView('agents')
       } else {
         setCurrentNoteId(nextTab.noteId)
         setCurrentView('editor')
@@ -923,7 +964,7 @@ export const App: React.FC = () => {
 
     // Electron disk deletion (moves to Windows trash/recycle bin)
     if (window.electronAPI?.isElectron && noteToDelete?.filePath) {
-      window.electronAPI.deleteFile(noteToDelete.filePath)
+      window.electronAPI.deleteFile(noteToDelete.filePath, vaultPath || undefined)
     }
 
     if (currentNoteId === noteId) {
@@ -1503,6 +1544,10 @@ export const App: React.FC = () => {
                     settings={settings}
                     isRightSidebarOpen={isRightSidebarOpen}
                     onToggleRightSidebar={() => setIsRightSidebarOpen(o => !o)}
+                    onUseNoteWithAgent={(noteId, role) => {
+                      setPreselectedNoteForBinding({ noteId, role })
+                      handleChangeView('agents')
+                    }}
                   />
                 )
               )}
@@ -1548,10 +1593,75 @@ export const App: React.FC = () => {
                   onOpenNote={(noteId: string) => handleSelectNote(noteId)}
                 />
               )}
+
+              {currentView === 'agents' && (
+                <MyTeamView
+                  store={agentStore}
+                  onUpdateStore={handleUpdateAgentStore}
+                  notes={notes}
+                  folders={folders}
+                  vaultPath={vaultPath}
+                  onOpenNote={(noteId: string) => handleSelectNote(noteId)}
+                  onCreateCommittedNote={async ({ folder, title, content, type = 'note' }) => {
+                    const targetFolder = folder || 'Propostas'
+                    const isMind = type === 'mindmap' || isMindMapContent(content)
+                    const finalContent = isMind
+                      ? serializeMindMapDocument(parseMindMapDocument(content, title))
+                      : content
+
+                    let filePath: string | undefined
+                    let revisionHash: string | undefined
+
+                    if (window.electronAPI?.isElectron && vaultPath) {
+                      const res = await window.electronAPI.saveFile({
+                        vaultPath,
+                        folder: targetFolder,
+                        title,
+                        content: finalContent,
+                        type: isMind ? 'mindmap' : type
+                      })
+                      if (!res.success) {
+                        return { success: false, error: res.error || 'Falha ao gravar arquivo no cofre.' }
+                      }
+                      filePath = res.filePath
+                      revisionHash = res.revisionHash
+                    }
+
+                    const newNote: Note = {
+                      id: `${type}_${Date.now()}`,
+                      title,
+                      content: finalContent,
+                      folder: targetFolder,
+                      filePath,
+                      tags: isMind ? ['mindmap', 'escopo'] : ['proposta', 'comercial'],
+                      type: isMind ? 'mindmap' : type,
+                      createdAt: Date.now(),
+                      updatedAt: Date.now()
+                    }
+
+                    setNotes(prev => {
+                      const next = [newNote, ...prev]
+                      saveNotes(next)
+                      return next
+                    })
+                    setFolders(prev => {
+                      if (prev.includes(targetFolder)) return prev
+                      const next = [...prev, targetFolder]
+                      saveFolders(next)
+                      return next
+                    })
+
+                    return { success: true, note: newNote, filePath, revisionHash }
+                  }}
+                  onCreateTask={handleCreateTask}
+                  preselectedNoteForBinding={preselectedNoteForBinding}
+                  onClearPreselectedNote={() => setPreselectedNoteForBinding(null)}
+                />
+              )}
             </div>
 
             {/* Right Sidebar (Backlinks, Outline, Tags) - Height limited to page below header */}
-            {currentView !== 'tasks' && (
+            {currentView !== 'tasks' && currentView !== 'agents' && (
               <RightSidebar
                 currentNote={currentNote}
                 allNotes={notes}

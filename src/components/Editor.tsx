@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import type { Note, EditorDisplayMode, AppSettings } from '../types'
+import type { Note, EditorDisplayMode, AppSettings, ContextRole } from '../types'
 import { LivePreviewEditor, type LivePreviewEditorHandle } from './LivePreviewEditor'
 import { DocumentOutlineRail } from './DocumentOutlineRail'
 import {
@@ -14,7 +14,8 @@ import {
   Tag,
   Folder,
   Table,
-  PanelRight
+  PanelRight,
+  Users
 } from 'lucide-react'
 
 interface EditorProps {
@@ -26,6 +27,7 @@ interface EditorProps {
   settings: AppSettings
   isRightSidebarOpen?: boolean
   onToggleRightSidebar?: () => void
+  onUseNoteWithAgent?: (noteId: string, role: ContextRole) => void
 }
 
 export const Editor: React.FC<EditorProps> = ({
@@ -36,10 +38,12 @@ export const Editor: React.FC<EditorProps> = ({
   onNavigate,
   settings,
   isRightSidebarOpen = false,
-  onToggleRightSidebar
+  onToggleRightSidebar,
+  onUseNoteWithAgent
 }) => {
   const [content, setContent] = useState(note.content)
   const [title, setTitle] = useState(note.title)
+  const [isAgentRoleMenuOpen, setIsAgentRoleMenuOpen] = useState(false)
   const liveEditorRef = useRef<LivePreviewEditorHandle>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
@@ -133,6 +137,48 @@ export const Editor: React.FC<EditorProps> = ({
               <button onClick={handleFormatCode} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Bloco de Código">
                 <Code className="w-3.5 h-3.5" />
               </button>
+            </div>
+          )}
+
+          {/* Action: "Usar com um agente" (Seção 3) */}
+          {onUseNoteWithAgent && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsAgentRoleMenuOpen(v => !v)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-700/70 bg-zinc-900/60 hover:border-[#c59b27]/60 text-zinc-300 hover:text-white transition-all cursor-pointer text-[11px] font-medium"
+                title="Definir o papel desta nota e usá-la com um agente da equipe"
+              >
+                <Users className="w-3.5 h-3.5 text-[#c59b27]" />
+                <span>Usar com um agente</span>
+              </button>
+
+              {isAgentRoleMenuOpen && (
+                <div className="absolute right-0 mt-1.5 w-64 bg-[#14141b] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 z-40 text-xs space-y-1">
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                    Escolha o papel desta nota:
+                  </div>
+                  {[
+                    { role: 'template' as ContextRole, label: 'Modelo a seguir', desc: 'Preservar estrutura e criar novo doc' },
+                    { role: 'permanent_ref' as ContextRole, label: 'Referência permanente', desc: 'Catálogo, regras e preços fixos' },
+                    { role: 'project_context' as ContextRole, label: 'Contexto do cliente/projeto', desc: 'Briefing e escopo deste cliente' },
+                    { role: 'request_context' as ContextRole, label: 'Contexto deste pedido', desc: 'Anexar apenas nesta execução' }
+                  ].map(opt => (
+                    <button
+                      key={opt.role}
+                      type="button"
+                      onClick={() => {
+                        setIsAgentRoleMenuOpen(false)
+                        onUseNoteWithAgent(note.id, opt.role)
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
+                    >
+                      <div className="font-semibold text-zinc-100">{opt.label}</div>
+                      <div className="text-[10px] text-zinc-400">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

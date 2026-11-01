@@ -39,6 +39,121 @@ export function stripDuplicateTitleFromContent(content: string, title?: string):
 
 export const INITIAL_NOTES: Note[] = [
   {
+    id: 'note-proposal-template',
+    title: 'Modelo de Proposta Comercial',
+    folder: 'Comercial',
+    tags: ['proposta', 'modelo', 'comercial'],
+    createdAt: Date.now() - 3600000 * 30,
+    updatedAt: Date.now() - 3600000 * 5,
+    content: `# Proposta Comercial — {{CLIENTE}}
+
+**Data:** {{DATA}}  
+**Validade da Proposta:** 15 dias  
+**Projeto:** {{PROJETO}}
+
+---
+
+## 1. Contexto e Objetivo
+{{OBJETIVO}}
+
+## 2. Escopo e Entregáveis
+{{ESCOPO}}
+
+## 3. Investimento e Condições Comerciais
+{{TABELA_PRECOS}}
+
+**Condições de Pagamento:** {{CONDICOES_PAGAMENTO}}  
+**Prazo Estimado de Entrega:** {{PRAZO}}
+
+## 4. Exclusões de Escopo (Trecho Fixo)
+<!-- FIXED_SECTION_START -->
+- Não estão inclusos custos de licenciamento de softwares de terceiros, hospedagem em nuvem, taxas de registro de domínio ou compra de bancos de imagens/fontes pagas.
+- Alterações estruturais solicitadas após a aprovação formal da etapa correspondente serão orçadas separadamente mediante aditivo.
+<!-- FIXED_SECTION_END -->
+
+## 5. Termos e Confidencialidade (Trecho Fixo)
+<!-- FIXED_SECTION_START -->
+Todas as informações compartilhadas entre as partes durante a elaboração e execução deste projeto são tratadas sob estrito sigilo comercial e conformidade com a LGPD.
+<!-- FIXED_SECTION_END -->
+`
+  },
+  {
+    id: 'note-services-catalog',
+    title: 'Catálogo de Serviços e Preços',
+    folder: 'Comercial',
+    tags: ['catalogo', 'precos', 'servicos', 'comercial'],
+    createdAt: Date.now() - 3600000 * 28,
+    updatedAt: Date.now() - 3600000 * 4,
+    content: `# Catálogo Oficial de Serviços
+
+Tabela de referência permanente para elaboração de propostas comerciais.
+
+| Serviço | Descrição | Preço Base (R$) | Prazo Base |
+| --- | --- | --- | --- |
+| Criação de Site Institucional | Design responsivo até 6 páginas, SEO técnico inicial e painel CMS | 4500.00 | 3 semanas |
+| Loja Virtual (E-commerce) | Catálogo de produtos, carrinho, integração de frete e gateway de pagamento | 8200.00 | 5 semanas |
+| Landing Page de Alta Conversão | Página única focada em captação de leads com copywriting e testes A/B | 2400.00 | 10 dias |
+| Manutenção Mensal & Suporte | Atualizações de segurança, backup semanal, monitoramento e até 4h de ajustes/mês | 650.00 | Mensal |
+| Identidade Visual & UI Kit | Logotipo, paleta tipográfica e guia de componentes visuais no Figma | 3200.00 | 2 semanas |
+`
+  },
+  {
+    id: 'note-commercial-rules',
+    title: 'Regras Comerciais e Descontos',
+    folder: 'Comercial',
+    tags: ['regras', 'comercial', 'descontos', 'politica'],
+    createdAt: Date.now() - 3600000 * 27,
+    updatedAt: Date.now() - 3600000 * 3,
+    content: `# Política Comercial e Regras de Negociação
+
+1. **Desconto à Vista (PIX):** Até **10% de desconto** sobre o valor de implementação (não aplicável à mensalidade de manutenção).
+2. **Desconto para Combo (Site/Loja + Manutenção Anual):** **5% de desconto** no setup inicial ao contratar manutenção mensal.
+3. **Parcelamento Máximo:** Até **6x sem juros** para projetos acima de R$ 4.000,00 ou até **3x sem juros** para valores menores.
+4. **Entrada Obrigatória:** Mínimo de 40% na aprovação da proposta e 60% na entrega ou parcelado.
+5. **Informações Obrigatórias no Briefing:**
+   - Nome do cliente ou empresa
+   - Escopo desejado (tipo de site/sistema e volume estimado)
+   - Prazo esperado ou urgência
+   - Condição de pagamento ou necessidade de manutenção mensal
+`
+  },
+  {
+    id: 'note-briefing-joao',
+    title: 'Briefing - João Silva (Construtora Horizonte)',
+    folder: 'Clientes',
+    tags: ['cliente', 'briefing', 'joao', 'site'],
+    createdAt: Date.now() - 3600000 * 16,
+    updatedAt: Date.now() - 3600000 * 2,
+    content: `# Briefing do Cliente: João Silva — Construtora Horizonte
+
+- **Cliente:** João Silva (Construtora Horizonte)
+- **Objetivo:** Novo site institucional moderno para apresentar o portfólio de obras comerciais e captar orçamentos pelo WhatsApp.
+- **Itens solicitados:**
+  - Criação de Site Institucional (5 páginas: Home, Sobre, Obras Realizadas, Certificações, Contato)
+  - Manutenção Mensal & Suporte contínuo
+- **Prazo desejado:** 3 a 4 semanas
+- **Condição preferida:** Parcelado em 3x sem juros ou Combo com manutenção mensal (5% de desconto)
+`
+  },
+  {
+    id: 'note-briefing-maria',
+    title: 'Briefing - Maria Oliveira (Atelier Botânico)',
+    folder: 'Clientes',
+    tags: ['cliente', 'briefing', 'maria', 'ecommerce'],
+    createdAt: Date.now() - 3600000 * 14,
+    updatedAt: Date.now() - 3600000 * 1,
+    content: `# Briefing do Cliente: Maria Oliveira — Atelier Botânico
+
+- **Cliente:** Maria Oliveira (Atelier Botânico)
+- **Objetivo:** Lançar loja virtual própria para venda de arranjos autorais e kits de jardinagem com cálculo de frete local e nacional.
+- **Itens solicitados:**
+  - Loja Virtual (E-commerce)
+  - Identidade Visual & UI Kit
+- **Prazo desejado:** 6 semanas
+- **Condição preferida:** Pagamento à vista no PIX (10% de desconto)
+`
+  },
+  {
     id: 'note-welcome',
     title: 'Bem-vindo ao Pyrite',
     folder: 'Início',
@@ -259,7 +374,7 @@ Quando o container externo e a subsuperfície interna seguem rigorosamente a reg
   }
 ]
 
-export const INITIAL_FOLDERS = ['Início', 'Engenharia', 'Metodologia', 'Criatividade', 'Inovação', 'Quizzes', 'Design System']
+export const INITIAL_FOLDERS = ['Início', 'Comercial', 'Clientes', 'Propostas', 'Engenharia', 'Metodologia', 'Criatividade', 'Inovação', 'Quizzes', 'Design System']
 
 export function loadNotes(): Note[] {
   try {
@@ -305,6 +420,23 @@ export function loadNotes(): Note[] {
         cleaned[quizIndex] = targetQuiz
         saveNotes(cleaned)
         return cleaned
+      }
+
+      const commercialSeedIds = [
+        'note-proposal-template',
+        'note-services-catalog',
+        'note-commercial-rules',
+        'note-briefing-joao',
+        'note-briefing-maria'
+      ]
+      for (const seedId of commercialSeedIds) {
+        if (!cleaned.some(n => n.id === seedId)) {
+          const seedNote = INITIAL_NOTES.find(n => n.id === seedId)
+          if (seedNote) {
+            cleaned.unshift(seedNote)
+            modified = true
+          }
+        }
       }
 
       if (modified) {
