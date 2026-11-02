@@ -6,9 +6,7 @@ import type {
   TeamEdge,
   TeamMemberNode
 } from '../types/agents'
-import { ROLE_LABELS, generateAgentDraftFromPrompt } from '../utils/multiAgentEngine'
 import {
-  DIAGRAM_NODE_WIDTH,
   snapDiagramCoord,
   diagramInputPort,
   diagramOutputPort,
@@ -24,20 +22,27 @@ import {
   Plus,
   Trash2,
   Play,
-  FlaskConical,
   ZoomIn,
   ZoomOut,
   Maximize2,
-  List,
-  LayoutGrid,
-  Users,
-  Crown,
-  PanelRight,
-  MessageSquare,
   X,
-  Send,
-  Sparkles,
-  Minus
+  Crown,
+  Bot,
+  ShieldCheck,
+  Search,
+  MousePointer,
+  Hand,
+  ChevronDown,
+  ArrowLeft,
+  ArrowRight,
+  MessageSquare,
+  Map,
+  PanelRight,
+  FileText,
+  Image as ImageIcon,
+  StickyNote,
+  Shapes,
+  Type
 } from 'lucide-react'
 
 interface TeamCanvasEditorProps {
@@ -54,34 +59,38 @@ interface TeamCanvasEditorProps {
   isExecuting: boolean
 }
 
-const RELATION_LABELS: Record<TeamEdge['relation'], { label: string; color: string }> = {
-  delegates_to: { label: 'Delega subtarefa', color: '#c59b27' },
+const RELATION_META: Record<TeamEdge['relation'], { label: string; color: string }> = {
+  delegates_to: { label: 'Delega subtarefa', color: '#f59e0b' },
   reviews_output: { label: 'Revisa entrega', color: '#10b981' },
-  depends_on: { label: 'Depende de', color: '#06b6d4' }
+  depends_on: { label: 'Depende de', color: '#3b82f6' }
 }
+
+const AGENT_COLORS = ['#2563eb', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4']
 
 export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
   teams,
   agents,
-  notes = [],
+  notes: _notes = [],
   selectedTeamId,
   onSelectTeam,
   onSaveTeam,
   onDeleteTeam,
   onRunTeam,
-  onCreateAgentInline,
   onOpenAgentChat,
   isExecuting
 }) => {
   const activeTeam = teams.find(t => t.id === selectedTeamId) || teams[0]
-  const [viewMode, setViewMode] = useState<'canvas' | 'list'>('canvas')
   const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 48, y: 48 })
+  const [pan, setPan] = useState({ x: 80, y: 60 })
+  const [toolMode, setToolMode] = useState<'pointer' | 'hand'>('pointer')
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [isTeamMenuOpen, setIsTeamMenuOpen] = useState(false)
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false)
+  const [memberSearchQuery, setMemberSearchQuery] = useState('')
   const [connectionRelation, setConnectionRelation] = useState<TeamEdge['relation']>('delegates_to')
-  const [testPrompt, setTestPrompt] = useState(
+  const [teamPrompt, setTeamPrompt] = useState(
     'Monte proposta comercial completa, cronograma de tarefas, mapa mental de escopo e revisão de consistência para o cliente.'
   )
 
@@ -98,36 +107,12 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
     panY: 0
   })
 
-  // Interactive port-to-port wire dragging (OpenBot DiagramBoard pattern)
+  // Port wire dragging
   const [wireDraft, setWireDraft] = useState<{
     fromNodeId: string
     toWorld: { x: number; y: number }
     hoveredTargetId: string | null
   } | null>(null)
-
-  // Right-click canvas menu (OpenBot DiagramCanvasMenu + DiagramNewAgentCard pattern)
-  const [canvasMenu, setCanvasMenu] = useState<{
-    screenX: number
-    screenY: number
-    worldX: number
-    worldY: number
-    creatingNewAgent?: boolean
-  } | null>(null)
-  const [newAgentName, setNewAgentName] = useState('')
-  const [newAgentPrompt, setNewAgentPrompt] = useState('')
-
-  // Floating DiagramChatPanel (OpenBot DiagramChatPanel pattern)
-  const [chatOpen, setChatOpen] = useState(false)
-  const [chatInput, setChatInput] = useState('')
-  const [chatMessages, setChatMessages] = useState<
-    { id: string; sender: 'user' | 'assistant'; text: string }[]
-  >([
-    {
-      id: 'welcome',
-      sender: 'assistant',
-      text: 'Clique com o botão direito em qualquer ponto do canvas para adicionar um agente na posição do cursor, ou arraste da porta direita (●) de um card até a porta esquerda de outro para conectá-los.'
-    }
-  ])
 
   const viewportRef = useRef<HTMLDivElement>(null)
 
@@ -136,7 +121,7 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
   const selectedNode = activeTeam.nodes.find(n => n.id === selectedNodeId)
   const selectedNodeAgent = selectedNode ? agents.find(a => a.id === selectedNode.agentId) : undefined
 
-  // Reachability from coordinator (identifies disconnected nodes visually like OpenBot's "Unconnected")
+  // Reachability from coordinator
   const reachableFromCoordinator = useMemo(() => {
     const coordNodes = activeTeam.nodes.filter(
       n => n.roleInTeam === 'coordinator' || n.agentId === activeTeam.coordinatorAgentId
@@ -154,7 +139,7 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
 
   const screenToWorld = (clientX: number, clientY: number) => {
     const rect = viewportRef.current?.getBoundingClientRect()
-    if (!rect) return { x: 160, y: 160 }
+    if (!rect) return { x: 200, y: 160 }
     return {
       x: (clientX - rect.left - pan.x) / zoom,
       y: (clientY - rect.top - pan.y) / zoom
@@ -166,7 +151,7 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
     const bounds = diagramBounds(activeTeam.nodes.map(n => n.position))
     if (!rect || !bounds) {
       setZoom(1)
-      setPan({ x: 48, y: 48 })
+      setPan({ x: 80, y: 60 })
       return
     }
     const nextZoom = Math.max(
@@ -187,15 +172,15 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
     const newTeam: TeamDefinition = {
       id: `team_${Date.now()}`,
       version: 1,
-      name: `Nova Equipe (${teams.length + 1})`,
-      description: 'Equipe coordenada para projetos e entregas no cofre.',
+      name: `Equipe Especialista ${teams.length + 1}`,
+      description: 'Equipe coordenada para entregas completas e integradas.',
       coordinatorAgentId: coord.id,
       maxParallelSubtasks: 4,
       nodes: [
         {
           id: `tn_${Date.now()}_coord`,
           agentId: coord.id,
-          position: { x: 96, y: 176 },
+          position: { x: 120, y: 180 },
           roleInTeam: 'coordinator',
           contextScope: ['template', 'permanent_ref', 'project_context', 'request_context'],
           allowedOutputTypes: ['note', 'tasks']
@@ -207,20 +192,19 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
     }
     onSaveTeam(newTeam)
     onSelectTeam(newTeam.id)
+    setIsTeamMenuOpen(false)
   }
 
-  const handleAddMemberNodeAt = (agentId: string, worldPos?: { x: number; y: number }) => {
+  const handleAddMemberNodeAt = (agentId: string) => {
     const ag = agents.find(a => a.id === agentId)
     if (!ag) return
     const isReviewer = ag.specialistRole === 'reviewer'
     const isCoord = ag.specialistRole === 'coordinator'
     const existingCount = activeTeam.nodes.length
-    const pos = worldPos
-      ? { x: snapDiagramCoord(worldPos.x), y: snapDiagramCoord(worldPos.y) }
-      : {
-          x: snapDiagramCoord(416 + (existingCount % 2) * 320),
-          y: snapDiagramCoord(80 + Math.floor(existingCount / 2) * 176)
-        }
+    const pos = {
+      x: snapDiagramCoord(180 + (existingCount % 3) * 320),
+      y: snapDiagramCoord(160 + Math.floor(existingCount / 3) * 220)
+    }
 
     const newNode: TeamMemberNode = {
       id: `tn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -230,7 +214,7 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
       contextScope: isReviewer
         ? ['template', 'permanent_ref', 'project_context']
         : ['permanent_ref', 'project_context', 'request_context'],
-      allowedOutputTypes: ag.deliverables.outputTypes.length ? [...ag.deliverables.outputTypes] : ['note'],
+      allowedOutputTypes: ag.deliverables?.outputTypes?.length ? [...ag.deliverables.outputTypes] : ['note'],
       requireUserReview: true
     }
 
@@ -255,54 +239,7 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
     }
     onSaveTeam(updated)
     setSelectedNodeId(newNode.id)
-    setCanvasMenu(null)
-  }
-
-  const handleCreateInlineAgentAtCursor = () => {
-    if (!newAgentName.trim() && !newAgentPrompt.trim()) return
-    const { draft } = generateAgentDraftFromPrompt(
-      `${newAgentName.trim()}: ${newAgentPrompt.trim() || newAgentName.trim()}`,
-      notes
-    )
-    if (newAgentName.trim()) {
-      draft.name = newAgentName.trim()
-    }
-    onCreateAgentInline?.(draft)
-    const targetWorld = canvasMenu
-      ? { x: canvasMenu.worldX, y: canvasMenu.worldY }
-      : { x: 420, y: 180 }
-
-    const newNode: TeamMemberNode = {
-      id: `tn_${Date.now()}_new`,
-      agentId: draft.id,
-      position: { x: snapDiagramCoord(targetWorld.x), y: snapDiagramCoord(targetWorld.y) },
-      roleInTeam: draft.specialistRole === 'reviewer' ? 'reviewer' : 'specialist',
-      contextScope: ['permanent_ref', 'project_context', 'request_context'],
-      allowedOutputTypes: draft.deliverables.outputTypes.length ? [...draft.deliverables.outputTypes] : ['note'],
-      requireUserReview: true
-    }
-    const coordNode = activeTeam.nodes.find(n => n.roleInTeam === 'coordinator')
-    const nextEdges = [...activeTeam.edges]
-    if (coordNode) {
-      nextEdges.push({
-        id: `te_${Date.now()}`,
-        sourceNodeId: coordNode.id,
-        targetNodeId: newNode.id,
-        relation: 'delegates_to',
-        label: 'Delega subtarefa'
-      })
-    }
-    onSaveTeam({
-      ...activeTeam,
-      version: activeTeam.version + 1,
-      nodes: [...activeTeam.nodes, newNode],
-      edges: nextEdges,
-      updatedAt: Date.now()
-    })
-    setNewAgentName('')
-    setNewAgentPrompt('')
-    setCanvasMenu(null)
-    setSelectedNodeId(newNode.id)
+    setIsAddMemberOpen(false)
   }
 
   const handleRemoveNode = (nodeId: string) => {
@@ -328,42 +265,6 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
     if (selectedEdgeId === edgeId) setSelectedEdgeId(null)
   }
 
-  const handleToggleNodeScope = (nodeId: string, role: ContextRole) => {
-    const updatedNodes = activeTeam.nodes.map(n => {
-      if (n.id !== nodeId) return n
-      const exists = n.contextScope.includes(role)
-      return {
-        ...n,
-        contextScope: exists ? n.contextScope.filter(r => r !== role) : [...n.contextScope, role]
-      }
-    })
-    onSaveTeam({
-      ...activeTeam,
-      version: activeTeam.version + 1,
-      nodes: updatedNodes,
-      updatedAt: Date.now()
-    })
-  }
-
-  const handleToggleNodeOutput = (nodeId: string, outType: 'note' | 'tasks' | 'mindmap' | 'draw') => {
-    const updatedNodes = activeTeam.nodes.map(n => {
-      if (n.id !== nodeId) return n
-      const exists = n.allowedOutputTypes.includes(outType)
-      return {
-        ...n,
-        allowedOutputTypes: exists
-          ? n.allowedOutputTypes.filter(o => o !== outType)
-          : [...n.allowedOutputTypes, outType]
-      }
-    })
-    onSaveTeam({
-      ...activeTeam,
-      version: activeTeam.version + 1,
-      nodes: updatedNodes,
-      updatedAt: Date.now()
-    })
-  }
-
   const completeWireConnection = (fromId: string, toId: string) => {
     const targetNode = activeTeam.nodes.find(n => n.id === toId)
     if (!targetNode) return
@@ -380,7 +281,7 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
       sourceNodeId: fromId,
       targetNodeId: toId,
       relation: connectionRelation,
-      label: RELATION_LABELS[connectionRelation].label
+      label: RELATION_META[connectionRelation].label
     }
     onSaveTeam({
       ...activeTeam,
@@ -393,13 +294,11 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
   const handlePointerMove = (e: React.PointerEvent) => {
     if (wireDraft) {
       const world = screenToWorld(e.clientX, e.clientY)
-      // Snap to target input port if near
       let hoveredTargetId: string | null = null
       for (const n of activeTeam.nodes) {
         if (n.id === wireDraft.fromNodeId) continue
         const inPort = diagramInputPort(n.position)
-        const dist = Math.hypot(world.x - inPort.x, world.y - inPort.y)
-        if (dist < 34) {
+        if (Math.hypot(world.x - inPort.x, world.y - inPort.y) < 42) {
           hoveredTargetId = n.id
           break
         }
@@ -415,13 +314,15 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
     }
 
     if (draggingNodeId) {
-      const world = screenToWorld(e.clientX, e.clientY)
-      const newX = Math.max(16, snapDiagramCoord(world.x - dragOffsetRef.current.x))
-      const newY = Math.max(16, snapDiagramCoord(world.y - dragOffsetRef.current.y))
-      const updatedNodes = activeTeam.nodes.map(n =>
-        n.id === draggingNodeId ? { ...n, position: { x: newX, y: newY } } : n
-      )
-      onSaveTeam({ ...activeTeam, nodes: updatedNodes, updatedAt: Date.now() })
+      const nextX = snapDiagramCoord((e.clientX - dragOffsetRef.current.x - pan.x) / zoom)
+      const nextY = snapDiagramCoord((e.clientY - dragOffsetRef.current.y - pan.y) / zoom)
+      onSaveTeam({
+        ...activeTeam,
+        nodes: activeTeam.nodes.map(n =>
+          n.id === draggingNodeId ? { ...n, position: { x: nextX, y: nextY } } : n
+        ),
+        updatedAt: Date.now()
+      })
       return
     }
 
@@ -444,335 +345,299 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
     setIsPanning(false)
   }
 
-  const handleSendCanvasChat = () => {
-    const trimmed = chatInput.trim()
-    if (!trimmed) return
-    const userMsg = { id: `u_${Date.now()}`, sender: 'user' as const, text: trimmed }
-    setChatInput('')
-
-    // Se o usuário pedir para adicionar um agente pela conversa do canvas, adiciona imediatamente!
-    const matchedAgent = agents.find(a => trimmed.toLowerCase().includes(a.name.toLowerCase()))
-    if (matchedAgent && !activeTeam.nodes.some(n => n.agentId === matchedAgent.id)) {
-      handleAddMemberNodeAt(matchedAgent.id)
-      setChatMessages(prev => [
-        ...prev,
-        userMsg,
-        {
-          id: `a_${Date.now()}`,
-          sender: 'assistant',
-          text: `Adicionei **${matchedAgent.name}** ao canvas e conectei ao coordenador da equipe.`
-        }
-      ])
-      return
-    }
-
-    setChatMessages(prev => [
-      ...prev,
-      userMsg,
-      {
-        id: `a_${Date.now()}`,
-        sender: 'assistant',
-        text: `Equipe "${activeTeam.name}" possui ${activeTeam.nodes.length} bloco(s) e ${activeTeam.edges.length} conexão(ões) ativas. Clique em "Executar Agora" no topo para rodar o pedido atual.`
-      }
-    ])
+  const handleUpdateNode = (nodeId: string, patch: Partial<TeamMemberNode>) => {
+    onSaveTeam({
+      ...activeTeam,
+      version: activeTeam.version + 1,
+      nodes: activeTeam.nodes.map(n => (n.id === nodeId ? { ...n, ...patch } : n)),
+      updatedAt: Date.now()
+    })
   }
 
+  const filteredAvailableAgents = agents.filter(
+    a =>
+      a.name.toLowerCase().includes(memberSearchQuery.toLowerCase()) ||
+      a.roleDescription?.toLowerCase().includes(memberSearchQuery.toLowerCase())
+  )
+
   return (
-    <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#0b0c10] select-none">
-      {/* Top OpenBot Diagram Header */}
-      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-[var(--bg-border)] bg-[#11131a]/95 backdrop-blur-md z-20 shrink-0">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-400">
-            <Users className="w-4 h-4" />
-            <span>Equipe:</span>
+    <div className="flex-1 flex flex-col bg-[#09090b] overflow-hidden select-none relative">
+      {/* BARRA SUPERIOR MINIMALISTA (Mesmo padrão do OpenBot Print 02) */}
+      <div className="h-11 px-4 border-b border-zinc-900/90 bg-[#09090b] flex items-center justify-between shrink-0 z-30">
+        <div className="flex items-center gap-3">
+          {/* Badge de Workspace "Local" com esfera verde (Idêntico ao Print 02) */}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/60 border border-zinc-800/60 text-xs font-medium text-zinc-300">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-xs" />
+            <span>Local</span>
+            <ChevronDown className="w-3 h-3 text-zinc-500" />
           </div>
-          <select
-            value={activeTeam.id}
-            onChange={e => onSelectTeam(e.target.value)}
-            className="bg-[#181b24] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--text-main)] focus:outline-none focus:border-amber-500/50"
-          >
-            {teams.map(t => (
-              <option key={t.id} value={t.id}>
-                {t.name} (v{t.version})
-              </option>
-            ))}
-          </select>
 
-          <button
-            onClick={handleCreateTeam}
-            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-border)] text-xs text-[var(--text-main)] flex items-center gap-1 transition-colors"
-            title="Criar nova equipe"
-          >
-            <Plus className="w-3.5 h-3.5 text-amber-400" />
-            Nova Equipe
-          </button>
-
-          {teams.length > 1 && (
+          <div className="flex items-center gap-1 text-zinc-500">
             <button
-              onClick={() => onDeleteTeam(activeTeam.id)}
-              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 transition-colors"
-              title="Excluir esta equipe"
+              type="button"
+              onClick={() => {
+                const idx = teams.findIndex(t => t.id === activeTeam.id)
+                if (idx > 0) onSelectTeam(teams[idx - 1].id)
+              }}
+              className="p-1 rounded hover:bg-zinc-800/60 hover:text-zinc-300 cursor-pointer"
+              title="Equipe anterior"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-3.5 h-3.5" />
             </button>
-          )}
-
-          <div className="h-4 w-px bg-[var(--bg-border)] mx-1" />
-
-          {/* Tipo de conexão ao arrastar entre portas */}
-          <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-            <span>Relação ao conectar:</span>
-            <select
-              value={connectionRelation}
-              onChange={e => setConnectionRelation(e.target.value as TeamEdge['relation'])}
-              className="bg-[#181b24] border border-[var(--bg-border)] rounded-md px-2 py-1 text-[11px] text-[var(--text-main)]"
+            <button
+              type="button"
+              onClick={() => {
+                const idx = teams.findIndex(t => t.id === activeTeam.id)
+                if (idx >= 0 && idx < teams.length - 1) onSelectTeam(teams[idx + 1].id)
+              }}
+              className="p-1 rounded hover:bg-zinc-800/60 hover:text-zinc-300 cursor-pointer"
+              title="Próxima equipe"
             >
-              <option value="delegates_to">Delega subtarefa</option>
-              <option value="reviews_output">Revisa entrega</option>
-              <option value="depends_on">Depende de</option>
-            </select>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsTeamMenuOpen(v => !v)}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-zinc-900 text-xs font-medium text-zinc-200 cursor-pointer"
+            >
+              <span>{activeTeam.name}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
+            </button>
+
+            {isTeamMenuOpen && (
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                className="absolute left-0 top-full mt-1.5 w-64 bg-[#141416] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50"
+              >
+                <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  Equipes
+                </div>
+                {teams.map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectTeam(t.id)
+                      setIsTeamMenuOpen(false)
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
+                      t.id === activeTeam.id
+                        ? 'bg-zinc-800/90 text-white font-medium'
+                        : 'text-zinc-300 hover:bg-zinc-800/50'
+                    }`}
+                  >
+                    <span className="truncate">{t.name}</span>
+                    <span className="text-[10px] text-zinc-500">{t.nodes.length} agentes</span>
+                  </button>
+                ))}
+                <div className="border-t border-zinc-800/80 my-1" />
+                <button
+                  type="button"
+                  onClick={handleCreateTeam}
+                  className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Nova equipe</span>
+                </button>
+                {teams.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDeleteTeam(activeTeam.id)
+                      setIsTeamMenuOpen(false)
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-rose-400 hover:bg-rose-950/30 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Excluir equipe</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Center/Right Run Bar + View Switch + Collapsible Inspector Toggle */}
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={testPrompt}
-            onChange={e => setTestPrompt(e.target.value)}
-            placeholder="Pedido para a equipe..."
-            className="w-64 lg:w-80 bg-[#181b24] border border-[var(--bg-border)] rounded-lg px-3 py-1.5 text-xs text-[var(--text-main)] focus:outline-none focus:border-amber-500/50"
-          />
-          <button
-            disabled={isExecuting}
-            onClick={() => onRunTeam(activeTeam, true, testPrompt)}
-            className="px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
-            title="Simular equipe sem gravar arquivos"
-          >
-            <FlaskConical className="w-3.5 h-3.5" />
-            Simular
-          </button>
-          <button
-            disabled={isExecuting}
-            onClick={() => onRunTeam(activeTeam, false, testPrompt)}
-            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            Executar agora
-          </button>
-
-          <div className="flex items-center bg-[#181b24] p-0.5 rounded-lg border border-[var(--bg-border)]">
-            <button
-              onClick={() => setViewMode('canvas')}
-              className={`px-2 py-1 rounded text-[11px] flex items-center gap-1 ${
-                viewMode === 'canvas' ? 'bg-amber-500 text-black font-semibold' : 'text-[var(--text-muted)]'
-              }`}
-              title="Canvas Visual (OpenBot Diagram)"
+        {/* Direita: Relação ao conectar + Botão Pílula Branco */}
+        <div className="flex items-center gap-2.5">
+          <div className="hidden sm:flex items-center gap-1.5 bg-[#141416] border border-zinc-800/80 rounded-xl px-2.5 py-1 text-[11px] text-zinc-400">
+            <span>Relação:</span>
+            <select
+              value={connectionRelation}
+              onChange={e => setConnectionRelation(e.target.value as TeamEdge['relation'])}
+              className="bg-transparent text-zinc-200 focus:outline-none cursor-pointer"
             >
-              <LayoutGrid className="w-3 h-3" />
-              Canvas
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`px-2 py-1 rounded text-[11px] flex items-center gap-1 ${
-                viewMode === 'list' ? 'bg-amber-500 text-black font-semibold' : 'text-[var(--text-muted)]'
-              }`}
-              title="Modo em Lista"
-            >
-              <List className="w-3 h-3" />
-              Lista
-            </button>
+              <option value="delegates_to" className="bg-[#18181b]">
+                Delega subtarefa
+              </option>
+              <option value="reviews_output" className="bg-[#18181b]">
+                Revisa entrega
+              </option>
+              <option value="depends_on" className="bg-[#18181b]">
+                Depende de
+              </option>
+            </select>
           </div>
 
           <button
+            type="button"
+            disabled={isExecuting}
+            onClick={() => onRunTeam(activeTeam, false, teamPrompt)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs transition-all shadow-sm disabled:opacity-40 cursor-pointer"
+          >
+            <Play className="w-3 h-3 fill-current" />
+            <span>{isExecuting ? 'Executando equipe...' : 'Executar equipe'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setInspectorOpen(v => !v)}
-            className={`p-1.5 rounded-lg border transition-colors ${
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
               inspectorOpen
-                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
-                : 'bg-[#181b24] border-[var(--bg-border)] text-[var(--text-muted)] hover:text-white'
+                ? 'bg-zinc-800 text-zinc-100'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
             }`}
-            title={inspectorOpen ? 'Ocultar Inspetor Lateral' : 'Abrir Inspetor Lateral'}
+            title="Configurações da equipe"
           >
             <PanelRight className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Main Content Area: Full-Bleed Canvas or Accessible List */}
-      {viewMode === 'canvas' ? (
+      {/* ÁREA DO CANVAS INFINITO COM DOT-GRID ESCURO (#09090b) */}
+      <div className="flex-1 flex overflow-hidden relative">
         <div
           ref={viewportRef}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerDown={e => {
-            if (e.button !== 0) return
-            const target = e.target as HTMLElement
-            if (target === viewportRef.current || target.dataset.canvasBg === 'true') {
-              setCanvasMenu(null)
-              setSelectedNodeId(null)
-              setSelectedEdgeId(null)
-              setIsPanning(true)
-              panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
-            }
-          }}
-          onContextMenu={e => {
-            e.preventDefault()
-            const rect = viewportRef.current?.getBoundingClientRect()
-            if (!rect) return
-            const world = screenToWorld(e.clientX, e.clientY)
-            setCanvasMenu({
-              screenX: Math.min(e.clientX - rect.left, rect.width - 280),
-              screenY: Math.min(e.clientY - rect.top, rect.height - 260),
-              worldX: world.x,
-              worldY: world.y
-            })
-          }}
           onWheel={e => {
             if (e.ctrlKey || e.metaKey) {
               e.preventDefault()
               const delta = e.deltaY < 0 ? 0.08 : -0.08
-              setZoom(z => Math.min(1.6, Math.max(0.45, Number((z + delta).toFixed(2)))))
+              setZoom(z => Math.max(0.4, Math.min(1.8, Number((z + delta).toFixed(2)))))
             } else {
-              setPan(p => ({ x: p.x - e.deltaX * 0.6, y: p.y - e.deltaY * 0.6 }))
+              setPan(p => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }))
             }
           }}
+          onPointerDown={e => {
+            if (e.button === 2) return
+            if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.canvasBg === 'true') {
+              setSelectedNodeId(null)
+              setSelectedEdgeId(null)
+              setIsTeamMenuOpen(false)
+              setIsAddMemberOpen(false)
+              setIsPanning(true)
+              panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
+            }
+          }}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
           data-canvas-bg="true"
-          className="relative flex-1 w-full h-full overflow-hidden cursor-grab active:cursor-grabbing"
+          className={`flex-1 relative overflow-hidden bg-[#09090b] ${
+            toolMode === 'hand' || isPanning ? 'cursor-grabbing' : 'cursor-default'
+          }`}
           style={{
-            backgroundImage: 'radial-gradient(rgba(255,255,255,0.12) 1.25px, transparent 1.25px)',
-            backgroundSize: `${22 * zoom}px ${22 * zoom}px`,
+            backgroundImage: 'radial-gradient(#27272a 1px, transparent 1px)',
+            backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
             backgroundPosition: `${pan.x}px ${pan.y}px`
           }}
         >
-          {/* Floating Top-Left Lens Hint Pill */}
-          <div className="absolute top-3 left-4 z-10 flex items-center gap-2 bg-[#141720]/90 backdrop-blur-md border border-[var(--bg-border)] rounded-full px-3 py-1 text-[11px] text-[var(--text-muted)] shadow-lg pointer-events-auto">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span>{activeTeam.nodes.length} agentes no canvas</span>
-            <span>•</span>
-            <span>Clique direito no fundo para adicionar agente no cursor</span>
-            <span>•</span>
-            <span>Arraste da porta ● direita para conectar</span>
-          </div>
-
-          {/* World Transform Container */}
+          {/* Camada Transformável */}
           <div
-            data-canvas-bg="true"
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: '0 0',
-              width: 3200,
-              height: 2200
+              transformOrigin: '0 0'
             }}
-            className="relative"
+            className="absolute inset-0 pointer-events-none"
           >
-            {/* OpenBot SVG Edges Layer */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+            {/* Arestas Bezier Suaves */}
+            <svg className="overflow-visible w-full h-full pointer-events-auto">
               {activeTeam.edges.map(edge => {
                 const src = activeTeam.nodes.find(n => n.id === edge.sourceNodeId)
                 const dst = activeTeam.nodes.find(n => n.id === edge.targetNodeId)
                 if (!src || !dst) return null
-                const from = diagramOutputPort(src.position)
-                const to = diagramInputPort(dst.position)
-                const pathD = diagramEdgePath(from, to)
-                const arrowD = diagramEdgeArrow(to)
-                const mid = diagramEdgeMidpoint(from, to)
-                const relMeta = RELATION_LABELS[edge.relation] || RELATION_LABELS.delegates_to
+                const fromPt = diagramOutputPort(src.position)
+                const toPt = diagramInputPort(dst.position)
+                const pathD = diagramEdgePath(fromPt, toPt)
+                const mid = diagramEdgeMidpoint(fromPt, toPt)
+                const arrowPts = diagramEdgeArrow(toPt)
                 const isSelected = selectedEdgeId === edge.id
+                const meta = RELATION_META[edge.relation] || RELATION_META.delegates_to
+                const strokeColor = isSelected ? '#ffffff' : meta.color
 
                 return (
-                  <g key={edge.id} className="pointer-events-auto group">
-                    {/* Invisible wide hit path */}
+                  <g
+                    key={edge.id}
+                    onClick={e => {
+                      e.stopPropagation()
+                      setSelectedEdgeId(edge.id)
+                      setSelectedNodeId(null)
+                    }}
+                    className="cursor-pointer group"
+                  >
+                    <path d={pathD} fill="none" stroke="transparent" strokeWidth={16} />
                     <path
                       d={pathD}
                       fill="none"
-                      stroke="transparent"
-                      strokeWidth={16}
-                      className="cursor-pointer"
-                      onClick={e => {
-                        e.stopPropagation()
-                        setSelectedEdgeId(edge.id)
-                      }}
+                      stroke={strokeColor}
+                      strokeWidth={isSelected ? 2.5 : 1.75}
+                      strokeDasharray={edge.relation === 'reviews_output' ? '5 4' : undefined}
                     />
-                    <path
-                      d={pathD}
-                      fill="none"
-                      stroke={isSelected ? '#fbbf24' : relMeta.color}
-                      strokeWidth={isSelected ? 3 : 2.2}
-                      strokeDasharray={edge.relation === 'reviews_output' ? '6 4' : undefined}
-                      className="transition-all"
-                    />
-                    <path
-                      d={arrowD}
-                      fill="none"
-                      stroke={isSelected ? '#fbbf24' : relMeta.color}
-                      strokeWidth={2.2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    {/* Label Pill on Midpoint */}
-                    <rect
-                      x={mid.x - 56}
-                      y={mid.y - 22}
-                      width={112}
-                      height={18}
-                      rx={9}
-                      fill="#11131a"
-                      stroke={relMeta.color}
-                      strokeWidth={1}
-                    />
-                    <text
-                      x={mid.x}
-                      y={mid.y - 10}
-                      textAnchor="middle"
-                      fill="#e4e4e7"
-                      fontSize={9.5}
-                      fontWeight={600}
-                    >
-                      {edge.label || relMeta.label}
-                    </text>
-
-                    {/* OpenBot Midpoint Remove Button (-) */}
-                    <g
-                      transform={`translate(${mid.x}, ${mid.y + 8})`}
-                      className="cursor-pointer opacity-80 hover:opacity-100"
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleRemoveEdge(edge.id)
-                      }}
-                    >
-                      <circle r={9} fill="#181b24" stroke="#ef4444" strokeWidth={1.2} />
-                      <line x1={-4} y1={0} x2={4} y2={0} stroke="#fca5a5" strokeWidth={1.8} />
+                    <polygon points={arrowPts} fill={strokeColor} />
+                    <g transform={`translate(${mid.x}, ${mid.y})`}>
+                      <rect
+                        x={-44}
+                        y={-10}
+                        width={88}
+                        height={20}
+                        rx={6}
+                        fill="#141416"
+                        stroke={strokeColor}
+                      />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill="#d4d4d8"
+                        fontSize={9}
+                      >
+                        {edge.label || meta.label}
+                      </text>
                     </g>
                   </g>
                 )
               })}
 
-              {/* Live Draft Wire while dragging from output port */}
+              {/* Fio sendo puxado */}
               {wireDraft && (() => {
                 const src = activeTeam.nodes.find(n => n.id === wireDraft.fromNodeId)
                 if (!src) return null
-                const from = diagramOutputPort(src.position)
-                const d = diagramEdgePath(from, wireDraft.toWorld)
+                const fromPt = diagramOutputPort(src.position)
+                const pathD = diagramEdgePath(fromPt, wireDraft.toWorld)
                 return (
-                  <path
-                    d={d}
-                    fill="none"
-                    stroke="#fbbf24"
-                    strokeWidth={2.5}
-                    strokeDasharray="5 5"
-                  />
+                  <g>
+                    <path
+                      d={pathD}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                      strokeDasharray="5 4"
+                    />
+                    <circle cx={wireDraft.toWorld.x} cy={wireDraft.toWorld.y} r={5} fill="#ffffff" />
+                  </g>
                 )
               })()}
             </svg>
 
-            {/* OpenBot DiagramNodeCard Layer */}
-            {activeTeam.nodes.map((node, index) => {
+            {/* CARDS DOS MEMBROS DA EQUIPE (Estilo OpenBot Print 02) */}
+            {activeTeam.nodes.map(node => {
               const ag = agents.find(a => a.id === node.agentId)
-              if (!ag) return null
               const isSelected = selectedNodeId === node.id
-              const isCoord = node.roleInTeam === 'coordinator'
-              const isConnected = reachableFromCoordinator.has(node.id)
-              const canReadContext = ag.allowedActions.includes('read_context')
+              const isDropTarget = wireDraft?.hoveredTargetId === node.id
+              const isCoordinator = node.roleInTeam === 'coordinator'
+              const isReviewer = node.roleInTeam === 'reviewer'
+              const isReachable = reachableFromCoordinator.has(node.id)
+              const agentIdx = ag ? agents.findIndex(a => a.id === ag.id) : 0
+              const color = AGENT_COLORS[Math.max(0, agentIdx) % AGENT_COLORS.length]
 
               return (
                 <div
@@ -780,58 +645,102 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
                   style={{
                     left: node.position.x,
                     top: node.position.y,
-                    width: DIAGRAM_NODE_WIDTH
+                    width: 270
                   }}
                   onPointerDown={e => {
                     e.stopPropagation()
                     setSelectedNodeId(node.id)
                     setSelectedEdgeId(null)
-                    const world = screenToWorld(e.clientX, e.clientY)
-                    dragOffsetRef.current = {
-                      x: world.x - node.position.x,
-                      y: world.y - node.position.y
-                    }
+                    if (toolMode === 'hand') return
                     setDraggingNodeId(node.id)
+                    dragOffsetRef.current = {
+                      x: e.clientX - (node.position.x * zoom + pan.x),
+                      y: e.clientY - (node.position.y * zoom + pan.y)
+                    }
                   }}
-                  onDoubleClick={e => {
-                    e.stopPropagation()
-                    setSelectedNodeId(node.id)
-                    setInspectorOpen(true)
-                  }}
-                  className={`absolute rounded-2xl border bg-[#141720]/95 backdrop-blur-md shadow-2xl transition-shadow cursor-move ${
-                    isSelected
-                      ? 'border-amber-400 ring-2 ring-amber-400/25'
-                      : !isConnected
-                      ? 'border-amber-500/40 opacity-80'
-                      : 'border-[var(--bg-border)] hover:border-white/25'
-                  }`}
+                  className="absolute pointer-events-auto select-none group"
                 >
-                  {/* Input Port (Left - at y=26px like OpenBot) */}
-                  {!isCoord && (
-                    <button
-                      type="button"
-                      title="Porta de Entrada (solte uma conexão aqui)"
-                      onPointerDown={e => e.stopPropagation()}
-                      onPointerUp={e => {
-                        e.stopPropagation()
-                        if (wireDraft && wireDraft.fromNodeId !== node.id) {
-                          completeWireConnection(wireDraft.fromNodeId, node.id)
-                          setWireDraft(null)
-                        }
-                      }}
-                      style={{ top: 20, left: -7 }}
-                      className={`absolute w-3.5 h-3.5 rounded-full border-2 transition-transform ${
-                        wireDraft?.hoveredTargetId === node.id
-                          ? 'bg-emerald-400 border-white scale-125'
-                          : 'bg-[#181b24] border-amber-400 hover:scale-125'
-                      }`}
-                    />
+                  {/* RÓTULO FLUTUANTE ACIMA DO CARD */}
+                  <div className="flex items-center justify-between mb-1.5 px-1">
+                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
+                      {isCoordinator ? (
+                        <Crown className="w-3.5 h-3.5 text-amber-400" />
+                      ) : isReviewer ? (
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <Bot className="w-3.5 h-3.5 text-zinc-400" />
+                      )}
+                      <span>
+                        {isCoordinator
+                          ? '👑 Coordenador'
+                          : isReviewer
+                          ? '🔍 Revisor'
+                          : '🤖 Especialista'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation()
+                          setSelectedNodeId(node.id)
+                          setInspectorOpen(true)
+                        }}
+                        className="text-[10px] text-zinc-500 hover:text-zinc-200 px-1 cursor-pointer"
+                        title="Configurações do membro"
+                      >
+                        •••
+                      </button>
+                      {!isCoordinator && (
+                        <button
+                          type="button"
+                          onPointerDown={e => e.stopPropagation()}
+                          onClick={e => {
+                            e.stopPropagation()
+                            handleRemoveNode(node.id)
+                          }}
+                          className="text-zinc-500 hover:text-rose-400 p-0.5 cursor-pointer"
+                          title="Remover da equipe"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* PORTAS CIRCULARES À ESQUERDA (T, Imagem, Arquivo — Idêntico ao Print 02) */}
+                  {!isCoordinator && (
+                    <div className="absolute -left-9 top-10 flex flex-col gap-1.5 z-20">
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-serif transition-all ${
+                          isDropTarget
+                            ? 'bg-white text-black scale-125 shadow-lg'
+                            : 'bg-[#1a1a1e] border border-zinc-700/80 text-zinc-300'
+                        }`}
+                        title="Entrada de texto / instruções"
+                      >
+                        T
+                      </div>
+                      <div
+                        className="w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 text-zinc-500 flex items-center justify-center"
+                        title="Entrada de imagens e diagramas"
+                      >
+                        <ImageIcon className="w-3 h-3 text-zinc-400" />
+                      </div>
+                      <div
+                        className="w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 text-zinc-500 flex items-center justify-center"
+                        title="Entrada de notas vinculadas"
+                      >
+                        <FileText className="w-3 h-3 text-zinc-400" />
+                      </div>
+                    </div>
                   )}
 
-                  {/* Output Port (Right - drag from here to connect like OpenBot) */}
+                  {/* PORTA CIRCULAR À DIREITA */}
                   <button
                     type="button"
-                    title="Arraste desta porta para conectar a outro agente"
                     onPointerDown={e => {
                       e.stopPropagation()
                       const outPort = diagramOutputPort(node.position)
@@ -841,125 +750,80 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
                         hoveredTargetId: null
                       })
                     }}
-                    style={{ top: 20, right: -7 }}
-                    className="absolute w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-[#0b0c10] hover:scale-125 transition-transform cursor-crosshair"
-                  />
+                    className="absolute -right-9 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 hover:border-white hover:bg-zinc-800 text-zinc-300 text-[11px] font-serif flex items-center justify-center cursor-crosshair z-20 transition-transform hover:scale-110"
+                    title="Arraste para conectar a outro especialista"
+                  >
+                    T
+                  </button>
 
-                  {/* Card Header */}
-                  <div className="p-3 border-b border-[var(--bg-border)] flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span
-                        className="w-8 h-8 rounded-xl flex items-center justify-center text-base shrink-0 border border-white/10"
-                        style={{ backgroundColor: `${ag.color}22`, color: ag.color }}
+                  {/* CORPO DO CARD ESCURO (#141416) */}
+                  <div
+                    className={`rounded-2xl bg-[#141416] border p-3.5 shadow-2xl transition-all space-y-2.5 ${
+                      isSelected
+                        ? 'border-zinc-500 ring-1 ring-zinc-500/30'
+                        : isDropTarget
+                        ? 'border-white ring-2 ring-white/20'
+                        : 'border-zinc-800/90 hover:border-zinc-700/80'
+                    }`}
+                  >
+                    {/* Header do Agente com Avatar Colorido */}
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm"
+                        style={{ backgroundColor: color }}
                       >
-                        {ag.icon}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-wider font-semibold text-amber-400/90 flex items-center gap-1">
-                          {isCoord ? (
-                            <>
-                              <Crown className="w-3 h-3" /> Coordenador
-                            </>
-                          ) : (
-                            <span>Etapa {index} • {node.roleInTeam === 'reviewer' ? 'Revisor' : 'Especialista'}</span>
-                          )}
+                        ••
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-zinc-100 truncate">
+                          {ag?.name || 'Agente'}
                         </div>
-                        <div className="text-xs font-bold text-[var(--text-main)] truncate">
-                          {ag.name}
+                        <div className="text-[10px] text-zinc-500 truncate">
+                          {ag?.roleDescription || ag?.workStyle.tone || 'Especialista'}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1 shrink-0">
-                      {onOpenAgentChat && (
-                        <button
-                          type="button"
-                          onPointerDown={e => e.stopPropagation()}
-                          onClick={e => {
-                            e.stopPropagation()
-                            onOpenAgentChat(ag.id)
-                          }}
-                          className="p-1 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-amber-300"
-                          title="Conversar diretamente com este agente"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      {!isCoord && (
-                        <button
-                          type="button"
-                          onPointerDown={e => e.stopPropagation()}
-                          onClick={e => {
-                            e.stopPropagation()
-                            handleRemoveNode(node.id)
-                          }}
-                          className="p-1 rounded-lg hover:bg-red-500/20 text-[var(--text-muted)] hover:text-red-300"
-                          title="Remover do canvas"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Card Body */}
-                  <div className="p-3 space-y-2">
-                    <p className="text-[11px] text-[var(--text-muted)] line-clamp-2 leading-relaxed">
-                      {ag.roleDescription}
-                    </p>
-
-                    <div className="flex flex-wrap gap-1">
-                      {node.contextScope.map(role => (
-                        <span
-                          key={role}
-                          className="text-[9px] px-1.5 py-0.5 rounded font-medium"
-                          style={{
-                            backgroundColor: `${ROLE_LABELS[role].badgeColor}20`,
-                            color: ROLE_LABELS[role].badgeColor
-                          }}
-                        >
-                          {ROLE_LABELS[role].label.split(' ')[0]}
-                        </span>
-                      ))}
+                    {/* Escopo de Fontes Autorizadas em Chips */}
+                    <div className="bg-[#1c1c1f] rounded-xl p-2 space-y-1 text-[10px]">
+                      <div className="text-zinc-500 font-medium">Fontes autorizadas:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {node.contextScope.map(role => (
+                          <span
+                            key={role}
+                            className="px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-300"
+                          >
+                            {role === 'template'
+                              ? 'Modelo'
+                              : role === 'permanent_ref'
+                              ? 'Catálogo'
+                              : role === 'project_context'
+                              ? 'Cliente'
+                              : 'Pedido'}
+                          </span>
+                        ))}
+                      </div>
                     </div>
 
-                    {/* Footer Status Row (OpenBot DiagramNodeCard footer style) */}
-                    <div className="pt-1.5 border-t border-white/5 flex items-center justify-between text-[10px]">
-                      <span
-                        className={`flex items-center gap-1.5 font-medium ${
-                          !isConnected
-                            ? 'text-amber-400'
-                            : !canReadContext
-                            ? 'text-red-400'
-                            : 'text-emerald-400'
-                        }`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            !isConnected
-                              ? 'bg-amber-400'
-                              : !canReadContext
-                              ? 'bg-red-400'
-                              : 'bg-emerald-400'
-                          }`}
-                        />
-                        {!isConnected
-                          ? 'Sem conexão (ignorado)'
-                          : !canReadContext
-                          ? 'Sem read_context'
-                          : 'Conectado'}
-                      </span>
+                    {/* Botão sutil de ação rápida: Falar com este agente no chat */}
+                    <div className="flex items-center justify-between pt-1 text-[11px]">
+                      {!isReachable && !isCoordinator ? (
+                        <span className="text-amber-400 text-[10px]">Desconectado</span>
+                      ) : (
+                        <span className="text-emerald-400 text-[10px]">Conectado</span>
+                      )}
+
                       <button
                         type="button"
                         onPointerDown={e => e.stopPropagation()}
                         onClick={e => {
                           e.stopPropagation()
-                          setSelectedNodeId(node.id)
-                          setInspectorOpen(true)
+                          if (ag) onOpenAgentChat?.(ag.id)
                         }}
-                        className="text-[10px] text-[var(--text-muted)] hover:text-amber-300 underline"
+                        className="flex items-center gap-1 text-zinc-400 hover:text-zinc-100 hover:underline cursor-pointer"
                       >
-                        Configurar
+                        <MessageSquare className="w-3 h-3" />
+                        <span>Falar no chat</span>
                       </button>
                     </div>
                   </div>
@@ -968,411 +832,309 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
             })}
           </div>
 
-          {/* OpenBot Right-Click Context Menu (`DiagramCanvasMenu` + `DiagramNewAgentCard`) */}
-          {canvasMenu && (
+          {/* POPOVER CENTRAL "ADICIONAR ESPECIALISTA" */}
+          {isAddMemberOpen && (
             <div
-              style={{ left: canvasMenu.screenX, top: canvasMenu.screenY }}
               onPointerDown={e => e.stopPropagation()}
-              className="absolute z-30 w-68 rounded-2xl border border-[var(--bg-border)] bg-[#141720]/98 backdrop-blur-xl shadow-2xl p-2.5 text-xs animate-in fade-in zoom-in-95 duration-100"
+              className="absolute left-1/2 bottom-20 -translate-x-1/2 w-64 bg-[#141416]/98 backdrop-blur-xl border border-zinc-800/90 rounded-2xl shadow-2xl p-2 z-40 animate-in fade-in zoom-in-95 duration-100"
             >
-              {!canvasMenu.creatingNewAgent ? (
-                <>
-                  <div className="flex items-center justify-between px-2 py-1 text-[10px] uppercase tracking-wider font-semibold text-[var(--text-muted)]">
-                    <span>Adicionar Agente Aqui</span>
-                    <button onClick={() => setCanvasMenu(null)} className="hover:text-white">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto space-y-1 my-1">
-                    {agents.map(ag => (
-                      <button
-                        key={ag.id}
-                        onClick={() =>
-                          handleAddMemberNodeAt(ag.id, {
-                            x: canvasMenu.worldX,
-                            y: canvasMenu.worldY
-                          })
-                        }
-                        className="w-full px-2.5 py-1.5 rounded-xl hover:bg-white/10 flex items-center gap-2 text-left transition-colors"
-                      >
-                        <span className="text-sm">{ag.icon}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium text-[var(--text-main)] truncate">
-                            {ag.name}
-                          </div>
-                          <div className="text-[10px] text-[var(--text-muted)] truncate">
-                            {ag.workStyle.tone}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="pt-1 border-t border-[var(--bg-border)]">
+              <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-zinc-800/80 mb-1">
+                <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={memberSearchQuery}
+                  onChange={e => setMemberSearchQuery(e.target.value)}
+                  placeholder="Buscar agente para adicionar"
+                  className="w-full bg-transparent text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1 max-h-60 overflow-y-auto py-1">
+                {filteredAvailableAgents.map(ag => {
+                  const alreadyInTeam = activeTeam.nodes.some(n => n.agentId === ag.id)
+                  return (
                     <button
-                      onClick={() => setCanvasMenu({ ...canvasMenu, creatingNewAgent: true })}
-                      className="w-full px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 font-semibold flex items-center gap-1.5"
+                      key={ag.id}
+                      type="button"
+                      disabled={alreadyInTeam}
+                      onClick={() => handleAddMemberNodeAt(ag.id)}
+                      className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-zinc-800/70 flex items-center justify-between text-xs text-zinc-200 transition-colors disabled:opacity-40 cursor-pointer"
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Criar novo agente neste ponto...
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                        <span className="truncate">{ag.name}</span>
+                      </div>
+                      {alreadyInTeam && (
+                        <span className="text-[10px] text-zinc-500">Na equipe</span>
+                      )}
                     </button>
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-2 p-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-amber-300">Novo Agente no Canvas</span>
-                    <button onClick={() => setCanvasMenu(null)} className="text-[var(--text-muted)] hover:text-white">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    value={newAgentName}
-                    onChange={e => setNewAgentName(e.target.value)}
-                    placeholder="Nome do agente..."
-                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
-                    autoFocus
-                  />
-                  <textarea
-                    value={newAgentPrompt}
-                    onChange={e => setNewAgentPrompt(e.target.value)}
-                    rows={2}
-                    placeholder="Função e estilo de trabalho..."
-                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)] resize-none"
-                  />
-                  <div className="flex justify-end gap-1.5">
-                    <button
-                      onClick={() => setCanvasMenu({ ...canvasMenu, creatingNewAgent: false })}
-                      className="px-2.5 py-1 rounded-lg bg-white/5 text-[11px] text-[var(--text-muted)]"
-                    >
-                      Voltar
-                    </button>
-                    <button
-                      onClick={handleCreateInlineAgentAtCursor}
-                      className="px-3 py-1 rounded-lg bg-amber-500 text-black font-semibold text-[11px]"
-                    >
-                      Criar e Conectar
-                    </button>
-                  </div>
-                </div>
-              )}
+                  )
+                })}
+              </div>
             </div>
           )}
 
-          {/* OpenBot Bottom-Left Floating Zoom Controls */}
-          <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1 bg-[#141720]/95 backdrop-blur-md border border-[var(--bg-border)] rounded-xl p-1 shadow-xl">
+          {/* PÍLULA DE ZOOM NO CANTO INFERIOR ESQUERDO */}
+          <div
+            onPointerDown={e => e.stopPropagation()}
+            className="absolute bottom-4 left-4 flex items-center gap-1 bg-[#141416]/95 backdrop-blur-md border border-zinc-800/90 rounded-xl px-2 py-1.5 shadow-2xl z-30 text-xs text-zinc-300"
+          >
             <button
-              onClick={() => setZoom(z => Math.max(0.45, Number((z - 0.1).toFixed(2))))}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white"
-              title="Diminuir Zoom"
+              type="button"
+              onClick={() => setZoom(z => Math.max(0.4, Number((z - 0.1).toFixed(2))))}
+              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+              title="Diminuir zoom"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[11px] font-mono px-2 text-[var(--text-main)]">
+            <span className="px-1.5 text-[11px] font-mono text-zinc-200 min-w-[42px] text-center">
               {Math.round(zoom * 100)}%
             </span>
             <button
-              onClick={() => setZoom(z => Math.min(1.6, Number((z + 0.1).toFixed(2))))}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white"
-              title="Aumentar Zoom"
+              type="button"
+              onClick={() => setZoom(z => Math.min(1.8, Number((z + 0.1).toFixed(2))))}
+              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+              title="Aumentar zoom"
             >
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
-            <div className="w-px h-4 bg-[var(--bg-border)] mx-0.5" />
+            <div className="w-px h-4 bg-zinc-800 mx-0.5" />
             <button
+              type="button"
               onClick={handleFitView}
-              className="px-2 py-1 rounded-lg hover:bg-white/10 text-[11px] text-[var(--text-muted)] hover:text-white flex items-center gap-1"
-              title="Ajustar todos os blocos à tela"
+              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+              title="Ajustar à tela"
             >
-              <Maximize2 className="w-3 h-3" />
-              Ajustar
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setInspectorOpen(v => !v)}
+              className={`p-1 rounded hover:bg-zinc-800 cursor-pointer ${
+                inspectorOpen ? 'text-white bg-zinc-800' : 'text-zinc-400 hover:text-zinc-100'
+              }`}
+              title="Abrir configurações da equipe"
+            >
+              <Map className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {/* OpenBot Bottom-Right Floating DiagramChatPanel */}
-          <div className="absolute bottom-4 right-4 z-20">
-            {!chatOpen ? (
-              <button
-                onClick={() => setChatOpen(true)}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-[#141720]/95 hover:bg-[#1c202c] border border-amber-500/40 text-xs font-medium text-amber-300 shadow-2xl transition-all"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                Assistente do Canvas
-              </button>
-            ) : (
-              <div
-                onPointerDown={e => e.stopPropagation()}
-                className="w-80 rounded-2xl border border-[var(--bg-border)] bg-[#141720]/98 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col"
-              >
-                <div className="px-3.5 py-2.5 border-b border-[var(--bg-border)] flex items-center justify-between bg-[#181b26]">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Assistente da Equipe</span>
-                  </div>
-                  <button
-                    onClick={() => setChatOpen(false)}
-                    className="p-1 rounded hover:bg-white/10 text-[var(--text-muted)]"
-                  >
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <div className="p-3 max-h-52 overflow-y-auto space-y-2 text-xs">
-                  {chatMessages.map(m => (
-                    <div
-                      key={m.id}
-                      className={`p-2 rounded-xl ${
-                        m.sender === 'user'
-                          ? 'bg-amber-500/20 text-amber-100 ml-6'
-                          : 'bg-white/5 text-[var(--text-main)] mr-4'
-                      }`}
-                    >
-                      {m.text}
-                    </div>
-                  ))}
-                </div>
-                <div className="p-2 border-t border-[var(--bg-border)] flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={e => setChatInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSendCanvasChat()}
-                    placeholder="Ex: Adicionar Cartógrafo..."
-                    className="flex-1 bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)] focus:outline-none"
-                  />
-                  <button
-                    onClick={handleSendCanvasChat}
-                    className="p-1.5 rounded-lg bg-amber-500 text-black hover:bg-amber-400"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* OpenBot Collapsible Right-Hand DiagramInspector Drawer (Opens ONLY when toggled) */}
-          {inspectorOpen && (
-            <div
-              onPointerDown={e => e.stopPropagation()}
-              className="absolute top-0 right-0 bottom-0 w-80 bg-[#141720]/98 backdrop-blur-xl border-l border-[var(--bg-border)] z-30 p-4 overflow-y-auto shadow-2xl space-y-4 animate-in slide-in-from-right duration-150"
+          {/* DOCK FLUTUANTE INFERIOR CENTRAL */}
+          <div
+            onPointerDown={e => e.stopPropagation()}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#141416]/95 backdrop-blur-xl border border-zinc-800/90 rounded-2xl p-1.5 shadow-2xl z-30"
+          >
+            <button
+              type="button"
+              onClick={() => setToolMode('pointer')}
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                toolMode === 'pointer'
+                  ? 'bg-zinc-800 text-zinc-100'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+              }`}
+              title="Selecionar (Ponteiro)"
             >
-              <div className="flex items-center justify-between border-b border-[var(--bg-border)] pb-2.5">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">
-                  {selectedNode && selectedNodeAgent ? 'Inspetor do Membro' : 'Configurações da Equipe'}
-                </h4>
-                <button
-                  onClick={() => setInspectorOpen(false)}
-                  className="p-1 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+              <MousePointer className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setToolMode('hand')}
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                toolMode === 'hand'
+                  ? 'bg-zinc-800 text-zinc-100'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+              }`}
+              title="Mover canvas (Mão)"
+            >
+              <Hand className="w-4 h-4" />
+            </button>
 
-              {selectedNode && selectedNodeAgent ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-2xl">{selectedNodeAgent.icon}</span>
-                    <div>
-                      <div className="text-sm font-bold text-[var(--text-main)]">
-                        {selectedNodeAgent.name}
-                      </div>
-                      <div className="text-[11px] text-[var(--text-muted)]">
-                        {selectedNodeAgent.workStyle.tone}
-                      </div>
-                    </div>
-                  </div>
+            <div className="w-px h-5 bg-zinc-800 mx-0.5" />
 
-                  <div>
-                    <label className="text-[11px] text-[var(--text-muted)] block mb-1">
-                      Papel dentro desta Equipe
-                    </label>
-                    <select
-                      value={selectedNode.roleInTeam}
-                      onChange={e => {
-                        const roleInTeam = e.target.value as TeamMemberNode['roleInTeam']
-                        const updatedNodes = activeTeam.nodes.map(n =>
-                          n.id === selectedNode.id ? { ...n, roleInTeam } : n
-                        )
-                        onSaveTeam({
-                          ...activeTeam,
-                          coordinatorAgentId:
-                            roleInTeam === 'coordinator'
-                              ? selectedNode.agentId
-                              : activeTeam.coordinatorAgentId,
-                          nodes: updatedNodes,
-                          updatedAt: Date.now()
-                        })
-                      }}
-                      className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
-                    >
-                      <option value="coordinator">Coordenador Principal</option>
-                      <option value="specialist">Especialista Executor</option>
-                      <option value="reviewer">Revisor Independente</option>
-                    </select>
-                  </div>
+            <button
+              type="button"
+              onClick={() => setIsAddMemberOpen(v => !v)}
+              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors cursor-pointer"
+              title="Adicionar nota adesiva"
+            >
+              <StickyNote className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAddMemberOpen(v => !v)}
+              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors cursor-pointer"
+              title="Adicionar forma / agrupamento"
+            >
+              <Shapes className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAddMemberOpen(v => !v)}
+              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors cursor-pointer"
+              title="Adicionar rótulo de texto"
+            >
+              <Type className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAddMemberOpen(v => !v)}
+              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors cursor-pointer"
+              title="Buscar especialista"
+            >
+              <Search className="w-4 h-4" />
+            </button>
 
-                  <div>
-                    <label className="text-[11px] text-[var(--text-muted)] block mb-1.5">
-                      Escopo de Contexto Compartilhado
-                    </label>
-                    <div className="space-y-1.5">
-                      {(Object.keys(ROLE_LABELS) as ContextRole[]).map(role => {
+            <button
+              type="button"
+              onClick={() => setIsAddMemberOpen(v => !v)}
+              className="ml-1 px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Adicionar especialista</span>
+            </button>
+          </div>
+        </div>
+
+        {/* SIDEBAR DIREITA DE CONFIGURAÇÕES DA EQUIPE OU DO MEMBRO */}
+        {inspectorOpen && (
+          <aside className="w-80 bg-[#111113] border-l border-zinc-800/80 p-4 overflow-y-auto space-y-4 shrink-0 z-30">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
+              <span className="text-xs font-semibold text-zinc-200">
+                {selectedNode ? 'Membro da Equipe' : 'Configurações da Equipe'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setInspectorOpen(false)}
+                className="text-zinc-500 hover:text-zinc-200 p-1 rounded-lg hover:bg-zinc-800/60 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-[11px] text-zinc-400">Nome da equipe</label>
+              <input
+                type="text"
+                value={activeTeam.name}
+                onChange={e =>
+                  onSaveTeam({ ...activeTeam, name: e.target.value, updatedAt: Date.now() })
+                }
+                className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-[11px] text-zinc-400">Pedido para a equipe</label>
+              <textarea
+                value={teamPrompt}
+                onChange={e => setTeamPrompt(e.target.value)}
+                className="w-full h-20 bg-[#18181b] border border-zinc-800 rounded-xl p-2.5 text-xs text-zinc-100 resize-none focus:outline-none"
+              />
+            </div>
+
+            {selectedNode && selectedNodeAgent && (
+              <div className="space-y-3 pt-3 border-t border-zinc-800 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-zinc-200">{selectedNodeAgent.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => onOpenAgentChat?.(selectedNodeAgent.id)}
+                    className="text-[11px] text-blue-400 hover:underline cursor-pointer"
+                  >
+                    Abrir conversa
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-zinc-400 mb-1">Papel na equipe</label>
+                  <select
+                    value={selectedNode.roleInTeam}
+                    onChange={e =>
+                      handleUpdateNode(selectedNode.id, {
+                        roleInTeam: e.target.value as TeamMemberNode['roleInTeam']
+                      })
+                    }
+                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-100"
+                  >
+                    <option value="coordinator" className="bg-[#18181b]">
+                      Coordenador
+                    </option>
+                    <option value="specialist" className="bg-[#18181b]">
+                      Especialista
+                    </option>
+                    <option value="reviewer" className="bg-[#18181b]">
+                      Revisor
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-zinc-400 mb-1">Escopo de Fontes</label>
+                  <div className="space-y-1">
+                    {(['template', 'permanent_ref', 'project_context', 'request_context'] as ContextRole[]).map(
+                      role => {
                         const checked = selectedNode.contextScope.includes(role)
                         return (
                           <label
                             key={role}
-                            className="flex items-start gap-2 p-2 rounded-lg bg-[#0e1017] border border-[var(--bg-border)] cursor-pointer"
+                            className="flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer"
                           >
                             <input
                               type="checkbox"
                               checked={checked}
-                              onChange={() => handleToggleNodeScope(selectedNode.id, role)}
-                              className="mt-0.5 accent-amber-500"
+                              onChange={e => {
+                                const nextScope = e.target.checked
+                                  ? [...selectedNode.contextScope, role]
+                                  : selectedNode.contextScope.filter(r => r !== role)
+                                handleUpdateNode(selectedNode.id, { contextScope: nextScope })
+                              }}
                             />
-                            <div>
-                              <div className="text-xs font-medium text-[var(--text-main)]">
-                                {ROLE_LABELS[role].label}
-                              </div>
-                              <div className="text-[10px] text-[var(--text-muted)]">
-                                {ROLE_LABELS[role].description}
-                              </div>
-                            </div>
+                            <span>
+                              {role === 'template'
+                                ? 'Modelo de documento'
+                                : role === 'permanent_ref'
+                                ? 'Catálogo / Referência fixa'
+                                : role === 'project_context'
+                                ? 'Contexto de cliente/projeto'
+                                : 'Contexto deste pedido'}
+                            </span>
                           </label>
                         )
-                      })}
-                    </div>
+                      }
+                    )}
                   </div>
+                </div>
 
-                  <div>
-                    <label className="text-[11px] text-[var(--text-muted)] block mb-1.5">
-                      Entregas Autorizadas na Equipe
-                    </label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {(
-                        [
-                          { id: 'note', label: 'Nota Markdown' },
-                          { id: 'tasks', label: 'Tarefas' },
-                          { id: 'mindmap', label: 'Mapa Mental' },
-                          { id: 'draw', label: 'Diagrama' }
-                        ] as const
-                      ).map(item => (
-                        <label
-                          key={item.id}
-                          className="flex items-center gap-1.5 p-2 rounded-lg bg-[#0e1017] border border-[var(--bg-border)] text-xs cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedNode.allowedOutputTypes.includes(item.id)}
-                            onChange={() => handleToggleNodeOutput(selectedNode.id, item.id)}
-                            className="accent-amber-500"
-                          />
-                          <span>{item.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-[11px] text-[var(--text-muted)] block mb-1">
-                      Nome da Equipe
-                    </label>
-                    <input
-                      type="text"
-                      value={activeTeam.name}
-                      onChange={e =>
-                        onSaveTeam({ ...activeTeam, name: e.target.value, updatedAt: Date.now() })
-                      }
-                      className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-[var(--text-muted)] block mb-1">
-                      Descrição
-                    </label>
-                    <textarea
-                      value={activeTeam.description}
-                      onChange={e =>
-                        onSaveTeam({
-                          ...activeTeam,
-                          description: e.target.value,
-                          updatedAt: Date.now()
-                        })
-                      }
-                      rows={3}
-                      className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)] resize-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-[var(--text-muted)] block mb-1">
-                      Adicionar Agente ao Canvas
-                    </label>
-                    <div className="space-y-1">
-                      {agents.map(ag => (
-                        <button
-                          key={ag.id}
-                          onClick={() => handleAddMemberNodeAt(ag.id)}
-                          className="w-full px-2.5 py-1.5 rounded-lg bg-[#0e1017] hover:bg-white/5 border border-[var(--bg-border)] flex items-center justify-between text-xs"
-                        >
-                          <span className="flex items-center gap-2 truncate">
-                            <span>{ag.icon}</span>
-                            <span className="truncate">{ag.name}</span>
-                          </span>
-                          <Plus className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Modo em Lista Acessível */
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-[var(--text-main)]">{activeTeam.name}</h3>
-              <p className="text-xs text-[var(--text-muted)]">{activeTeam.description}</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {activeTeam.nodes.map(node => {
-              const ag = agents.find(a => a.id === node.agentId)
-              if (!ag) return null
-              const isConnected = reachableFromCoordinator.has(node.id)
-              return (
-                <div
-                  key={node.id}
-                  className="p-4 rounded-xl border border-[var(--bg-border)] bg-[#141720] space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">{ag.icon}</span>
-                      <div>
-                        <div className="text-xs font-bold text-[var(--text-main)]">{ag.name}</div>
-                        <div className="text-[10px] text-amber-400 uppercase">{node.roleInTeam}</div>
-                      </div>
-                    </div>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full ${
-                        isConnected
-                          ? 'bg-emerald-500/15 text-emerald-300'
-                          : 'bg-amber-500/15 text-amber-300'
-                      }`}
+                {selectedNode.roleInTeam !== 'coordinator' && (
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveNode(selectedNode.id)}
+                      className="w-full py-1.5 rounded-xl bg-rose-950/40 text-rose-300 text-xs hover:bg-rose-950/60 cursor-pointer"
                     >
-                      {isConnected ? 'Conectado' : 'Sem conexão'}
-                    </span>
+                      Remover membro da equipe
+                    </button>
                   </div>
-                  <p className="text-xs text-[var(--text-muted)]">{ag.roleDescription}</p>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+                )}
+              </div>
+            )}
+
+            {selectedEdgeId && (
+              <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
+                <span className="text-xs text-zinc-400">Conexão selecionada</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveEdge(selectedEdgeId)}
+                  className="px-2.5 py-1 rounded-lg bg-rose-950/40 text-rose-300 text-xs cursor-pointer"
+                >
+                  Remover fio
+                </button>
+              </div>
+            )}
+          </aside>
+        )}
+      </div>
     </div>
   )
 }

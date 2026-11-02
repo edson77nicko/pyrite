@@ -9,7 +9,8 @@ import type {
   ContextRole,
   MultiAgentStoreState,
   ProjectContext,
-  ProposalStatus
+  ProposalStatus,
+  TeamDefinition
 } from '../types/agents'
 import type { Note, NoteType, TaskItem } from '../types'
 import {
@@ -341,6 +342,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         setSelectedRunId(res.run.id)
         setSelectedAgentId(res.run.agentId)
         setActiveSection('agents')
+        setStatusBanner({
+          type: 'success',
+          text: `Rotina "${routine.name}" executada com sucesso! Entrega gerada.`
+        })
       }
     } finally {
       setIsExecuting(false)
@@ -351,6 +356,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     isTest: boolean
     overridePrompt?: string
     overrideProjectId?: string
+    overrideTeam?: TeamDefinition
     existingRunToUpdate?: AgentRun
   }) => {
     if (!selectedAgent) return
@@ -396,7 +402,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         extraRequestNotes: attachedNotes,
         userAnswers: Object.keys(mergedAnswers).length > 0 ? mergedAnswers : undefined,
         conflictResolutions: Object.keys(mergedConflicts).length > 0 ? mergedConflicts : undefined,
-        useTeamDelegation,
+        useTeamDelegation: Boolean(opts.overrideTeam || useTeamDelegation),
+        teamDefinition: opts.overrideTeam || (useTeamDelegation ? teams.find(t => t.id === selectedTeamId) : undefined),
         existingRunId: opts.existingRunToUpdate?.id,
         abortSignal: controller.signal,
         onRunStarted: async initialRunning => {
@@ -2309,7 +2316,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               setSelectedAgentId(leadId)
               setUseTeamDelegation(true)
               setActiveSection('agents')
-              handleRunAgent({ isTest, overridePrompt: prompt })
+              handleRunAgent({ isTest, overridePrompt: prompt, overrideTeam: team })
             }}
             isExecuting={isExecuting}
           />

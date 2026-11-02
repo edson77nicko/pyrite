@@ -9,7 +9,6 @@ import type {
 } from '../types/agents'
 import { computeNextScheduleRunISO, createDefaultAutomation } from '../utils/multiAgentEngine'
 import {
-  DIAGRAM_NODE_WIDTH,
   snapDiagramCoord,
   diagramInputPort,
   diagramOutputPort,
@@ -21,8 +20,6 @@ import {
   Clock,
   Plus,
   Trash2,
-  LayoutGrid,
-  Sliders,
   CheckCircle2,
   PauseCircle,
   ZoomIn,
@@ -30,7 +27,19 @@ import {
   Maximize2,
   PanelRight,
   Play,
-  X
+  X,
+  ChevronDown,
+  ArrowLeft,
+  ArrowRight,
+  MousePointer,
+  Hand,
+  Bot,
+  Zap,
+  FolderOpen,
+  ShieldCheck,
+  Target,
+  Users,
+  GitBranch
 } from 'lucide-react'
 
 interface RoutineCanvasEditorProps {
@@ -49,8 +58,8 @@ interface RoutineCanvasEditorProps {
 }
 
 const TRIGGER_LABELS: Record<AutomationTriggerKind, string> = {
-  briefing_added: 'Ao adicionar briefing na pasta monitorada',
   weekly_schedule: 'Agendamento semanal (Fuso IANA)',
+  briefing_added: 'Ao adicionar briefing na pasta monitorada',
   meeting_completed: 'Ao concluir uma nota de reunião',
   task_completed: 'Quando uma tarefa for concluída'
 }
@@ -82,10 +91,11 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
   isExecuting
 }) => {
   const activeRoutine = automations.find(a => a.id === selectedRoutineId) || automations[0]
-  const [mode, setMode] = useState<'canvas' | 'simple'>('canvas')
   const [zoom, setZoom] = useState(0.92)
-  const [pan, setPan] = useState({ x: 36, y: 48 })
+  const [pan, setPan] = useState({ x: 50, y: 70 })
+  const [toolMode, setToolMode] = useState<'pointer' | 'hand'>('pointer')
   const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [isRoutineMenuOpen, setIsRoutineMenuOpen] = useState(false)
   const [draggingStage, setDraggingStage] = useState<
     'trigger' | 'context' | 'executor' | 'approval' | 'output' | null
   >(null)
@@ -103,15 +113,15 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
   if (!activeRoutine) return null
 
   const layout = activeRoutine.visualLayout || {
-    triggerX: 48,
+    triggerX: 50,
     triggerY: 160,
-    contextX: 352,
+    contextX: 370,
     contextY: 160,
-    executorX: 656,
+    executorX: 690,
     executorY: 160,
-    approvalX: 960,
+    approvalX: 1010,
     approvalY: 160,
-    outputX: 1264,
+    outputX: 1330,
     outputY: 160
   }
 
@@ -133,6 +143,7 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
     newAuto.name = `Nova Rotina (${automations.length + 1})`
     onSaveRoutine(newAuto)
     onSelectRoutine(newAuto.id)
+    setIsRoutineMenuOpen(false)
     setInspectorOpen(true)
   }
 
@@ -206,7 +217,7 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
     {
       from: diagramOutputPort({ x: layout.triggerX, y: layout.triggerY }),
       to: diagramInputPort({ x: layout.contextX, y: layout.contextY }),
-      color: '#c59b27'
+      color: '#f59e0b'
     },
     {
       from: diagramOutputPort({ x: layout.contextX, y: layout.contextY }),
@@ -230,569 +241,905 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
   const scheduledMin = activeRoutine.scheduleConfig?.minute ?? 0
 
   return (
-    <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#0b0c10] select-none">
-      {/* Top OpenBot Routine Header */}
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[var(--bg-border)] bg-[#11131a]/95 backdrop-blur-md z-20 shrink-0 flex-wrap">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-400">
-            <Clock className="w-4 h-4" />
-            <span>Rotina:</span>
+    <div className="flex-1 flex flex-col bg-[#09090b] overflow-hidden select-none relative">
+      {/* ======================================================================== */}
+      {/* BARRA SUPERIOR MINIMALISTA (Idêntica ao Print 02 do OpenBot)              */}
+      {/* ======================================================================== */}
+      <div className="h-11 px-4 border-b border-zinc-900/90 bg-[#09090b] flex items-center justify-between shrink-0 z-30">
+        <div className="flex items-center gap-3">
+          {/* Badge de Workspace "Local" com esfera verde */}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/60 border border-zinc-800/60 text-xs font-medium text-zinc-300">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-xs" />
+            <span>Local</span>
+            <ChevronDown className="w-3 h-3 text-zinc-500" />
           </div>
-          <select
-            value={activeRoutine.id}
-            onChange={e => onSelectRoutine(e.target.value)}
-            className="bg-[#181b24] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--text-main)]"
-          >
-            {automations.map(a => (
-              <option key={a.id} value={a.id}>
-                {a.name} ({a.active ? 'Ativa' : 'Pausada'})
-              </option>
-            ))}
-          </select>
 
-          <button
-            onClick={handleCreateNewRoutine}
-            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-border)] text-xs text-[var(--text-main)] flex items-center gap-1"
-          >
-            <Plus className="w-3.5 h-3.5 text-amber-400" />
-            Nova Rotina
-          </button>
-
-          {automations.length > 1 && (
+          {/* Navegação <- -> */}
+          <div className="flex items-center gap-1 text-zinc-500">
             <button
-              onClick={() => onDeleteRoutine(activeRoutine.id)}
-              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300"
-              title="Excluir rotina"
+              type="button"
+              onClick={() => {
+                const idx = automations.findIndex(a => a.id === activeRoutine.id)
+                if (idx > 0) onSelectRoutine(automations[idx - 1].id)
+              }}
+              className="p-1 rounded hover:bg-zinc-800/60 hover:text-zinc-300 cursor-pointer"
+              title="Rotina anterior"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-3.5 h-3.5" />
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() => {
+                const idx = automations.findIndex(a => a.id === activeRoutine.id)
+                if (idx >= 0 && idx < automations.length - 1) onSelectRoutine(automations[idx + 1].id)
+              }}
+              className="p-1 rounded hover:bg-zinc-800/60 hover:text-zinc-300 cursor-pointer"
+              title="Próxima rotina"
+            >
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
+          {/* Dropdown de Seleção / Criação de Rotina */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsRoutineMenuOpen(v => !v)}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-zinc-900 text-xs font-medium text-zinc-200 cursor-pointer"
+            >
+              <span>{activeRoutine.name}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
+            </button>
+
+            {isRoutineMenuOpen && (
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                className="absolute left-0 top-full mt-1.5 w-64 bg-[#141416] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100"
+              >
+                <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  Rotinas Automatizadas
+                </div>
+                {automations.map(a => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectRoutine(a.id)
+                      setIsRoutineMenuOpen(false)
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
+                      a.id === activeRoutine.id
+                        ? 'bg-zinc-800/90 text-white font-medium'
+                        : 'text-zinc-300 hover:bg-zinc-800/50'
+                    }`}
+                  >
+                    <span className="truncate">{a.name}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                        a.active
+                          ? 'bg-emerald-500/15 text-emerald-300'
+                          : 'bg-zinc-800 text-zinc-500'
+                      }`}
+                    >
+                      {a.active ? 'Ativa' : 'Pausada'}
+                    </span>
+                  </button>
+                ))}
+                <div className="border-t border-zinc-800/80 my-1" />
+                <button
+                  type="button"
+                  onClick={handleCreateNewRoutine}
+                  className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Nova rotina</span>
+                </button>
+                {automations.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDeleteRoutine(activeRoutine.id)
+                      setIsRoutineMenuOpen(false)
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-rose-400 hover:bg-rose-950/30 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Excluir rotina atual</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Lado Direito: Toggle Ativa/Pausada + Botão Pílula Branco "▷ Executar rotina agora" */}
+        <div className="flex items-center gap-2.5">
           <button
+            type="button"
             onClick={() => updateRoutine({ active: !activeRoutine.active })}
-            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1.5 border ${
+            className={`px-2.5 py-1 rounded-full text-[11px] font-medium flex items-center gap-1.5 border transition-all cursor-pointer ${
               activeRoutine.active
-                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                : 'bg-zinc-500/15 border-zinc-500/30 text-zinc-300'
+                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                : 'bg-zinc-800 border-zinc-700 text-zinc-400'
             }`}
           >
             {activeRoutine.active ? (
               <>
-                <CheckCircle2 className="w-3.5 h-3.5" /> Ativa
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Ativa</span>
               </>
             ) : (
               <>
-                <PauseCircle className="w-3.5 h-3.5" /> Pausada (Padrão Seguro)
+                <PauseCircle className="w-3.5 h-3.5 text-zinc-500" />
+                <span>Pausada</span>
               </>
             )}
           </button>
-        </div>
 
-        <div className="flex items-center gap-2">
           <button
+            type="button"
             disabled={isExecuting}
             onClick={() => onTestRoutine(activeRoutine)}
-            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs transition-all shadow-sm disabled:opacity-40 cursor-pointer"
           >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            Executar agora
+            <Play className="w-3 h-3 fill-current" />
+            <span>{isExecuting ? 'Executando...' : 'Executar rotina agora'}</span>
           </button>
 
-          <div className="flex items-center bg-[#181b24] p-0.5 rounded-lg border border-[var(--bg-border)]">
-            <button
-              onClick={() => setMode('canvas')}
-              className={`px-2.5 py-1 rounded text-[11px] flex items-center gap-1 ${
-                mode === 'canvas' ? 'bg-amber-500 text-black font-semibold' : 'text-[var(--text-muted)]'
-              }`}
-            >
-              <LayoutGrid className="w-3 h-3" />
-              Canvas
-            </button>
-            <button
-              onClick={() => setMode('simple')}
-              className={`px-2.5 py-1 rounded text-[11px] flex items-center gap-1 ${
-                mode === 'simple' ? 'bg-amber-500 text-black font-semibold' : 'text-[var(--text-muted)]'
-              }`}
-            >
-              <Sliders className="w-3 h-3" />
-              Formulário
-            </button>
-          </div>
-
           <button
+            type="button"
             onClick={() => setInspectorOpen(v => !v)}
-            className={`p-1.5 rounded-lg border transition-colors ${
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
               inspectorOpen
-                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
-                : 'bg-[#181b24] border-[var(--bg-border)] text-[var(--text-muted)] hover:text-white'
+                ? 'bg-zinc-800 text-zinc-100'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
             }`}
-            title="Abrir/Fechar Inspetor da Rotina"
+            title="Configurações da rotina"
           >
             <PanelRight className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {mode === 'canvas' ? (
+      {/* ======================================================================== */}
+      {/* CANVAS INFINITO COM DOT-GRID ESCURO (#09090b)                             */}
+      {/* ======================================================================== */}
+      <div className="flex-1 flex overflow-hidden relative">
         <div
           ref={viewportRef}
+          onWheel={e => {
+            if (e.ctrlKey || e.metaKey) {
+              e.preventDefault()
+              const delta = e.deltaY < 0 ? 0.08 : -0.08
+              setZoom(z => Math.max(0.4, Math.min(1.8, Number((z + delta).toFixed(2)))))
+            } else {
+              setPan(p => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }))
+            }
+          }}
+          onPointerDown={e => {
+            if (e.button === 2) return
+            if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.canvasBg === 'true') {
+              setIsRoutineMenuOpen(false)
+              setIsPanning(true)
+              panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
+            }
+          }}
           onPointerMove={handlePointerMove}
           onPointerUp={() => {
             setDraggingStage(null)
             setIsPanning(false)
           }}
-          onPointerDown={e => {
-            if (e.button !== 0) return
-            const target = e.target as HTMLElement
-            if (target === viewportRef.current || target.dataset.canvasBg === 'true') {
-              setIsPanning(true)
-              panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
-            }
-          }}
-          onWheel={e => {
-            if (e.ctrlKey || e.metaKey) {
-              e.preventDefault()
-              const delta = e.deltaY < 0 ? 0.08 : -0.08
-              setZoom(z => Math.min(1.5, Math.max(0.45, Number((z + delta).toFixed(2)))))
-            } else {
-              setPan(p => ({ x: p.x - e.deltaX * 0.6, y: p.y - e.deltaY * 0.6 }))
-            }
-          }}
           data-canvas-bg="true"
-          className="relative flex-1 w-full h-full overflow-hidden cursor-grab active:cursor-grabbing"
+          className={`flex-1 relative overflow-hidden bg-[#09090b] ${
+            toolMode === 'hand' || isPanning ? 'cursor-grabbing' : 'cursor-default'
+          }`}
           style={{
-            backgroundImage: 'radial-gradient(rgba(255,255,255,0.12) 1.25px, transparent 1.25px)',
-            backgroundSize: `${22 * zoom}px ${22 * zoom}px`,
+            backgroundImage: 'radial-gradient(#27272a 1px, transparent 1px)',
+            backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
             backgroundPosition: `${pan.x}px ${pan.y}px`
           }}
         >
+          {/* Camada Transformável */}
           <div
-            data-canvas-bg="true"
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: '0 0',
-              width: 3000,
-              height: 1800
+              transformOrigin: '0 0'
             }}
-            className="relative"
+            className="absolute inset-0 pointer-events-none"
           >
-            {/* OpenBot Horizontal S-Curve Edges */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
-              {stageEdges.map((edge, idx) => (
-                <g key={idx}>
-                  <path
-                    d={diagramEdgePath(edge.from, edge.to)}
-                    fill="none"
-                    stroke={edge.color}
-                    strokeWidth={2.4}
-                  />
-                  <path
-                    d={diagramEdgeArrow(edge.to)}
-                    fill="none"
-                    stroke={edge.color}
-                    strokeWidth={2.4}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </g>
-              ))}
+            {/* Linhas Bezier S-Curve entre os 5 Estágios Sequenciais */}
+            <svg className="overflow-visible w-full h-full pointer-events-auto">
+              {stageEdges.map((edge, idx) => {
+                const pathD = diagramEdgePath(edge.from, edge.to)
+                const arrowPts = diagramEdgeArrow(edge.to)
+                return (
+                  <g key={idx}>
+                    <path
+                      d={pathD}
+                      fill="none"
+                      stroke={edge.color}
+                      strokeWidth={1.8}
+                      strokeOpacity={0.8}
+                    />
+                    <polygon points={arrowPts} fill={edge.color} />
+                  </g>
+                )
+              })}
             </svg>
 
-            {/* 1. OpenBot Trigger Node Card with DiagramRoutineWeek & DiagramRoutineRunDots */}
+            {/* ==================================================================== */}
+            {/* 1. NÓ DE GATILHO (Estilo OpenBot Print 02)                            */}
+            {/* ==================================================================== */}
             <div
-              style={{ left: layout.triggerX, top: layout.triggerY, width: DIAGRAM_NODE_WIDTH }}
+              style={{
+                left: layout.triggerX,
+                top: layout.triggerY,
+                width: 276
+              }}
               onPointerDown={e => {
                 e.stopPropagation()
+                if (toolMode === 'hand') return
                 const world = screenToWorld(e.clientX, e.clientY)
                 dragOffsetRef.current = { x: world.x - layout.triggerX, y: world.y - layout.triggerY }
                 setDraggingStage('trigger')
               }}
-              className="absolute rounded-2xl border border-amber-500/40 bg-[#141720]/95 backdrop-blur-md shadow-2xl cursor-move p-3 space-y-2.5"
+              className="absolute pointer-events-auto select-none group"
             >
-              <span
-                style={{ top: 20, right: -7 }}
-                className="absolute w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-[#0b0c10]"
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
-                  1. Gatilho • {activeRoutine.active ? 'Ativa' : 'Pausada'}
-                </span>
-                <span className="text-[10px] text-[var(--text-muted)]">
-                  Máx {activeRoutine.maxRunsPerDay}/dia
+              {/* Rótulo Flutuante Superior */}
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
+                  <Zap className="w-3 h-3 text-amber-400" />
+                  <span>⚡ 1. Gatilho</span>
+                </div>
+                <span className="text-[10px] text-zinc-500 font-mono">
+                  {activeRoutine.maxRunsPerDay}x/dia
                 </span>
               </div>
 
-              <select
-                value={activeRoutine.triggerKind}
-                onChange={e => updateRoutine({ triggerKind: e.target.value as AutomationTriggerKind })}
-                onPointerDown={e => e.stopPropagation()}
-                className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
+              {/* Porta Circular à Direita */}
+              <div
+                className="absolute -right-9 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 text-zinc-300 text-[11px] font-serif flex items-center justify-center z-20"
+                title="Saída do gatilho"
               >
-                {(Object.keys(TRIGGER_LABELS) as AutomationTriggerKind[]).map(k => (
-                  <option key={k} value={k}>
-                    {TRIGGER_LABELS[k]}
-                  </option>
-                ))}
-              </select>
+                T
+              </div>
 
-              {/* OpenBot DiagramRoutineWeek 7-day Visual */}
-              {activeRoutine.triggerKind === 'weekly_schedule' && (
-                <div
-                  onPointerDown={e => e.stopPropagation()}
-                  className="p-2 rounded-xl bg-[#0e1017] border border-white/5 space-y-1.5"
-                >
-                  <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
-                    <span>{DAYS_OF_WEEK[scheduledDay]}</span>
-                    <span className="font-mono text-amber-300">
-                      {String(scheduledHour).padStart(2, '0')}:{String(scheduledMin).padStart(2, '0')} ({activeRoutine.scheduleConfig?.timezone || 'America/Sao_Paulo'})
-                    </span>
+              {/* Corpo do Card Escuro (#141416) */}
+              <div className="rounded-2xl bg-[#141416] border border-zinc-800/90 hover:border-zinc-700/80 p-3.5 shadow-2xl transition-all space-y-3">
+                {/* Header do Gatilho */}
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                    <Clock className="w-4 h-4" />
                   </div>
-                  <div className="grid grid-cols-7 gap-1 pt-0.5">
-                    {WEEK_INITIALS.map((letter, dayIdx) => {
-                      const isScheduled = dayIdx === scheduledDay
-                      return (
-                        <button
-                          key={dayIdx}
-                          type="button"
-                          onClick={() =>
-                            updateRoutine({
-                              scheduleConfig: {
-                                ...(activeRoutine.scheduleConfig || {
-                                  hour: 16,
-                                  minute: 0,
-                                  timezone: 'America/Sao_Paulo',
-                                  missedPolicy: 'run_once_on_open'
-                                }),
-                                dayOfWeek: dayIdx
-                              }
-                            })
-                          }
-                          className={`flex flex-col items-center py-1 rounded-md border transition-colors ${
-                            isScheduled
-                              ? 'border-amber-400/60 bg-amber-500/15 text-amber-300'
-                              : 'border-white/5 bg-white/[0.02] text-[var(--text-muted)] hover:border-white/20'
-                          }`}
-                        >
-                          <span className="text-[9px] font-bold">{letter}</span>
-                          <span
-                            className={`mt-1 w-3 h-1 rounded-full ${
-                              isScheduled ? 'bg-amber-400' : 'bg-white/10'
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-zinc-100 truncate">
+                      {activeRoutine.triggerKind === 'weekly_schedule'
+                        ? 'Agendamento IANA'
+                        : activeRoutine.triggerKind === 'briefing_added'
+                        ? 'Pasta Monitorada'
+                        : 'Evento no Cofre'}
+                    </div>
+                    <div className="text-[10px] text-zinc-500 truncate">
+                      {TRIGGER_LABELS[activeRoutine.triggerKind]}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Seletor de Tipo de Gatilho */}
+                <div onPointerDown={e => e.stopPropagation()}>
+                  <select
+                    value={activeRoutine.triggerKind}
+                    onChange={e =>
+                      updateRoutine({ triggerKind: e.target.value as AutomationTriggerKind })
+                    }
+                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                  >
+                    {(Object.keys(TRIGGER_LABELS) as AutomationTriggerKind[]).map(k => (
+                      <option key={k} value={k} className="bg-[#18181b]">
+                        {TRIGGER_LABELS[k]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Seletor Visual de 7 Dias da Semana (D S T Q Q S S) */}
+                {activeRoutine.triggerKind === 'weekly_schedule' && (
+                  <div
+                    onPointerDown={e => e.stopPropagation()}
+                    className="p-2 rounded-xl bg-[#18181b] border border-zinc-800/80 space-y-2"
+                  >
+                    <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                      <span>{DAYS_OF_WEEK[scheduledDay]}</span>
+                      <span className="font-mono text-amber-400 font-medium">
+                        {String(scheduledHour).padStart(2, '0')}:
+                        {String(scheduledMin).padStart(2, '0')}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-1">
+                      {WEEK_INITIALS.map((letter, dayIdx) => {
+                        const isScheduled = dayIdx === scheduledDay
+                        return (
+                          <button
+                            key={dayIdx}
+                            type="button"
+                            onClick={() =>
+                              updateRoutine({
+                                scheduleConfig: {
+                                  ...(activeRoutine.scheduleConfig || {
+                                    hour: 16,
+                                    minute: 0,
+                                    timezone: 'America/Sao_Paulo',
+                                    missedPolicy: 'run_once_on_open'
+                                  }),
+                                  dayOfWeek: dayIdx
+                                }
+                              })
+                            }
+                            className={`flex flex-col items-center py-1 rounded-lg border transition-all cursor-pointer ${
+                              isScheduled
+                                ? 'border-amber-400/80 bg-amber-500/20 text-amber-300 font-bold'
+                                : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700'
                             }`}
-                          />
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
+                          >
+                            <span className="text-[10px]">{letter}</span>
+                            <span
+                              className={`mt-0.5 w-1.5 h-1.5 rounded-full ${
+                                isScheduled ? 'bg-amber-400' : 'bg-transparent'
+                              }`}
+                            />
+                          </button>
+                        )
+                      })}
+                    </div>
 
-              {/* OpenBot DiagramRoutineRunDots + Footer */}
-              <div className="pt-1 border-t border-white/5 flex items-center justify-between text-[10px]">
-                <div className="flex items-center gap-1" title="Execuções recentes desta rotina">
-                  <span className="text-[var(--text-muted)]">Histórico:</span>
-                  {(activeRoutine.recentRunIds || []).slice(0, 5).map(id => (
-                    <span key={id} className="w-2 h-2 rounded-full bg-emerald-400" />
-                  ))}
-                  {(activeRoutine.recentRunIds || []).length === 0 && (
-                    <span className="text-[var(--text-muted)]">Sem execuções</span>
-                  )}
+                    <div className="text-[9px] text-zinc-500 truncate pt-0.5">
+                      Próxima: {activeRoutine.nextRunAt ? new Date(activeRoutine.nextRunAt).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Sob evento'}
+                    </div>
+                  </div>
+                )}
+
+                {/* Se for pasta monitorada */}
+                {activeRoutine.triggerKind === 'briefing_added' && (
+                  <div onPointerDown={e => e.stopPropagation()} className="space-y-1">
+                    <label className="text-[10px] text-zinc-400 block">Pasta monitorada</label>
+                    <input
+                      type="text"
+                      value={activeRoutine.watchFolder || ''}
+                      onChange={e => updateRoutine({ watchFolder: e.target.value })}
+                      placeholder="Ex: Clientes ou Briefings"
+                      className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                {/* Footer do Card com Botão "Executar agora" e Histórico */}
+                <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[10px]">
+                  <div className="flex items-center gap-1">
+                    <span className="text-zinc-500">Histórico:</span>
+                    {(activeRoutine.recentRunIds || []).slice(0, 4).map(id => (
+                      <span key={id} className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    ))}
+                    {(!activeRoutine.recentRunIds || activeRoutine.recentRunIds.length === 0) && (
+                      <span className="text-zinc-600">Sem registros</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onPointerDown={e => e.stopPropagation()}
+                    onClick={() => onTestRoutine(activeRoutine)}
+                    className="text-amber-400 hover:text-amber-300 font-medium cursor-pointer"
+                  >
+                    Executar agora ▷
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onPointerDown={e => e.stopPropagation()}
-                  onClick={() => onTestRoutine(activeRoutine)}
-                  className="text-amber-300 hover:underline font-semibold"
-                >
-                  Executar
-                </button>
               </div>
             </div>
 
-            {/* 2. Context Node Card */}
+            {/* ==================================================================== */}
+            {/* 2. NÓ DE CONTEXTO & FONTES                                            */}
+            {/* ==================================================================== */}
             <div
-              style={{ left: layout.contextX, top: layout.contextY, width: DIAGRAM_NODE_WIDTH }}
+              style={{
+                left: layout.contextX,
+                top: layout.contextY,
+                width: 276
+              }}
               onPointerDown={e => {
                 e.stopPropagation()
+                if (toolMode === 'hand') return
                 const world = screenToWorld(e.clientX, e.clientY)
                 dragOffsetRef.current = { x: world.x - layout.contextX, y: world.y - layout.contextY }
                 setDraggingStage('context')
               }}
-              className="absolute rounded-2xl border border-purple-500/40 bg-[#141720]/95 backdrop-blur-md shadow-2xl cursor-move p-3 space-y-2.5"
+              className="absolute pointer-events-auto select-none group"
             >
-              <span
-                style={{ top: 20, left: -7 }}
-                className="absolute w-3.5 h-3.5 rounded-full bg-[#181b24] border-2 border-purple-400"
-              />
-              <span
-                style={{ top: 20, right: -7 }}
-                className="absolute w-3.5 h-3.5 rounded-full bg-purple-400 border-2 border-[#0b0c10]"
-              />
-              <div className="text-[10px] font-bold uppercase tracking-wider text-purple-300">
-                2. Contexto Autorizado
-              </div>
-              <div onPointerDown={e => e.stopPropagation()} className="space-y-2">
-                <div>
-                  <label className="text-[10px] text-[var(--text-muted)] block mb-0.5">
-                    Pasta Monitorada
-                  </label>
-                  <input
-                    type="text"
-                    value={activeRoutine.watchFolder || ''}
-                    onChange={e => updateRoutine({ watchFolder: e.target.value })}
-                    placeholder="Ex: Clientes"
-                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
-                  />
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
+                  <FolderOpen className="w-3 h-3 text-purple-400" />
+                  <span>📁 2. Contexto & Fontes</span>
                 </div>
-                <div>
-                  <label className="text-[10px] text-[var(--text-muted)] block mb-0.5">
-                    Isolamento de Cliente Fixo (Opcional)
-                  </label>
-                  <select
-                    value={activeRoutine.projectContextId || ''}
-                    onChange={e => updateRoutine({ projectContextId: e.target.value || undefined })}
-                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
-                  >
-                    <option value="">Sem cliente fixo (usar apenas evento)</option>
-                    {projects.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.clientName}
+              </div>
+
+              {/* Porta Entrada Esquerda */}
+              <div
+                className="absolute -left-9 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 text-zinc-300 text-[11px] font-serif flex items-center justify-center z-20"
+                title="Entrada do gatilho"
+              >
+                T
+              </div>
+
+              {/* Porta Saída Direita */}
+              <div
+                className="absolute -right-9 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 text-zinc-300 text-[11px] font-serif flex items-center justify-center z-20"
+                title="Saída do contexto"
+              >
+                T
+              </div>
+
+              <div className="rounded-2xl bg-[#141416] border border-zinc-800/90 hover:border-zinc-700/80 p-3.5 shadow-2xl transition-all space-y-3">
+                <div onPointerDown={e => e.stopPropagation()} className="space-y-2.5">
+                  <div>
+                    <label className="text-[10px] text-zinc-400 block mb-1">
+                      Pasta de Origem
+                    </label>
+                    <input
+                      type="text"
+                      list="routine-watch-folders"
+                      value={activeRoutine.watchFolder || ''}
+                      onChange={e => updateRoutine({ watchFolder: e.target.value })}
+                      placeholder="Ex: Clientes"
+                      className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                    />
+                    <datalist id="routine-watch-folders">
+                      {folders.map(f => (
+                        <option key={f} value={f} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-zinc-400 block mb-1">
+                      Isolamento de Cliente Fixo
+                    </label>
+                    <select
+                      value={activeRoutine.projectContextId || ''}
+                      onChange={e =>
+                        updateRoutine({ projectContextId: e.target.value || undefined })
+                      }
+                      className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                    >
+                      <option value="" className="bg-[#18181b]">
+                        Dinâmico (conforme evento)
                       </option>
-                    ))}
-                  </select>
+                      {projects.map(p => (
+                        <option key={p.id} value={p.id} className="bg-[#18181b]">
+                          {p.clientName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Chips de fontes autorizadas */}
+                  <div className="bg-[#18181b] rounded-xl p-2 space-y-1 text-[10px]">
+                    <span className="text-zinc-500 font-medium">Fontes autorizadas:</span>
+                    <div className="flex flex-wrap gap-1">
+                      <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-300">Modelo</span>
+                      <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-300">Catálogo</span>
+                      <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-300">Cliente</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* 3. Executor Node Card */}
+            {/* ==================================================================== */}
+            {/* 3. NÓ DO AGENTE EXECUTOR                                              */}
+            {/* ==================================================================== */}
             <div
-              style={{ left: layout.executorX, top: layout.executorY, width: DIAGRAM_NODE_WIDTH }}
+              style={{
+                left: layout.executorX,
+                top: layout.executorY,
+                width: 276
+              }}
               onPointerDown={e => {
                 e.stopPropagation()
+                if (toolMode === 'hand') return
                 const world = screenToWorld(e.clientX, e.clientY)
                 dragOffsetRef.current = { x: world.x - layout.executorX, y: world.y - layout.executorY }
                 setDraggingStage('executor')
               }}
-              className="absolute rounded-2xl border border-cyan-500/40 bg-[#141720]/95 backdrop-blur-md shadow-2xl cursor-move p-3 space-y-2.5"
+              className="absolute pointer-events-auto select-none group"
             >
-              <span
-                style={{ top: 20, left: -7 }}
-                className="absolute w-3.5 h-3.5 rounded-full bg-[#181b24] border-2 border-cyan-400"
-              />
-              <span
-                style={{ top: 20, right: -7 }}
-                className="absolute w-3.5 h-3.5 rounded-full bg-cyan-400 border-2 border-[#0b0c10]"
-              />
-              <div className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">
-                3. Quem Executa
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
+                  <Bot className="w-3 h-3 text-cyan-400" />
+                  <span>🤖 3. Quem Executa</span>
+                </div>
               </div>
-              <div onPointerDown={e => e.stopPropagation()} className="space-y-2">
-                <select
-                  value={activeRoutine.targetKind || 'agent'}
-                  onChange={e =>
-                    updateRoutine({
-                      targetKind: e.target.value as 'agent' | 'team' | 'workflow'
-                    })
-                  }
-                  className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
-                >
-                  <option value="agent">Agente Individual</option>
-                  <option value="team">Equipe Coordenada</option>
-                  <option value="workflow">Fluxo de Trabalho</option>
-                </select>
 
-                {(activeRoutine.targetKind || 'agent') === 'agent' && (
-                  <select
-                    value={activeRoutine.agentId}
-                    onChange={e => {
-                      const ag = agents.find(a => a.id === e.target.value)
-                      updateRoutine({ agentId: e.target.value, agentVersion: ag?.version || 1 })
-                    }}
-                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
-                  >
-                    {agents.map(ag => (
-                      <option key={ag.id} value={ag.id}>
-                        {ag.icon} {ag.name} (v{ag.version})
-                      </option>
-                    ))}
-                  </select>
-                )}
+              {/* Porta Entrada Esquerda */}
+              <div
+                className="absolute -left-9 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 text-zinc-300 text-[11px] font-serif flex items-center justify-center z-20"
+                title="Entrada do executor"
+              >
+                T
+              </div>
 
-                {activeRoutine.targetKind === 'team' && (
-                  <select
-                    value={activeRoutine.teamId || teams[0]?.id || ''}
-                    onChange={e => updateRoutine({ teamId: e.target.value })}
-                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
-                  >
-                    {teams.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
+              {/* Porta Saída Direita */}
+              <div
+                className="absolute -right-9 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 text-zinc-300 text-[11px] font-serif flex items-center justify-center z-20"
+                title="Saída da entrega"
+              >
+                T
+              </div>
 
-                {activeRoutine.targetKind === 'workflow' && (
-                  <select
-                    value={activeRoutine.workflowId || workflows[0]?.id || ''}
-                    onChange={e => updateRoutine({ workflowId: e.target.value })}
-                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
-                  >
-                    {workflows.map(w => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
+              <div className="rounded-2xl bg-[#141416] border border-zinc-800/90 hover:border-zinc-700/80 p-3.5 shadow-2xl transition-all space-y-3">
+                <div onPointerDown={e => e.stopPropagation()} className="space-y-2.5">
+                  <div>
+                    <label className="text-[10px] text-zinc-400 block mb-1">
+                      Destino da Execução
+                    </label>
+                    <select
+                      value={activeRoutine.targetKind || 'agent'}
+                      onChange={e =>
+                        updateRoutine({
+                          targetKind: e.target.value as 'agent' | 'team' | 'workflow'
+                        })
+                      }
+                      className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                    >
+                      <option value="agent" className="bg-[#18181b]">
+                        Agente Individual
                       </option>
-                    ))}
-                  </select>
-                )}
+                      <option value="team" className="bg-[#18181b]">
+                        Equipe Coordenada
+                      </option>
+                      <option value="workflow" className="bg-[#18181b]">
+                        Fluxo de Trabalho
+                      </option>
+                    </select>
+                  </div>
+
+                  {/* Agente selecionado */}
+                  {(activeRoutine.targetKind || 'agent') === 'agent' && (
+                    <div className="flex items-center gap-2 bg-[#18181b] border border-zinc-800 rounded-xl p-2">
+                      <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
+                        ••
+                      </div>
+                      <select
+                        value={activeRoutine.agentId}
+                        onChange={e => {
+                          const ag = agents.find(a => a.id === e.target.value)
+                          updateRoutine({ agentId: e.target.value, agentVersion: ag?.version || 1 })
+                        }}
+                        className="flex-1 bg-transparent text-xs text-zinc-200 focus:outline-none truncate"
+                      >
+                        {agents.map(ag => (
+                          <option key={ag.id} value={ag.id} className="bg-[#18181b]">
+                            {ag.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Equipe selecionada */}
+                  {activeRoutine.targetKind === 'team' && (
+                    <div className="flex items-center gap-2 bg-[#18181b] border border-zinc-800 rounded-xl p-2">
+                      <Users className="w-5 h-5 text-amber-400 shrink-0" />
+                      <select
+                        value={activeRoutine.teamId || teams[0]?.id || ''}
+                        onChange={e => updateRoutine({ teamId: e.target.value })}
+                        className="flex-1 bg-transparent text-xs text-zinc-200 focus:outline-none truncate"
+                      >
+                        {teams.map(t => (
+                          <option key={t.id} value={t.id} className="bg-[#18181b]">
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Workflow selecionado */}
+                  {activeRoutine.targetKind === 'workflow' && (
+                    <div className="flex items-center gap-2 bg-[#18181b] border border-zinc-800 rounded-xl p-2">
+                      <GitBranch className="w-5 h-5 text-purple-400 shrink-0" />
+                      <select
+                        value={activeRoutine.workflowId || workflows[0]?.id || ''}
+                        onChange={e => updateRoutine({ workflowId: e.target.value })}
+                        className="flex-1 bg-transparent text-xs text-zinc-200 focus:outline-none truncate"
+                      >
+                        {workflows.map(w => (
+                          <option key={w.id} value={w.id} className="bg-[#18181b]">
+                            {w.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Descrição / Prompt da Rotina */}
+                  <div>
+                    <label className="text-[10px] text-zinc-400 block mb-1">
+                      O que executar ao disparar
+                    </label>
+                    <textarea
+                      value={activeRoutine.description}
+                      onChange={e => updateRoutine({ description: e.target.value })}
+                      placeholder="Instruções para o executor ao rodar esta rotina..."
+                      rows={2}
+                      className="w-full bg-[#18181b] border border-zinc-800 rounded-xl p-2 text-xs text-zinc-200 resize-none focus:outline-none"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* 4. Approval Node Card */}
+            {/* ==================================================================== */}
+            {/* 4. NÓ DE APROVAÇÃO HUMANA                                             */}
+            {/* ==================================================================== */}
             <div
-              style={{ left: layout.approvalX, top: layout.approvalY, width: DIAGRAM_NODE_WIDTH }}
+              style={{
+                left: layout.approvalX,
+                top: layout.approvalY,
+                width: 276
+              }}
               onPointerDown={e => {
                 e.stopPropagation()
+                if (toolMode === 'hand') return
                 const world = screenToWorld(e.clientX, e.clientY)
                 dragOffsetRef.current = { x: world.x - layout.approvalX, y: world.y - layout.approvalY }
                 setDraggingStage('approval')
               }}
-              className="absolute rounded-2xl border border-pink-500/40 bg-[#141720]/95 backdrop-blur-md shadow-2xl cursor-move p-3 space-y-2.5"
+              className="absolute pointer-events-auto select-none group"
             >
-              <span
-                style={{ top: 20, left: -7 }}
-                className="absolute w-3.5 h-3.5 rounded-full bg-[#181b24] border-2 border-pink-400"
-              />
-              <span
-                style={{ top: 20, right: -7 }}
-                className="absolute w-3.5 h-3.5 rounded-full bg-pink-400 border-2 border-[#0b0c10]"
-              />
-              <div className="text-[10px] font-bold uppercase tracking-wider text-pink-300">
-                4. Regra de Aprovação
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
+                  <ShieldCheck className="w-3 h-3 text-pink-400" />
+                  <span>🛡️ 4. Regra de Aprovação</span>
+                </div>
               </div>
-              <label
-                onPointerDown={e => e.stopPropagation()}
-                className="flex items-start gap-2 text-xs text-[var(--text-main)] cursor-pointer"
+
+              {/* Porta Entrada Esquerda */}
+              <div
+                className="absolute -left-9 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 text-zinc-300 text-[11px] font-serif flex items-center justify-center z-20"
+                title="Entrada da revisão"
               >
-                <input
-                  type="checkbox"
-                  checked={activeRoutine.requireApproval}
-                  onChange={e => updateRoutine({ requireApproval: e.target.checked })}
-                  className="mt-0.5 accent-pink-500"
-                />
-                <span>Exigir aprovação humana antes de salvar no cofre</span>
-              </label>
+                T
+              </div>
+
+              {/* Porta Saída Direita */}
+              <div
+                className="absolute -right-9 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 text-zinc-300 text-[11px] font-serif flex items-center justify-center z-20"
+                title="Saída aprovada"
+              >
+                T
+              </div>
+
+              <div className="rounded-2xl bg-[#141416] border border-zinc-800/90 hover:border-zinc-700/80 p-3.5 shadow-2xl transition-all space-y-3">
+                <label
+                  onPointerDown={e => e.stopPropagation()}
+                  className="flex items-start gap-2.5 text-xs text-zinc-200 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={activeRoutine.requireApproval}
+                    onChange={e => updateRoutine({ requireApproval: e.target.checked })}
+                    className="mt-0.5 accent-pink-500 rounded"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="font-medium">Exigir aprovação humana</span>
+                    <p className="text-[10px] text-zinc-500">
+                      O rascunho fica pendente na aba de tarefas até você revisar e confirmar antes de gravar no cofre.
+                    </p>
+                  </div>
+                </label>
+              </div>
             </div>
 
-            {/* 5. Output Node Card */}
+            {/* ==================================================================== */}
+            {/* 5. NÓ DE DESTINO & TAREFAS                                            */}
+            {/* ==================================================================== */}
             <div
-              style={{ left: layout.outputX, top: layout.outputY, width: DIAGRAM_NODE_WIDTH }}
+              style={{
+                left: layout.outputX,
+                top: layout.outputY,
+                width: 276
+              }}
               onPointerDown={e => {
                 e.stopPropagation()
+                if (toolMode === 'hand') return
                 const world = screenToWorld(e.clientX, e.clientY)
                 dragOffsetRef.current = { x: world.x - layout.outputX, y: world.y - layout.outputY }
                 setDraggingStage('output')
               }}
-              className="absolute rounded-2xl border border-emerald-500/40 bg-[#141720]/95 backdrop-blur-md shadow-2xl cursor-move p-3 space-y-2.5"
+              className="absolute pointer-events-auto select-none group"
             >
-              <span
-                style={{ top: 20, left: -7 }}
-                className="absolute w-3.5 h-3.5 rounded-full bg-[#181b24] border-2 border-emerald-400"
-              />
-              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                5. Pasta de Destino
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
+                  <Target className="w-3 h-3 text-emerald-400" />
+                  <span>🎯 5. Destino & Entregas</span>
+                </div>
               </div>
-              <div onPointerDown={e => e.stopPropagation()}>
-                <input
-                  type="text"
-                  list="routine-folders-list"
-                  value={activeRoutine.targetFolder}
-                  onChange={e => updateRoutine({ targetFolder: e.target.value })}
-                  className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
-                />
-                <datalist id="routine-folders-list">
-                  {folders.map(f => (
-                    <option key={f} value={f} />
-                  ))}
-                </datalist>
+
+              {/* Porta Entrada Esquerda */}
+              <div
+                className="absolute -left-9 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 text-zinc-300 text-[11px] font-serif flex items-center justify-center z-20"
+                title="Entrada do destino"
+              >
+                T
+              </div>
+
+              <div className="rounded-2xl bg-[#141416] border border-zinc-800/90 hover:border-zinc-700/80 p-3.5 shadow-2xl transition-all space-y-3">
+                <div onPointerDown={e => e.stopPropagation()} className="space-y-2">
+                  <label className="text-[10px] text-zinc-400 block mb-0.5">
+                    Pasta de Destino no Cofre
+                  </label>
+                  <input
+                    type="text"
+                    list="routine-target-folders"
+                    value={activeRoutine.targetFolder}
+                    onChange={e => updateRoutine({ targetFolder: e.target.value })}
+                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                  />
+                  <datalist id="routine-target-folders">
+                    {folders.map(f => (
+                      <option key={f} value={f} />
+                    ))}
+                  </datalist>
+
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-300">
+                      📄 Documento formatado
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-300">
+                      📋 Tarefas rastreadas
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Bottom-Left Zoom Controls */}
-          <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1 bg-[#141720]/95 backdrop-blur-md border border-[var(--bg-border)] rounded-xl p-1 shadow-xl">
+          {/* ==================================================================== */}
+          {/* PÍLULA DE ZOOM NO CANTO INFERIOR ESQUERDO                            */}
+          {/* ==================================================================== */}
+          <div
+            onPointerDown={e => e.stopPropagation()}
+            className="absolute bottom-4 left-4 flex items-center gap-1 bg-[#141416]/95 backdrop-blur-md border border-zinc-800/90 rounded-xl px-2 py-1.5 shadow-2xl z-30 text-xs text-zinc-300"
+          >
             <button
-              onClick={() => setZoom(z => Math.max(0.45, Number((z - 0.1).toFixed(2))))}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white"
+              type="button"
+              onClick={() => setZoom(z => Math.max(0.4, Number((z - 0.1).toFixed(2))))}
+              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+              title="Diminuir zoom"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[11px] font-mono px-2 text-[var(--text-main)]">
+            <span className="px-1.5 text-[11px] font-mono text-zinc-200 min-w-[42px] text-center">
               {Math.round(zoom * 100)}%
             </span>
             <button
-              onClick={() => setZoom(z => Math.min(1.5, Number((z + 0.1).toFixed(2))))}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white"
+              type="button"
+              onClick={() => setZoom(z => Math.min(1.8, Number((z + 0.1).toFixed(2))))}
+              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+              title="Aumentar zoom"
             >
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
-            <div className="w-px h-4 bg-[var(--bg-border)] mx-0.5" />
+            <div className="w-px h-4 bg-zinc-800 mx-0.5" />
             <button
+              type="button"
               onClick={handleFitView}
-              className="px-2 py-1 rounded-lg hover:bg-white/10 text-[11px] text-[var(--text-muted)] hover:text-white flex items-center gap-1"
+              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+              title="Ajustar à tela"
             >
-              <Maximize2 className="w-3 h-3" />
-              Ajustar
+              <Maximize2 className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {/* Collapsible Right-Hand DiagramInspector */}
-          {inspectorOpen && (
-            <div
-              onPointerDown={e => e.stopPropagation()}
-              className="absolute top-0 right-0 bottom-0 w-84 bg-[#141720]/98 backdrop-blur-xl border-l border-[var(--bg-border)] z-30 p-4 overflow-y-auto shadow-2xl space-y-4"
+          {/* ==================================================================== */}
+          {/* DOCK FLUTUANTE INFERIOR CENTRAL (Estilo OpenBot Print 02)             */}
+          {/* ==================================================================== */}
+          <div
+            onPointerDown={e => e.stopPropagation()}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#141416]/95 backdrop-blur-xl border border-zinc-800/90 rounded-2xl p-1.5 shadow-2xl z-30"
+          >
+            <button
+              type="button"
+              onClick={() => setToolMode('pointer')}
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                toolMode === 'pointer'
+                  ? 'bg-zinc-800 text-zinc-100'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+              }`}
+              title="Selecionar (Ponteiro)"
             >
-              <div className="flex items-center justify-between border-b border-[var(--bg-border)] pb-2.5">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">
-                  Inspetor da Rotina
-                </h4>
+              <MousePointer className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setToolMode('hand')}
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                toolMode === 'hand'
+                  ? 'bg-zinc-800 text-zinc-100'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+              }`}
+              title="Mover canvas (Mão)"
+            >
+              <Hand className="w-4 h-4" />
+            </button>
+
+            <div className="w-px h-5 bg-zinc-800 mx-0.5" />
+
+            <button
+              type="button"
+              onClick={() => setInspectorOpen(v => !v)}
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                inspectorOpen ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Abrir configurações detalhadas da rotina"
+            >
+              <PanelRight className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onTestRoutine(activeRoutine)}
+              className="ml-1 px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Executar agora</span>
+            </button>
+          </div>
+
+          {/* ==================================================================== */}
+          {/* SIDEBAR DIREITA DE INSPETOR DA ROTINA                                 */}
+          {/* ==================================================================== */}
+          {inspectorOpen && (
+            <aside className="w-80 bg-[#111113] border-l border-zinc-800/80 p-4 overflow-y-auto space-y-4 shrink-0 z-30 animate-in slide-in-from-right duration-150">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
+                <span className="text-xs font-semibold text-zinc-200">Inspetor da Rotina</span>
                 <button
+                  type="button"
                   onClick={() => setInspectorOpen(false)}
-                  className="p-1 rounded-lg hover:bg-white/10 text-[var(--text-muted)]"
+                  className="text-zinc-500 hover:text-zinc-200 p-1 rounded-lg hover:bg-zinc-800/60 cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
 
               <div className="space-y-3 text-xs">
                 <div>
-                  <label className="text-[11px] text-[var(--text-muted)] block mb-1">
-                    Nome da Rotina
-                  </label>
+                  <label className="text-[11px] text-zinc-400 block mb-1">Nome da rotina</label>
                   <input
                     type="text"
                     value={activeRoutine.name}
                     onChange={e => updateRoutine({ name: e.target.value })}
-                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="text-[11px] text-[var(--text-muted)] block mb-1">
-                    Instrução / Descrição
+                  <label className="text-[11px] text-zinc-400 block mb-1">
+                    Instrução / Descrição da Rotina
                   </label>
                   <textarea
                     value={activeRoutine.description}
                     onChange={e => updateRoutine({ description: e.target.value })}
                     rows={3}
-                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)] resize-none"
+                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl p-2.5 text-xs text-zinc-100 resize-none focus:outline-none"
                   />
                 </div>
 
                 {activeRoutine.triggerKind === 'weekly_schedule' && (
-                  <div className="space-y-2 p-2.5 rounded-xl bg-[#0e1017] border border-[var(--bg-border)]">
-                    <div className="font-semibold text-amber-300">Agendamento IANA</div>
+                  <div className="space-y-2.5 p-3 rounded-2xl bg-[#18181b] border border-zinc-800">
+                    <div className="font-semibold text-zinc-200 text-xs">Agendamento IANA</div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[10px] text-[var(--text-muted)] block">Hora</label>
+                        <label className="text-[10px] text-zinc-400 block mb-0.5">Hora</label>
                         <input
                           type="number"
                           min={0}
@@ -811,11 +1158,11 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                               }
                             })
                           }
-                          className="w-full bg-[#141720] border border-[var(--bg-border)] rounded px-2 py-1 text-xs"
+                          className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-100"
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-[var(--text-muted)] block">Minuto</label>
+                        <label className="text-[10px] text-zinc-400 block mb-0.5">Minuto</label>
                         <input
                           type="number"
                           min={0}
@@ -834,12 +1181,13 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                               }
                             })
                           }
-                          className="w-full bg-[#141720] border border-[var(--bg-border)] rounded px-2 py-1 text-xs"
+                          className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-100"
                         />
                       </div>
                     </div>
+
                     <div>
-                      <label className="text-[10px] text-[var(--text-muted)] block">
+                      <label className="text-[10px] text-zinc-400 block mb-0.5">
                         Fuso Horário IANA
                       </label>
                       <input
@@ -858,12 +1206,13 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                             }
                           })
                         }
-                        className="w-full bg-[#141720] border border-[var(--bg-border)] rounded px-2 py-1 text-xs"
+                        className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-100"
                       />
                     </div>
+
                     <div>
-                      <label className="text-[10px] text-[var(--text-muted)] block">
-                        Política se o app estiver fechado no horário
+                      <label className="text-[10px] text-zinc-400 block mb-0.5">
+                        Política se o app estiver fechado
                       </label>
                       <select
                         value={activeRoutine.scheduleConfig?.missedPolicy || 'run_once_on_open'}
@@ -880,17 +1229,21 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                             }
                           })
                         }
-                        className="w-full bg-[#141720] border border-[var(--bg-border)] rounded px-2 py-1 text-xs"
+                        className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-100"
                       >
-                        <option value="run_once_on_open">Executar 1x ao abrir o Pyrite</option>
-                        <option value="skip">Pular para a próxima semana</option>
+                        <option value="run_once_on_open" className="bg-[#18181b]">
+                          Executar 1x ao abrir o Pyrite
+                        </option>
+                        <option value="skip" className="bg-[#18181b]">
+                          Pular para a próxima semana
+                        </option>
                       </select>
                     </div>
                   </div>
                 )}
 
                 <div>
-                  <label className="text-[11px] text-[var(--text-muted)] block mb-1">
+                  <label className="text-[11px] text-zinc-400 block mb-1">
                     Limite máximo de execuções por dia
                   </label>
                   <input
@@ -901,24 +1254,14 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                     onChange={e =>
                       updateRoutine({ maxRunsPerDay: Math.max(1, Number(e.target.value) || 1) })
                     }
-                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none"
                   />
                 </div>
               </div>
-            </div>
+            </aside>
           )}
         </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto p-6 max-w-3xl mx-auto w-full space-y-4">
-          <div className="p-5 rounded-2xl border border-[var(--bg-border)] bg-[#141720] space-y-4">
-            <h3 className="text-sm font-bold text-[var(--text-main)]">{activeRoutine.name}</h3>
-            <p className="text-xs text-[var(--text-muted)]">{activeRoutine.description}</p>
-            <div className="text-xs text-amber-300">
-              Próxima execução calculada: {activeRoutine.nextRunAt ? new Date(activeRoutine.nextRunAt).toLocaleString('pt-BR') : 'Sob evento'}
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
