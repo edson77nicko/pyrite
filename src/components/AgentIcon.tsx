@@ -6,12 +6,10 @@ import {
   type AgentIconDefinition,
   AGENT_ICON_VARIANTS,
   resolveAgentIconVariant,
-  normalizeAgentIconState,
-  isAgentIconVariant
+  normalizeAgentIconState
 } from './agentIconRegistry'
 
 export type { AgentIconVariant, AgentIconState, AgentIconDefinition }
-export { AGENT_ICON_VARIANTS, resolveAgentIconVariant, normalizeAgentIconState, isAgentIconVariant }
 
 export interface AgentIconProps extends Omit<React.SVGProps<SVGSVGElement>, 'size'> {
   /**

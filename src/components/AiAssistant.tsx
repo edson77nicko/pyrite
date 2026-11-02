@@ -7,7 +7,8 @@ import { mindMapToMarkdownOutline, parseMindMapDocument, serializeMindMapDocumen
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { AiSettingsModal } from './AiSettingsModal'
 import { FolderTreePicker } from './FolderTreePicker'
-import { AgentIcon, isAgentIconVariant } from './AgentIcon'
+import { AgentIcon } from './AgentIcon'
+import { isAgentIconVariant } from './agentIconRegistry'
 import {
   Sparkles,
   Bot,

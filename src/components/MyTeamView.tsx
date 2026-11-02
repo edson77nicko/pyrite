@@ -33,13 +33,12 @@ import { TeamCanvasEditor } from './TeamCanvasEditor'
 import { WorkflowCanvasEditor } from './WorkflowCanvasEditor'
 import { RoutineCanvasEditor } from './RoutineCanvasEditor'
 import { AiSettingsModal, type CustomAgentSkill } from './AiSettingsModal'
+import { AgentIcon, AgentIconPicker } from './AgentIcon'
 import {
-  AgentIcon,
-  AgentIconPicker,
   isAgentIconVariant,
   type AgentIconState,
   type AgentIconVariant
-} from './AgentIcon'
+} from './agentIconRegistry'
 import {
   Bot,
   Workflow,
