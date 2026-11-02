@@ -1231,13 +1231,22 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             : 'hover:bg-[#151518] text-zinc-300'
                         }`}
                       >
-                        {/* Avatar colorido com ícone customizado do OpenBot */}
-                        <div
-                          className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm"
-                          style={{ backgroundColor: color }}
-                        >
-                          <span className="tracking-tighter text-sm">{getAgentIcon(ag.id)}</span>
-                        </div>
+                        {/* Avatar com ícone animado em SVG ou glifo customizado */}
+                        {isAgentIconVariant(ag.icon) ? (
+                          <AgentIcon
+                            variant={ag.icon}
+                            state={ag.state === 'working' ? 'executing' : ag.state === 'waiting_user' ? 'attention' : 'waiting'}
+                            size={36}
+                            className="shrink-0 rounded-xl shadow-sm"
+                          />
+                        ) : (
+                          <div
+                            className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm"
+                            style={{ backgroundColor: color }}
+                          >
+                            <span className="tracking-tighter text-sm">{getAgentIcon(ag.id)}</span>
+                          </div>
+                        )}
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
@@ -1279,13 +1288,22 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   </button>
 
                   {selectedAgent && (
-                    <div className="flex items-center gap-1.5 bg-[#1b1b1f] border border-zinc-800/80 rounded-xl px-2.5 py-1">
-                      <span
-                        className="w-4 h-4 rounded-md flex items-center justify-center text-[9px] text-white font-bold"
-                        style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
-                      >
-                        {getAgentIcon(selectedAgent.id)}
-                      </span>
+                    <div className="flex items-center gap-1.5 bg-[#1b1b1f] border border-zinc-800/80 rounded-xl px-2 py-1">
+                      {isAgentIconVariant(selectedAgent.icon) ? (
+                        <AgentIcon
+                          variant={selectedAgent.icon}
+                          state={selectedAgent.state === 'working' ? 'executing' : selectedAgent.state === 'waiting_user' ? 'attention' : 'waiting'}
+                          size={18}
+                          className="shrink-0 rounded-md"
+                        />
+                      ) : (
+                        <span
+                          className="w-4 h-4 rounded-md flex items-center justify-center text-[9px] text-white font-bold"
+                          style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
+                        >
+                          {getAgentIcon(selectedAgent.id)}
+                        </span>
+                      )}
                       <span className="text-xs font-medium text-zinc-100 truncate max-w-[160px]">
                         {selectedAgent.name}
                       </span>
@@ -2254,12 +2272,27 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   {/* Avatar centralizado com botão de lápis */}
                   <div className="flex justify-center py-2">
                     <div className="relative">
-                      <div
-                        className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg transition-transform hover:scale-105"
-                        style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
-                      >
-                        <span className="text-2xl">{getAgentIcon(selectedAgent.id)}</span>
-                      </div>
+                      {isAgentIconVariant(selectedAgent.icon) ? (
+                        <div
+                          className="cursor-pointer transition-transform hover:scale-105"
+                          onClick={() => setIsAvatarPickerOpen(true)}
+                          title="Clique para personalizar avatar"
+                        >
+                          <AgentIcon
+                            variant={selectedAgent.icon}
+                            state={selectedAgent.state === 'working' ? 'executing' : selectedAgent.state === 'waiting_user' ? 'attention' : 'waiting'}
+                            size={64}
+                            className="rounded-2xl shadow-lg ring-2 ring-white/10"
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg transition-transform hover:scale-105"
+                          style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
+                        >
+                          <span className="text-2xl">{getAgentIcon(selectedAgent.id)}</span>
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() => setIsAvatarPickerOpen(true)}
