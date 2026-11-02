@@ -1,7 +1,7 @@
 {
   "name": "pyrite",
   "private": true,
-  "version": "1.0.83",
+  "version": "1.0.84",
   "description": "Pyrite - Local-First Knowledge Management & Thinking Environment",
   "author": "Pyrite Team",
   "type": "module",
@@ -72,7 +72,10 @@
       "uninstallerIcon": "public/icon.ico"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.productivity",
       "icon": "public/icon.png",
       "hardenedRuntime": true,

@@ -7,19 +7,30 @@ import type {
   TeamDefinition,
   WorkflowDefinition
 } from '../types/agents'
-import { computeNextScheduleRunISO } from '../utils/multiAgentEngine'
+import { computeNextScheduleRunISO, createDefaultAutomation } from '../utils/multiAgentEngine'
+import {
+  DIAGRAM_NODE_WIDTH,
+  snapDiagramCoord,
+  diagramInputPort,
+  diagramOutputPort,
+  diagramEdgePath,
+  diagramEdgeArrow,
+  diagramBounds
+} from '../utils/openbotDiagramUtils'
 import {
   Clock,
   Plus,
   Trash2,
-  FlaskConical,
   LayoutGrid,
   Sliders,
   CheckCircle2,
   PauseCircle,
   ZoomIn,
   ZoomOut,
-  Maximize2
+  Maximize2,
+  PanelRight,
+  Play,
+  X
 } from 'lucide-react'
 
 interface RoutineCanvasEditorProps {
@@ -39,7 +50,7 @@ interface RoutineCanvasEditorProps {
 
 const TRIGGER_LABELS: Record<AutomationTriggerKind, string> = {
   briefing_added: 'Ao adicionar briefing na pasta monitorada',
-  weekly_schedule: 'Agendamento semanal (Fuso America/Sao_Paulo)',
+  weekly_schedule: 'Agendamento semanal (Fuso IANA)',
   meeting_completed: 'Ao concluir uma nota de reunião',
   task_completed: 'Quando uma tarefa for concluída'
 }
@@ -53,6 +64,8 @@ const DAYS_OF_WEEK = [
   'Sexta-feira',
   'Sábado'
 ]
+
+const WEEK_INITIALS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
 
 export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
   automations,
@@ -69,32 +82,37 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
   isExecuting
 }) => {
   const activeRoutine = automations.find(a => a.id === selectedRoutineId) || automations[0]
-  const [mode, setMode] = useState<'simple' | 'canvas'>('simple')
-  const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 20, y: 20 })
+  const [mode, setMode] = useState<'canvas' | 'simple'>('canvas')
+  const [zoom, setZoom] = useState(0.92)
+  const [pan, setPan] = useState({ x: 36, y: 48 })
+  const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [draggingStage, setDraggingStage] = useState<
+    'trigger' | 'context' | 'executor' | 'approval' | 'output' | null
+  >(null)
+  const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
+  const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({
+    x: 0,
+    y: 0,
+    panX: 0,
+    panY: 0
+  })
 
-  const draggingStageRef = useRef<{
-    stageKey: keyof NonNullable<AutomationVersion['visualLayout']>
-    stageKeyY: keyof NonNullable<AutomationVersion['visualLayout']>
-    startX: number
-    startY: number
-    origX: number
-    origY: number
-  } | null>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
 
   if (!activeRoutine) return null
 
   const layout = activeRoutine.visualLayout || {
-    triggerX: 40,
-    triggerY: 130,
-    contextX: 330,
-    contextY: 130,
-    executorX: 620,
-    executorY: 130,
-    approvalX: 910,
-    approvalY: 130,
-    outputX: 1200,
-    outputY: 130
+    triggerX: 48,
+    triggerY: 160,
+    contextX: 352,
+    contextY: 160,
+    executorX: 656,
+    executorY: 160,
+    approvalX: 960,
+    approvalY: 160,
+    outputX: 1264,
+    outputY: 160
   }
 
   const updateRoutine = (patch: Partial<AutomationVersion>) => {
@@ -104,65 +122,126 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
       version: activeRoutine.version + 1,
       updatedAt: Date.now()
     }
-    if (merged.triggerKind === 'weekly_schedule' && merged.scheduleConfig) {
+    if (patch.scheduleConfig || patch.triggerKind === 'weekly_schedule') {
       merged.nextRunAt = computeNextScheduleRunISO(merged.scheduleConfig)
     }
     onSaveRoutine(merged)
   }
 
-  const handleCreateRoutine = () => {
-    const newRoutine: AutomationVersion = {
-      id: `auto_${Date.now()}`,
-      version: 1,
-      name: `Nova Rotina ${automations.length + 1}`,
-      description: 'Execução automatizada com controle de aprovação e limite diário.',
-      active: true,
-      triggerKind: 'briefing_added',
-      watchFolder: 'Clientes',
-      targetKind: 'agent',
-      agentId: agents[0]?.id || 'agent-proposal-specialist',
-      agentVersion: agents[0]?.version || 1,
-      targetFolder: 'Propostas',
-      requireApproval: true,
-      maxRunsPerDay: 5,
-      recentRunIds: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    }
-    onSaveRoutine(newRoutine)
-    onSelectRoutine(newRoutine.id)
+  const handleCreateNewRoutine = () => {
+    const newAuto = createDefaultAutomation(agents[0]?.id || 'agent-proposal-specialist')
+    newAuto.name = `Nova Rotina (${automations.length + 1})`
+    onSaveRoutine(newAuto)
+    onSelectRoutine(newAuto.id)
+    setInspectorOpen(true)
   }
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!draggingStageRef.current) return
-    const { stageKey, stageKeyY, startX, startY, origX, origY } = draggingStageRef.current
-    const dx = Math.round((e.clientX - startX) / zoom)
-    const dy = Math.round((e.clientY - startY) / zoom)
-    onSaveRoutine({
-      ...activeRoutine,
-      visualLayout: {
-        ...layout,
-        [stageKey]: Math.max(20, origX + dx),
-        [stageKeyY]: Math.max(20, origY + dy)
-      },
-      updatedAt: Date.now()
+  const screenToWorld = (clientX: number, clientY: number) => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 200, y: 160 }
+    return {
+      x: (clientX - rect.left - pan.x) / zoom,
+      y: (clientY - rect.top - pan.y) / zoom
+    }
+  }
+
+  const handleFitView = () => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    const positions = [
+      { x: layout.triggerX, y: layout.triggerY },
+      { x: layout.contextX, y: layout.contextY },
+      { x: layout.executorX, y: layout.executorY },
+      { x: layout.approvalX, y: layout.approvalY },
+      { x: layout.outputX, y: layout.outputY }
+    ]
+    const bounds = diagramBounds(positions)
+    if (!rect || !bounds) return
+    const nextZoom = Math.max(
+      0.45,
+      Math.min(1.1, Math.min((rect.width - 120) / bounds.width, (rect.height - 120) / bounds.height))
+    )
+    const cx = bounds.minX + bounds.width / 2
+    const cy = bounds.minY + bounds.height / 2
+    setZoom(Number(nextZoom.toFixed(2)))
+    setPan({
+      x: Math.round(rect.width / 2 - cx * nextZoom),
+      y: Math.round(rect.height / 2 - cy * nextZoom)
     })
   }
 
-  const handleMouseUp = () => {
-    draggingStageRef.current = null
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (draggingStage) {
+      const world = screenToWorld(e.clientX, e.clientY)
+      const nx = Math.max(16, snapDiagramCoord(world.x - dragOffsetRef.current.x))
+      const ny = Math.max(16, snapDiagramCoord(world.y - dragOffsetRef.current.y))
+      const nextLayout = { ...layout }
+      if (draggingStage === 'trigger') {
+        nextLayout.triggerX = nx
+        nextLayout.triggerY = ny
+      } else if (draggingStage === 'context') {
+        nextLayout.contextX = nx
+        nextLayout.contextY = ny
+      } else if (draggingStage === 'executor') {
+        nextLayout.executorX = nx
+        nextLayout.executorY = ny
+      } else if (draggingStage === 'approval') {
+        nextLayout.approvalX = nx
+        nextLayout.approvalY = ny
+      } else if (draggingStage === 'output') {
+        nextLayout.outputX = nx
+        nextLayout.outputY = ny
+      }
+      updateRoutine({ visualLayout: nextLayout })
+      return
+    }
+    if (isPanning) {
+      setPan({
+        x: panStartRef.current.panX + (e.clientX - panStartRef.current.x),
+        y: panStartRef.current.panY + (e.clientY - panStartRef.current.y)
+      })
+    }
   }
 
+  const stageEdges = [
+    {
+      from: diagramOutputPort({ x: layout.triggerX, y: layout.triggerY }),
+      to: diagramInputPort({ x: layout.contextX, y: layout.contextY }),
+      color: '#c59b27'
+    },
+    {
+      from: diagramOutputPort({ x: layout.contextX, y: layout.contextY }),
+      to: diagramInputPort({ x: layout.executorX, y: layout.executorY }),
+      color: '#8b5cf6'
+    },
+    {
+      from: diagramOutputPort({ x: layout.executorX, y: layout.executorY }),
+      to: diagramInputPort({ x: layout.approvalX, y: layout.approvalY }),
+      color: '#ec4899'
+    },
+    {
+      from: diagramOutputPort({ x: layout.approvalX, y: layout.approvalY }),
+      to: diagramInputPort({ x: layout.outputX, y: layout.outputY }),
+      color: '#10b981'
+    }
+  ]
+
+  const scheduledDay = activeRoutine.scheduleConfig?.dayOfWeek ?? 5
+  const scheduledHour = activeRoutine.scheduleConfig?.hour ?? 16
+  const scheduledMin = activeRoutine.scheduleConfig?.minute ?? 0
+
   return (
-    <div className="flex flex-col h-full bg-[#0f0f13] text-zinc-100 overflow-hidden">
-      {/* Cabeçalho da Rotina */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3.5 border-b border-zinc-800/80 bg-[#14141a]">
-        <div className="flex items-center gap-3">
-          <Clock className="w-5 h-5 text-[#c59b27]" />
+    <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#0b0c10] select-none">
+      {/* Top OpenBot Routine Header */}
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[var(--bg-border)] bg-[#11131a]/95 backdrop-blur-md z-20 shrink-0 flex-wrap">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-400">
+            <Clock className="w-4 h-4" />
+            <span>Rotina:</span>
+          </div>
           <select
             value={activeRoutine.id}
             onChange={e => onSelectRoutine(e.target.value)}
-            className="bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-1.5 text-sm font-semibold text-zinc-100 focus:outline-none focus:border-[#c59b27]"
+            className="bg-[#181b24] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--text-main)]"
           >
             {automations.map(a => (
               <option key={a.id} value={a.id}>
@@ -172,221 +251,367 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
           </select>
 
           <button
-            type="button"
-            onClick={() => updateRoutine({ active: !activeRoutine.active })}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer ${
-              activeRoutine.active
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                : 'border-zinc-700 bg-zinc-800 text-zinc-400'
-            }`}
+            onClick={handleCreateNewRoutine}
+            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-border)] text-xs text-[var(--text-main)] flex items-center gap-1"
           >
-            {activeRoutine.active ? (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Rotina Ativa</span>
-              </>
-            ) : (
-              <>
-                <PauseCircle className="w-3.5 h-3.5" />
-                <span>Pausada</span>
-              </>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleCreateRoutine}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700/80 hover:border-zinc-500 text-xs font-medium text-zinc-200 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Nova Rotina</span>
+            <Plus className="w-3.5 h-3.5 text-amber-400" />
+            Nova Rotina
           </button>
 
           {automations.length > 1 && (
             <button
-              type="button"
               onClick={() => onDeleteRoutine(activeRoutine.id)}
-              className="p-1.5 rounded-lg border border-zinc-800 hover:border-rose-500/50 text-zinc-400 hover:text-rose-400 cursor-pointer"
+              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300"
               title="Excluir rotina"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           )}
+
+          <button
+            onClick={() => updateRoutine({ active: !activeRoutine.active })}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1.5 border ${
+              activeRoutine.active
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                : 'bg-zinc-500/15 border-zinc-500/30 text-zinc-300'
+            }`}
+          >
+            {activeRoutine.active ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5" /> Ativa
+              </>
+            ) : (
+              <>
+                <PauseCircle className="w-3.5 h-3.5" /> Pausada (Padrão Seguro)
+              </>
+            )}
+          </button>
         </div>
 
-        {/* Alternador Sincronizado: Modo Simples vs Modo Visual (Canvas) */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
+        <div className="flex items-center gap-2">
+          <button
+            disabled={isExecuting}
+            onClick={() => onTestRoutine(activeRoutine)}
+            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <Play className="w-3.5 h-3.5 fill-current" />
+            Executar agora
+          </button>
+
+          <div className="flex items-center bg-[#181b24] p-0.5 rounded-lg border border-[var(--bg-border)]">
             <button
-              type="button"
-              onClick={() => setMode('simple')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${
-                mode === 'simple' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200'
+              onClick={() => setMode('canvas')}
+              className={`px-2.5 py-1 rounded text-[11px] flex items-center gap-1 ${
+                mode === 'canvas' ? 'bg-amber-500 text-black font-semibold' : 'text-[var(--text-muted)]'
               }`}
             >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>Modo Simples</span>
+              <LayoutGrid className="w-3 h-3" />
+              Canvas
             </button>
             <button
-              type="button"
-              onClick={() => setMode('canvas')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${
-                mode === 'canvas' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200'
+              onClick={() => setMode('simple')}
+              className={`px-2.5 py-1 rounded text-[11px] flex items-center gap-1 ${
+                mode === 'simple' ? 'bg-amber-500 text-black font-semibold' : 'text-[var(--text-muted)]'
               }`}
             >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Modo Visual (Canvas)</span>
+              <Sliders className="w-3 h-3" />
+              Formulário
             </button>
           </div>
 
           <button
-            type="button"
-            disabled={isExecuting}
-            onClick={() => onTestRoutine(activeRoutine)}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#c59b27] hover:bg-[#d4a930] text-black font-semibold text-xs cursor-pointer disabled:opacity-50"
+            onClick={() => setInspectorOpen(v => !v)}
+            className={`p-1.5 rounded-lg border transition-colors ${
+              inspectorOpen
+                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                : 'bg-[#181b24] border-[var(--bg-border)] text-[var(--text-muted)] hover:text-white'
+            }`}
+            title="Abrir/Fechar Inspetor da Rotina"
           >
-            <FlaskConical className="w-3.5 h-3.5" />
-            <span>Testar Rotina Agora</span>
+            <PanelRight className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Corpo: Modo Simples ou Modo Visual (editando a MESMA entidade AutomationVersion!) */}
-      {mode === 'simple' ? (
-        <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full space-y-6">
-          <div className="p-6 rounded-2xl border border-zinc-800/80 bg-[#14141b] space-y-5">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
-                Nome da Rotina
-              </label>
-              <input
-                type="text"
-                value={activeRoutine.name}
-                onChange={e => updateRoutine({ name: e.target.value })}
-                className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-base font-medium text-zinc-100 focus:outline-none focus:border-[#c59b27]"
+      {mode === 'canvas' ? (
+        <div
+          ref={viewportRef}
+          onPointerMove={handlePointerMove}
+          onPointerUp={() => {
+            setDraggingStage(null)
+            setIsPanning(false)
+          }}
+          onPointerDown={e => {
+            if (e.button !== 0) return
+            const target = e.target as HTMLElement
+            if (target === viewportRef.current || target.dataset.canvasBg === 'true') {
+              setIsPanning(true)
+              panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
+            }
+          }}
+          onWheel={e => {
+            if (e.ctrlKey || e.metaKey) {
+              e.preventDefault()
+              const delta = e.deltaY < 0 ? 0.08 : -0.08
+              setZoom(z => Math.min(1.5, Math.max(0.45, Number((z + delta).toFixed(2)))))
+            } else {
+              setPan(p => ({ x: p.x - e.deltaX * 0.6, y: p.y - e.deltaY * 0.6 }))
+            }
+          }}
+          data-canvas-bg="true"
+          className="relative flex-1 w-full h-full overflow-hidden cursor-grab active:cursor-grabbing"
+          style={{
+            backgroundImage: 'radial-gradient(rgba(255,255,255,0.12) 1.25px, transparent 1.25px)',
+            backgroundSize: `${22 * zoom}px ${22 * zoom}px`,
+            backgroundPosition: `${pan.x}px ${pan.y}px`
+          }}
+        >
+          <div
+            data-canvas-bg="true"
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: '0 0',
+              width: 3000,
+              height: 1800
+            }}
+            className="relative"
+          >
+            {/* OpenBot Horizontal S-Curve Edges */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+              {stageEdges.map((edge, idx) => (
+                <g key={idx}>
+                  <path
+                    d={diagramEdgePath(edge.from, edge.to)}
+                    fill="none"
+                    stroke={edge.color}
+                    strokeWidth={2.4}
+                  />
+                  <path
+                    d={diagramEdgeArrow(edge.to)}
+                    fill="none"
+                    stroke={edge.color}
+                    strokeWidth={2.4}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              ))}
+            </svg>
+
+            {/* 1. OpenBot Trigger Node Card with DiagramRoutineWeek & DiagramRoutineRunDots */}
+            <div
+              style={{ left: layout.triggerX, top: layout.triggerY, width: DIAGRAM_NODE_WIDTH }}
+              onPointerDown={e => {
+                e.stopPropagation()
+                const world = screenToWorld(e.clientX, e.clientY)
+                dragOffsetRef.current = { x: world.x - layout.triggerX, y: world.y - layout.triggerY }
+                setDraggingStage('trigger')
+              }}
+              className="absolute rounded-2xl border border-amber-500/40 bg-[#141720]/95 backdrop-blur-md shadow-2xl cursor-move p-3 space-y-2.5"
+            >
+              <span
+                style={{ top: 20, right: -7 }}
+                className="absolute w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-[#0b0c10]"
               />
-            </div>
-
-            {/* Frase estruturada: Quando acontecer X, executar Y, usando Z e entregar em W */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
-              <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/50 space-y-3">
-                <div className="text-xs font-semibold uppercase tracking-wider text-[#c59b27]">
-                  1. Quando acontecer (Gatilho)
-                </div>
-                <select
-                  value={activeRoutine.triggerKind}
-                  onChange={e =>
-                    updateRoutine({
-                      triggerKind: e.target.value as AutomationTriggerKind,
-                      scheduleConfig:
-                        e.target.value === 'weekly_schedule'
-                          ? activeRoutine.scheduleConfig || {
-                              dayOfWeek: 5,
-                              hour: 16,
-                              minute: 0,
-                              timezone: 'America/Sao_Paulo',
-                              missedPolicy: 'run_once_on_open'
-                            }
-                          : activeRoutine.scheduleConfig
-                    })
-                  }
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
-                >
-                  {(Object.keys(TRIGGER_LABELS) as AutomationTriggerKind[]).map(k => (
-                    <option key={k} value={k}>
-                      {TRIGGER_LABELS[k]}
-                    </option>
-                  ))}
-                </select>
-
-                {activeRoutine.triggerKind === 'weekly_schedule' && (
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <div>
-                      <label className="block text-xs text-zinc-400 mb-1">Dia da Semana</label>
-                      <select
-                        value={activeRoutine.scheduleConfig?.dayOfWeek ?? 5}
-                        onChange={e =>
-                          updateRoutine({
-                            scheduleConfig: {
-                              dayOfWeek: Number(e.target.value),
-                              hour: activeRoutine.scheduleConfig?.hour ?? 16,
-                              minute: activeRoutine.scheduleConfig?.minute ?? 0,
-                              timezone: 'America/Sao_Paulo',
-                              missedPolicy: activeRoutine.scheduleConfig?.missedPolicy || 'run_once_on_open'
-                            }
-                          })
-                        }
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100"
-                      >
-                        {DAYS_OF_WEEK.map((d, idx) => (
-                          <option key={d} value={idx}>
-                            {d}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-zinc-400 mb-1">Horário (Brasília)</label>
-                      <input
-                        type="time"
-                        value={`${String(activeRoutine.scheduleConfig?.hour ?? 16).padStart(2, '0')}:${String(
-                          activeRoutine.scheduleConfig?.minute ?? 0
-                        ).padStart(2, '0')}`}
-                        onChange={e => {
-                          const [h, m] = e.target.value.split(':').map(Number)
-                          updateRoutine({
-                            scheduleConfig: {
-                              dayOfWeek: activeRoutine.scheduleConfig?.dayOfWeek ?? 5,
-                              hour: Number.isFinite(h) ? h : 16,
-                              minute: Number.isFinite(m) ? m : 0,
-                              timezone: 'America/Sao_Paulo',
-                              missedPolicy: activeRoutine.scheduleConfig?.missedPolicy || 'run_once_on_open'
-                            }
-                          })
-                        }}
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100"
-                      />
-                    </div>
-                  </div>
-                )}
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                  1. Gatilho • {activeRoutine.active ? 'Ativa' : 'Pausada'}
+                </span>
+                <span className="text-[10px] text-[var(--text-muted)]">
+                  Máx {activeRoutine.maxRunsPerDay}/dia
+                </span>
               </div>
 
-              <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/50 space-y-3">
-                <div className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                  2. Executar (Agente, Equipe ou Fluxo)
+              <select
+                value={activeRoutine.triggerKind}
+                onChange={e => updateRoutine({ triggerKind: e.target.value as AutomationTriggerKind })}
+                onPointerDown={e => e.stopPropagation()}
+                className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
+              >
+                {(Object.keys(TRIGGER_LABELS) as AutomationTriggerKind[]).map(k => (
+                  <option key={k} value={k}>
+                    {TRIGGER_LABELS[k]}
+                  </option>
+                ))}
+              </select>
+
+              {/* OpenBot DiagramRoutineWeek 7-day Visual */}
+              {activeRoutine.triggerKind === 'weekly_schedule' && (
+                <div
+                  onPointerDown={e => e.stopPropagation()}
+                  className="p-2 rounded-xl bg-[#0e1017] border border-white/5 space-y-1.5"
+                >
+                  <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+                    <span>{DAYS_OF_WEEK[scheduledDay]}</span>
+                    <span className="font-mono text-amber-300">
+                      {String(scheduledHour).padStart(2, '0')}:{String(scheduledMin).padStart(2, '0')} ({activeRoutine.scheduleConfig?.timezone || 'America/Sao_Paulo'})
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-7 gap-1 pt-0.5">
+                    {WEEK_INITIALS.map((letter, dayIdx) => {
+                      const isScheduled = dayIdx === scheduledDay
+                      return (
+                        <button
+                          key={dayIdx}
+                          type="button"
+                          onClick={() =>
+                            updateRoutine({
+                              scheduleConfig: {
+                                ...(activeRoutine.scheduleConfig || {
+                                  hour: 16,
+                                  minute: 0,
+                                  timezone: 'America/Sao_Paulo',
+                                  missedPolicy: 'run_once_on_open'
+                                }),
+                                dayOfWeek: dayIdx
+                              }
+                            })
+                          }
+                          className={`flex flex-col items-center py-1 rounded-md border transition-colors ${
+                            isScheduled
+                              ? 'border-amber-400/60 bg-amber-500/15 text-amber-300'
+                              : 'border-white/5 bg-white/[0.02] text-[var(--text-muted)] hover:border-white/20'
+                          }`}
+                        >
+                          <span className="text-[9px] font-bold">{letter}</span>
+                          <span
+                            className={`mt-1 w-3 h-1 rounded-full ${
+                              isScheduled ? 'bg-amber-400' : 'bg-white/10'
+                            }`}
+                          />
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  {(['agent', 'team', 'workflow'] as const).map(tk => (
-                    <button
-                      key={tk}
-                      type="button"
-                      onClick={() => updateRoutine({ targetKind: tk })}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer ${
-                        (activeRoutine.targetKind || 'agent') === tk
-                          ? 'bg-[#c59b27] text-black'
-                          : 'bg-zinc-800 text-zinc-300'
-                      }`}
-                    >
-                      {tk === 'agent' ? 'Agente' : tk === 'team' ? 'Equipe' : 'Fluxo'}
-                    </button>
+              )}
+
+              {/* OpenBot DiagramRoutineRunDots + Footer */}
+              <div className="pt-1 border-t border-white/5 flex items-center justify-between text-[10px]">
+                <div className="flex items-center gap-1" title="Execuções recentes desta rotina">
+                  <span className="text-[var(--text-muted)]">Histórico:</span>
+                  {(activeRoutine.recentRunIds || []).slice(0, 5).map(id => (
+                    <span key={id} className="w-2 h-2 rounded-full bg-emerald-400" />
                   ))}
+                  {(activeRoutine.recentRunIds || []).length === 0 && (
+                    <span className="text-[var(--text-muted)]">Sem execuções</span>
+                  )}
                 </div>
+                <button
+                  type="button"
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={() => onTestRoutine(activeRoutine)}
+                  className="text-amber-300 hover:underline font-semibold"
+                >
+                  Executar
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Context Node Card */}
+            <div
+              style={{ left: layout.contextX, top: layout.contextY, width: DIAGRAM_NODE_WIDTH }}
+              onPointerDown={e => {
+                e.stopPropagation()
+                const world = screenToWorld(e.clientX, e.clientY)
+                dragOffsetRef.current = { x: world.x - layout.contextX, y: world.y - layout.contextY }
+                setDraggingStage('context')
+              }}
+              className="absolute rounded-2xl border border-purple-500/40 bg-[#141720]/95 backdrop-blur-md shadow-2xl cursor-move p-3 space-y-2.5"
+            >
+              <span
+                style={{ top: 20, left: -7 }}
+                className="absolute w-3.5 h-3.5 rounded-full bg-[#181b24] border-2 border-purple-400"
+              />
+              <span
+                style={{ top: 20, right: -7 }}
+                className="absolute w-3.5 h-3.5 rounded-full bg-purple-400 border-2 border-[#0b0c10]"
+              />
+              <div className="text-[10px] font-bold uppercase tracking-wider text-purple-300">
+                2. Contexto Autorizado
+              </div>
+              <div onPointerDown={e => e.stopPropagation()} className="space-y-2">
+                <div>
+                  <label className="text-[10px] text-[var(--text-muted)] block mb-0.5">
+                    Pasta Monitorada
+                  </label>
+                  <input
+                    type="text"
+                    value={activeRoutine.watchFolder || ''}
+                    onChange={e => updateRoutine({ watchFolder: e.target.value })}
+                    placeholder="Ex: Clientes"
+                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[var(--text-muted)] block mb-0.5">
+                    Isolamento de Cliente Fixo (Opcional)
+                  </label>
+                  <select
+                    value={activeRoutine.projectContextId || ''}
+                    onChange={e => updateRoutine({ projectContextId: e.target.value || undefined })}
+                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
+                  >
+                    <option value="">Sem cliente fixo (usar apenas evento)</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.clientName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Executor Node Card */}
+            <div
+              style={{ left: layout.executorX, top: layout.executorY, width: DIAGRAM_NODE_WIDTH }}
+              onPointerDown={e => {
+                e.stopPropagation()
+                const world = screenToWorld(e.clientX, e.clientY)
+                dragOffsetRef.current = { x: world.x - layout.executorX, y: world.y - layout.executorY }
+                setDraggingStage('executor')
+              }}
+              className="absolute rounded-2xl border border-cyan-500/40 bg-[#141720]/95 backdrop-blur-md shadow-2xl cursor-move p-3 space-y-2.5"
+            >
+              <span
+                style={{ top: 20, left: -7 }}
+                className="absolute w-3.5 h-3.5 rounded-full bg-[#181b24] border-2 border-cyan-400"
+              />
+              <span
+                style={{ top: 20, right: -7 }}
+                className="absolute w-3.5 h-3.5 rounded-full bg-cyan-400 border-2 border-[#0b0c10]"
+              />
+              <div className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">
+                3. Quem Executa
+              </div>
+              <div onPointerDown={e => e.stopPropagation()} className="space-y-2">
+                <select
+                  value={activeRoutine.targetKind || 'agent'}
+                  onChange={e =>
+                    updateRoutine({
+                      targetKind: e.target.value as 'agent' | 'team' | 'workflow'
+                    })
+                  }
+                  className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
+                >
+                  <option value="agent">Agente Individual</option>
+                  <option value="team">Equipe Coordenada</option>
+                  <option value="workflow">Fluxo de Trabalho</option>
+                </select>
 
                 {(activeRoutine.targetKind || 'agent') === 'agent' && (
                   <select
                     value={activeRoutine.agentId}
                     onChange={e => {
                       const ag = agents.find(a => a.id === e.target.value)
-                      updateRoutine({
-                        agentId: e.target.value,
-                        agentVersion: ag?.version || 1
-                      })
+                      updateRoutine({ agentId: e.target.value, agentVersion: ag?.version || 1 })
                     }}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
+                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
                   >
-                    {agents.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.icon} {a.name}
+                    {agents.map(ag => (
+                      <option key={ag.id} value={ag.id}>
+                        {ag.icon} {ag.name} (v{ag.version})
                       </option>
                     ))}
                   </select>
@@ -396,7 +621,7 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                   <select
                     value={activeRoutine.teamId || teams[0]?.id || ''}
                     onChange={e => updateRoutine({ teamId: e.target.value })}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
+                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
                   >
                     {teams.map(t => (
                       <option key={t.id} value={t.id}>
@@ -410,7 +635,7 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                   <select
                     value={activeRoutine.workflowId || workflows[0]?.id || ''}
                     onChange={e => updateRoutine({ workflowId: e.target.value })}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
+                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
                   >
                     {workflows.map(w => (
                       <option key={w.id} value={w.id}>
@@ -420,311 +645,276 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                   </select>
                 )}
               </div>
-
-              <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/50 space-y-3">
-                <div className="text-xs font-semibold uppercase tracking-wider text-violet-400">
-                  3. Usando o Contexto / Pasta Monitorada
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Pasta Monitorada</label>
-                  <select
-                    value={activeRoutine.watchFolder || 'Clientes'}
-                    onChange={e => updateRoutine({ watchFolder: e.target.value })}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
-                  >
-                    {folders.map(f => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {projects.length > 0 && (
-                  <div>
-                    <label className="block text-xs text-zinc-400 mb-1">Restringir a Cliente/Projeto (Opcional)</label>
-                    <select
-                      value={activeRoutine.projectContextId || ''}
-                      onChange={e => updateRoutine({ projectContextId: e.target.value || undefined })}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
-                    >
-                      <option value="">Qualquer cliente na pasta monitorada</option>
-                      {projects.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.clientName} — {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/50 space-y-3">
-                <div className="text-xs font-semibold uppercase tracking-wider text-cyan-400">
-                  4. Entregar em & Governança
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Pasta de Destino</label>
-                  <select
-                    value={activeRoutine.targetFolder}
-                    onChange={e => updateRoutine({ targetFolder: e.target.value })}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
-                  >
-                    {folders.map(f => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <label className="flex items-center gap-2 text-sm text-zinc-200 pt-1 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={activeRoutine.requireApproval}
-                    onChange={e => updateRoutine({ requireApproval: e.target.checked })}
-                    className="accent-[#c59b27]"
-                  />
-                  <span>Exigir minha aprovação antes de gravar no cofre</span>
-                </label>
-              </div>
             </div>
-          </div>
-        </div>
-      ) : (
-        /* Modo Visual em Canvas (Sincronizado com o Modo Simples!) */
-        <div
-          role="region"
-          aria-label="Quadro visual da rotina"
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          className="flex-1 relative overflow-hidden bg-[#0c0c10] select-none"
-          style={{
-            backgroundImage: 'radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px)',
-            backgroundSize: `${24 * zoom}px ${24 * zoom}px`
-          }}
-        >
-          <div className="absolute top-4 right-4 z-10 flex items-center gap-1 bg-zinc-900 px-2.5 py-1 rounded-lg border border-zinc-800 text-xs">
-            <button
-              type="button"
-              onClick={() => setZoom(z => Math.max(0.6, Number((z - 0.1).toFixed(2))))}
-              className="p-1 text-zinc-400 hover:text-white cursor-pointer"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <span className="w-11 text-center text-zinc-300">{Math.round(zoom * 100)}%</span>
-            <button
-              type="button"
-              onClick={() => setZoom(z => Math.min(1.4, Number((z + 0.1).toFixed(2))))}
-              className="p-1 text-zinc-400 hover:text-white cursor-pointer"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setZoom(1)
-                setPan({ x: 20, y: 20 })
-              }}
-              className="p-1 text-zinc-400 hover:text-white cursor-pointer"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
 
-          <div
-            style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: '0 0'
-            }}
-            className="w-[1600px] h-[800px] relative"
-          >
-            {/* Linhas conectando os 5 blocos da rotina */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none">
-              {[
-                [layout.triggerX, layout.triggerY, layout.contextX, layout.contextY],
-                [layout.contextX, layout.contextY, layout.executorX, layout.executorY],
-                [layout.executorX, layout.executorY, layout.approvalX, layout.approvalY],
-                [layout.approvalX, layout.approvalY, layout.outputX, layout.outputY]
-              ].map(([x1, y1, x2, y2], idx) => {
-                const sx = x1 + 240
-                const sy = y1 + 65
-                const tx = x2
-                const ty = y2 + 65
-                const mx = (sx + tx) / 2
-                return (
-                  <g key={idx}>
-                    <path
-                      d={`M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ty}, ${tx} ${ty}`}
-                      fill="none"
-                      stroke="#c59b27"
-                      strokeWidth={2.2}
-                    />
-                    <circle cx={tx} cy={ty} r={4.5} fill="#c59b27" />
-                  </g>
-                )
-              })}
-            </svg>
-
-            {/* Bloco 1: Gatilho */}
+            {/* 4. Approval Node Card */}
             <div
-              style={{ left: layout.triggerX, top: layout.triggerY }}
-              onMouseDown={e => {
-                if ((e.target as HTMLElement).tagName === 'SELECT') return
-                draggingStageRef.current = {
-                  stageKey: 'triggerX',
-                  stageKeyY: 'triggerY',
-                  startX: e.clientX,
-                  startY: e.clientY,
-                  origX: layout.triggerX,
-                  origY: layout.triggerY
-                }
+              style={{ left: layout.approvalX, top: layout.approvalY, width: DIAGRAM_NODE_WIDTH }}
+              onPointerDown={e => {
+                e.stopPropagation()
+                const world = screenToWorld(e.clientX, e.clientY)
+                dragOffsetRef.current = { x: world.x - layout.approvalX, y: world.y - layout.approvalY }
+                setDraggingStage('approval')
               }}
-              className="absolute w-60 rounded-xl border border-[#c59b27]/60 bg-[#16161e] p-3.5 shadow-xl cursor-move space-y-2"
+              className="absolute rounded-2xl border border-pink-500/40 bg-[#141720]/95 backdrop-blur-md shadow-2xl cursor-move p-3 space-y-2.5"
             >
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[#c59b27]">
-                1. Quando acontecer
+              <span
+                style={{ top: 20, left: -7 }}
+                className="absolute w-3.5 h-3.5 rounded-full bg-[#181b24] border-2 border-pink-400"
+              />
+              <span
+                style={{ top: 20, right: -7 }}
+                className="absolute w-3.5 h-3.5 rounded-full bg-pink-400 border-2 border-[#0b0c10]"
+              />
+              <div className="text-[10px] font-bold uppercase tracking-wider text-pink-300">
+                4. Regra de Aprovação
               </div>
-              <select
-                value={activeRoutine.triggerKind}
-                onChange={e => updateRoutine({ triggerKind: e.target.value as AutomationTriggerKind })}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100"
+              <label
+                onPointerDown={e => e.stopPropagation()}
+                className="flex items-start gap-2 text-xs text-[var(--text-main)] cursor-pointer"
               >
-                {(Object.keys(TRIGGER_LABELS) as AutomationTriggerKind[]).map(k => (
-                  <option key={k} value={k}>
-                    {TRIGGER_LABELS[k]}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Bloco 2: Contexto */}
-            <div
-              style={{ left: layout.contextX, top: layout.contextY }}
-              onMouseDown={e => {
-                if ((e.target as HTMLElement).tagName === 'SELECT') return
-                draggingStageRef.current = {
-                  stageKey: 'contextX',
-                  stageKeyY: 'contextY',
-                  startX: e.clientX,
-                  startY: e.clientY,
-                  origX: layout.contextX,
-                  origY: layout.contextY
-                }
-              }}
-              className="absolute w-60 rounded-xl border border-violet-500/50 bg-[#16161e] p-3.5 shadow-xl cursor-move space-y-2"
-            >
-              <div className="text-[11px] font-bold uppercase tracking-wider text-violet-400">
-                2. Usando Contexto
-              </div>
-              <select
-                value={activeRoutine.watchFolder || 'Clientes'}
-                onChange={e => updateRoutine({ watchFolder: e.target.value })}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100"
-              >
-                {folders.map(f => (
-                  <option key={f} value={f}>
-                    Pasta: {f}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Bloco 3: Executor */}
-            <div
-              style={{ left: layout.executorX, top: layout.executorY }}
-              onMouseDown={e => {
-                if ((e.target as HTMLElement).tagName === 'SELECT') return
-                draggingStageRef.current = {
-                  stageKey: 'executorX',
-                  stageKeyY: 'executorY',
-                  startX: e.clientX,
-                  startY: e.clientY,
-                  origX: layout.executorX,
-                  origY: layout.executorY
-                }
-              }}
-              className="absolute w-60 rounded-xl border border-emerald-500/50 bg-[#16161e] p-3.5 shadow-xl cursor-move space-y-2"
-            >
-              <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                3. Executar Agente
-              </div>
-              <select
-                value={activeRoutine.agentId}
-                onChange={e => updateRoutine({ agentId: e.target.value })}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100"
-              >
-                {agents.map(a => (
-                  <option key={a.id} value={a.id}>
-                    {a.icon} {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Bloco 4: Aprovação */}
-            <div
-              style={{ left: layout.approvalX, top: layout.approvalY }}
-              onMouseDown={e => {
-                if ((e.target as HTMLElement).tagName === 'INPUT') return
-                draggingStageRef.current = {
-                  stageKey: 'approvalX',
-                  stageKeyY: 'approvalY',
-                  startX: e.clientX,
-                  startY: e.clientY,
-                  origX: layout.approvalX,
-                  origY: layout.approvalY
-                }
-              }}
-              className="absolute w-60 rounded-xl border border-pink-500/50 bg-[#16161e] p-3.5 shadow-xl cursor-move space-y-2"
-            >
-              <div className="text-[11px] font-bold uppercase tracking-wider text-pink-400">
-                4. Governança
-              </div>
-              <label className="flex items-center gap-2 text-xs text-zinc-200 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={activeRoutine.requireApproval}
                   onChange={e => updateRoutine({ requireApproval: e.target.checked })}
-                  className="accent-[#c59b27]"
+                  className="mt-0.5 accent-pink-500"
                 />
-                <span>Pausar para aprovação humana</span>
+                <span>Exigir aprovação humana antes de salvar no cofre</span>
               </label>
-              <div className="text-[11px] text-zinc-400">
-                Limite diário: {activeRoutine.maxRunsPerDay} execuções/dia
-              </div>
             </div>
 
-            {/* Bloco 5: Destino */}
+            {/* 5. Output Node Card */}
             <div
-              style={{ left: layout.outputX, top: layout.outputY }}
-              onMouseDown={e => {
-                if ((e.target as HTMLElement).tagName === 'SELECT') return
-                draggingStageRef.current = {
-                  stageKey: 'outputX',
-                  stageKeyY: 'outputY',
-                  startX: e.clientX,
-                  startY: e.clientY,
-                  origX: layout.outputX,
-                  origY: layout.outputY
-                }
+              style={{ left: layout.outputX, top: layout.outputY, width: DIAGRAM_NODE_WIDTH }}
+              onPointerDown={e => {
+                e.stopPropagation()
+                const world = screenToWorld(e.clientX, e.clientY)
+                dragOffsetRef.current = { x: world.x - layout.outputX, y: world.y - layout.outputY }
+                setDraggingStage('output')
               }}
-              className="absolute w-60 rounded-xl border border-cyan-500/50 bg-[#16161e] p-3.5 shadow-xl cursor-move space-y-2"
+              className="absolute rounded-2xl border border-emerald-500/40 bg-[#141720]/95 backdrop-blur-md shadow-2xl cursor-move p-3 space-y-2.5"
             >
-              <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">
-                5. Entregar em
+              <span
+                style={{ top: 20, left: -7 }}
+                className="absolute w-3.5 h-3.5 rounded-full bg-[#181b24] border-2 border-emerald-400"
+              />
+              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                5. Pasta de Destino
               </div>
-              <select
-                value={activeRoutine.targetFolder}
-                onChange={e => updateRoutine({ targetFolder: e.target.value })}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100"
-              >
-                {folders.map(f => (
-                  <option key={f} value={f}>
-                    Pasta: {f}
-                  </option>
-                ))}
-              </select>
+              <div onPointerDown={e => e.stopPropagation()}>
+                <input
+                  type="text"
+                  list="routine-folders-list"
+                  value={activeRoutine.targetFolder}
+                  onChange={e => updateRoutine({ targetFolder: e.target.value })}
+                  className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-main)]"
+                />
+                <datalist id="routine-folders-list">
+                  {folders.map(f => (
+                    <option key={f} value={f} />
+                  ))}
+                </datalist>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom-Left Zoom Controls */}
+          <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1 bg-[#141720]/95 backdrop-blur-md border border-[var(--bg-border)] rounded-xl p-1 shadow-xl">
+            <button
+              onClick={() => setZoom(z => Math.max(0.45, Number((z - 0.1).toFixed(2))))}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-[11px] font-mono px-2 text-[var(--text-main)]">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              onClick={() => setZoom(z => Math.min(1.5, Number((z + 0.1).toFixed(2))))}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-px h-4 bg-[var(--bg-border)] mx-0.5" />
+            <button
+              onClick={handleFitView}
+              className="px-2 py-1 rounded-lg hover:bg-white/10 text-[11px] text-[var(--text-muted)] hover:text-white flex items-center gap-1"
+            >
+              <Maximize2 className="w-3 h-3" />
+              Ajustar
+            </button>
+          </div>
+
+          {/* Collapsible Right-Hand DiagramInspector */}
+          {inspectorOpen && (
+            <div
+              onPointerDown={e => e.stopPropagation()}
+              className="absolute top-0 right-0 bottom-0 w-84 bg-[#141720]/98 backdrop-blur-xl border-l border-[var(--bg-border)] z-30 p-4 overflow-y-auto shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-[var(--bg-border)] pb-2.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                  Inspetor da Rotina
+                </h4>
+                <button
+                  onClick={() => setInspectorOpen(false)}
+                  className="p-1 rounded-lg hover:bg-white/10 text-[var(--text-muted)]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="text-[11px] text-[var(--text-muted)] block mb-1">
+                    Nome da Rotina
+                  </label>
+                  <input
+                    type="text"
+                    value={activeRoutine.name}
+                    onChange={e => updateRoutine({ name: e.target.value })}
+                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-[var(--text-muted)] block mb-1">
+                    Instrução / Descrição
+                  </label>
+                  <textarea
+                    value={activeRoutine.description}
+                    onChange={e => updateRoutine({ description: e.target.value })}
+                    rows={3}
+                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)] resize-none"
+                  />
+                </div>
+
+                {activeRoutine.triggerKind === 'weekly_schedule' && (
+                  <div className="space-y-2 p-2.5 rounded-xl bg-[#0e1017] border border-[var(--bg-border)]">
+                    <div className="font-semibold text-amber-300">Agendamento IANA</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-[var(--text-muted)] block">Hora</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={23}
+                          value={scheduledHour}
+                          onChange={e =>
+                            updateRoutine({
+                              scheduleConfig: {
+                                ...(activeRoutine.scheduleConfig || {
+                                  dayOfWeek: 5,
+                                  minute: 0,
+                                  timezone: 'America/Sao_Paulo',
+                                  missedPolicy: 'run_once_on_open'
+                                }),
+                                hour: Math.min(23, Math.max(0, Number(e.target.value) || 0))
+                              }
+                            })
+                          }
+                          className="w-full bg-[#141720] border border-[var(--bg-border)] rounded px-2 py-1 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-[var(--text-muted)] block">Minuto</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={59}
+                          value={scheduledMin}
+                          onChange={e =>
+                            updateRoutine({
+                              scheduleConfig: {
+                                ...(activeRoutine.scheduleConfig || {
+                                  dayOfWeek: 5,
+                                  hour: 16,
+                                  timezone: 'America/Sao_Paulo',
+                                  missedPolicy: 'run_once_on_open'
+                                }),
+                                minute: Math.min(59, Math.max(0, Number(e.target.value) || 0))
+                              }
+                            })
+                          }
+                          className="w-full bg-[#141720] border border-[var(--bg-border)] rounded px-2 py-1 text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[var(--text-muted)] block">
+                        Fuso Horário IANA
+                      </label>
+                      <input
+                        type="text"
+                        value={activeRoutine.scheduleConfig?.timezone || 'America/Sao_Paulo'}
+                        onChange={e =>
+                          updateRoutine({
+                            scheduleConfig: {
+                              ...(activeRoutine.scheduleConfig || {
+                                dayOfWeek: 5,
+                                hour: 16,
+                                minute: 0,
+                                missedPolicy: 'run_once_on_open'
+                              }),
+                              timezone: e.target.value
+                            }
+                          })
+                        }
+                        className="w-full bg-[#141720] border border-[var(--bg-border)] rounded px-2 py-1 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[var(--text-muted)] block">
+                        Política se o app estiver fechado no horário
+                      </label>
+                      <select
+                        value={activeRoutine.scheduleConfig?.missedPolicy || 'run_once_on_open'}
+                        onChange={e =>
+                          updateRoutine({
+                            scheduleConfig: {
+                              ...(activeRoutine.scheduleConfig || {
+                                dayOfWeek: 5,
+                                hour: 16,
+                                minute: 0,
+                                timezone: 'America/Sao_Paulo'
+                              }),
+                              missedPolicy: e.target.value as 'skip' | 'run_once_on_open'
+                            }
+                          })
+                        }
+                        className="w-full bg-[#141720] border border-[var(--bg-border)] rounded px-2 py-1 text-xs"
+                      >
+                        <option value="run_once_on_open">Executar 1x ao abrir o Pyrite</option>
+                        <option value="skip">Pular para a próxima semana</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-[11px] text-[var(--text-muted)] block mb-1">
+                    Limite máximo de execuções por dia
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={activeRoutine.maxRunsPerDay}
+                    onChange={e =>
+                      updateRoutine({ maxRunsPerDay: Math.max(1, Number(e.target.value) || 1) })
+                    }
+                    className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-6 max-w-3xl mx-auto w-full space-y-4">
+          <div className="p-5 rounded-2xl border border-[var(--bg-border)] bg-[#141720] space-y-4">
+            <h3 className="text-sm font-bold text-[var(--text-main)]">{activeRoutine.name}</h3>
+            <p className="text-xs text-[var(--text-muted)]">{activeRoutine.description}</p>
+            <div className="text-xs text-amber-300">
+              Próxima execução calculada: {activeRoutine.nextRunAt ? new Date(activeRoutine.nextRunAt).toLocaleString('pt-BR') : 'Sob evento'}
             </div>
           </div>
         </div>

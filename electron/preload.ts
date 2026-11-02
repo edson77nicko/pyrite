@@ -81,8 +81,10 @@ const electronAPI = {
     }>,
   aiDeleteKey: (provider: string) =>
     ipcRenderer.invoke('ai:deleteKey', provider) as Promise<{ success: boolean }>,
-  aiChat: (params: { provider: string; model?: string; messages: { role: string; content: string | any[] }[]; temperature?: number }) =>
-    ipcRenderer.invoke('ai:chat', params) as Promise<{ success: boolean; text?: string; error?: string }>,
+  aiChat: (params: { provider: string; model?: string; messages: { role: string; content: string | any[] }[]; temperature?: number; requestId?: string }) =>
+    ipcRenderer.invoke('ai:chat', params) as Promise<{ success: boolean; text?: string; error?: string; cancelled?: boolean }>,
+  aiCancelChat: (requestId: string) =>
+    ipcRenderer.invoke('ai:cancelChat', requestId) as Promise<{ success: boolean }>,
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

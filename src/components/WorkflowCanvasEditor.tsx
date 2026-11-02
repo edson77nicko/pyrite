@@ -10,6 +10,17 @@ import type {
 import type { Note } from '../types'
 import { validateWorkflowDefinition } from '../utils/multiAgentEngine'
 import {
+  DIAGRAM_NODE_WIDTH,
+  snapDiagramCoord,
+  diagramInputPort,
+  diagramOutputPort,
+  diagramEdgePath,
+  diagramEdgeMidpoint,
+  diagramEdgeArrow,
+  diagramBounds,
+  diagramConnectionProblem
+} from '../utils/openbotDiagramUtils'
+import {
   GitBranch,
   Plus,
   Trash2,
@@ -21,7 +32,9 @@ import {
   ZoomOut,
   Maximize2,
   LayoutGrid,
-  List
+  List,
+  PanelRight,
+  X
 } from 'lucide-react'
 
 interface WorkflowCanvasEditorProps {
@@ -58,31 +71,31 @@ const NODE_META: Record<
     label: 'Executar Agente',
     badge: 'AGENTE',
     color: '#c59b27',
-    description: 'Aciona um especialista com as fontes conectadas.'
+    description: 'Executa um especialista dentro de suas permissões e fontes.'
   },
   condition: {
     label: 'Verificar Condição',
     badge: 'CONDIÇÃO',
     color: '#f59e0b',
-    description: 'Valida se há campos pendentes, conflitos de preços ou alçada de valor.'
+    description: 'Verifica se há pendências, conflitos ou valor mínimo antes de avançar.'
   },
   approval: {
     label: 'Solicitar Aprovação',
     badge: 'APROVAÇÃO',
     color: '#ec4899',
-    description: 'Pausa o fluxo e aguarda decisão explícita do usuário.'
+    description: 'Pausa imediatamente o fluxo para revisão humana antes dos blocos seguintes.'
   },
   deliverable: {
     label: 'Criar Entrega',
     badge: 'ENTREGA',
     color: '#10b981',
-    description: 'Prepara ou salva a nota/tarefa/mapa na pasta autorizada.'
+    description: 'Prepara a nota, tarefa, mapa mental ou diagrama na pasta escolhida.'
   },
   finish: {
     label: 'Finalizar',
     badge: 'FIM',
-    color: '#71717a',
-    description: 'Encerra o fluxo e registra o histórico.'
+    color: '#64748b',
+    description: 'Encerra a execução e registra o histórico auditável.'
   }
 }
 
@@ -92,7 +105,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   notes,
   folders,
   selectedWorkflowId,
-  latestNodeStates = [],
+  latestNodeStates,
   onSelectWorkflow,
   onSaveWorkflow,
   onDeleteWorkflow,
@@ -101,43 +114,144 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 }) => {
   const activeWorkflow = workflows.find(w => w.id === selectedWorkflowId) || workflows[0]
   const [viewMode, setViewMode] = useState<'canvas' | 'list'>('canvas')
-  const [zoom, setZoom] = useState(0.95)
-  const [pan, setPan] = useState({ x: 20, y: 20 })
+  const [zoom, setZoom] = useState(0.92)
+  const [pan, setPan] = useState({ x: 36, y: 42 })
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [connectingFromNodeId, setConnectingFromNodeId] = useState<string | null>(null)
-  const [workflowPrompt, setWorkflowPrompt] = useState(
-    'Gerar proposta comercial para João Silva com Site Institucional e Manutenção Mensal no prazo de 3 semanas.'
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [branchToConnect, setBranchToConnect] = useState<WorkflowEdge['branch']>('default')
+  const [testPrompt, setTestPrompt] = useState(
+    'Elabore proposta comercial para o cliente usando o modelo e catálogo vinculados.'
   )
 
-  const draggingNodeRef = useRef<{
-    nodeId: string
-    startX: number
-    startY: number
-    origX: number
-    origY: number
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
+  const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
+  const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({
+    x: 0,
+    y: 0,
+    panX: 0,
+    panY: 0
+  })
+
+  // OpenBot Interactive Port Wire Dragging
+  const [wireDraft, setWireDraft] = useState<{
+    fromNodeId: string
+    toWorld: { x: number; y: number }
+    hoveredTargetId: string | null
   } | null>(null)
-  const panningRef = useRef<{
-    startX: number
-    startY: number
-    origPanX: number
-    origPanY: number
+
+  // OpenBot Right-Click Context Menu
+  const [canvasMenu, setCanvasMenu] = useState<{
+    screenX: number
+    screenY: number
+    worldX: number
+    worldY: number
   } | null>(null)
+
+  const viewportRef = useRef<HTMLDivElement>(null)
 
   if (!activeWorkflow) return null
 
   const validation = validateWorkflowDefinition(activeWorkflow, agents, notes)
-  const selectedNode = activeWorkflow.nodes.find(n => n.id === selectedNodeId) || null
+  const selectedNode = activeWorkflow.nodes.find(n => n.id === selectedNodeId)
 
-  const handleAddNode = (kind: WorkflowNodeKind) => {
+  const screenToWorld = (clientX: number, clientY: number) => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 200, y: 160 }
+    return {
+      x: (clientX - rect.left - pan.x) / zoom,
+      y: (clientY - rect.top - pan.y) / zoom
+    }
+  }
+
+  const handleFitView = () => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    const bounds = diagramBounds(activeWorkflow.nodes.map(n => n.position))
+    if (!rect || !bounds) {
+      setZoom(0.92)
+      setPan({ x: 36, y: 42 })
+      return
+    }
+    const nextZoom = Math.max(
+      0.42,
+      Math.min(1.15, Math.min((rect.width - 120) / bounds.width, (rect.height - 120) / bounds.height))
+    )
+    const centerX = bounds.minX + bounds.width / 2
+    const centerY = bounds.minY + bounds.height / 2
+    setZoom(Number(nextZoom.toFixed(2)))
+    setPan({
+      x: Math.round(rect.width / 2 - centerX * nextZoom),
+      y: Math.round(rect.height / 2 - centerY * nextZoom)
+    })
+  }
+
+  const handleCreateWorkflow = () => {
+    const firstAgent = agents[0]
+    const nInId = `wn_in_${Date.now()}`
+    const nAgId = `wn_ag_${Date.now()}`
+    const nAppId = `wn_ap_${Date.now()}`
+    const nDelId = `wn_del_${Date.now()}`
+    const nFinId = `wn_fin_${Date.now()}`
+
+    const newWf: WorkflowDefinition = {
+      id: `wf_${Date.now()}`,
+      version: 1,
+      status: 'draft',
+      name: `Novo Fluxo (${workflows.length + 1})`,
+      description: 'Fluxo de trabalho visual passo a passo com aprovação.',
+      nodes: [
+        { id: nInId, kind: 'input', label: 'Entrada do Pedido', position: { x: 64, y: 160 }, config: {} },
+        {
+          id: nAgId,
+          kind: 'run_agent',
+          label: firstAgent?.name || 'Executar Agente',
+          position: { x: 368, y: 160 },
+          config: { agentId: firstAgent?.id }
+        },
+        {
+          id: nAppId,
+          kind: 'approval',
+          label: 'Solicitar Aprovação',
+          position: { x: 672, y: 160 },
+          config: { approvalMessage: 'Revise o rascunho antes de gravar no cofre.' }
+        },
+        {
+          id: nDelId,
+          kind: 'deliverable',
+          label: 'Salvar Entrega',
+          position: { x: 976, y: 160 },
+          config: { targetFolder: 'Propostas', outputType: 'note', namingPattern: 'Entrega - {cliente}' }
+        },
+        { id: nFinId, kind: 'finish', label: 'Finalizar', position: { x: 1280, y: 160 }, config: {} }
+      ],
+      edges: [
+        { id: `we_1_${Date.now()}`, sourceNodeId: nInId, targetNodeId: nAgId, branch: 'default' },
+        { id: `we_2_${Date.now()}`, sourceNodeId: nAgId, targetNodeId: nAppId, branch: 'default' },
+        { id: `we_3_${Date.now()}`, sourceNodeId: nAppId, targetNodeId: nDelId, branch: 'approved', label: 'Aprovado' },
+        { id: `we_4_${Date.now()}`, sourceNodeId: nDelId, targetNodeId: nFinId, branch: 'default' }
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }
+    onSaveWorkflow(newWf)
+    onSelectWorkflow(newWf.id)
+  }
+
+  const handleAddNodeAt = (kind: WorkflowNodeKind, worldPos?: { x: number; y: number }) => {
     const meta = NODE_META[kind]
+    const count = activeWorkflow.nodes.length
+    const pos = worldPos
+      ? { x: snapDiagramCoord(worldPos.x), y: snapDiagramCoord(worldPos.y) }
+      : {
+          x: snapDiagramCoord(240 + (count % 4) * 288),
+          y: snapDiagramCoord(80 + Math.floor(count / 4) * 160)
+        }
     const newNode: WorkflowNode = {
-      id: `wn_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      id: `wn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       kind,
       label: meta.label,
-      position: {
-        x: 160 + (activeWorkflow.nodes.length % 5) * 230,
-        y: 120 + Math.floor(activeWorkflow.nodes.length / 5) * 140
-      },
+      position: pos,
       config:
         kind === 'run_agent'
           ? { agentId: agents[0]?.id }
@@ -146,34 +260,26 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           : kind === 'condition'
           ? { conditionType: 'no_missing_fields' }
           : kind === 'deliverable'
-          ? { targetFolder: folders[0] || 'Propostas', outputType: 'note', namingPattern: 'Proposta - {cliente}' }
+          ? { targetFolder: 'Propostas', outputType: 'note', namingPattern: 'Entrega - {cliente}' }
+          : kind === 'approval'
+          ? { approvalMessage: 'Confirme para prosseguir.' }
           : {}
     }
+
     onSaveWorkflow({
       ...activeWorkflow,
       version: activeWorkflow.version + 1,
-      status: 'draft',
       nodes: [...activeWorkflow.nodes, newNode],
       updatedAt: Date.now()
     })
     setSelectedNodeId(newNode.id)
-  }
-
-  const handleUpdateNode = (updated: WorkflowNode) => {
-    onSaveWorkflow({
-      ...activeWorkflow,
-      version: activeWorkflow.version + 1,
-      status: 'draft',
-      nodes: activeWorkflow.nodes.map(n => (n.id === updated.id ? updated : n)),
-      updatedAt: Date.now()
-    })
+    setCanvasMenu(null)
   }
 
   const handleRemoveNode = (nodeId: string) => {
     onSaveWorkflow({
       ...activeWorkflow,
       version: activeWorkflow.version + 1,
-      status: 'draft',
       nodes: activeWorkflow.nodes.filter(n => n.id !== nodeId),
       edges: activeWorkflow.edges.filter(e => e.sourceNodeId !== nodeId && e.targetNodeId !== nodeId),
       updatedAt: Date.now()
@@ -181,555 +287,889 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     if (selectedNodeId === nodeId) setSelectedNodeId(null)
   }
 
-  const handleCompleteEdge = (targetNodeId: string) => {
-    if (!connectingFromNodeId || connectingFromNodeId === targetNodeId) {
-      setConnectingFromNodeId(null)
-      return
-    }
-    const exists = activeWorkflow.edges.some(
-      e => e.sourceNodeId === connectingFromNodeId && e.targetNodeId === targetNodeId
-    )
-    if (!exists) {
-      const newEdge: WorkflowEdge = {
-        id: `we_${Date.now()}`,
-        sourceNodeId: connectingFromNodeId,
-        targetNodeId,
-        branch: 'default'
-      }
-      onSaveWorkflow({
-        ...activeWorkflow,
-        version: activeWorkflow.version + 1,
-        status: 'draft',
-        edges: [...activeWorkflow.edges, newEdge],
-        updatedAt: Date.now()
-      })
-    }
-    setConnectingFromNodeId(null)
-  }
-
-  const handlePublishWorkflow = () => {
-    if (!validation.valid) return
+  const handleRemoveEdge = (edgeId: string) => {
     onSaveWorkflow({
       ...activeWorkflow,
-      status: 'published',
-      publishedVersion: activeWorkflow.version,
+      version: activeWorkflow.version + 1,
+      edges: activeWorkflow.edges.filter(e => e.id !== edgeId),
+      updatedAt: Date.now()
+    })
+    if (selectedEdgeId === edgeId) setSelectedEdgeId(null)
+  }
+
+  const completeWireConnection = (fromId: string, toId: string) => {
+    const targetNode = activeWorkflow.nodes.find(n => n.id === toId)
+    if (!targetNode) return
+    const problem = diagramConnectionProblem(
+      activeWorkflow.edges,
+      fromId,
+      toId,
+      targetNode.kind === 'input'
+    )
+    if (problem) return
+
+    const newEdge: WorkflowEdge = {
+      id: `we_${Date.now()}`,
+      sourceNodeId: fromId,
+      targetNodeId: toId,
+      branch: branchToConnect,
+      label:
+        branchToConnect === 'true'
+          ? 'Verdadeiro'
+          : branchToConnect === 'false'
+          ? 'Falso'
+          : branchToConnect === 'approved'
+          ? 'Aprovado'
+          : undefined
+    }
+    onSaveWorkflow({
+      ...activeWorkflow,
+      version: activeWorkflow.version + 1,
+      edges: [...activeWorkflow.edges, newEdge],
       updatedAt: Date.now()
     })
   }
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (draggingNodeRef.current) {
-      const { nodeId, startX, startY, origX, origY } = draggingNodeRef.current
-      const dx = (e.clientX - startX) / zoom
-      const dy = (e.clientY - startY) / zoom
-      const nextNodes = activeWorkflow.nodes.map(n =>
-        n.id === nodeId
-          ? {
-              ...n,
-              position: {
-                x: Math.max(20, Math.round(origX + dx)),
-                y: Math.max(20, Math.round(origY + dy))
-              }
-            }
-          : n
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (wireDraft) {
+      const world = screenToWorld(e.clientX, e.clientY)
+      let hoveredTargetId: string | null = null
+      for (const n of activeWorkflow.nodes) {
+        if (n.id === wireDraft.fromNodeId || n.kind === 'input') continue
+        const inPort = diagramInputPort(n.position)
+        if (Math.hypot(world.x - inPort.x, world.y - inPort.y) < 34) {
+          hoveredTargetId = n.id
+          break
+        }
+      }
+      setWireDraft({
+        ...wireDraft,
+        toWorld: hoveredTargetId
+          ? diagramInputPort(activeWorkflow.nodes.find(n => n.id === hoveredTargetId)!.position)
+          : world,
+        hoveredTargetId
+      })
+      return
+    }
+
+    if (draggingNodeId) {
+      const world = screenToWorld(e.clientX, e.clientY)
+      const newX = Math.max(16, snapDiagramCoord(world.x - dragOffsetRef.current.x))
+      const newY = Math.max(16, snapDiagramCoord(world.y - dragOffsetRef.current.y))
+      const updatedNodes = activeWorkflow.nodes.map(n =>
+        n.id === draggingNodeId ? { ...n, position: { x: newX, y: newY } } : n
       )
-      onSaveWorkflow({ ...activeWorkflow, nodes: nextNodes, updatedAt: Date.now() })
-    } else if (panningRef.current) {
-      const { startX, startY, origPanX, origPanY } = panningRef.current
+      onSaveWorkflow({ ...activeWorkflow, nodes: updatedNodes, updatedAt: Date.now() })
+      return
+    }
+
+    if (isPanning) {
       setPan({
-        x: origPanX + (e.clientX - startX),
-        y: origPanY + (e.clientY - startY)
+        x: panStartRef.current.panX + (e.clientX - panStartRef.current.x),
+        y: panStartRef.current.panY + (e.clientY - panStartRef.current.y)
       })
     }
   }
 
-  const handleMouseUp = () => {
-    draggingNodeRef.current = null
-    panningRef.current = null
+  const handlePointerUp = () => {
+    if (wireDraft) {
+      if (wireDraft.hoveredTargetId) {
+        completeWireConnection(wireDraft.fromNodeId, wireDraft.hoveredTargetId)
+      }
+      setWireDraft(null)
+    }
+    setDraggingNodeId(null)
+    setIsPanning(false)
+  }
+
+  const updateSelectedNodeConfig = (patch: Partial<WorkflowNode['config']>, newLabel?: string) => {
+    if (!selectedNode) return
+    const updatedNodes = activeWorkflow.nodes.map(n =>
+      n.id === selectedNode.id
+        ? {
+            ...n,
+            label: newLabel !== undefined ? newLabel : n.label,
+            config: { ...n.config, ...patch }
+          }
+        : n
+    )
+    onSaveWorkflow({
+      ...activeWorkflow,
+      version: activeWorkflow.version + 1,
+      nodes: updatedNodes,
+      updatedAt: Date.now()
+    })
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#0f0f13] text-zinc-100 overflow-hidden">
-      {/* Barra superior do Fluxo */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3.5 border-b border-zinc-800/80 bg-[#14141a]">
-        <div className="flex items-center gap-3">
-          <GitBranch className="w-5 h-5 text-[#c59b27]" />
+    <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#0b0c10] select-none">
+      {/* Top OpenBot Workflow Header */}
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[var(--bg-border)] bg-[#11131a]/95 backdrop-blur-md z-20 shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-400">
+            <GitBranch className="w-4 h-4" />
+            <span>Fluxo:</span>
+          </div>
           <select
             value={activeWorkflow.id}
             onChange={e => onSelectWorkflow(e.target.value)}
-            className="bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-1.5 text-sm font-semibold text-zinc-100 focus:outline-none focus:border-[#c59b27]"
+            className="bg-[#181b24] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--text-main)]"
           >
             {workflows.map(w => (
               <option key={w.id} value={w.id}>
-                {w.name} ({w.status === 'published' ? `Publicado v${w.publishedVersion || w.version}` : `Rascunho v${w.version}`})
+                {w.name} (v{w.version} • {w.status === 'published' ? 'Publicado' : 'Rascunho'})
               </option>
             ))}
           </select>
 
-          <span
-            className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-              validation.valid
-                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
-                : 'bg-amber-500/10 border-amber-500/40 text-amber-300'
-            }`}
-          >
-            {validation.valid ? 'Fluxo válido' : `${validation.errors.length} pendência(s)`}
-          </span>
-
           <button
-            type="button"
-            disabled={!validation.valid || activeWorkflow.status === 'published'}
-            onClick={handlePublishWorkflow}
-            className="px-3 py-1.5 rounded-lg border border-emerald-500/50 bg-emerald-500/10 hover:bg-emerald-500/20 text-xs font-medium text-emerald-300 disabled:opacity-40 cursor-pointer"
+            onClick={handleCreateWorkflow}
+            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-border)] text-xs text-[var(--text-main)] flex items-center gap-1"
           >
-            Publicar Versão
+            <Plus className="w-3.5 h-3.5 text-amber-400" />
+            Novo Fluxo
           </button>
 
           {workflows.length > 1 && (
             <button
-              type="button"
               onClick={() => onDeleteWorkflow(activeWorkflow.id)}
-              className="p-1.5 rounded-lg border border-zinc-800 hover:border-rose-500/50 text-zinc-400 hover:text-rose-400 cursor-pointer"
+              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300"
               title="Excluir fluxo"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           )}
+
+          {/* Quick Add Block Pills */}
+          <div className="hidden xl:flex items-center gap-1 pl-2 border-l border-[var(--bg-border)]">
+            {(['read_note', 'run_agent', 'condition', 'approval', 'deliverable'] as WorkflowNodeKind[]).map(
+              kind => (
+                <button
+                  key={kind}
+                  onClick={() => handleAddNodeAt(kind)}
+                  className="px-2 py-1 rounded-md bg-[#181b24] hover:bg-white/10 border border-[var(--bg-border)] text-[10px] font-medium flex items-center gap-1"
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ backgroundColor: NODE_META[kind].color }}
+                  />
+                  + {NODE_META[kind].badge}
+                </button>
+              )
+            )}
+          </div>
         </div>
 
+        {/* Right Run Controls + Inspector Toggle */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
-            <button
-              type="button"
-              onClick={() => setViewMode('canvas')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer ${
-                viewMode === 'canvas' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Canvas</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer ${
-                viewMode === 'list' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <List className="w-3.5 h-3.5" />
-              <span>Etapas em Lista</span>
-            </button>
-          </div>
-
-          {viewMode === 'canvas' && (
-            <div className="flex items-center gap-1 bg-zinc-900 px-2 py-1 rounded-lg border border-zinc-800 text-xs">
-              <button
-                type="button"
-                onClick={() => setZoom(z => Math.max(0.5, Number((z - 0.1).toFixed(2))))}
-                className="p-1 hover:text-white text-zinc-400 cursor-pointer"
-              >
-                <ZoomOut className="w-3.5 h-3.5" />
-              </button>
-              <span className="w-11 text-center text-zinc-300">{Math.round(zoom * 100)}%</span>
-              <button
-                type="button"
-                onClick={() => setZoom(z => Math.min(1.5, Number((z + 0.1).toFixed(2))))}
-                className="p-1 hover:text-white text-zinc-400 cursor-pointer"
-              >
-                <ZoomIn className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setZoom(0.95)
-                  setPan({ x: 20, y: 20 })
-                }}
-                className="p-1 hover:text-white text-zinc-400 cursor-pointer"
-              >
-                <Maximize2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Avisos de validação se houver */}
-      {!validation.valid && (
-        <div className="px-6 py-2.5 bg-amber-500/10 border-b border-amber-500/30 flex items-center gap-2 text-xs text-amber-200">
-          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-          <span>{validation.errors.join(' • ')}</span>
-        </div>
-      )}
-
-      {/* Barra de execução do Fluxo */}
-      <div className="flex flex-wrap items-center gap-3 px-6 py-3 bg-[#121217] border-b border-zinc-800/60">
-        <input
-          type="text"
-          value={workflowPrompt}
-          onChange={e => setWorkflowPrompt(e.target.value)}
-          placeholder="Pedido de entrada para testar ou executar este fluxo..."
-          className="flex-1 min-w-[260px] bg-zinc-900/90 border border-zinc-700/80 rounded-lg px-3.5 py-2 text-sm text-zinc-100 focus:outline-none focus:border-[#c59b27]"
-        />
-        <button
-          type="button"
-          disabled={isExecuting || !validation.valid}
-          onClick={() => onRunWorkflow(activeWorkflow, true, workflowPrompt)}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-zinc-700 bg-zinc-800/80 hover:bg-zinc-700 text-xs font-medium text-zinc-100 cursor-pointer disabled:opacity-50"
-        >
-          <FlaskConical className="w-4 h-4 text-amber-400" />
-          <span>Testar Fluxo</span>
-        </button>
-        <button
-          type="button"
-          disabled={isExecuting || !validation.valid}
-          onClick={() => onRunWorkflow(activeWorkflow, false, workflowPrompt)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#c59b27] hover:bg-[#d4a930] text-black font-semibold text-xs cursor-pointer disabled:opacity-50"
-        >
-          <Play className="w-4 h-4 fill-current" />
-          <span>Executar Fluxo</span>
-        </button>
-      </div>
-
-      <div className="flex-1 flex overflow-hidden">
-        {/* Paleta de Blocos */}
-        <div className="w-60 border-r border-zinc-800/80 bg-[#131319] p-4 flex flex-col gap-2 overflow-y-auto">
-          <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-            Adicionar Bloco ao Fluxo
-          </div>
-          {(Object.keys(NODE_META) as WorkflowNodeKind[]).map(kind => {
-            const meta = NODE_META[kind]
-            return (
-              <button
-                key={kind}
-                type="button"
-                onClick={() => handleAddNode(kind)}
-                className="w-full text-left p-2.5 rounded-lg border border-zinc-800 bg-zinc-900/80 hover:border-zinc-600 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-zinc-100">{meta.label}</span>
-                  <Plus className="w-3.5 h-3.5 text-zinc-400" />
-                </div>
-                <div className="text-[11px] text-zinc-400 mt-0.5 leading-snug">{meta.description}</div>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Canvas ou Lista */}
-        {viewMode === 'canvas' ? (
-          <div
-            role="region"
-            aria-label="Quadro visual de fluxo de trabalho"
-            onMouseDown={e => {
-              if (e.target === e.currentTarget) {
-                panningRef.current = {
-                  startX: e.clientX,
-                  startY: e.clientY,
-                  origPanX: pan.x,
-                  origPanY: pan.y
-                }
-              }
-            }}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            className="flex-1 relative overflow-hidden bg-[#0c0c10] select-none cursor-grab active:cursor-grabbing"
-            style={{
-              backgroundImage: 'radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px)',
-              backgroundSize: `${24 * zoom}px ${24 * zoom}px`
-            }}
+          <span
+            className={`text-[11px] px-2 py-1 rounded-lg flex items-center gap-1 ${
+              validation.valid
+                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+            }`}
+            title={validation.errors.join(' | ')}
           >
-            <div
-              style={{
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                transformOrigin: '0 0'
-              }}
-              className="w-[1800px] h-[1000px] relative"
+            {validation.valid ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5" /> Válido
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="w-3.5 h-3.5" /> {validation.errors.length} alerta(s)
+              </>
+            )}
+          </span>
+
+          <input
+            type="text"
+            value={testPrompt}
+            onChange={e => setTestPrompt(e.target.value)}
+            placeholder="Pedido para executar o fluxo..."
+            className="w-56 lg:w-72 bg-[#181b24] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+          />
+
+          <button
+            disabled={isExecuting}
+            onClick={() => onRunWorkflow(activeWorkflow, true, testPrompt)}
+            className="px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-medium flex items-center gap-1 disabled:opacity-50"
+          >
+            <FlaskConical className="w-3.5 h-3.5" />
+            Testar
+          </button>
+
+          <button
+            disabled={isExecuting}
+            onClick={() => onRunWorkflow(activeWorkflow, false, testPrompt)}
+            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-1 disabled:opacity-50"
+          >
+            <Play className="w-3.5 h-3.5 fill-current" />
+            Executar agora
+          </button>
+
+          <div className="flex items-center bg-[#181b24] p-0.5 rounded-lg border border-[var(--bg-border)]">
+            <button
+              onClick={() => setViewMode('canvas')}
+              className={`px-2 py-1 rounded text-[11px] flex items-center gap-1 ${
+                viewMode === 'canvas' ? 'bg-amber-500 text-black font-semibold' : 'text-[var(--text-muted)]'
+              }`}
             >
-              {/* Arestas SVG */}
-              <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                {activeWorkflow.edges.map(edge => {
-                  const src = activeWorkflow.nodes.find(n => n.id === edge.sourceNodeId)
-                  const dst = activeWorkflow.nodes.find(n => n.id === edge.targetNodeId)
-                  if (!src || !dst) return null
-                  const x1 = src.position.x + 210
-                  const y1 = src.position.y + 46
-                  const x2 = dst.position.x
-                  const y2 = dst.position.y + 46
-                  const midX = (x1 + x2) / 2
-                  return (
-                    <g key={edge.id}>
-                      <path
-                        d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
-                        fill="none"
-                        stroke="#71717a"
-                        strokeWidth={2}
-                      />
-                      <circle cx={x2} cy={y2} r={4} fill="#c59b27" />
-                      {edge.label && (
+              <LayoutGrid className="w-3 h-3" />
+              Canvas
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-2 py-1 rounded text-[11px] flex items-center gap-1 ${
+                viewMode === 'list' ? 'bg-amber-500 text-black font-semibold' : 'text-[var(--text-muted)]'
+              }`}
+            >
+              <List className="w-3 h-3" />
+              Lista
+            </button>
+          </div>
+
+          <button
+            onClick={() => setInspectorOpen(v => !v)}
+            className={`p-1.5 rounded-lg border transition-colors ${
+              inspectorOpen
+                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                : 'bg-[#181b24] border-[var(--bg-border)] text-[var(--text-muted)] hover:text-white'
+            }`}
+            title="Abrir/Fechar Inspetor Lateral"
+          >
+            <PanelRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Main Full-Bleed Canvas */}
+      {viewMode === 'canvas' ? (
+        <div
+          ref={viewportRef}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerDown={e => {
+            if (e.button !== 0) return
+            const target = e.target as HTMLElement
+            if (target === viewportRef.current || target.dataset.canvasBg === 'true') {
+              setCanvasMenu(null)
+              setSelectedNodeId(null)
+              setSelectedEdgeId(null)
+              setIsPanning(true)
+              panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
+            }
+          }}
+          onContextMenu={e => {
+            e.preventDefault()
+            const rect = viewportRef.current?.getBoundingClientRect()
+            if (!rect) return
+            const world = screenToWorld(e.clientX, e.clientY)
+            setCanvasMenu({
+              screenX: Math.min(e.clientX - rect.left, rect.width - 260),
+              screenY: Math.min(e.clientY - rect.top, rect.height - 260),
+              worldX: world.x,
+              worldY: world.y
+            })
+          }}
+          onWheel={e => {
+            if (e.ctrlKey || e.metaKey) {
+              e.preventDefault()
+              const delta = e.deltaY < 0 ? 0.08 : -0.08
+              setZoom(z => Math.min(1.5, Math.max(0.42, Number((z + delta).toFixed(2)))))
+            } else {
+              setPan(p => ({ x: p.x - e.deltaX * 0.6, y: p.y - e.deltaY * 0.6 }))
+            }
+          }}
+          data-canvas-bg="true"
+          className="relative flex-1 w-full h-full overflow-hidden cursor-grab active:cursor-grabbing"
+          style={{
+            backgroundImage: 'radial-gradient(rgba(255,255,255,0.12) 1.25px, transparent 1.25px)',
+            backgroundSize: `${22 * zoom}px ${22 * zoom}px`,
+            backgroundPosition: `${pan.x}px ${pan.y}px`
+          }}
+        >
+          {/* Floating Top-Left Branch Selector & Hint */}
+          <div className="absolute top-3 left-4 z-10 flex items-center gap-2 bg-[#141720]/90 backdrop-blur-md border border-[var(--bg-border)] rounded-full px-3 py-1 text-[11px] text-[var(--text-muted)] shadow-lg">
+            <span>Ramo ao conectar:</span>
+            <select
+              value={branchToConnect}
+              onChange={e => setBranchToConnect(e.target.value as WorkflowEdge['branch'])}
+              className="bg-[#0e1017] border border-[var(--bg-border)] rounded px-1.5 py-0.5 text-[10px] text-[var(--text-main)]"
+            >
+              <option value="default">Padrão</option>
+              <option value="true">Verdadeiro (Condição)</option>
+              <option value="false">Falso (Condição)</option>
+              <option value="approved">Aprovado</option>
+            </select>
+            <span>•</span>
+            <span>Clique direito no fundo para adicionar bloco</span>
+          </div>
+
+          <div
+            data-canvas-bg="true"
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: '0 0',
+              width: 3400,
+              height: 2200
+            }}
+            className="relative"
+          >
+            {/* OpenBot SVG Edges */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+              {activeWorkflow.edges.map(edge => {
+                const src = activeWorkflow.nodes.find(n => n.id === edge.sourceNodeId)
+                const dst = activeWorkflow.nodes.find(n => n.id === edge.targetNodeId)
+                if (!src || !dst) return null
+                const from = diagramOutputPort(src.position)
+                const to = diagramInputPort(dst.position)
+                const pathD = diagramEdgePath(from, to)
+                const arrowD = diagramEdgeArrow(to)
+                const mid = diagramEdgeMidpoint(from, to)
+                const strokeColor =
+                  edge.branch === 'false'
+                    ? '#ef4444'
+                    : edge.branch === 'true' || edge.branch === 'approved'
+                    ? '#10b981'
+                    : '#c59b27'
+
+                return (
+                  <g key={edge.id} className="pointer-events-auto">
+                    <path
+                      d={pathD}
+                      fill="none"
+                      stroke="transparent"
+                      strokeWidth={16}
+                      className="cursor-pointer"
+                      onClick={e => {
+                        e.stopPropagation()
+                        setSelectedEdgeId(edge.id)
+                      }}
+                    />
+                    <path
+                      d={pathD}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={selectedEdgeId === edge.id ? 3 : 2.2}
+                      strokeDasharray={edge.branch === 'false' ? '5 5' : undefined}
+                    />
+                    <path
+                      d={arrowD}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={2.2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    {edge.label && (
+                      <>
+                        <rect
+                          x={mid.x - 42}
+                          y={mid.y - 20}
+                          width={84}
+                          height={16}
+                          rx={8}
+                          fill="#11131a"
+                          stroke={strokeColor}
+                          strokeWidth={1}
+                        />
                         <text
-                          x={midX}
-                          y={(y1 + y2) / 2 - 6}
+                          x={mid.x}
+                          y={mid.y - 9}
                           textAnchor="middle"
-                          fill="#d4d4d8"
-                          fontSize={11}
+                          fill="#e4e4e7"
+                          fontSize={9}
+                          fontWeight={600}
                         >
                           {edge.label}
                         </text>
-                      )}
+                      </>
+                    )}
+                    {/* OpenBot Midpoint Remove Button (-) */}
+                    <g
+                      transform={`translate(${mid.x}, ${mid.y + 8})`}
+                      className="cursor-pointer opacity-80 hover:opacity-100"
+                      onClick={e => {
+                        e.stopPropagation()
+                        handleRemoveEdge(edge.id)
+                      }}
+                    >
+                      <circle r={9} fill="#181b24" stroke="#ef4444" strokeWidth={1.2} />
+                      <line x1={-4} y1={0} x2={4} y2={0} stroke="#fca5a5" strokeWidth={1.8} />
                     </g>
-                  )
-                })}
-              </svg>
+                  </g>
+                )
+              })}
 
-              {/* Blocos do Fluxo */}
-              {activeWorkflow.nodes.map(node => {
-                const meta = NODE_META[node.kind]
-                const execState = latestNodeStates.find(s => s.nodeId === node.id)
-                const isSelected = selectedNodeId === node.id
-                const isConnecting = connectingFromNodeId === node.id
-
+              {wireDraft && (() => {
+                const src = activeWorkflow.nodes.find(n => n.id === wireDraft.fromNodeId)
+                if (!src) return null
+                const from = diagramOutputPort(src.position)
                 return (
-                  <div
-                    key={node.id}
-                    style={{ left: node.position.x, top: node.position.y }}
-                    onMouseDown={e => {
-                      e.stopPropagation()
-                      setSelectedNodeId(node.id)
-                      if (connectingFromNodeId && connectingFromNodeId !== node.id) {
-                        handleCompleteEdge(node.id)
-                        return
-                      }
-                      draggingNodeRef.current = {
-                        nodeId: node.id,
-                        startX: e.clientX,
-                        startY: e.clientY,
-                        origX: node.position.x,
-                        origY: node.position.y
-                      }
-                    }}
-                    className={`absolute w-[210px] rounded-xl border p-3 bg-[#16161e] shadow-xl cursor-move ${
-                      isSelected
-                        ? 'border-[#c59b27] ring-2 ring-[#c59b27]/30'
-                        : isConnecting
-                        ? 'border-emerald-400 ring-2 ring-emerald-400/30'
-                        : 'border-zinc-800 hover:border-zinc-600'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-1 mb-1.5">
+                  <path
+                    d={diagramEdgePath(from, wireDraft.toWorld)}
+                    fill="none"
+                    stroke="#fbbf24"
+                    strokeWidth={2.5}
+                    strokeDasharray="5 5"
+                  />
+                )
+              })()}
+            </svg>
+
+            {/* OpenBot DiagramNodeCards for Workflow Nodes */}
+            {activeWorkflow.nodes.map(node => {
+              const meta = NODE_META[node.kind]
+              const isSelected = selectedNodeId === node.id
+              const execState = latestNodeStates?.find(s => s.nodeId === node.id)
+              const linkedAgent =
+                node.kind === 'run_agent'
+                  ? agents.find(a => a.id === node.config.agentId)
+                  : undefined
+
+              return (
+                <div
+                  key={node.id}
+                  style={{
+                    left: node.position.x,
+                    top: node.position.y,
+                    width: DIAGRAM_NODE_WIDTH
+                  }}
+                  onPointerDown={e => {
+                    e.stopPropagation()
+                    setSelectedNodeId(node.id)
+                    setSelectedEdgeId(null)
+                    const world = screenToWorld(e.clientX, e.clientY)
+                    dragOffsetRef.current = {
+                      x: world.x - node.position.x,
+                      y: world.y - node.position.y
+                    }
+                    setDraggingNodeId(node.id)
+                  }}
+                  onDoubleClick={e => {
+                    e.stopPropagation()
+                    setSelectedNodeId(node.id)
+                    setInspectorOpen(true)
+                  }}
+                  className={`absolute rounded-2xl border bg-[#141720]/95 backdrop-blur-md shadow-2xl cursor-move transition-all ${
+                    isSelected
+                      ? 'border-amber-400 ring-2 ring-amber-400/25'
+                      : 'border-[var(--bg-border)] hover:border-white/25'
+                  }`}
+                >
+                  {/* Input Port */}
+                  {node.kind !== 'input' && (
+                    <button
+                      type="button"
+                      title="Porta de Entrada"
+                      onPointerDown={e => e.stopPropagation()}
+                      onPointerUp={e => {
+                        e.stopPropagation()
+                        if (wireDraft && wireDraft.fromNodeId !== node.id) {
+                          completeWireConnection(wireDraft.fromNodeId, node.id)
+                          setWireDraft(null)
+                        }
+                      }}
+                      style={{ top: 20, left: -7 }}
+                      className={`absolute w-3.5 h-3.5 rounded-full border-2 transition-transform ${
+                        wireDraft?.hoveredTargetId === node.id
+                          ? 'bg-emerald-400 border-white scale-125'
+                          : 'bg-[#181b24] border-amber-400 hover:scale-125'
+                      }`}
+                    />
+                  )}
+
+                  {/* Output Port */}
+                  {node.kind !== 'finish' && (
+                    <button
+                      type="button"
+                      title="Arraste desta porta para conectar ao próximo bloco"
+                      onPointerDown={e => {
+                        e.stopPropagation()
+                        setWireDraft({
+                          fromNodeId: node.id,
+                          toWorld: diagramOutputPort(node.position),
+                          hoveredTargetId: null
+                        })
+                      }}
+                      style={{ top: 20, right: -7 }}
+                      className="absolute w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-[#0b0c10] hover:scale-125 transition-transform cursor-crosshair"
+                    />
+                  )}
+
+                  {/* Header */}
+                  <div className="p-3 border-b border-[var(--bg-border)] flex items-center justify-between gap-2">
+                    <div className="min-w-0">
                       <span
-                        className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider"
-                        style={{ backgroundColor: `${meta.color}22`, color: meta.color }}
+                        className="inline-block text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded mb-1"
+                        style={{ backgroundColor: `${meta.color}25`, color: meta.color }}
                       >
                         {meta.badge}
                       </span>
+                      <div className="text-xs font-bold text-[var(--text-main)] truncate">
+                        {node.label}
+                      </div>
+                    </div>
+                    {node.kind !== 'input' && (
                       <button
                         type="button"
+                        onPointerDown={e => e.stopPropagation()}
                         onClick={e => {
                           e.stopPropagation()
                           handleRemoveNode(node.id)
                         }}
-                        className="text-zinc-500 hover:text-rose-400 p-0.5 cursor-pointer"
+                        className="p-1 rounded-lg hover:bg-red-500/20 text-[var(--text-muted)] hover:text-red-300"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                    </div>
+                    )}
+                  </div>
 
-                    <div className="text-sm font-semibold text-zinc-100 truncate">{node.label}</div>
+                  {/* Body */}
+                  <div className="p-3 space-y-2 text-[11px]">
+                    {node.kind === 'run_agent' && (
+                      <div className="text-[var(--text-muted)] flex items-center gap-1.5">
+                        <span>{linkedAgent?.icon || '🤖'}</span>
+                        <span className="text-[var(--text-main)] font-medium truncate">
+                          {linkedAgent?.name || 'Selecionar Agente'}
+                        </span>
+                      </div>
+                    )}
+                    {node.kind === 'read_note' && (
+                      <div className="text-[var(--text-muted)] truncate">
+                        Nota: <strong className="text-purple-300">{node.config.noteTitle || 'Selecionar'}</strong>
+                      </div>
+                    )}
+                    {node.kind === 'condition' && (
+                      <div className="text-amber-300/90 text-[10px]">
+                        Regra: {node.config.conditionType || 'no_missing_fields'}
+                      </div>
+                    )}
+                    {node.kind === 'deliverable' && (
+                      <div className="text-emerald-300/90 text-[10px]">
+                        Pasta: <strong>{node.config.targetFolder || 'Propostas'}</strong>
+                      </div>
+                    )}
+                    {node.kind === 'approval' && (
+                      <div className="text-pink-300/90 text-[10px] line-clamp-2">
+                        {node.config.approvalMessage || 'Pausa o fluxo para aprovação'}
+                      </div>
+                    )}
 
-                    {execState && (
-                      <div className="mt-2 pt-2 border-t border-zinc-800/80 text-[11px] flex items-center gap-1.5">
-                        <CheckCircle2
-                          className={`w-3.5 h-3.5 shrink-0 ${
+                    {/* Execution Status Footer */}
+                    <div className="pt-1.5 border-t border-white/5 flex items-center justify-between text-[10px]">
+                      {execState ? (
+                        <span
+                          className={`font-semibold ${
                             execState.status === 'completed'
                               ? 'text-emerald-400'
                               : execState.status === 'waiting_approval'
                               ? 'text-amber-400'
                               : execState.status === 'failed'
-                              ? 'text-rose-400'
-                              : 'text-zinc-500'
+                              ? 'text-red-400'
+                              : 'text-[var(--text-muted)]'
                           }`}
-                        />
-                        <span className="truncate text-zinc-300">
-                          {execState.outputSummary || execState.status}
+                        >
+                          ●{' '}
+                          {execState.status === 'completed'
+                            ? 'Concluído'
+                            : execState.status === 'waiting_approval'
+                            ? 'Aguardando Aprovação'
+                            : execState.status === 'skipped'
+                            ? 'Pulado'
+                            : execState.status === 'failed'
+                            ? 'Falha'
+                            : 'Pendente'}
                         </span>
-                      </div>
-                    )}
-
-                    <div className="mt-2.5 pt-2 border-t border-zinc-800/70 flex items-center justify-between text-xs">
+                      ) : (
+                        <span className="text-[var(--text-muted)]">Pronto</span>
+                      )}
                       <button
                         type="button"
+                        onPointerDown={e => e.stopPropagation()}
                         onClick={e => {
                           e.stopPropagation()
-                          setConnectingFromNodeId(isConnecting ? null : node.id)
+                          setSelectedNodeId(node.id)
+                          setInspectorOpen(true)
                         }}
-                        className="text-[#c59b27] hover:underline font-medium cursor-pointer"
+                        className="text-[var(--text-muted)] hover:text-amber-300 underline"
                       >
-                        {isConnecting ? 'Cancelar' : 'Conectar →'}
+                        Editar
                       </button>
                     </div>
                   </div>
-                )
-              })}
-            </div>
+                </div>
+              )
+            })}
           </div>
-        ) : (
-          <div className="flex-1 p-6 overflow-y-auto space-y-3">
-            {activeWorkflow.nodes.map((node, i) => (
-              <div
-                key={node.id}
-                onClick={() => setSelectedNodeId(node.id)}
-                className="p-4 rounded-xl border border-zinc-800 bg-[#15151c] flex items-center justify-between cursor-pointer hover:border-zinc-600"
-              >
-                <div>
-                  <div className="text-xs font-semibold text-[#c59b27]">
-                    Etapa {i + 1} • {NODE_META[node.kind].label}
+
+          {/* Right-Click Context Menu */}
+          {canvasMenu && (
+            <div
+              style={{ left: canvasMenu.screenX, top: canvasMenu.screenY }}
+              onPointerDown={e => e.stopPropagation()}
+              className="absolute z-30 w-60 rounded-2xl border border-[var(--bg-border)] bg-[#141720]/98 backdrop-blur-xl shadow-2xl p-2 text-xs"
+            >
+              <div className="flex items-center justify-between px-2 py-1 text-[10px] uppercase tracking-wider font-semibold text-[var(--text-muted)]">
+                <span>Adicionar Bloco Aqui</span>
+                <button onClick={() => setCanvasMenu(null)}>
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="space-y-1 mt-1">
+                {(['read_note', 'run_agent', 'condition', 'approval', 'deliverable', 'finish'] as WorkflowNodeKind[]).map(
+                  kind => (
+                    <button
+                      key={kind}
+                      onClick={() =>
+                        handleAddNodeAt(kind, { x: canvasMenu.worldX, y: canvasMenu.worldY })
+                      }
+                      className="w-full px-2.5 py-1.5 rounded-xl hover:bg-white/10 flex items-center gap-2 text-left"
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: NODE_META[kind].color }}
+                      />
+                      <div>
+                        <div className="font-medium text-[var(--text-main)]">
+                          {NODE_META[kind].label}
+                        </div>
+                        <div className="text-[10px] text-[var(--text-muted)] line-clamp-1">
+                          {NODE_META[kind].description}
+                        </div>
+                      </div>
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Bottom-Left Zoom Controls */}
+          <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1 bg-[#141720]/95 backdrop-blur-md border border-[var(--bg-border)] rounded-xl p-1 shadow-xl">
+            <button
+              onClick={() => setZoom(z => Math.max(0.42, Number((z - 0.1).toFixed(2))))}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-[11px] font-mono px-2 text-[var(--text-main)]">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              onClick={() => setZoom(z => Math.min(1.5, Number((z + 0.1).toFixed(2))))}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-px h-4 bg-[var(--bg-border)] mx-0.5" />
+            <button
+              onClick={handleFitView}
+              className="px-2 py-1 rounded-lg hover:bg-white/10 text-[11px] text-[var(--text-muted)] hover:text-white flex items-center gap-1"
+            >
+              <Maximize2 className="w-3 h-3" />
+              Ajustar
+            </button>
+          </div>
+
+          {/* Collapsible Right-Hand DiagramInspector */}
+          {inspectorOpen && (
+            <div
+              onPointerDown={e => e.stopPropagation()}
+              className="absolute top-0 right-0 bottom-0 w-80 bg-[#141720]/98 backdrop-blur-xl border-l border-[var(--bg-border)] z-30 p-4 overflow-y-auto shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-[var(--bg-border)] pb-2.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                  {selectedNode ? `Bloco: ${NODE_META[selectedNode.kind].badge}` : 'Propriedades do Fluxo'}
+                </h4>
+                <button
+                  onClick={() => setInspectorOpen(false)}
+                  className="p-1 rounded-lg hover:bg-white/10 text-[var(--text-muted)]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {selectedNode ? (
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="text-[11px] text-[var(--text-muted)] block mb-1">
+                      Título do Bloco
+                    </label>
+                    <input
+                      type="text"
+                      value={selectedNode.label}
+                      onChange={e => updateSelectedNodeConfig({}, e.target.value)}
+                      className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+                    />
                   </div>
-                  <div className="text-sm font-medium text-zinc-100 mt-0.5">{node.label}</div>
-                </div>
-                <span className="text-xs text-zinc-400">Clique para configurar</span>
-              </div>
-            ))}
-          </div>
-        )}
 
-        {/* Inspetor do Bloco Selecionado */}
-        {selectedNode && (
-          <div className="w-80 border-l border-zinc-800/80 bg-[#14141b] p-5 overflow-y-auto space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-zinc-100">Configurar Bloco</span>
-              <button
-                type="button"
-                onClick={() => setSelectedNodeId(null)}
-                className="text-xs text-zinc-400 hover:text-white cursor-pointer"
+                  {selectedNode.kind === 'run_agent' && (
+                    <div>
+                      <label className="text-[11px] text-[var(--text-muted)] block mb-1">
+                        Agente Executor
+                      </label>
+                      <select
+                        value={selectedNode.config.agentId || ''}
+                        onChange={e => {
+                          const ag = agents.find(a => a.id === e.target.value)
+                          updateSelectedNodeConfig({ agentId: e.target.value }, ag?.name)
+                        }}
+                        className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+                      >
+                        {agents.map(ag => (
+                          <option key={ag.id} value={ag.id}>
+                            {ag.icon} {ag.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {selectedNode.kind === 'read_note' && (
+                    <div>
+                      <label className="text-[11px] text-[var(--text-muted)] block mb-1">
+                        Nota Autorizada do Cofre
+                      </label>
+                      <select
+                        value={selectedNode.config.noteId || ''}
+                        onChange={e => {
+                          const nt = notes.find(n => n.id === e.target.value)
+                          updateSelectedNodeConfig(
+                            { noteId: nt?.id, noteTitle: nt?.title },
+                            nt ? `Ler: ${nt.title}` : selectedNode.label
+                          )
+                        }}
+                        className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+                      >
+                        <option value="">Selecione uma nota...</option>
+                        {notes.map(n => (
+                          <option key={n.id} value={n.id}>
+                            {n.title} ({n.folder})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {selectedNode.kind === 'condition' && (
+                    <div>
+                      <label className="text-[11px] text-[var(--text-muted)] block mb-1">
+                        Tipo de Verificação
+                      </label>
+                      <select
+                        value={selectedNode.config.conditionType || 'no_missing_fields'}
+                        onChange={e =>
+                          updateSelectedNodeConfig({
+                            conditionType: e.target.value as WorkflowNode['config']['conditionType']
+                          })
+                        }
+                        className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+                      >
+                        <option value="no_missing_fields">Sem campos obrigatórios pendentes</option>
+                        <option value="no_price_conflicts">Sem divergências de preços</option>
+                        <option value="net_total_above">Valor líquido acima de R$</option>
+                        <option value="always">Sempre verdadeiro</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {selectedNode.kind === 'deliverable' && (
+                    <>
+                      <div>
+                        <label className="text-[11px] text-[var(--text-muted)] block mb-1">
+                          Pasta de Destino
+                        </label>
+                        <input
+                          type="text"
+                          list="wf-folders-list"
+                          value={selectedNode.config.targetFolder || ''}
+                          onChange={e => updateSelectedNodeConfig({ targetFolder: e.target.value })}
+                          className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+                        />
+                        <datalist id="wf-folders-list">
+                          {folders.map(f => (
+                            <option key={f} value={f} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-[var(--text-muted)] block mb-1">
+                          Padrão de Nome da Entrega
+                        </label>
+                        <input
+                          type="text"
+                          value={selectedNode.config.namingPattern || ''}
+                          onChange={e => updateSelectedNodeConfig({ namingPattern: e.target.value })}
+                          className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="text-[11px] text-[var(--text-muted)] block mb-1">
+                      Nome do Fluxo
+                    </label>
+                    <input
+                      type="text"
+                      value={activeWorkflow.name}
+                      onChange={e =>
+                        onSaveWorkflow({
+                          ...activeWorkflow,
+                          name: e.target.value,
+                          updatedAt: Date.now()
+                        })
+                      }
+                      className="w-full bg-[#0e1017] border border-[var(--bg-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+                    />
+                  </div>
+                  {!validation.valid && (
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 space-y-1">
+                      <div className="font-semibold">Avisos de validação:</div>
+                      {validation.errors.map((err, i) => (
+                        <div key={i} className="text-[11px]">
+                          • {err}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          {activeWorkflow.nodes.map((node, i) => (
+            <div
+              key={node.id}
+              className="p-3.5 rounded-xl border border-[var(--bg-border)] bg-[#141720] flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono text-[var(--text-muted)]">#{i + 1}</span>
+                <div>
+                  <div className="text-xs font-bold text-[var(--text-main)]">{node.label}</div>
+                  <div className="text-[11px] text-[var(--text-muted)]">
+                    {NODE_META[node.kind].description}
+                  </div>
+                </div>
+              </div>
+              <span
+                className="text-[10px] font-bold px-2 py-0.5 rounded"
+                style={{
+                  backgroundColor: `${NODE_META[node.kind].color}25`,
+                  color: NODE_META[node.kind].color
+                }}
               >
-                Fechar
-              </button>
+                {NODE_META[node.kind].badge}
+              </span>
             </div>
-
-            <div>
-              <label className="block text-xs text-zinc-400 mb-1">Título do Bloco</label>
-              <input
-                type="text"
-                value={selectedNode.label}
-                onChange={e => handleUpdateNode({ ...selectedNode, label: e.target.value })}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-100"
-              />
-            </div>
-
-            {selectedNode.kind === 'read_note' && (
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">Nota a Consultar</label>
-                <select
-                  value={selectedNode.config.noteId || ''}
-                  onChange={e => {
-                    const n = notes.find(item => item.id === e.target.value)
-                    handleUpdateNode({
-                      ...selectedNode,
-                      config: {
-                        ...selectedNode.config,
-                        noteId: n?.id,
-                        noteTitle: n?.title
-                      }
-                    })
-                  }}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-100"
-                >
-                  {notes.map(n => (
-                    <option key={n.id} value={n.id}>
-                      {n.title} ({n.folder})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {selectedNode.kind === 'run_agent' && (
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">Agente Responsável</label>
-                <select
-                  value={selectedNode.config.agentId || ''}
-                  onChange={e =>
-                    handleUpdateNode({
-                      ...selectedNode,
-                      config: { ...selectedNode.config, agentId: e.target.value }
-                    })
-                  }
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-100"
-                >
-                  {agents.map(a => (
-                    <option key={a.id} value={a.id}>
-                      {a.icon} {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {selectedNode.kind === 'condition' && (
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">Regra de Verificação</label>
-                <select
-                  value={selectedNode.config.conditionType || 'no_missing_fields'}
-                  onChange={e =>
-                    handleUpdateNode({
-                      ...selectedNode,
-                      config: {
-                        ...selectedNode.config,
-                        conditionType: e.target.value as any
-                      }
-                    })
-                  }
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-100"
-                >
-                  <option value="no_missing_fields">Sem informações obrigatórias pendentes</option>
-                  <option value="no_price_conflicts">Sem divergências de preços</option>
-                  <option value="net_total_above">Valor líquido acima de limite (R$)</option>
-                  <option value="always">Sempre prosseguir</option>
-                </select>
-              </div>
-            )}
-
-            {selectedNode.kind === 'deliverable' && (
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Pasta de Destino</label>
-                  <select
-                    value={selectedNode.config.targetFolder || 'Propostas'}
-                    onChange={e =>
-                      handleUpdateNode({
-                        ...selectedNode,
-                        config: { ...selectedNode.config, targetFolder: e.target.value }
-                      })
-                    }
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-100"
-                  >
-                    {folders.map(f => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Padrão de Nome</label>
-                  <input
-                    type="text"
-                    value={selectedNode.config.namingPattern || 'Proposta - {cliente}'}
-                    onChange={e =>
-                      handleUpdateNode({
-                        ...selectedNode,
-                        config: { ...selectedNode.config, namingPattern: e.target.value }
-                      })
-                    }
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-100"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

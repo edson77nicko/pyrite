@@ -69,7 +69,9 @@ export interface ElectronAPI {
     model?: string
     messages: { role: string; content: string | any[] }[]
     temperature?: number
-  }) => Promise<{ success: boolean; text?: string; error?: string }>
+    requestId?: string
+  }) => Promise<{ success: boolean; text?: string; canceled?: boolean; error?: string }>
+  aiCancelChat?: (requestId: string) => Promise<{ success: boolean; canceled?: boolean }>
 }
 
 export type UpdaterStatusData =

@@ -1,5 +1,5 @@
 import type { SidebarAction } from './components/SidebarMenu'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import type { Note, NoteType, ViewMode, EditorDisplayMode, TabItem, AppSettings, TaskItem, TaskSettings, TaskBoard, MultiAgentStoreState, ContextRole } from './types'
 import {
   loadNotes,
@@ -13,7 +13,7 @@ import {
 import { createEmptyDrawDocument, isDrawContent, serializeDrawDocument } from './utils/drawUtils'
 import { createEmptyMindMapDocument, isMindMapContent, parseMindMapDocument, serializeMindMapDocument } from './utils/mindMapUtils'
 import { loadTasks, saveTasks, loadTaskSettings, saveTaskSettings, DEFAULT_BOARDS } from './utils/taskStorage'
-import { loadMultiAgentStoreSync, saveMultiAgentStore } from './utils/multiAgentEngine'
+import { loadMultiAgentStoreSync, saveMultiAgentStore, evaluateAutomationsBackground } from './utils/multiAgentEngine'
 import { Ribbon } from './components/Ribbon'
 import { TabHeader } from './components/TabHeader'
 import { Sidebar } from './components/Sidebar'
@@ -224,11 +224,47 @@ export const App: React.FC = () => {
   // Multi-Agent & Team Store State
   const [agentStore, setAgentStore] = useState<MultiAgentStoreState>(() => loadMultiAgentStoreSync(vaultPath || 'default'))
   const [preselectedNoteForBinding, setPreselectedNoteForBinding] = useState<{ noteId: string; role: ContextRole } | null>(null)
+  const agentStoreRef = useRef<MultiAgentStoreState>(agentStore)
+  const notesRef = useRef<Note[]>(notes)
+  const isEvaluatingAutomationsRef = useRef(false)
+
+  useEffect(() => {
+    agentStoreRef.current = agentStore
+  }, [agentStore])
+
+  useEffect(() => {
+    notesRef.current = notes
+  }, [notes])
 
   const handleUpdateAgentStore = async (nextStore: MultiAgentStoreState) => {
+    agentStoreRef.current = nextStore
     setAgentStore(nextStore)
     return await saveMultiAgentStore(nextStore, vaultPath)
   }
+
+  // Root-level Background Scheduler for Automations (runs even when Minha Equipe is closed)
+  useEffect(() => {
+    const runSchedulerTick = async () => {
+      if (isEvaluatingAutomationsRef.current) return
+      isEvaluatingAutomationsRef.current = true
+      try {
+        const res = await evaluateAutomationsBackground({
+          store: agentStoreRef.current,
+          allNotes: notesRef.current
+        })
+        if (res.changed) {
+          await handleUpdateAgentStore(res.updatedStore)
+        }
+      } catch (err) {
+        console.error('Background automation scheduler error:', err)
+      } finally {
+        isEvaluatingAutomationsRef.current = false
+      }
+    }
+
+    const timer = setInterval(runSchedulerTick, 15000)
+    return () => clearInterval(timer)
+  }, [vaultPath])
 
   const taskBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
 
@@ -688,11 +724,41 @@ export const App: React.FC = () => {
   }
 
   const handleUpdateTask = (updatedTask: TaskItem) => {
+    const prevTask = tasks.find(t => t.id === updatedTask.id)
+    const nowTs = Date.now()
     setTasks(prev => {
-      const next = prev.map(t => (t.id === updatedTask.id ? { ...updatedTask, updatedAt: Date.now() } : t))
+      const next = prev.map(t => (t.id === updatedTask.id ? { ...updatedTask, updatedAt: nowTs } : t))
       saveTasks(next, vaultPath || 'default')
       return next
     })
+
+    // Trigger task_completed routines when a task transitions to completed
+    const doneStatusIds = new Set(
+      taskSettings.statuses
+        .filter(s => s.id === 'done' || s.name.toLowerCase().includes('conclu'))
+        .map(s => s.id)
+    )
+    const wasDone = prevTask ? prevTask.completed || doneStatusIds.has(prevTask.statusId) : false
+    const isNowDone = updatedTask.completed || doneStatusIds.has(updatedTask.statusId)
+    if (!wasDone && isNowDone && !isEvaluatingAutomationsRef.current) {
+      isEvaluatingAutomationsRef.current = true
+      evaluateAutomationsBackground({
+        store: agentStoreRef.current,
+        allNotes: notesRef.current,
+        completedTaskEvent: {
+          id: updatedTask.id,
+          title: updatedTask.title,
+          completedAt: nowTs
+        }
+      })
+        .then(res => {
+          if (res.changed) return handleUpdateAgentStore(res.updatedStore)
+        })
+        .catch(err => console.error('Task completed automation error:', err))
+        .finally(() => {
+          isEvaluatingAutomationsRef.current = false
+        })
+    }
   }
 
   const handleDeleteTask = (taskId: string) => {
@@ -1447,6 +1513,9 @@ export const App: React.FC = () => {
             onUpdateTask={handleUpdateTask}
             onDeleteTask={handleDeleteTask}
             onOpenTasks={handleOpenTasks}
+            teamAgents={agentStore.agents}
+            multiAgentStore={agentStore}
+            onOpenTeamAgentsView={() => handleChangeView('agents')}
             isConversationsOpen={isAiConversationsOpen}
             onToggleConversations={() => setIsAiConversationsOpen(o => !o)}
             onClose={() => setIsAiOpen(false)}

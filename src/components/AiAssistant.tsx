@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import type { Note, NoteType } from '../types'
+import type { Note, NoteType, AgentProfileVersion, MultiAgentStoreState } from '../types'
 import type { TaskItem, TaskSettings, SubTask, TaskBoard } from '../types/tasks'
 import { extractWikiLinks } from '../utils/vault'
+import { executeAgentRun, resolveNoteByIdOrFallback } from '../utils/multiAgentEngine'
 import { mindMapToMarkdownOutline, parseMindMapDocument, serializeMindMapDocument, isMindMapContent, cleanNodeTitle } from '../utils/mindMapUtils'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { AiSettingsModal } from './AiSettingsModal'
@@ -281,6 +282,9 @@ interface AiAssistantProps {
   onUpdateTask?: (task: TaskItem) => void
   onDeleteTask?: (taskId: string) => void
   onOpenTasks?: () => void
+  teamAgents?: AgentProfileVersion[]
+  multiAgentStore?: MultiAgentStoreState
+  onOpenTeamAgentsView?: () => void
   isConversationsOpen?: boolean
   onToggleConversations?: () => void
   onClose: () => void
@@ -303,6 +307,9 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   onUpdateTask,
   onDeleteTask,
   onOpenTasks,
+  teamAgents = [],
+  multiAgentStore,
+  onOpenTeamAgentsView,
   isConversationsOpen: externalConversationsOpen,
   onToggleConversations,
   onClose
@@ -370,6 +377,21 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     }
   })
   const [isRuleMenuOpen, setIsRuleMenuOpen] = useState(false)
+
+  // Selected Team Agent in Global Chat (OpenBot Agent Switcher)
+  const [selectedTeamAgentId, setSelectedTeamAgentId] = useState<string>(() => {
+    try {
+      return localStorage.getItem('pyrite_ai_selected_team_agent_id') || ''
+    } catch {
+      return ''
+    }
+  })
+  const [isTeamAgentMenuOpen, setIsTeamAgentMenuOpen] = useState(false)
+  const teamAgentMenuRef = useRef<HTMLDivElement | null>(null)
+  const selectedTeamAgent = useMemo(
+    () => teamAgents.find(a => a.id === selectedTeamAgentId) || null,
+    [teamAgents, selectedTeamAgentId]
+  )
 
   // Feedback notifications for 1-click actions
   const [insertedNotice, setInsertedNotice] = useState<string | null>(null)
@@ -661,6 +683,9 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     const handleClickOutside = (e: MouseEvent) => {
       if (ruleMenuRef.current && !ruleMenuRef.current.contains(e.target as Node)) {
         setIsRuleMenuOpen(false)
+      }
+      if (teamAgentMenuRef.current && !teamAgentMenuRef.current.contains(e.target as Node)) {
+        setIsTeamAgentMenuOpen(false)
       }
       if (boardMenuRef.current && !boardMenuRef.current.contains(e.target as Node)) {
         setIsBoardMenuOpen(false)
@@ -1094,7 +1119,23 @@ ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
   (conteúdo em markdown completo aqui)
   <<<END_CREATE_NOTE>>>`
 
-        const specialtyBlock = activeSpecialty.id !== 'none' && activeSpecialty.systemDirective
+        const specialtyBlock = selectedTeamAgent
+          ? `AGENTE DA EQUIPE SELECIONADO PELO USUÁRIO (MODO OPENBOT):
+Nome do Agente: ${selectedTeamAgent.name} (${selectedTeamAgent.icon || '🤖'})
+Papel / Descrição: ${selectedTeamAgent.roleDescription}
+Tom de Voz: ${selectedTeamAgent.workStyle.tone}
+Regras de Trabalho Obrigatórias deste Agente:
+${selectedTeamAgent.workStyle.rules.map(r => `- ${r}`).join('\n')}
+Fontes Vinculadas Autorizadas (${selectedTeamAgent.knowledgeBindings.length}):
+${selectedTeamAgent.knowledgeBindings
+  .map(b => {
+    const resolved = resolveNoteByIdOrFallback(allNotes, b.noteId, b.noteTitle, b.folderPath)
+    return resolved
+      ? `--- FONTE DO AGENTE [${b.role}]: [[${resolved.title}]] (${resolved.folder})\n${resolved.content.slice(0, 2800)}`
+      : `- [${b.role}] ${b.noteTitle || b.folderPath || 'Fonte'}`
+  })
+  .join('\n\n')}\n`
+          : activeSpecialty.id !== 'none' && activeSpecialty.systemDirective
           ? `Especialidade cognitiva ativa: ${activeSpecialty.name} (${activeSpecialty.icon})\nDiretriz de Especialidade:\n${activeSpecialty.systemDirective}\n`
           : `Modo Geral Padrão: Atue conforme os parâmetros base do modelo LLM sem direcionamento de persona específica.\n`
 
@@ -1366,6 +1407,52 @@ Diretrizes gerais:
       return
     }
 
+    // Fallback: If a Team Agent is selected and no API key is configured, run the deterministic Multi-Agent Engine!
+    if (selectedTeamAgent && multiAgentStore) {
+      setIsGenerating(true)
+      try {
+        const activeTeam = (multiAgentStore.teams || []).find(t =>
+          t.nodes.some(n => n.agentId === selectedTeamAgent.id)
+        )
+        const activeProj = multiAgentStore.projects[0] || undefined
+        const run = await executeAgentRun({
+          agent: selectedTeamAgent,
+          allAgents: multiAgentStore.agents,
+          teamDefinition: activeTeam,
+          allNotes,
+          allProjects: multiAgentStore.projects,
+          projectContext: activeProj,
+          prompt: raw,
+          extraRequestNotes: isNoteContextActive && effectiveNote?.id ? [effectiveNote] : [],
+          isTestRun: false
+        })
+        const outputMd = run.changeSet?.operations[0]?.contentPreview || ''
+        const replyMarkdown = run.clarifyingQuestions?.length
+          ? `### ❓ Perguntas de Esclarecimento (${selectedTeamAgent.name})\n\n${run.clarifyingQuestions.map(q => `- **${q}**`).join('\n')}\n\n---\n\n${outputMd}`
+          : outputMd || `Execução concluída por **${selectedTeamAgent.name}**.`
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `ai_${Date.now()}`,
+            sender: 'ai',
+            text: replyMarkdown
+          }
+        ])
+      } catch (err: any) {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `ai_${Date.now()}`,
+            sender: 'ai',
+            text: `⚠️ **Erro ao executar ${selectedTeamAgent.name}:** ${err?.message || 'Falha interna.'}`
+          }
+        ])
+      } finally {
+        setIsGenerating(false)
+      }
+      return
+    }
+
     // Fallback: If no API key configured
     setTimeout(() => {
       setMessages(prev => [
@@ -1373,7 +1460,7 @@ Diretrizes gerais:
         {
           id: `ai_${Date.now()}`,
           sender: 'ai',
-          text: `Chave de API do **${activeProvider.toUpperCase()}** não está configurada.\n\nConfigure sua chave no ícone de configurações para conversar com a IA e ter respostas inteligentes em tempo real sobre sua nota e pastas selecionadas!`,
+          text: `Chave de API do **${activeProvider.toUpperCase()}** não está configurada.\n\nConfigure sua chave no ícone de configurações para conversar com a IA em tempo real, ou selecione um **Agente da Minha Equipe** no topo deste chat para conversar diretamente usando o motor local do cofre!`,
           isActionable: true
         }
       ])
@@ -1522,6 +1609,108 @@ Diretrizes gerais:
               </div>
             )}
           </div>
+
+          {/* OpenBot Team Agent Selector: Talk to any agent from Minha Equipe right inside the global chat */}
+          {teamAgents && teamAgents.length > 0 && (
+            <div ref={teamAgentMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setIsTeamAgentMenuOpen(o => !o)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-xs transition-all cursor-pointer shadow-sm ${
+                  selectedTeamAgent
+                    ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-[var(--accent)] font-semibold'
+                    : 'bg-zinc-900 border-zinc-700/70 hover:border-zinc-500 text-zinc-200'
+                }`}
+                title="Escolher com qual Agente conversar (Assistente Geral ou Agente da Minha Equipe)"
+              >
+                <span className="text-xs leading-none">{selectedTeamAgent ? selectedTeamAgent.icon || '🤖' : '🤖'}</span>
+                <span className="max-w-[105px] truncate text-[11px]">
+                  {selectedTeamAgent ? selectedTeamAgent.name : 'Agente Geral'}
+                </span>
+                <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+              </button>
+
+              {isTeamAgentMenuOpen && (
+                <div className="absolute top-9 left-0 z-50 w-64 bg-[#101117] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl space-y-1 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
+                    <span>FALAR COM AGENTE</span>
+                    {onOpenTeamAgentsView && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsTeamAgentMenuOpen(false)
+                          onOpenTeamAgentsView()
+                        }}
+                        className="text-[10px] text-[var(--accent)] hover:underline cursor-pointer"
+                      >
+                        Abrir Equipe →
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTeamAgentId('')
+                      try {
+                        localStorage.setItem('pyrite_ai_selected_team_agent_id', '')
+                      } catch {}
+                      setIsTeamAgentMenuOpen(false)
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                      !selectedTeamAgent
+                        ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white font-semibold'
+                        : 'text-zinc-300 hover:bg-zinc-850'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span>✨</span>
+                      <div className="truncate">
+                        <div className="truncate text-[11px]">Assistente Geral do Cofre</div>
+                        <div className="text-[9px] text-zinc-500 truncate">Especialidades & Co-Autor</div>
+                      </div>
+                    </div>
+                    {!selectedTeamAgent && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
+                  </button>
+
+                  <div className="px-2 pt-1 text-[9px] font-mono uppercase tracking-wider text-zinc-500">
+                    Agentes da Minha Equipe ({teamAgents.length})
+                  </div>
+                  <div className="max-h-56 overflow-y-auto space-y-0.5 pr-0.5">
+                    {teamAgents.map(ag => {
+                      const isCur = selectedTeamAgent?.id === ag.id
+                      return (
+                        <button
+                          key={ag.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedTeamAgentId(ag.id)
+                            try {
+                              localStorage.setItem('pyrite_ai_selected_team_agent_id', ag.id)
+                            } catch {}
+                            setIsTeamAgentMenuOpen(false)
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                            isCur
+                              ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white font-semibold'
+                              : 'text-zinc-300 hover:bg-zinc-850'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm shrink-0">{ag.icon || '🤖'}</span>
+                            <div className="min-w-0">
+                              <div className="truncate text-[11px] text-zinc-100">{ag.name}</div>
+                              <div className="truncate text-[9px] text-zinc-500">{ag.roleDescription}</div>
+                            </div>
+                          </div>
+                          {isCur && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Linked Task Board Selector */}
           {taskBoards && taskBoards.length > 0 && (

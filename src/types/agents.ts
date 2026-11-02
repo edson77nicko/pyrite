@@ -195,6 +195,8 @@ export interface CommercialCalculationResult {
   installments: number
   installmentValue: number
   installmentValueCents: number
+  lastInstallmentValue?: number
+  lastInstallmentValueCents?: number
   currency: string
   conflicts: CommercialConflict[]
   missingFields: string[]
@@ -382,6 +384,10 @@ export interface AgentRun {
   agentVersion: number
   teamId?: string
   workflowId?: string
+  routineId?: string
+  pausedAtWorkflowNodeId?: string
+  teamSnapshot?: TeamDefinition
+  workflowSnapshot?: WorkflowDefinition
   workflowNodeStates?: WorkflowNodeExecution[]
   isTestRun: boolean // Se true, não grava em disco até ação explícita do usuário
   prompt: string
@@ -448,6 +454,7 @@ export interface AutomationVersion {
   maxRunsPerDay: number
   lastTriggeredAt?: number
   lastEventFingerprint?: string
+  processedEventFingerprints?: string[]
   nextRunAt?: string
   recentRunIds: string[]
   visualLayout?: {
@@ -479,6 +486,19 @@ export interface AgentQueueDelivery {
   updatedAt: number
 }
 
+export interface AgentChatMessage {
+  id: string
+  agentId: string
+  sender: 'user' | 'agent'
+  text: string
+  createdAt: number
+  runId?: string
+  clientName?: string
+  extraNoteIds?: string[]
+  steps?: SubagentStep[]
+  facts?: string[]
+}
+
 export interface MultiAgentStoreState {
   version: number
   agents: AgentProfileVersion[]
@@ -490,5 +510,6 @@ export interface MultiAgentStoreState {
   artifacts: AgentArtifact[]
   automations: AutomationVersion[]
   mailboxQueue: AgentQueueDelivery[]
+  agentChats?: Record<string, AgentChatMessage[]>
   demoExamplesLoaded?: boolean
 }

@@ -44,10 +44,12 @@ function createWindow() {
     backgroundColor: '#121214',
     icon: path.join(process.env.VITE_PUBLIC || '', isMac ? 'icon.png' : 'icon.ico'),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: fs.existsSync(path.join(__dirname, 'preload.cjs'))
+        ? path.join(__dirname, 'preload.cjs')
+        : path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
+      sandbox: true,
     },
   })
 
@@ -115,18 +117,44 @@ function registerAuthorizedVault(vaultPath?: string | null) {
   }
 }
 
+function hydrateKnownAuthorizedVaults() {
+  try {
+    const docs = app.getPath('documents')
+    const defaultVault = path.join(docs, 'Pyrite Vault')
+    if (fs.existsSync(defaultVault)) registerAuthorizedVault(defaultVault)
+
+    const appData = process.env.APPDATA || path.join(app.getPath('home'), 'AppData', 'Roaming')
+    const obsidianConfigPath = path.join(appData, 'obsidian', 'obsidian.json')
+    if (fs.existsSync(obsidianConfigPath)) {
+      const config = JSON.parse(fs.readFileSync(obsidianConfigPath, 'utf-8'))
+      if (config.vaults && typeof config.vaults === 'object') {
+        for (const v of Object.values<any>(config.vaults)) {
+          if (v?.path && fs.existsSync(v.path)) registerAuthorizedVault(v.path)
+        }
+      }
+    }
+  } catch {
+    // Ignore errors during hydration
+  }
+}
+
 function assertAuthorizedVault(vaultPath?: string | null): string {
   if (!vaultPath || !path.isAbsolute(vaultPath)) {
     throw new Error('Cofre não informado ou inválido.')
   }
   const realOrResolved = (fs.existsSync(vaultPath) ? fs.realpathSync(vaultPath) : path.resolve(vaultPath)).toLowerCase()
   if (!authorizedVaults.has(realOrResolved)) {
-    // Permitir se estiver dentro da pasta padrão de cofres do usuário ou se for o default vault
+    hydrateKnownAuthorizedVaults()
     const docs = app.getPath('documents')
     const defaultVault = path.resolve(path.join(docs, 'Pyrite Vault')).toLowerCase()
-    if (realOrResolved === defaultVault) {
+    const managedRoots = [
+      path.resolve(path.join(docs, 'Pyrite', 'Cofres')).toLowerCase(),
+      path.resolve(path.join(docs, 'Pyrita', 'Cofres')).toLowerCase()
+    ]
+    const isDirectChildOfManagedRoot = managedRoots.some(root => path.dirname(realOrResolved) === root)
+    if (realOrResolved === defaultVault || isDirectChildOfManagedRoot) {
       authorizedVaults.add(realOrResolved)
-    } else {
+    } else if (!authorizedVaults.has(realOrResolved)) {
       throw new Error('Cofre não autorizado nesta sessão.')
     }
   }
@@ -169,12 +197,10 @@ ipcMain.handle('vault:openInExplorer', (_event, folderPath: string) => {
 })
 
 ipcMain.handle('agents:readStore', (_event, vaultPath: string) => {
-  registerAuthorizedVault(vaultPath)
   return readMultiAgentStore(assertAuthorizedVault(vaultPath))
 })
 ipcMain.handle('agents:writeStore', async (_event, vaultPath: string, state) => {
   try {
-    registerAuthorizedVault(vaultPath)
     return await writeMultiAgentStore(assertAuthorizedVault(vaultPath), state)
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -393,14 +419,14 @@ function setupVaultWatcher(vaultPath: string) {
 
 ipcMain.handle('vault:readVault', (_event, vaultPath: string) => {
   if (!vaultPath || !fs.existsSync(vaultPath)) return []
-  registerAuthorizedVault(vaultPath)
+  assertAuthorizedVault(vaultPath)
   setupVaultWatcher(vaultPath)
   return scanVaultDirectory(vaultPath, vaultPath)
 })
 
 ipcMain.handle('vault:readFolders', (_event, vaultPath: string) => {
   if (!vaultPath || !fs.existsSync(vaultPath)) return []
-  registerAuthorizedVault(vaultPath)
+  assertAuthorizedVault(vaultPath)
   return scanVaultDirectories(vaultPath, vaultPath)
 })
 
@@ -768,11 +794,24 @@ ipcMain.handle('ai:deleteKey', async (_event, provider: string) => {
   return { success: true }
 })
 
+const activeAiRequests = new Map<string, AbortController>()
+
+ipcMain.handle('ai:cancelChat', async (_event, requestId: string) => {
+  if (requestId && activeAiRequests.has(requestId)) {
+    try {
+      activeAiRequests.get(requestId)?.abort()
+    } catch {}
+    activeAiRequests.delete(requestId)
+  }
+  return { success: true }
+})
+
 ipcMain.handle('ai:chat', async (_event, params: {
   provider: string
   model?: string
   messages: { role: string; content: string }[]
   temperature?: number
+  requestId?: string
 }) => {
   const creds = readAiCredentials()
   const p = (params.provider || creds.activeProvider || 'openrouter').toLowerCase()
@@ -857,7 +896,14 @@ ipcMain.handle('ai:chat', async (_event, params: {
   const config = endpoints[p] || endpoints.openrouter
 
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 60000)
+  let timedOut = false
+  const timeoutId = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, 60000)
+  if (params.requestId) {
+    activeAiRequests.set(params.requestId, controller)
+  }
 
   try {
     const res = await fetch(config.url, {
@@ -875,6 +921,7 @@ ipcMain.handle('ai:chat', async (_event, params: {
     })
 
     clearTimeout(timeoutId)
+    if (params.requestId) activeAiRequests.delete(params.requestId)
 
     if (!res.ok) {
       const errText = await res.text()
@@ -891,8 +938,12 @@ ipcMain.handle('ai:chat', async (_event, params: {
     return { success: true, text: content }
   } catch (err: any) {
     clearTimeout(timeoutId)
+    if (params.requestId) activeAiRequests.delete(params.requestId)
     console.error('[AI Chat] Request failed:', err)
     if (err.name === 'AbortError') {
+      if (!timedOut) {
+        return { success: false, cancelled: true, error: 'Execução cancelada pelo usuário.' }
+      }
       return { success: false, error: 'A solicitação excedeu o tempo limite (60 segundos). Verifique sua conexão ou status do provedor.' }
     }
     return { success: false, error: 'Falha ao conectar com o provedor: ' + err.message }
