@@ -7,6 +7,7 @@ import { mindMapToMarkdownOutline, parseMindMapDocument, serializeMindMapDocumen
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { AiSettingsModal } from './AiSettingsModal'
 import { FolderTreePicker } from './FolderTreePicker'
+import { AgentIcon, isAgentIconVariant } from './AgentIcon'
 import {
   Sparkles,
   Bot,
@@ -1623,7 +1624,11 @@ Diretrizes gerais:
                 }`}
                 title="Escolher com qual Agente conversar (Assistente Geral ou Agente da Minha Equipe)"
               >
-                <span className="text-xs leading-none">{selectedTeamAgent ? selectedTeamAgent.icon || '🤖' : '🤖'}</span>
+                {selectedTeamAgent && isAgentIconVariant(selectedTeamAgent.icon) ? (
+                  <AgentIcon variant={selectedTeamAgent.icon} size={15} className="shrink-0 rounded-xs" />
+                ) : (
+                  <span className="text-xs leading-none">{selectedTeamAgent ? selectedTeamAgent.icon || '🤖' : '🤖'}</span>
+                )}
                 <span className="max-w-[105px] truncate text-[11px]">
                   {selectedTeamAgent ? selectedTeamAgent.name : 'Agente Geral'}
                 </span>
@@ -1696,7 +1701,11 @@ Diretrizes gerais:
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-sm shrink-0">{ag.icon || '🤖'}</span>
+                            {isAgentIconVariant(ag.icon) ? (
+                              <AgentIcon variant={ag.icon} size={18} className="shrink-0 rounded-xs" />
+                            ) : (
+                              <span className="text-sm shrink-0">{ag.icon || '🤖'}</span>
+                            )}
                             <div className="min-w-0">
                               <div className="truncate text-[11px] text-zinc-100">{ag.name}</div>
                               <div className="truncate text-[9px] text-zinc-500">{ag.roleDescription}</div>
