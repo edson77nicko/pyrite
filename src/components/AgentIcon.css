@@ -1,0 +1,274 @@
+/* ==========================================================================
+   AgentIcon - Animated SVG + CSS Avatars for Pyrite Agents
+   Separated Layers: Rounded Background, Internal Colored Shape, Animated Eyes
+   Discreet, natural micro-animations with reduced-motion accessibility.
+   ========================================================================== */
+
+.pyrite-agent-icon {
+  display: inline-block;
+  vertical-align: middle;
+  user-select: none;
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+.pyrite-agent-icon-bg {
+  /* Camada 1: Fundo arredondado estático */
+  pointer-events: none;
+}
+
+.pyrite-agent-icon-shape {
+  /* Camada 2: Forma colorida interna */
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.3s ease;
+  will-change: transform;
+}
+
+.pyrite-agent-icon-character {
+  transform-box: fill-box;
+  transform-origin: 50% 80%;
+  transition: transform 0.3s ease;
+  will-change: transform;
+}
+
+.pyrite-agent-icon-eyes-group {
+  /* Camada 3: Olhos */
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.3s ease;
+  will-change: transform;
+}
+
+.pyrite-agent-icon-eye-pill {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, opacity;
+}
+
+.pyrite-agent-icon-eye-smile {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(0.6);
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, opacity;
+}
+
+/* ==========================================================================
+   1. Aguardando (waiting / idle / available / paused)
+   Movimento: Pisca ocasionalmente (natural eyelid blink)
+   ========================================================================== */
+.pyrite-agent-icon.state-waiting .pyrite-agent-icon-eye-pill,
+.pyrite-agent-icon.state-idle .pyrite-agent-icon-eye-pill,
+.pyrite-agent-icon.state-available .pyrite-agent-icon-eye-pill,
+.pyrite-agent-icon.state-paused .pyrite-agent-icon-eye-pill {
+  animation: agent-blink 4.6s infinite ease-in-out;
+}
+
+@keyframes agent-blink {
+  0%, 88%, 94%, 97%, 100% {
+    transform: scaleY(1);
+  }
+  91% {
+    transform: scaleY(0.08);
+  }
+  95.5% {
+    transform: scaleY(0.08);
+  }
+}
+
+/* ==========================================================================
+   2. Pensando (thinking)
+   Movimento: Olhos olham para os lados (inquisitive smooth horizontal scan)
+   ========================================================================== */
+.pyrite-agent-icon.state-thinking .pyrite-agent-icon-eyes-group {
+  animation: agent-look-around 2.8s infinite ease-in-out;
+}
+
+@keyframes agent-look-around {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  18%, 34% {
+    transform: translateX(-3.2px);
+  }
+  46%, 54% {
+    transform: translateX(0);
+  }
+  68%, 84% {
+    transform: translateX(3.2px);
+  }
+  94% {
+    transform: translateX(0);
+  }
+}
+
+/* ==========================================================================
+   3. Executando (executing / running / working)
+   Movimento: Forma interna se desloca suavemente (continuous organic flow)
+   ========================================================================== */
+.pyrite-agent-icon.state-executing .pyrite-agent-icon-shape,
+.pyrite-agent-icon.state-running .pyrite-agent-icon-shape,
+.pyrite-agent-icon.state-working .pyrite-agent-icon-shape {
+  animation: agent-shape-float 3.6s infinite ease-in-out;
+}
+
+@keyframes agent-shape-float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(1.6px, -2.4px) scale(1.02);
+  }
+  50% {
+    transform: translate(-1.4px, 1.2px) scale(0.985);
+  }
+  75% {
+    transform: translate(-1.8px, -1.0px) scale(1.015);
+  }
+}
+
+/* Micro-flutuação sutil dos olhos acompanhando o trabalho */
+.pyrite-agent-icon.state-executing .pyrite-agent-icon-eyes-group,
+.pyrite-agent-icon.state-running .pyrite-agent-icon-eyes-group,
+.pyrite-agent-icon.state-working .pyrite-agent-icon-eyes-group {
+  animation: agent-eyes-working-float 3.6s infinite ease-in-out;
+}
+
+@keyframes agent-eyes-working-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-0.8px);
+  }
+  50% {
+    transform: translateY(0.6px);
+  }
+  75% {
+    transform: translateY(-0.4px);
+  }
+}
+
+/* ==========================================================================
+   4. Concluído (completed / success / done)
+   Movimento: Pequeno salto com olhos sorridentes
+   ========================================================================== */
+.pyrite-agent-icon.state-completed .pyrite-agent-icon-character,
+.pyrite-agent-icon.state-success .pyrite-agent-icon-character,
+.pyrite-agent-icon.state-done .pyrite-agent-icon-character {
+  animation: agent-hop 0.72s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.pyrite-agent-icon.state-completed .pyrite-agent-icon-eye-pill,
+.pyrite-agent-icon.state-success .pyrite-agent-icon-eye-pill,
+.pyrite-agent-icon.state-done .pyrite-agent-icon-eye-pill {
+  opacity: 0;
+  transform: scale(0.5);
+}
+
+.pyrite-agent-icon.state-completed .pyrite-agent-icon-eye-smile,
+.pyrite-agent-icon.state-success .pyrite-agent-icon-eye-smile,
+.pyrite-agent-icon.state-done .pyrite-agent-icon-eye-smile {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@keyframes agent-hop {
+  0% {
+    transform: translateY(0) scale(1, 1);
+  }
+  28% {
+    transform: translateY(-6px) scale(0.96, 1.05);
+  }
+  58% {
+    transform: translateY(1.2px) scale(1.04, 0.95);
+  }
+  80% {
+    transform: translateY(-1.5px) scale(0.99, 1.01);
+  }
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
+
+/* ==========================================================================
+   5. Precisa de atenção (attention / warning / needs_attention / waiting_user)
+   Movimento: Duas inclinações leves (curious/attentive double tilt)
+   ========================================================================== */
+.pyrite-agent-icon.state-attention .pyrite-agent-icon-character,
+.pyrite-agent-icon.state-warning .pyrite-agent-icon-character,
+.pyrite-agent-icon.state-needs_attention .pyrite-agent-icon-character,
+.pyrite-agent-icon.state-waiting_user .pyrite-agent-icon-character {
+  animation: agent-attention-tilt 3s infinite ease-in-out;
+}
+
+@keyframes agent-attention-tilt {
+  0%, 65%, 100% {
+    transform: rotate(0deg);
+  }
+  14% {
+    transform: rotate(-6.5deg);
+  }
+  28% {
+    transform: rotate(0deg);
+  }
+  42% {
+    transform: rotate(6.5deg);
+  }
+  56% {
+    transform: rotate(0deg);
+  }
+}
+
+/* ==========================================================================
+   Suporte à preferência de movimento reduzido (prefers-reduced-motion)
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .pyrite-agent-icon-shape,
+  .pyrite-agent-icon-character,
+  .pyrite-agent-icon-eyes-group,
+  .pyrite-agent-icon-eye-pill,
+  .pyrite-agent-icon-eye-smile {
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .pyrite-agent-icon.state-completed .pyrite-agent-icon-eye-pill,
+  .pyrite-agent-icon.state-success .pyrite-agent-icon-eye-pill,
+  .pyrite-agent-icon.state-done .pyrite-agent-icon-eye-pill {
+    opacity: 0 !important;
+  }
+
+  .pyrite-agent-icon.state-completed .pyrite-agent-icon-eye-smile,
+  .pyrite-agent-icon.state-success .pyrite-agent-icon-eye-smile,
+  .pyrite-agent-icon.state-done .pyrite-agent-icon-eye-smile {
+    opacity: 1 !important;
+  }
+}
+
+/* Prop manual reducedMotion */
+.pyrite-agent-icon.reduced-motion .pyrite-agent-icon-shape,
+.pyrite-agent-icon.reduced-motion .pyrite-agent-icon-character,
+.pyrite-agent-icon.reduced-motion .pyrite-agent-icon-eyes-group,
+.pyrite-agent-icon.reduced-motion .pyrite-agent-icon-eye-pill,
+.pyrite-agent-icon.reduced-motion .pyrite-agent-icon-eye-smile {
+  animation: none !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+.pyrite-agent-icon.reduced-motion.state-completed .pyrite-agent-icon-eye-pill,
+.pyrite-agent-icon.reduced-motion.state-success .pyrite-agent-icon-eye-pill,
+.pyrite-agent-icon.reduced-motion.state-done .pyrite-agent-icon-eye-pill {
+  opacity: 0 !important;
+}
+
+.pyrite-agent-icon.reduced-motion.state-completed .pyrite-agent-icon-eye-smile,
+.pyrite-agent-icon.reduced-motion.state-success .pyrite-agent-icon-eye-smile,
+.pyrite-agent-icon.reduced-motion.state-done .pyrite-agent-icon-eye-smile {
+  opacity: 1 !important;
+}

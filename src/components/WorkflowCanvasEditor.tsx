@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import type {
   AgentProfileVersion,
+  AgentRun,
+  ProjectContext,
   WorkflowDefinition,
   WorkflowEdge,
   WorkflowNode,
@@ -8,7 +10,12 @@ import type {
   WorkflowNodeKind
 } from '../types/agents'
 import type { Note } from '../types'
-import { validateWorkflowDefinition } from '../utils/multiAgentEngine'
+import {
+  validateWorkflowDefinition,
+  computeWorkflowNextRunISO,
+  formatWorkflowNextRun,
+  executeWorkflowSingleNode
+} from '../utils/multiAgentEngine'
 import {
   snapDiagramCoord,
   diagramInputPort,
@@ -47,7 +54,13 @@ import {
   Image as ImageIcon,
   FileText,
   Globe,
-  Sliders
+  Sliders,
+  Check,
+  CheckCircle2,
+  XCircle,
+  Copy,
+  Clock,
+  Power
 } from 'lucide-react'
 
 interface WorkflowCanvasEditorProps {
@@ -57,11 +70,66 @@ interface WorkflowCanvasEditorProps {
   folders: string[]
   selectedWorkflowId: string
   latestNodeStates?: WorkflowNodeExecution[]
+  activeRun?: AgentRun
+  allProjects?: ProjectContext[]
   onSelectWorkflow: (workflowId: string) => void
   onSaveWorkflow: (workflow: WorkflowDefinition) => void
   onDeleteWorkflow: (workflowId: string) => void
   onRunWorkflow: (workflow: WorkflowDefinition, isTest: boolean, prompt: string) => void
+  onResumeWorkflowRun?: (run: AgentRun) => Promise<void> | void
   isExecuting: boolean
+}
+
+/**
+ * Campo de exibição do resultado de execução da etapa (idêntico ao ResultField do OpenBot).
+ */
+const ResultField: React.FC<{
+  output?: string
+  isRunning?: boolean
+}> = ({ output, isRunning }) => {
+  const [copied, setCopied] = useState(false)
+  if (!output && !isRunning) return null
+
+  const handleCopy = () => {
+    if (!output) return
+    navigator.clipboard.writeText(output)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="mt-2.5 pt-2 border-t border-zinc-800/60 text-xs">
+      <div className="flex items-center justify-between text-[10.5px] text-zinc-400 font-medium pb-1.5">
+        <span className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          Resultado da etapa
+        </span>
+        {output && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer flex items-center gap-1"
+            title="Copiar resultado"
+          >
+            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+            <span className="text-[10px]">{copied ? 'Copiado!' : 'Copiar'}</span>
+          </button>
+        )}
+      </div>
+
+      {isRunning ? (
+        <div className="space-y-1.5 py-1">
+          <div className="h-2.5 bg-zinc-800 rounded animate-pulse w-3/4" />
+          <div className="h-2.5 bg-zinc-800 rounded animate-pulse w-5/6" />
+          <div className="h-2.5 bg-zinc-800 rounded animate-pulse w-1/2" />
+        </div>
+      ) : (
+        <div className="bg-[#141416] border border-zinc-800/80 rounded-lg p-2 text-zinc-300 leading-relaxed max-h-36 overflow-y-auto custom-chat-scrollbar text-[11px] whitespace-pre-wrap select-text">
+          {output}
+        </div>
+      )}
+    </div>
+  )
 }
 
 const NODE_META: Record<
@@ -119,10 +187,13 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   folders,
   selectedWorkflowId,
   latestNodeStates,
+  activeRun,
+  allProjects = [],
   onSelectWorkflow,
   onSaveWorkflow,
   onDeleteWorkflow,
   onRunWorkflow,
+  onResumeWorkflowRun,
   isExecuting
 }) => {
   const activeWorkflow = workflows.find(w => w.id === selectedWorkflowId) || workflows[0]
@@ -447,13 +518,57 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     })
   }
 
-  const handleExecuteSingleNode = (node: WorkflowNode) => {
+  const handleExecuteSingleNode = async (node: WorkflowNode) => {
     setExecutingNodeId(node.id)
-    const prompt = node.config.approvalMessage || node.config.promptTemplate || 'Executar etapa do fluxo.'
-    onRunWorkflow(activeWorkflow, false, prompt)
-    setTimeout(() => {
+    try {
+      const res = await executeWorkflowSingleNode({
+        node,
+        workflow: activeWorkflow,
+        allAgents: agents,
+        allNotes: notes,
+        allProjects,
+        prompt: node.config.approvalMessage || node.config.promptTemplate || 'Executar etapa'
+      })
+      handleUpdateNodeById(node.id, {
+        config: {
+          ...node.config,
+          lastOutput: res.output,
+          branchTaken: res.branchTaken || node.config.branchTaken
+        }
+      })
+    } catch (err: any) {
+      handleUpdateNodeById(node.id, {
+        config: {
+          ...node.config,
+          lastOutput: `Erro na execução da etapa: ${err?.message || 'Falha ao processar'}`
+        }
+      })
+    } finally {
       setExecutingNodeId(null)
-    }, 1500)
+    }
+  }
+
+  const handleApproveNode = async (nodeId: string) => {
+    handleUpdateNodeById(nodeId, {
+      config: {
+        ...activeWorkflow.nodes.find(n => n.id === nodeId)?.config,
+        branchTaken: 'yes',
+        lastOutput: 'Aprovado pelo usuário.'
+      }
+    })
+    if (activeRun && onResumeWorkflowRun) {
+      await onResumeWorkflowRun(activeRun)
+    }
+  }
+
+  const handleRejectNode = (nodeId: string) => {
+    handleUpdateNodeById(nodeId, {
+      config: {
+        ...activeWorkflow.nodes.find(n => n.id === nodeId)?.config,
+        branchTaken: 'no',
+        lastOutput: 'Rejeitado pelo usuário. Fluxo finalizado.'
+      }
+    })
   }
 
   const addMenuGroups = [
@@ -926,11 +1041,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                             </span>
                             <select
                               value={node.config.triggerType || 'schedule'}
-                              onChange={e =>
+                              onChange={e => {
+                                const newType = e.target.value as any
+                                const nextIso = computeWorkflowNextRunISO(
+                                  node.config.scheduleFrequency || 'daily',
+                                  node.config.scheduleTime || '09:00',
+                                  node.config.scheduleDays
+                                )
                                 handleUpdateNodeById(node.id, {
-                                  config: { ...node.config, triggerType: e.target.value as any }
+                                  config: { ...node.config, triggerType: newType, nextRunAt: nextIso }
                                 })
-                              }
+                              }}
                               className="bg-transparent text-xs font-semibold text-zinc-100 outline-none cursor-pointer"
                             >
                               <option value="schedule" className="bg-[#18181b]">Agendamento</option>
@@ -946,11 +1067,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 flex-wrap">
                             <select
                               value={node.config.scheduleFrequency || 'daily'}
-                              onChange={e =>
+                              onChange={e => {
+                                const newFreq = e.target.value as any
+                                const nextIso = computeWorkflowNextRunISO(
+                                  newFreq,
+                                  node.config.scheduleTime || '09:00',
+                                  node.config.scheduleDays
+                                )
                                 handleUpdateNodeById(node.id, {
-                                  config: { ...node.config, scheduleFrequency: e.target.value as any }
+                                  config: { ...node.config, scheduleFrequency: newFreq, nextRunAt: nextIso }
                                 })
-                              }
+                              }}
                               className="px-2 py-1 rounded-lg bg-[#1c1c1f] border border-zinc-800/80 text-zinc-200 font-medium outline-none cursor-pointer"
                             >
                               <option value="daily" className="bg-[#18181b]">Diariamente</option>
@@ -960,29 +1087,67 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                             </select>
                             <span>em</span>
                             <span className="px-2 py-1 rounded-lg bg-[#1c1c1f] text-zinc-200 font-medium">
-                              Todo dia
+                              {node.config.scheduleFrequency === 'weekdays' ? 'Dias úteis' : 'Todo dia'}
                             </span>
                             <span>às</span>
                             <input
                               type="time"
                               value={node.config.scheduleTime || '09:00'}
-                              onChange={e =>
+                              onChange={e => {
+                                const newTime = e.target.value
+                                const nextIso = computeWorkflowNextRunISO(
+                                  node.config.scheduleFrequency || 'daily',
+                                  newTime,
+                                  node.config.scheduleDays
+                                )
                                 handleUpdateNodeById(node.id, {
-                                  config: { ...node.config, scheduleTime: e.target.value }
+                                  config: { ...node.config, scheduleTime: newTime, nextRunAt: nextIso }
                                 })
-                              }
+                              }}
                               className="px-1.5 py-0.5 rounded-lg bg-[#1c1c1f] border border-zinc-800/80 text-zinc-200 font-medium outline-none text-[11px] cursor-pointer"
                             />
                           </div>
                         )}
 
                         <div className="flex items-center justify-between pt-2 border-t border-zinc-800/70 text-[11px]">
-                          <span className="text-zinc-400 leading-tight">
-                            Próxima
-                            <br />
-                            execução
+                          <div className="flex flex-col">
+                            <span className="text-zinc-400 leading-tight">
+                              Próxima
+                              <br />
+                              execução
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextActive = activeWorkflow.active === false ? true : false
+                                onSaveWorkflow({
+                                  ...activeWorkflow,
+                                  active: nextActive,
+                                  version: activeWorkflow.version + 1,
+                                  updatedAt: Date.now()
+                                })
+                              }}
+                              className={`mt-1 text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 cursor-pointer w-fit ${
+                                activeWorkflow.active !== false
+                                  ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40'
+                                  : 'bg-zinc-800 text-zinc-400'
+                              }`}
+                              title="Ativar/pausar execução automática em segundo plano"
+                            >
+                              <Power className="w-2.5 h-2.5" />
+                              <span>{activeWorkflow.active !== false ? 'Agendado' : 'Pausado'}</span>
+                            </button>
+                          </div>
+                          <span className="text-zinc-100 font-medium text-right">
+                            {formatWorkflowNextRun(
+                              node.config.nextRunAt ||
+                              computeWorkflowNextRunISO(
+                                node.config.scheduleFrequency || 'daily',
+                                node.config.scheduleTime || '09:00',
+                                node.config.scheduleDays
+                              )
+                            )}
                           </span>
-                          <span className="text-zinc-100 font-medium">seg., 2 de nov., 09:00</span>
                         </div>
 
                         <button
@@ -994,6 +1159,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <span>{isExecutingThisNode ? 'Executando...' : 'Executar agora'}</span>
                           <Play className="w-3 h-3 fill-current" />
                         </button>
+
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
                       </div>
                     )}
 
@@ -1070,6 +1237,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <span>{isExecutingThisNode ? 'Executando...' : 'Executar etapa'}</span>
                           <Play className="w-3 h-3" />
                         </button>
+
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
                       </div>
                     )}
 
@@ -1135,6 +1304,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <span>{isExecutingThisNode ? 'Processando LLM...' : 'Executar etapa LLM'}</span>
                           <Play className="w-3 h-3" />
                         </button>
+
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
                       </div>
                     )}
 
@@ -1210,68 +1381,141 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <span>{isExecutingThisNode ? 'Testando...' : 'Testar prompt'}</span>
                           <Play className="w-3 h-3" />
                         </button>
+
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
                       </div>
                     )}
 
-                    {/* CARD 5: CONDIÇÃO */}
+                    {/* CARD 5: CONDIÇÃO (Com branches Sim e Não visuais!) */}
                     {node.kind === 'condition' && (
                       <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
-                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-1.5">
-                          <label className="text-[10.5px] text-zinc-400 font-medium">Regra de Validação:</label>
-                          <select
-                            value={node.config.conditionType || 'no_missing_fields'}
-                            onChange={e =>
-                              handleUpdateNodeById(node.id, {
-                                config: {
-                                  ...node.config,
-                                  conditionType: e.target.value as any
-                                }
-                              })
-                            }
-                            className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
-                          >
-                            <option value="no_missing_fields" className="bg-[#18181b]">Sem lacunas pendentes</option>
-                            <option value="no_price_conflicts" className="bg-[#18181b]">Sem conflitos de preço</option>
-                            <option value="net_total_above" className="bg-[#18181b]">Valor acima do limite</option>
-                            <option value="always" className="bg-[#18181b]">Sempre Verdadeiro</option>
-                          </select>
+                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-2">
+                          <div className="space-y-1">
+                            <label className="text-[10.5px] text-zinc-400 font-medium">Regra de Validação:</label>
+                            <input
+                              type="text"
+                              value={node.config.rule || ''}
+                              onChange={e =>
+                                handleUpdateNodeById(node.id, {
+                                  config: { ...node.config, rule: e.target.value }
+                                })
+                              }
+                              placeholder="Ex: se contiver 'aprovado' ou valor > 1000..."
+                              className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
+                            />
+                          </div>
 
-                          <div className="flex items-center justify-between pt-1 text-[10px] text-zinc-400">
-                            <span className="flex items-center gap-1 text-emerald-400">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                              Verdadeiro
-                            </span>
-                            <span className="flex items-center gap-1 text-rose-400">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block" />
-                              Falso
-                            </span>
+                          <div className="flex items-center gap-1.5 pt-1">
+                            <div
+                              className={`flex-1 py-1.5 px-2 rounded-lg border flex items-center justify-between text-xs transition-colors ${
+                                node.config.branchTaken === 'yes'
+                                  ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300 font-medium'
+                                  : node.config.branchTaken === 'no'
+                                  ? 'bg-zinc-900/40 border-zinc-800 text-zinc-500 opacity-50'
+                                  : 'bg-[#141416] border-zinc-800 text-zinc-300'
+                              }`}
+                            >
+                              <span>Sim (Verdadeiro)</span>
+                              {node.config.branchTaken === 'yes' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                            </div>
+
+                            <div
+                              className={`flex-1 py-1.5 px-2 rounded-lg border flex items-center justify-between text-xs transition-colors ${
+                                node.config.branchTaken === 'no'
+                                  ? 'bg-rose-950/40 border-rose-500/50 text-rose-300 font-medium'
+                                  : node.config.branchTaken === 'yes'
+                                  ? 'bg-zinc-900/40 border-zinc-800 text-zinc-500 opacity-50'
+                                  : 'bg-[#141416] border-zinc-800 text-zinc-300'
+                              }`}
+                            >
+                              <span>Não (Falso)</span>
+                              {node.config.branchTaken === 'no' && <CheckCircle2 className="w-3.5 h-3.5 text-rose-400" />}
+                            </div>
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          disabled={isExecuting || isExecutingThisNode}
+                          onClick={() => handleExecuteSingleNode(node)}
+                          className="w-full py-2 rounded-xl bg-purple-900/40 hover:bg-purple-900/60 text-purple-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-purple-800/40"
+                        >
+                          <span>{isExecutingThisNode ? 'Avaliando condição...' : 'Testar condição'}</span>
+                          <Play className="w-3 h-3" />
+                        </button>
+
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
                       </div>
                     )}
 
-                    {/* CARD 6: APROVAÇÃO HUMANA */}
-                    {node.kind === 'approval' && (
-                      <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
-                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-1.5">
-                          <label className="text-[10.5px] text-zinc-400 font-medium">Instrução de Aprovação:</label>
-                          <input
-                            type="text"
-                            value={node.config.approvalMessage || ''}
-                            onChange={e =>
-                              handleUpdateNodeById(node.id, {
-                                config: { ...node.config, approvalMessage: e.target.value }
-                              })
-                            }
-                            placeholder="Requer confirmação do usuário..."
-                            className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
-                          />
-                          <div className="text-[10px] text-amber-400/90 pt-0.5">
-                            Pausa o fluxo até aprovação expressa do usuário.
+                    {/* CARD 6: APROVAÇÃO HUMANA (Com botões Aprovar e Rejeitar interativos!) */}
+                    {node.kind === 'approval' && (() => {
+                      const isWaitingApproval =
+                        execState?.status === 'waiting_approval' ||
+                        activeRun?.pausedAtWorkflowNodeId === node.id
+
+                      return (
+                        <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
+                          <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-2">
+                            <label className="text-[10.5px] text-zinc-400 font-medium">Instrução de Aprovação:</label>
+                            <input
+                              type="text"
+                              value={node.config.approvalMessage || ''}
+                              onChange={e =>
+                                handleUpdateNodeById(node.id, {
+                                  config: { ...node.config, approvalMessage: e.target.value }
+                                })
+                              }
+                              placeholder="Requer confirmação do usuário..."
+                              className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
+                            />
+
+                            {isWaitingApproval ? (
+                              <div className="space-y-1.5 pt-1">
+                                <div className="text-[10px] text-amber-400 font-medium flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  Fluxo pausado nesta etapa aguardando sua decisão:
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveNode(node.id)}
+                                    className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Aprovar</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectNode(node.id)}
+                                    className="flex-1 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-rose-300 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-zinc-700"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    <span>Rejeitar</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ) : node.config.branchTaken === 'yes' ? (
+                              <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-medium pt-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                Aprovado pelo usuário
+                              </div>
+                            ) : node.config.branchTaken === 'no' ? (
+                              <div className="text-[11px] text-rose-400 flex items-center gap-1.5 font-medium pt-1">
+                                <XCircle className="w-3.5 h-3.5" />
+                                Rejeitado pelo usuário
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-amber-400/90 pt-0.5">
+                                Pausa o fluxo até aprovação expressa do usuário.
+                              </div>
+                            )}
                           </div>
+
+                          <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
                         </div>
-                      </div>
-                    )}
+                      )
+                    })()}
 
                     {/* CARD 7: SAÍDA / ENTREGA */}
                     {(node.kind === 'deliverable' || node.kind === 'finish') && (
@@ -1297,6 +1541,18 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                             Grava a entrega diretamente no cofre local.
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          disabled={isExecuting || isExecutingThisNode}
+                          onClick={() => handleExecuteSingleNode(node)}
+                          className="w-full py-2 rounded-xl bg-blue-900/40 hover:bg-blue-900/60 text-blue-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-blue-800/40"
+                        >
+                          <span>{isExecutingThisNode ? 'Salvando...' : 'Testar gravação no cofre'}</span>
+                          <Play className="w-3 h-3" />
+                        </button>
+
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
                       </div>
                     )}
                   </div>

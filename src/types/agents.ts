@@ -355,6 +355,11 @@ export interface WorkflowNode {
     outputType?: 'note' | 'tasks' | 'mindmap' | 'draw'
     namingPattern?: string
     approvalMessage?: string
+    systemPrompt?: string
+    rule?: string
+    branchTaken?: 'yes' | 'no' | 'true' | 'false'
+    lastOutput?: string
+    nextRunAt?: string
   }
 }
 
@@ -362,7 +367,7 @@ export interface WorkflowEdge {
   id: string
   sourceNodeId: string
   targetNodeId: string
-  branch?: 'default' | 'true' | 'false' | 'approved' | 'rejected'
+  branch?: 'default' | 'true' | 'false' | 'approved' | 'rejected' | 'yes' | 'no'
   label?: string
 }
 
@@ -371,6 +376,9 @@ export interface WorkflowDefinition {
   version: number
   publishedVersion?: number
   status: 'draft' | 'published'
+  active?: boolean
+  nextRunAt?: string
+  lastTriggeredAt?: number
   name: string
   description: string
   nodes: WorkflowNode[]

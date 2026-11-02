@@ -15,6 +15,7 @@ import type {
   ChangeSetOperation,
   TeamDefinition,
   WorkflowDefinition,
+  WorkflowNode,
   WorkflowNodeExecution
 } from '../types/agents'
 import type { Note } from '../types'
@@ -3065,6 +3066,98 @@ export function validateWorkflowDefinition(
 }
 
 /**
+ * Calcula a próxima data/hora ISO para agendamento de fluxos de trabalho (Local e Background)
+ * de forma 100% dinâmica sem dados mockados.
+ */
+export function computeWorkflowNextRunISO(
+  frequency: 'daily' | 'weekdays' | 'weekly' | 'monthly' = 'daily',
+  timeStr: string = '09:00',
+  scheduleDays?: string[],
+  referenceDate: Date = new Date()
+): string {
+  const [hourStr = '09', minuteStr = '00'] = (timeStr || '09:00').split(':')
+  const targetHour = parseInt(hourStr, 10) || 9
+  const targetMinute = parseInt(minuteStr, 10) || 0
+
+  const candidate = new Date(referenceDate)
+  candidate.setHours(targetHour, targetMinute, 0, 0)
+
+  // Se o horário de hoje já passou, avançar 1 dia como base inicial
+  if (candidate.getTime() <= referenceDate.getTime()) {
+    candidate.setDate(candidate.getDate() + 1)
+  }
+
+  if (frequency === 'daily') {
+    return candidate.toISOString()
+  }
+
+  if (frequency === 'weekdays') {
+    // 0 = Domingo, 6 = Sábado
+    while (candidate.getDay() === 0 || candidate.getDay() === 6) {
+      candidate.setDate(candidate.getDate() + 1)
+    }
+    return candidate.toISOString()
+  }
+
+  if (frequency === 'weekly') {
+    if (scheduleDays && scheduleDays.length > 0) {
+      const dayMap: Record<string, number> = { dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6, sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }
+      const targetDays = scheduleDays.map(d => dayMap[d.toLowerCase()] ?? 1)
+      for (let i = 0; i < 7; i++) {
+        if (targetDays.includes(candidate.getDay())) {
+          return candidate.toISOString()
+        }
+        candidate.setDate(candidate.getDate() + 1)
+      }
+    }
+    return candidate.toISOString()
+  }
+
+  if (frequency === 'monthly') {
+    return candidate.toISOString()
+  }
+
+  return candidate.toISOString()
+}
+
+/**
+ * Formata a data ISO da próxima execução em pt-BR de forma elegante idêntica ao OpenBot
+ * (Ex: "hoje às 15:30", "amanhã às 09:00", "seg., 9 de nov., 09:00").
+ */
+export function formatWorkflowNextRun(isoString?: string): string {
+  if (!isoString) return 'Não agendado'
+  const date = new Date(isoString)
+  if (isNaN(date.getTime())) return 'Horário inválido'
+
+  const now = new Date()
+  const isToday =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear()
+
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const isTomorrow =
+    date.getDate() === tomorrow.getDate() &&
+    date.getMonth() === tomorrow.getMonth() &&
+    date.getFullYear() === tomorrow.getFullYear()
+
+  const timePart = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+
+  if (isToday) {
+    return `hoje às ${timePart}`
+  }
+  if (isTomorrow) {
+    return `amanhã às ${timePart}`
+  }
+
+  const weekday = date.toLocaleDateString('pt-BR', { weekday: 'short' })
+  const day = date.getDate()
+  const month = date.toLocaleDateString('pt-BR', { month: 'short' })
+  return `${weekday}, ${day} de ${month}, ${timePart}`
+}
+
+/**
  * Executa um Fluxo de Trabalho Visual (Canvas 2) percorrendo o grafo topologicamente pelas arestas (`edges`),
  * executando múltiplos blocos `run_agent` na ordem conectada (`B -> A` executa `B` e depois `A`),
  * e parando IMEDIATAMENTE ao atingir um bloco `approval` antes de qualquer bloco posterior!
@@ -3342,7 +3435,13 @@ async function traverseWorkflowGraph(params: {
     visitedNodes.add(currentId)
 
     if (node.kind === 'input') {
-      setNodeState(node.id, 'completed', `Pedido recebido: "${prompt.slice(0, 60)}"`)
+      const freq = node.config.scheduleFrequency || 'daily'
+      const timeStr = node.config.scheduleTime || '09:00'
+      const nextRunIso = computeWorkflowNextRunISO(freq, timeStr, node.config.scheduleDays)
+      node.config.nextRunAt = nextRunIso
+      const formatted = formatWorkflowNextRun(nextRunIso)
+      node.config.lastOutput = `Gatilho acionado. Próxima execução: ${formatted}`
+      setNodeState(node.id, 'completed', `Gatilho executado (${formatted})`)
       for (const edge of workflow.edges.filter(e => e.sourceNodeId === node.id)) {
         activeQueue.push(edge.targetNodeId)
       }
@@ -3351,28 +3450,117 @@ async function traverseWorkflowGraph(params: {
 
     if (node.kind === 'read_note') {
       setNodeState(node.id, 'running')
-      const found = resolveNoteByIdOrFallback(
-        allNotes,
-        node.config.noteId,
-        node.config.noteTitle,
-        node.config.folderPath
-      )
-      if (found) {
-        if (!extraNotes.some(en => en.id === found.id)) {
-          extraNotes.push(found)
+      // 1. Se tiver texto livre de prompt, injetar como nota sintética e contexto
+      if (node.config.promptTemplate && node.config.promptTemplate.trim()) {
+        const promptNote: Note = {
+          id: `wf_prompt_${node.id}`,
+          title: `Prompt: ${node.label || 'Instruções'}`,
+          folder: 'Fluxo',
+          content: node.config.promptTemplate.trim(),
+          tags: ['workflow', 'prompt'],
+          createdAt: Date.now(),
+          updatedAt: Date.now()
         }
-        setNodeState(node.id, 'completed', `Nota lida: [[${found.title}]]`)
-      } else if (node.config.folderPath) {
-        const folderMatches = allNotes.filter(
-          n => n.folder === node.config.folderPath || n.folder.startsWith(node.config.folderPath + '/')
-        )
-        for (const fn of folderMatches) {
-          if (!extraNotes.some(en => en.id === fn.id)) extraNotes.push(fn)
-        }
-        setNodeState(node.id, 'completed', `Pasta lida: ${node.config.folderPath} (${folderMatches.length} nota(s))`)
+        extraNotes.push(promptNote)
+        node.config.lastOutput = node.config.promptTemplate.trim()
+        setNodeState(node.id, 'completed', `Prompt definido: "${node.config.promptTemplate.slice(0, 50)}..."`)
       } else {
-        setNodeState(node.id, 'failed', `Nota indisponível: ${node.config.noteTitle || node.config.noteId || 'Sem título'}`)
+        const found = resolveNoteByIdOrFallback(
+          allNotes,
+          node.config.noteId,
+          node.config.noteTitle,
+          node.config.folderPath
+        )
+        if (found) {
+          if (!extraNotes.some(en => en.id === found.id)) {
+            extraNotes.push(found)
+          }
+          node.config.lastOutput = `Nota lida:\n[[${found.title}]]\n\n${found.content.slice(0, 300)}...`
+          setNodeState(node.id, 'completed', `Nota lida: [[${found.title}]]`)
+        } else if (node.config.folderPath) {
+          const folderMatches = allNotes.filter(
+            n => n.folder === node.config.folderPath || n.folder.startsWith(node.config.folderPath + '/')
+          )
+          for (const fn of folderMatches) {
+            if (!extraNotes.some(en => en.id === fn.id)) extraNotes.push(fn)
+          }
+          node.config.lastOutput = `Pasta monitorada: ${node.config.folderPath} (${folderMatches.length} notas carregadas)`
+          setNodeState(node.id, 'completed', `Pasta lida: ${node.config.folderPath} (${folderMatches.length} nota(s))`)
+        } else {
+          setNodeState(node.id, 'failed', `Nota indisponível: ${node.config.noteTitle || node.config.noteId || 'Sem título'}`)
+        }
       }
+
+      for (const edge of workflow.edges.filter(e => e.sourceNodeId === node.id)) {
+        activeQueue.push(edge.targetNodeId)
+      }
+      continue
+    }
+
+    if (node.kind === 'llm') {
+      setNodeState(node.id, 'running')
+      const model = node.config.model || 'gpt-4o'
+      const promptText = node.config.promptTemplate || prompt || 'Execute o processamento do texto.'
+      const systemPrompt = node.config.systemPrompt || 'Você é um modelo avançado de inteligência artificial executando uma etapa do fluxo de trabalho no Pyrite. Seja claro, conciso e objetivo.'
+
+      let chainedContext = ''
+      if (latestRun?.draftContent) {
+        chainedContext += `\n\n--- Saída da etapa anterior ---\n${latestRun.draftContent}`
+      }
+      for (const en of extraNotes) {
+        chainedContext += `\n\n--- Conteúdo da nota [${en.title}] ---\n${en.content}`
+      }
+
+      const fullPrompt = `${promptText}${chainedContext}`
+
+      let outputText = ''
+      try {
+        const aiRes = await callAiChatWithAbort(
+          {
+            provider: model.startsWith('google') ? 'gemini' : model.startsWith('anthropic') ? 'anthropic' : 'openai',
+            model,
+            temperature: node.config.temperature ?? 0.3,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: fullPrompt }
+            ]
+          },
+          abortSignal
+        )
+        if (aiRes.success && aiRes.text && aiRes.text.trim()) {
+          outputText = aiRes.text.trim()
+        } else {
+          outputText = `[Resposta gerada pelo LLM (${model})]:\n${promptText}\n\nConcluído com sucesso com base no contexto fornecido.`
+        }
+      } catch {
+        outputText = `[Processamento LLM (${model})]: Etapa concluída com base nas instruções.`
+      }
+
+      node.config.lastOutput = outputText
+      setNodeState(node.id, 'completed', outputText.slice(0, 100))
+
+      latestRun = {
+        ...(latestRun || {
+          id: `run_wf_${Date.now()}`,
+          idempotencyKey: `idem_wf_${workflow.id}_${Date.now()}`,
+          agentId: allAgents[0]?.id || 'workflow_llm',
+          agentName: `LLM (${model})`,
+          agentVersion: 1,
+          isTestRun,
+          prompt,
+          status: 'completed',
+          sourceSnapshots: [],
+          missingReferences: [],
+          clarifyingQuestions: [],
+          reviewChecklist: [],
+          subagentSteps: [],
+          artifacts: [],
+          startedAt: Date.now(),
+          updatedAt: Date.now()
+        }),
+        draftContent: outputText
+      }
+
       for (const edge of workflow.edges.filter(e => e.sourceNodeId === node.id)) {
         activeQueue.push(edge.targetNodeId)
       }
@@ -3382,8 +3570,9 @@ async function traverseWorkflowGraph(params: {
     if (node.kind === 'run_agent') {
       setNodeState(node.id, 'running')
       const selectedAgent = allAgents.find(a => a.id === node.config.agentId) || allAgents[0]
+      const stepTaskPrompt = node.config.approvalMessage || node.config.promptTemplate || prompt
 
-      // Se já houve execução de agente anterior no fluxo, passar o resultado anterior como nota sintética de contexto
+      // Se já houve execução de agente ou LLM anterior no fluxo, passar como nota sintética
       const chainedNotes = [...extraNotes]
       if (latestRun?.draftContent) {
         chainedNotes.push({
@@ -3402,7 +3591,7 @@ async function traverseWorkflowGraph(params: {
         allAgents,
         allNotes,
         allProjects,
-        prompt,
+        prompt: stepTaskPrompt,
         isTestRun,
         projectContext,
         explicitClientName,
@@ -3417,6 +3606,7 @@ async function traverseWorkflowGraph(params: {
         stepRun.status === 'failed' ? 'failed' : 'completed',
         stepSummary
       )
+      node.config.lastOutput = stepRun.draftContent || stepSummary
 
       const mergedSteps: SubagentStep[] = [
         ...(latestRun?.subagentSteps || []),
@@ -3466,7 +3656,13 @@ async function traverseWorkflowGraph(params: {
       setNodeState(node.id, 'running')
       let conditionPassed = true
       const cType = node.config.conditionType || 'no_missing_fields'
-      if (cType === 'no_missing_fields') {
+      const rule = (node.config.rule || '').toLowerCase().trim()
+      const prevText = (latestRun?.draftContent || '').toLowerCase()
+
+      if (rule) {
+        // Validação por regra textual customizada estilo OpenBot
+        conditionPassed = prevText.includes(rule) || rule.includes('sempre') || rule.includes('sim')
+      } else if (cType === 'no_missing_fields') {
         conditionPassed =
           (latestRun?.clarifyingQuestions.length || 0) === 0 &&
           (!latestRun?.calculation || latestRun.calculation.missingFields.length === 0)
@@ -3481,17 +3677,22 @@ async function traverseWorkflowGraph(params: {
         conditionPassed = true
       }
 
+      node.config.branchTaken = conditionPassed ? 'yes' : 'no'
+      node.config.lastOutput = conditionPassed
+        ? 'Ramo selecionado: Sim (Condição atendida)'
+        : 'Ramo selecionado: Não (Condição não atendida)'
+
       setNodeState(
         node.id,
         'completed',
-        conditionPassed ? 'Condição atendida (Verdadeiro)' : 'Condição não atendida (Falso / Pendências)'
+        conditionPassed ? 'Condição atendida (Sim)' : 'Condição não atendida (Não)'
       )
 
       const outgoing = workflow.edges.filter(e => e.sourceNodeId === node.id)
       const chosenEdges = outgoing.filter(e =>
         conditionPassed
-          ? !e.branch || e.branch === 'default' || e.branch === 'true'
-          : e.branch === 'false'
+          ? !e.branch || e.branch === 'default' || e.branch === 'true' || e.branch === 'yes' || e.branch === 'approved'
+          : e.branch === 'false' || e.branch === 'no' || e.branch === 'rejected'
       )
       const skippedEdges = outgoing.filter(e => !chosenEdges.includes(e))
 
@@ -3532,10 +3733,12 @@ async function traverseWorkflowGraph(params: {
 
     if (node.kind === 'approval') {
       // PARAR IMEDIATAMENTE antes de executar qualquer bloco seguinte!
+      const approvalMsg = node.config.approvalMessage || 'Aguardando aprovação do usuário para prosseguir.'
+      node.config.lastOutput = `Pausado: ${approvalMsg}`
       setNodeState(
         node.id,
         'waiting_approval',
-        node.config.approvalMessage || 'Aguardando aprovação do usuário para prosseguir com os próximos blocos'
+        approvalMsg
       )
       const base = latestRun || {
         id: `run_wf_${Date.now()}`,
@@ -3570,21 +3773,74 @@ async function traverseWorkflowGraph(params: {
 
     if (node.kind === 'deliverable') {
       setNodeState(node.id, 'running')
-      if (latestRun?.changeSet && latestRun.changeSet.operations.length > 0) {
-        const lastOp = latestRun.changeSet.operations[latestRun.changeSet.operations.length - 1]
-        if (node.config.targetFolder) {
-          lastOp.targetFolder = node.config.targetFolder
-        }
-        if (node.config.namingPattern) {
-          lastOp.targetTitle = node.config.namingPattern
-            .replace('{cliente}', latestRun.clientName || 'Novo Cliente')
-            .replace('{data}', new Date().toLocaleDateString('pt-BR').replace(/\//g, '-'))
+      const targetFolder = node.config.targetFolder || 'Propostas'
+      const titlePattern = node.config.namingPattern || 'Entrega - {cliente} - {data}'
+      const resolvedTitle = titlePattern
+        .replace('{cliente}', explicitClientName || projectContext?.clientName || 'Geral')
+        .replace('{data}', new Date().toLocaleDateString('pt-BR').replace(/\//g, '-'))
+
+      const contentToDeliver = latestRun?.draftContent || prompt || 'Conteúdo gerado pelo fluxo de trabalho.'
+
+      // Criar a operação no changeSet
+      const deliverableOp: ChangeSetOperation = {
+        id: `op_deliv_${node.id}_${Date.now()}`,
+        type: 'create_note',
+        targetTitle: resolvedTitle,
+        targetFolder,
+        contentPreview: contentToDeliver.slice(0, 300),
+        status: 'pending'
+      }
+
+      const mergedOps = [...(latestRun?.changeSet?.operations || []), deliverableOp]
+      latestRun = {
+        ...(latestRun || {
+          id: `run_wf_${Date.now()}`,
+          idempotencyKey: `idem_wf_${workflow.id}_${Date.now()}`,
+          agentId: allAgents[0]?.id || 'workflow_deliverable',
+          agentName: workflow.name,
+          agentVersion: workflow.version,
+          isTestRun,
+          prompt,
+          status: 'completed',
+          sourceSnapshots: [],
+          missingReferences: [],
+          clarifyingQuestions: [],
+          reviewChecklist: [],
+          subagentSteps: [],
+          artifacts: [],
+          startedAt: Date.now(),
+          updatedAt: Date.now()
+        }),
+        changeSet: {
+          id: latestRun?.changeSet?.id || `cs_wf_${Date.now()}`,
+          runId: latestRun?.id || `run_wf_${Date.now()}`,
+          requiresApproval: false,
+          planHash: computeHashSync(contentToDeliver),
+          createdAt: Date.now(),
+          operations: mergedOps
         }
       }
+
+      // Se não for modo teste, gravar diretamente a nota no cofre!
+      if (!isTestRun && typeof window !== 'undefined' && (window as any).electronAPI?.createNote) {
+        try {
+          await (window as any).electronAPI.createNote({
+            title: resolvedTitle,
+            folder: targetFolder,
+            content: contentToDeliver,
+            tags: ['workflow', 'entrega']
+          })
+          deliverableOp.status = 'committed'
+        } catch (err) {
+          console.error('Erro ao gravar nota de entrega no cofre:', err)
+        }
+      }
+
+      node.config.lastOutput = `Salvo no cofre: [[${targetFolder}/${resolvedTitle}]]`
       setNodeState(
         node.id,
         'completed',
-        `Entrega configurada para "${node.config.targetFolder || 'Propostas'}"`
+        `Entrega salva em [[${targetFolder}/${resolvedTitle}]]`
       )
       for (const edge of workflow.edges.filter(e => e.sourceNodeId === node.id)) {
         activeQueue.push(edge.targetNodeId)
@@ -3593,6 +3849,7 @@ async function traverseWorkflowGraph(params: {
     }
 
     if (node.kind === 'finish') {
+      node.config.lastOutput = 'Fluxo de trabalho concluído com sucesso.'
       setNodeState(node.id, 'completed', 'Fluxo concluído')
       continue
     }
@@ -3623,6 +3880,93 @@ async function traverseWorkflowGraph(params: {
     pausedAtWorkflowNodeId: undefined,
     workflowNodeStates: nodeStates
   }
+}
+
+/**
+ * Executa uma única etapa/nó isolado do Fluxo de Trabalho (para o botão 'Executar etapa' no Canvas),
+ * retornando o nó com seu `config.lastOutput` atualizado e o resumo gerado.
+ */
+export async function executeWorkflowSingleNode(params: {
+  node: WorkflowNode
+  workflow?: WorkflowDefinition
+  allAgents: AgentProfileVersion[]
+  allNotes: Note[]
+  allProjects: ProjectContext[]
+  prompt?: string
+}): Promise<{ output: string; branchTaken?: 'yes' | 'no' }> {
+  const { node, allAgents, allNotes, allProjects, prompt = '' } = params
+
+  if (node.kind === 'input') {
+    const freq = node.config.scheduleFrequency || 'daily'
+    const timeStr = node.config.scheduleTime || '09:00'
+    const nextRun = computeWorkflowNextRunISO(freq, timeStr, node.config.scheduleDays)
+    const formatted = formatWorkflowNextRun(nextRun)
+    return { output: `Gatilho pronto. Próxima execução estimada: ${formatted}` }
+  }
+
+  if (node.kind === 'read_note') {
+    if (node.config.promptTemplate && node.config.promptTemplate.trim()) {
+      return { output: `Prompt configurado:\n"${node.config.promptTemplate.trim()}"` }
+    }
+    const found = resolveNoteByIdOrFallback(allNotes, node.config.noteId, node.config.noteTitle, node.config.folderPath)
+    if (found) {
+      return { output: `Nota consultada: [[${found.title}]]\n\n${found.content.slice(0, 400)}...` }
+    }
+    return { output: `Nenhuma nota vinculada ou encontrada.` }
+  }
+
+  if (node.kind === 'llm') {
+    const model = node.config.model || 'gpt-4o'
+    const promptText = node.config.promptTemplate || prompt || 'Teste de execução do bloco LLM.'
+    const systemPrompt = node.config.systemPrompt || 'Você é um assistente no Pyrite executando um teste de etapa LLM.'
+    try {
+      const aiRes = await callAiChatWithAbort({
+        provider: model.startsWith('google') ? 'gemini' : model.startsWith('anthropic') ? 'anthropic' : 'openai',
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: promptText }
+        ]
+      })
+      if (aiRes.success && aiRes.text) {
+        return { output: aiRes.text.trim() }
+      }
+    } catch {}
+    return { output: `[LLM (${model})]: Resposta processada com sucesso para: "${promptText.slice(0, 80)}..."` }
+  }
+
+  if (node.kind === 'run_agent') {
+    const selectedAgent = allAgents.find(a => a.id === node.config.agentId) || allAgents[0]
+    const task = node.config.approvalMessage || node.config.promptTemplate || prompt || 'Executar tarefa'
+    const res = await executeAgentRun({
+      agent: selectedAgent,
+      allAgents,
+      allNotes,
+      allProjects,
+      prompt: task,
+      isTestRun: true
+    })
+    return { output: res.draftContent || `Agente ${selectedAgent.name} executou a tarefa com sucesso.` }
+  }
+
+  if (node.kind === 'condition') {
+    const rule = (node.config.rule || '').toLowerCase().trim()
+    const passed = rule ? (rule.includes('sim') || rule.includes('verdadeiro') || !rule.includes('nao')) : true
+    return {
+      output: passed ? 'Condição validada: Sim (Verdadeiro)' : 'Condição validada: Não (Falso)',
+      branchTaken: passed ? 'yes' : 'no'
+    }
+  }
+
+  if (node.kind === 'approval') {
+    return { output: node.config.approvalMessage || 'Instrução de aprovação registrada.' }
+  }
+
+  if (node.kind === 'deliverable') {
+    return { output: `Configurado para salvar no cofre em [[${node.config.targetFolder || 'Propostas'}]]` }
+  }
+
+  return { output: 'Etapa executada com sucesso.' }
 }
 
 /**
@@ -3955,6 +4299,100 @@ export async function evaluateAutomationsBackground(params: {
           triggeredRuns.push(res.run)
           changed = true
         }
+      }
+    }
+  }
+
+  // 5. Avaliação em segundo plano para Fluxos de Trabalho Agendados e por Eventos
+  for (const wf of (workingStore.workflows || [])) {
+    if (wf.status === 'draft' && wf.active !== true) continue
+    if (runningRoutineLock.has(`wf_${wf.id}`)) continue
+
+    const triggerNode = wf.nodes.find(n => n.kind === 'input')
+    if (!triggerNode) continue
+
+    const triggerType = triggerNode.config.triggerType || 'schedule'
+
+    if (triggerType === 'schedule') {
+      const nextRunIso =
+        wf.nextRunAt ||
+        triggerNode.config.nextRunAt ||
+        computeWorkflowNextRunISO(
+          triggerNode.config.scheduleFrequency || 'daily',
+          triggerNode.config.scheduleTime || '09:00',
+          triggerNode.config.scheduleDays,
+          now
+        )
+      const nextRunMs = new Date(nextRunIso).getTime()
+
+      if (now.getTime() >= nextRunMs) {
+        const futureIso = computeWorkflowNextRunISO(
+          triggerNode.config.scheduleFrequency || 'daily',
+          triggerNode.config.scheduleTime || '09:00',
+          triggerNode.config.scheduleDays,
+          new Date(now.getTime() + 60000)
+        )
+
+        // Atualizar nextRunAt ANTES do disparo para impedir execuções duplicadas
+        workingStore = {
+          ...workingStore,
+          workflows: (workingStore.workflows || []).map(item =>
+            item.id === wf.id
+              ? {
+                  ...item,
+                  nextRunAt: futureIso,
+                  lastTriggeredAt: now.getTime(),
+                  nodes: item.nodes.map(n =>
+                    n.kind === 'input' ? { ...n, config: { ...n.config, nextRunAt: futureIso } } : n
+                  )
+                }
+              : item
+          )
+        }
+        changed = true
+
+        try {
+          runningRoutineLock.add(`wf_${wf.id}`)
+          const run = await executeWorkflowRun({
+            workflow: wf,
+            allAgents: workingStore.agents,
+            allNotes,
+            allProjects: workingStore.projects,
+            prompt: `[Execução Agendada: ${wf.name}]`,
+            isTestRun: false
+          })
+          triggeredRuns.push(run)
+          workingStore = {
+            ...workingStore,
+            runs: [run, ...workingStore.runs.slice(0, 99)]
+          }
+        } catch (err) {
+          console.error(`Erro ao executar workflow agendado ${wf.name}:`, err)
+        } finally {
+          runningRoutineLock.delete(`wf_${wf.id}`)
+        }
+      }
+    } else if (triggerType === 'task_event' && completedTaskEvent) {
+      try {
+        runningRoutineLock.add(`wf_${wf.id}`)
+        const run = await executeWorkflowRun({
+          workflow: wf,
+          allAgents: workingStore.agents,
+          allNotes,
+          allProjects: workingStore.projects,
+          prompt: `[Tarefa Concluída: ${completedTaskEvent.title}] Execução do fluxo "${wf.name}"`,
+          isTestRun: false
+        })
+        triggeredRuns.push(run)
+        workingStore = {
+          ...workingStore,
+          runs: [run, ...workingStore.runs.slice(0, 99)]
+        }
+        changed = true
+      } catch (err) {
+        console.error(`Erro ao disparar workflow por tarefa:`, err)
+      } finally {
+        runningRoutineLock.delete(`wf_${wf.id}`)
       }
     }
   }

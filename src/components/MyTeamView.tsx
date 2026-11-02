@@ -33,6 +33,7 @@ import { TeamCanvasEditor } from './TeamCanvasEditor'
 import { WorkflowCanvasEditor } from './WorkflowCanvasEditor'
 import { RoutineCanvasEditor } from './RoutineCanvasEditor'
 import { AiSettingsModal, type CustomAgentSkill } from './AiSettingsModal'
+import { AgentIcon, AgentIconPicker, isAgentIconVariant, type AgentIconState } from './AgentIcon'
 import {
   Bot,
   Workflow,
@@ -257,6 +258,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const [activeModelName, setActiveModelName] = useState<string>('google/gemini-2.5-flash')
   const [hasActiveKey, setHasActiveKey] = useState<boolean>(true)
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false)
+  const [avatarPreviewState, setAvatarPreviewState] = useState<AgentIconState>('waiting')
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false)
   const [contextSearchQuery, setContextSearchQuery] = useState('')
   const [hoveredCategory, setHoveredCategory] = useState<'project' | 'item' | null>(null)
@@ -3231,6 +3233,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             folders={folders}
             selectedWorkflowId={selectedWorkflowId}
             latestNodeStates={activeRun?.workflowNodeStates}
+            activeRun={activeRun}
+            allProjects={store.projects}
             onSelectWorkflow={setSelectedWorkflowId}
             onSaveWorkflow={async wf => {
               const exists = workflows.some(w => w.id === wf.id)
@@ -3265,6 +3269,25 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 setSelectedRunId(wfRun.id)
                 setSelectedAgentId(wfRun.agentId)
                 setActiveSection('agents')
+              } finally {
+                setIsExecuting(false)
+              }
+            }}
+            onResumeWorkflowRun={async (pausedRun) => {
+              setIsExecuting(true)
+              try {
+                const wf = workflows.find(w => w.id === pausedRun.workflowId) || workflows[0]
+                const resumed = await resumeWorkflowRun({
+                  pausedRun,
+                  workflow: wf,
+                  allAgents: store.agents,
+                  allNotes: notes,
+                  allProjects: store.projects
+                })
+                await onUpdateStore({
+                  ...store,
+                  runs: store.runs.map(r => (r.id === resumed.id ? resumed : r))
+                })
               } finally {
                 setIsExecuting(false)
               }
