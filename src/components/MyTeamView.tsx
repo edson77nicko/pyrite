@@ -83,6 +83,7 @@ import {
   Maximize2,
   ExternalLink
 } from 'lucide-react'
+import { CustomSelect } from './CustomSelect'
 
 export const WorkflowNodesIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
   <svg
@@ -2520,29 +2521,27 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                               <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
                                 Pasta padrão de entrega no cofre
                               </label>
-                              <input
-                                type="text"
-                                list="available-folders-list"
-                                value={selectedAgent.deliverables.targetFolder}
-                                onChange={e =>
+                              <CustomSelect
+                                value={selectedAgent.deliverables.targetFolder || 'Propostas'}
+                                onChange={val =>
                                   onUpdateStore(
                                     updateAgentProfileWithVersion(store, {
                                       ...selectedAgent,
                                       deliverables: {
                                         ...selectedAgent.deliverables,
-                                        targetFolder: e.target.value
+                                        targetFolder: val
                                       }
                                     })
                                   )
                                 }
-                                placeholder="Propostas, Escopos, Tarefas..."
-                                className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
+                                options={Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Equipe', ...folders])).map(f => ({
+                                  value: f,
+                                  label: f,
+                                  icon: <Folder className="w-3 h-3 text-zinc-400" />
+                                }))}
+                                className="w-full"
+                                size="sm"
                               />
-                              <datalist id="available-folders-list">
-                                {Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Equipe', ...folders])).map(f => (
-                                  <option key={f} value={f} />
-                                ))}
-                              </datalist>
                             </div>
                           </div>
                         )}
@@ -3708,6 +3707,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   <div className="relative flex items-center">
                     <input
                       type="text"
+                      autoComplete="off"
                       value={projName}
                       onChange={e => {
                         setProjName(e.target.value)
@@ -3760,6 +3760,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   </label>
                   <input
                     type="text"
+                    autoComplete="off"
                     value={projItem}
                     onChange={e => setProjItem(e.target.value)}
                     placeholder="Ex: Nome do cliente, Artigo, etc."
@@ -3893,40 +3894,41 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             <div className="space-y-3 text-xs">
               <div>
                 <label className="block text-zinc-400 mb-1">Agente</label>
-                <select
+                <CustomSelect
                   value={pendingNoteBindModal.targetAgentId}
-                  onChange={e =>
+                  onChange={chosenId =>
                     setPendingNoteBindModal({
                       ...pendingNoteBindModal,
-                      targetAgentId: e.target.value
+                      targetAgentId: chosenId
                     })
                   }
-                  className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100"
-                >
-                  {store.agents.map(a => (
-                    <option key={a.id} value={a.id} className="bg-[#1c1c1f]">
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
+                  options={store.agents.map(a => ({
+                    value: a.id,
+                    label: a.name
+                  }))}
+                  className="w-full"
+                  size="sm"
+                />
               </div>
               <div>
                 <label className="block text-zinc-400 mb-1">Papel da nota</label>
-                <select
+                <CustomSelect
                   value={pendingNoteBindModal.role}
-                  onChange={e =>
+                  onChange={chosenRole =>
                     setPendingNoteBindModal({
                       ...pendingNoteBindModal,
-                      role: e.target.value as ContextRole
+                      role: chosenRole as ContextRole
                     })
                   }
-                  className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100"
-                >
-                  <option value="request_context">Usar apenas neste pedido</option>
-                  <option value="template">Modelo de estrutura</option>
-                  <option value="permanent_ref">Catálogo / Referência fixa</option>
-                  <option value="project_context">Contexto do cliente</option>
-                </select>
+                  options={[
+                    { value: 'request_context', label: 'Usar apenas neste pedido' },
+                    { value: 'template', label: 'Modelo de estrutura' },
+                    { value: 'permanent_ref', label: 'Catálogo / Referência fixa' },
+                    { value: 'project_context', label: 'Contexto do cliente' }
+                  ]}
+                  className="w-full"
+                  size="sm"
+                />
               </div>
             </div>
             <div className="flex justify-end gap-2">
@@ -4194,42 +4196,34 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
                   Papel da Nota
                 </label>
-                <select
+                <CustomSelect
                   value={bindRole}
-                  onChange={e => setBindRole(e.target.value as ContextRole)}
-                  className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600"
-                >
-                  <option value="template" className="bg-[#1c1c1f]">
-                    Modelo a seguir (Preserva original)
-                  </option>
-                  <option value="permanent_ref" className="bg-[#1c1c1f]">
-                    Referência / Catálogo de preços
-                  </option>
-                  <option value="project_context" className="bg-[#1c1c1f]">
-                    Contexto do Cliente / Briefing
-                  </option>
-                  <option value="request_context" className="bg-[#1c1c1f]">
-                    Contexto deste pedido (Temporário)
-                  </option>
-                </select>
+                  onChange={r => setBindRole(r as ContextRole)}
+                  options={[
+                    { value: 'template', label: 'Modelo a seguir (Preserva original)' },
+                    { value: 'permanent_ref', label: 'Referência / Catálogo de preços' },
+                    { value: 'project_context', label: 'Contexto do Cliente / Briefing' },
+                    { value: 'request_context', label: 'Contexto deste pedido (Temporário)' }
+                  ]}
+                  className="w-full"
+                  size="sm"
+                />
               </div>
 
               <div>
                 <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
                   Integridade & Versão
                 </label>
-                <select
+                <CustomSelect
                   value={bindPolicy}
-                  onChange={e => setBindPolicy(e.target.value as 'follow_latest' | 'pin_revision')}
-                  className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600"
-                >
-                  <option value="follow_latest" className="bg-[#1c1c1f]">
-                    🔄 Acompanhar versão atualizada
-                  </option>
-                  <option value="pin_revision" className="bg-[#1c1c1f]">
-                    🔒 Fixar snapshot imutável
-                  </option>
-                </select>
+                  onChange={p => setBindPolicy(p as 'follow_latest' | 'pin_revision')}
+                  options={[
+                    { value: 'follow_latest', label: '🔄 Acompanhar versão atualizada' },
+                    { value: 'pin_revision', label: '🔒 Fixar snapshot imutável' }
+                  ]}
+                  className="w-full"
+                  size="sm"
+                />
               </div>
             </div>
 

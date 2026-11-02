@@ -276,21 +276,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  if (!activeWorkflow) return null
-
-  const validation = validateWorkflowDefinition(activeWorkflow, agents, notes)
-  const selectedNode = activeWorkflow.nodes.find(n => n.id === selectedNodeId)
-
-  const screenToWorld = (clientX: number, clientY: number) => {
-    const rect = viewportRef.current?.getBoundingClientRect()
-    if (!rect) return { x: 240, y: 180 }
-    return {
-      x: (clientX - rect.left - pan.x) / zoom,
-      y: (clientY - rect.top - pan.y) / zoom
-    }
-  }
-
   const handleFitView = () => {
+    if (!activeWorkflow) return
     const rect = viewportRef.current?.getBoundingClientRect()
     const bounds = diagramBounds(activeWorkflow.nodes.map(n => n.position))
     if (!rect || !bounds) {
@@ -313,11 +300,26 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
   // Centralização automática ao abrir ou trocar de fluxo
   useEffect(() => {
+    if (!activeWorkflow) return
     const timer = setTimeout(() => {
       handleFitView()
     }, 60)
     return () => clearTimeout(timer)
-  }, [selectedWorkflowId])
+  }, [selectedWorkflowId, activeWorkflow])
+
+  if (!activeWorkflow) return null
+
+  const validation = validateWorkflowDefinition(activeWorkflow, agents, notes)
+  const selectedNode = activeWorkflow.nodes.find(n => n.id === selectedNodeId)
+
+  const screenToWorld = (clientX: number, clientY: number) => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 240, y: 180 }
+    return {
+      x: (clientX - rect.left - pan.x) / zoom,
+      y: (clientY - rect.top - pan.y) / zoom
+    }
+  }
 
   const handleCreateWorkflow = () => {
     const firstAgent = agents[0]
@@ -903,8 +905,6 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 node.kind === 'run_agent'
                   ? agents.find(a => a.id === node.config.agentId) || agents[0]
                   : undefined
-              const agentIdx = nodeAgent ? agents.findIndex(a => a.id === nodeAgent.id) : 0
-              const agentColor = AGENT_COLORS[Math.max(0, agentIdx) % AGENT_COLORS.length]
               const execState = latestNodeStates?.find(s => s.nodeId === node.id)
 
               return (

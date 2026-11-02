@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import type {
   AgentProfileVersion,
   ContextRole,
@@ -117,13 +117,9 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
 
   const viewportRef = useRef<HTMLDivElement>(null)
 
-  if (!activeTeam) return null
-
-  const selectedNode = activeTeam.nodes.find(n => n.id === selectedNodeId)
-  const selectedNodeAgent = selectedNode ? agents.find(a => a.id === selectedNode.agentId) : undefined
-
   // Reachability from coordinator
   const reachableFromCoordinator = useMemo(() => {
+    if (!activeTeam) return new Set<string>()
     const coordNodes = activeTeam.nodes.filter(
       n => n.roleInTeam === 'coordinator' || n.agentId === activeTeam.coordinatorAgentId
     )
@@ -138,16 +134,8 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
     return set
   }, [activeTeam])
 
-  const screenToWorld = (clientX: number, clientY: number) => {
-    const rect = viewportRef.current?.getBoundingClientRect()
-    if (!rect) return { x: 200, y: 160 }
-    return {
-      x: (clientX - rect.left - pan.x) / zoom,
-      y: (clientY - rect.top - pan.y) / zoom
-    }
-  }
-
   const handleFitView = () => {
+    if (!activeTeam) return
     const rect = viewportRef.current?.getBoundingClientRect()
     const bounds = diagramBounds(activeTeam.nodes.map(n => n.position))
     if (!rect || !bounds) {
@@ -170,11 +158,26 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
 
   // Centralização automática ao abrir ou alternar de equipe
   useEffect(() => {
+    if (!activeTeam) return
     const timer = setTimeout(() => {
       handleFitView()
     }, 60)
     return () => clearTimeout(timer)
-  }, [selectedTeamId])
+  }, [selectedTeamId, activeTeam])
+
+  if (!activeTeam) return null
+
+  const selectedNode = activeTeam.nodes.find(n => n.id === selectedNodeId)
+  const selectedNodeAgent = selectedNode ? agents.find(a => a.id === selectedNode.agentId) : undefined
+
+  const screenToWorld = (clientX: number, clientY: number) => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 200, y: 160 }
+    return {
+      x: (clientX - rect.left - pan.x) / zoom,
+      y: (clientY - rect.top - pan.y) / zoom
+    }
+  }
 
   const handleCreateTeam = () => {
     const coord = agents.find(a => a.specialistRole === 'coordinator') || agents[0]

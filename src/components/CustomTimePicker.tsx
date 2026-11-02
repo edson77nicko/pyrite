@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Clock, Check } from 'lucide-react'
+import { Clock } from 'lucide-react'
 
 export interface CustomTimePickerProps {
   value?: string // HH:mm format, e.g. "09:00"

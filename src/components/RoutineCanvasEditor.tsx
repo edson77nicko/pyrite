@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import type {
   AgentProfileVersion,
   AutomationTriggerKind,
@@ -39,8 +39,11 @@ import {
   ShieldCheck,
   Target,
   Users,
-  GitBranch
+  GitBranch,
+  Folder
 } from 'lucide-react'
+import { CustomSelect } from './CustomSelect'
+import { CustomTimePicker } from './CustomTimePicker'
 
 interface RoutineCanvasEditorProps {
   automations: AutomationVersion[]
@@ -75,6 +78,7 @@ const DAYS_OF_WEEK = [
 ]
 
 const WEEK_INITIALS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
+const AGENT_COLORS = ['#10b981', '#2563eb', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4']
 
 export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
   automations,
@@ -110,9 +114,7 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
 
   const viewportRef = useRef<HTMLDivElement>(null)
 
-  if (!activeRoutine) return null
-
-  const layout = activeRoutine.visualLayout || {
+  const layout = activeRoutine?.visualLayout || {
     triggerX: 50,
     triggerY: 160,
     contextX: 370,
@@ -124,6 +126,41 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
     outputX: 1330,
     outputY: 160
   }
+
+  const handleFitView = () => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    const positions = [
+      { x: layout.triggerX, y: layout.triggerY },
+      { x: layout.contextX, y: layout.contextY },
+      { x: layout.executorX, y: layout.executorY },
+      { x: layout.approvalX, y: layout.approvalY },
+      { x: layout.outputX, y: layout.outputY }
+    ]
+    const bounds = diagramBounds(positions)
+    if (!rect || !bounds) return
+    const nextZoom = Math.max(
+      0.45,
+      Math.min(1.1, Math.min((rect.width - 120) / bounds.width, (rect.height - 120) / bounds.height))
+    )
+    const cx = bounds.minX + bounds.width / 2
+    const cy = bounds.minY + bounds.height / 2
+    setZoom(Number(nextZoom.toFixed(2)))
+    setPan({
+      x: Math.round(rect.width / 2 - cx * nextZoom),
+      y: Math.round(rect.height / 2 - cy * nextZoom)
+    })
+  }
+
+  // Centralização automática ao abrir ou alternar de rotina
+  useEffect(() => {
+    if (!activeRoutine) return
+    const timer = setTimeout(() => {
+      handleFitView()
+    }, 60)
+    return () => clearTimeout(timer)
+  }, [selectedRoutineId, activeRoutine])
+
+  if (!activeRoutine) return null
 
   const updateRoutine = (patch: Partial<AutomationVersion>) => {
     const merged: AutomationVersion = {
@@ -154,30 +191,6 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
       x: (clientX - rect.left - pan.x) / zoom,
       y: (clientY - rect.top - pan.y) / zoom
     }
-  }
-
-  const handleFitView = () => {
-    const rect = viewportRef.current?.getBoundingClientRect()
-    const positions = [
-      { x: layout.triggerX, y: layout.triggerY },
-      { x: layout.contextX, y: layout.contextY },
-      { x: layout.executorX, y: layout.executorY },
-      { x: layout.approvalX, y: layout.approvalY },
-      { x: layout.outputX, y: layout.outputY }
-    ]
-    const bounds = diagramBounds(positions)
-    if (!rect || !bounds) return
-    const nextZoom = Math.max(
-      0.45,
-      Math.min(1.1, Math.min((rect.width - 120) / bounds.width, (rect.height - 120) / bounds.height))
-    )
-    const cx = bounds.minX + bounds.width / 2
-    const cy = bounds.minY + bounds.height / 2
-    setZoom(Number(nextZoom.toFixed(2)))
-    setPan({
-      x: Math.round(rect.width / 2 - cx * nextZoom),
-      y: Math.round(rect.height / 2 - cy * nextZoom)
-    })
   }
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -418,7 +431,9 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
           }}
           onPointerDown={e => {
             if (e.button === 2) return
-            if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.canvasBg === 'true') {
+            const target = e.target as HTMLElement
+            const isInteractive = target?.closest?.('button, input, textarea, select, [data-stage-card], [data-no-pan="true"]')
+            if (!isInteractive) {
               setIsRoutineMenuOpen(false)
               setIsPanning(true)
               panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
@@ -448,7 +463,7 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
             className="absolute inset-0 pointer-events-none"
           >
             {/* Linhas Bezier S-Curve entre os 5 Estágios Sequenciais */}
-            <svg className="overflow-visible w-full h-full pointer-events-auto">
+            <svg className="overflow-visible w-full h-full pointer-events-none">
               {stageEdges.map((edge, idx) => {
                 const pathD = diagramEdgePath(edge.from, edge.to)
                 const arrowPts = diagramEdgeArrow(edge.to)
@@ -476,6 +491,7 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                 top: layout.triggerY,
                 width: 276
               }}
+              data-stage-card="true"
               onPointerDown={e => {
                 e.stopPropagation()
                 if (toolMode === 'hand') return
@@ -527,19 +543,18 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
 
                 {/* Seletor de Tipo de Gatilho */}
                 <div onPointerDown={e => e.stopPropagation()}>
-                  <select
+                  <CustomSelect
                     value={activeRoutine.triggerKind}
-                    onChange={e =>
-                      updateRoutine({ triggerKind: e.target.value as AutomationTriggerKind })
+                    onChange={val =>
+                      updateRoutine({ triggerKind: val as AutomationTriggerKind })
                     }
-                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
-                  >
-                    {(Object.keys(TRIGGER_LABELS) as AutomationTriggerKind[]).map(k => (
-                      <option key={k} value={k} className="bg-[#18181b]">
-                        {TRIGGER_LABELS[k]}
-                      </option>
-                    ))}
-                  </select>
+                    options={(Object.keys(TRIGGER_LABELS) as AutomationTriggerKind[]).map(k => ({
+                      value: k,
+                      label: TRIGGER_LABELS[k]
+                    }))}
+                    className="w-full"
+                    size="sm"
+                  />
                 </div>
 
                 {/* Seletor Visual de 7 Dias da Semana (D S T Q Q S S) */}
@@ -550,10 +565,23 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                   >
                     <div className="flex items-center justify-between text-[10px] text-zinc-400">
                       <span>{DAYS_OF_WEEK[scheduledDay]}</span>
-                      <span className="font-mono text-amber-400 font-medium">
-                        {String(scheduledHour).padStart(2, '0')}:
-                        {String(scheduledMin).padStart(2, '0')}
-                      </span>
+                      <CustomTimePicker
+                        value={`${String(scheduledHour).padStart(2, '0')}:${String(scheduledMin).padStart(2, '0')}`}
+                        onChange={newTime => {
+                          const [th, tm] = newTime.split(':').map(Number)
+                          updateRoutine({
+                            scheduleConfig: {
+                              ...(activeRoutine.scheduleConfig || {
+                                timezone: 'America/Sao_Paulo',
+                                missedPolicy: 'run_once_on_open'
+                              }),
+                              dayOfWeek: scheduledDay,
+                              hour: isNaN(th) ? 16 : th,
+                              minute: isNaN(tm) ? 0 : tm
+                            }
+                          })
+                        }}
+                      />
                     </div>
 
                     <div className="grid grid-cols-7 gap-1">
@@ -603,12 +631,16 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                 {activeRoutine.triggerKind === 'briefing_added' && (
                   <div onPointerDown={e => e.stopPropagation()} className="space-y-1">
                     <label className="text-[10px] text-zinc-400 block">Pasta monitorada</label>
-                    <input
-                      type="text"
-                      value={activeRoutine.watchFolder || ''}
-                      onChange={e => updateRoutine({ watchFolder: e.target.value })}
-                      placeholder="Ex: Clientes ou Briefings"
-                      className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                    <CustomSelect
+                      value={activeRoutine.watchFolder || 'Clientes'}
+                      onChange={val => updateRoutine({ watchFolder: val })}
+                      options={Array.from(new Set(['Clientes', 'Briefings', 'Pesquisa', ...folders])).map(f => ({
+                        value: f,
+                        label: f,
+                        icon: <Folder className="w-3 h-3 text-zinc-400" />
+                      }))}
+                      className="w-full"
+                      size="sm"
                     />
                   </div>
                 )}
@@ -645,6 +677,7 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                 top: layout.contextY,
                 width: 276
               }}
+              data-stage-card="true"
               onPointerDown={e => {
                 e.stopPropagation()
                 if (toolMode === 'hand') return
@@ -683,41 +716,36 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                     <label className="text-[10px] text-zinc-400 block mb-1">
                       Pasta de Origem
                     </label>
-                    <input
-                      type="text"
-                      list="routine-watch-folders"
-                      value={activeRoutine.watchFolder || ''}
-                      onChange={e => updateRoutine({ watchFolder: e.target.value })}
-                      placeholder="Ex: Clientes"
-                      className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                    <CustomSelect
+                      value={activeRoutine.watchFolder || 'Clientes'}
+                      onChange={val => updateRoutine({ watchFolder: val })}
+                      options={Array.from(new Set(['Clientes', 'Briefings', 'Pesquisa', ...folders])).map(f => ({
+                        value: f,
+                        label: f,
+                        icon: <Folder className="w-3 h-3 text-zinc-400" />
+                      }))}
+                      className="w-full"
+                      size="sm"
                     />
-                    <datalist id="routine-watch-folders">
-                      {folders.map(f => (
-                        <option key={f} value={f} />
-                      ))}
-                    </datalist>
                   </div>
 
                   <div>
                     <label className="text-[10px] text-zinc-400 block mb-1">
                       Isolamento de Cliente Fixo
                     </label>
-                    <select
+                    <CustomSelect
                       value={activeRoutine.projectContextId || ''}
-                      onChange={e =>
-                        updateRoutine({ projectContextId: e.target.value || undefined })
-                      }
-                      className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
-                    >
-                      <option value="" className="bg-[#18181b]">
-                        Dinâmico (conforme evento)
-                      </option>
-                      {projects.map(p => (
-                        <option key={p.id} value={p.id} className="bg-[#18181b]">
-                          {p.clientName}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={val => updateRoutine({ projectContextId: val || undefined })}
+                      options={[
+                        { value: '', label: 'Dinâmico (conforme evento)' },
+                        ...projects.map(p => ({
+                          value: p.id,
+                          label: p.clientName || p.name
+                        }))
+                      ]}
+                      className="w-full"
+                      size="sm"
+                    />
                   </div>
 
                   {/* Chips de fontes autorizadas */}
@@ -742,6 +770,7 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                 top: layout.executorY,
                 width: 276
               }}
+              data-stage-card="true"
               onPointerDown={e => {
                 e.stopPropagation()
                 if (toolMode === 'hand') return
@@ -780,83 +809,74 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                     <label className="text-[10px] text-zinc-400 block mb-1">
                       Destino da Execução
                     </label>
-                    <select
+                    <CustomSelect
                       value={activeRoutine.targetKind || 'agent'}
-                      onChange={e =>
+                      onChange={val =>
                         updateRoutine({
-                          targetKind: e.target.value as 'agent' | 'team' | 'workflow'
+                          targetKind: val as 'agent' | 'team' | 'workflow'
                         })
                       }
-                      className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
-                    >
-                      <option value="agent" className="bg-[#18181b]">
-                        Agente Individual
-                      </option>
-                      <option value="team" className="bg-[#18181b]">
-                        Equipe Coordenada
-                      </option>
-                      <option value="workflow" className="bg-[#18181b]">
-                        Fluxo de Trabalho
-                      </option>
-                    </select>
+                      options={[
+                        { value: 'agent', label: 'Agente Individual', icon: <Bot className="w-3.5 h-3.5 text-blue-400" /> },
+                        { value: 'team', label: 'Equipe Coordenada', icon: <Users className="w-3.5 h-3.5 text-amber-400" /> },
+                        { value: 'workflow', label: 'Fluxo de Trabalho', icon: <GitBranch className="w-3.5 h-3.5 text-purple-400" /> }
+                      ]}
+                      className="w-full"
+                      size="sm"
+                    />
                   </div>
 
                   {/* Agente selecionado */}
                   {(activeRoutine.targetKind || 'agent') === 'agent' && (
-                    <div className="flex items-center gap-2 bg-[#18181b] border border-zinc-800 rounded-xl p-2">
-                      <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
-                        ••
-                      </div>
-                      <select
+                    <div>
+                      <CustomSelect
                         value={activeRoutine.agentId}
-                        onChange={e => {
-                          const ag = agents.find(a => a.id === e.target.value)
-                          updateRoutine({ agentId: e.target.value, agentVersion: ag?.version || 1 })
+                        onChange={chosenId => {
+                          const ag = agents.find(a => a.id === chosenId)
+                          updateRoutine({ agentId: chosenId, agentVersion: ag?.version || 1 })
                         }}
-                        className="flex-1 bg-transparent text-xs text-zinc-200 focus:outline-none truncate"
-                      >
-                        {agents.map(ag => (
-                          <option key={ag.id} value={ag.id} className="bg-[#18181b]">
-                            {ag.name}
-                          </option>
-                        ))}
-                      </select>
+                        options={agents.map((ag, idx) => ({
+                          value: ag.id,
+                          label: ag.name,
+                          color: AGENT_COLORS[idx % AGENT_COLORS.length]
+                        }))}
+                        className="w-full"
+                        size="sm"
+                      />
                     </div>
                   )}
 
                   {/* Equipe selecionada */}
                   {activeRoutine.targetKind === 'team' && (
-                    <div className="flex items-center gap-2 bg-[#18181b] border border-zinc-800 rounded-xl p-2">
-                      <Users className="w-5 h-5 text-amber-400 shrink-0" />
-                      <select
+                    <div>
+                      <CustomSelect
                         value={activeRoutine.teamId || teams[0]?.id || ''}
-                        onChange={e => updateRoutine({ teamId: e.target.value })}
-                        className="flex-1 bg-transparent text-xs text-zinc-200 focus:outline-none truncate"
-                      >
-                        {teams.map(t => (
-                          <option key={t.id} value={t.id} className="bg-[#18181b]">
-                            {t.name}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={val => updateRoutine({ teamId: val })}
+                        options={teams.map(t => ({
+                          value: t.id,
+                          label: t.name,
+                          icon: <Users className="w-3.5 h-3.5 text-amber-400" />
+                        }))}
+                        className="w-full"
+                        size="sm"
+                      />
                     </div>
                   )}
 
                   {/* Workflow selecionado */}
                   {activeRoutine.targetKind === 'workflow' && (
-                    <div className="flex items-center gap-2 bg-[#18181b] border border-zinc-800 rounded-xl p-2">
-                      <GitBranch className="w-5 h-5 text-purple-400 shrink-0" />
-                      <select
+                    <div>
+                      <CustomSelect
                         value={activeRoutine.workflowId || workflows[0]?.id || ''}
-                        onChange={e => updateRoutine({ workflowId: e.target.value })}
-                        className="flex-1 bg-transparent text-xs text-zinc-200 focus:outline-none truncate"
-                      >
-                        {workflows.map(w => (
-                          <option key={w.id} value={w.id} className="bg-[#18181b]">
-                            {w.name}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={val => updateRoutine({ workflowId: val })}
+                        options={workflows.map(w => ({
+                          value: w.id,
+                          label: w.name,
+                          icon: <GitBranch className="w-3.5 h-3.5 text-purple-400" />
+                        }))}
+                        className="w-full"
+                        size="sm"
+                      />
                     </div>
                   )}
 
@@ -886,6 +906,7 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                 top: layout.approvalY,
                 width: 276
               }}
+              data-stage-card="true"
               onPointerDown={e => {
                 e.stopPropagation()
                 if (toolMode === 'hand') return
@@ -948,6 +969,7 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                 top: layout.outputY,
                 width: 276
               }}
+              data-stage-card="true"
               onPointerDown={e => {
                 e.stopPropagation()
                 if (toolMode === 'hand') return
@@ -977,18 +999,17 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                   <label className="text-[10px] text-zinc-400 block mb-0.5">
                     Pasta de Destino no Cofre
                   </label>
-                  <input
-                    type="text"
-                    list="routine-target-folders"
-                    value={activeRoutine.targetFolder}
-                    onChange={e => updateRoutine({ targetFolder: e.target.value })}
-                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                  <CustomSelect
+                    value={activeRoutine.targetFolder || 'Propostas'}
+                    onChange={val => updateRoutine({ targetFolder: val })}
+                    options={Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => ({
+                      value: f,
+                      label: f,
+                      icon: <Folder className="w-3 h-3 text-zinc-400" />
+                    }))}
+                    className="w-full"
+                    size="sm"
                   />
-                  <datalist id="routine-target-folders">
-                    {folders.map(f => (
-                      <option key={f} value={f} />
-                    ))}
-                  </datalist>
 
                   <div className="flex flex-wrap gap-1 pt-1">
                     <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-300">
@@ -1214,9 +1235,9 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                       <label className="text-[10px] text-zinc-400 block mb-0.5">
                         Política se o app estiver fechado
                       </label>
-                      <select
+                      <CustomSelect
                         value={activeRoutine.scheduleConfig?.missedPolicy || 'run_once_on_open'}
-                        onChange={e =>
+                        onChange={val =>
                           updateRoutine({
                             scheduleConfig: {
                               ...(activeRoutine.scheduleConfig || {
@@ -1225,19 +1246,17 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
                                 minute: 0,
                                 timezone: 'America/Sao_Paulo'
                               }),
-                              missedPolicy: e.target.value as 'skip' | 'run_once_on_open'
+                              missedPolicy: val as 'skip' | 'run_once_on_open'
                             }
                           })
                         }
-                        className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-100"
-                      >
-                        <option value="run_once_on_open" className="bg-[#18181b]">
-                          Executar 1x ao abrir o Pyrite
-                        </option>
-                        <option value="skip" className="bg-[#18181b]">
-                          Pular para a próxima semana
-                        </option>
-                      </select>
+                        options={[
+                          { value: 'run_once_on_open', label: 'Executar 1x ao abrir o Pyrite' },
+                          { value: 'skip', label: 'Pular para a próxima semana' }
+                        ]}
+                        className="w-full"
+                        size="sm"
+                      />
                     </div>
                   </div>
                 )}
