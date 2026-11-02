@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import type {
   AgentProfileVersion,
   WorkflowDefinition,
@@ -47,7 +47,7 @@ import {
   Image as ImageIcon,
   FileText,
   Globe,
-  Map
+  Sliders
 } from 'lucide-react'
 
 interface WorkflowCanvasEditorProps {
@@ -78,6 +78,11 @@ const NODE_META: Record<
     group: 'Entradas',
     color: '#3b82f6'
   },
+  llm: {
+    label: 'LLM',
+    group: 'Etapas',
+    color: '#a855f7'
+  },
   run_agent: {
     label: 'Agente',
     group: 'Etapas',
@@ -105,7 +110,7 @@ const NODE_META: Record<
   }
 }
 
-const AGENT_COLORS = ['#2563eb', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4']
+const AGENT_COLORS = ['#10b981', '#2563eb', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4']
 
 export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   workflows,
@@ -128,12 +133,13 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [isWorkflowMenuOpen, setIsWorkflowMenuOpen] = useState(false)
+  const [isRenamingWorkflow, setIsRenamingWorkflow] = useState(false)
+  const [workflowTitleDraft, setWorkflowTitleDraft] = useState('')
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false)
   const [addMenuSearch, setAddMenuSearch] = useState('')
   const [addMenuPos, setAddMenuPos] = useState<{ x: number; y: number } | null>(null)
-  const [testPrompt] = useState(
-    'Elabore proposta comercial para o cliente usando o modelo e catálogo vinculados.'
-  )
+  const [executingNodeId, setExecutingNodeId] = useState<string | null>(null)
+  const [activeTabPrompt, setActiveTabPrompt] = useState<Record<string, 'text' | 'note'>>({})
 
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
   const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
@@ -153,6 +159,47 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   } | null>(null)
 
   const viewportRef = useRef<HTMLDivElement>(null)
+  const workflowMenuRef = useRef<HTMLDivElement>(null)
+  const addMenuRef = useRef<HTMLDivElement>(null)
+
+  // Keyboard shortcut listener: Delete/Backspace removes selected node or edge
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement
+      const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')
+      if (isInput) return
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedNodeId && activeWorkflow) {
+          handleRemoveNode(selectedNodeId)
+        } else if (selectedEdgeId && activeWorkflow) {
+          handleRemoveEdge(selectedEdgeId)
+        }
+      } else if (e.key === 'Escape') {
+        setIsWorkflowMenuOpen(false)
+        setIsAddMenuOpen(false)
+        setInspectorOpen(false)
+        setSelectedNodeId(null)
+        setSelectedEdgeId(null)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedNodeId, selectedEdgeId, activeWorkflow])
+
+  // Close menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (workflowMenuRef.current && !workflowMenuRef.current.contains(e.target as Node)) {
+        setIsWorkflowMenuOpen(false)
+      }
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setIsAddMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   if (!activeWorkflow) return null
 
@@ -205,14 +252,18 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           id: nInId,
           kind: 'input',
           label: 'Gatilho',
-          position: { x: 160, y: 180 },
-          config: {}
+          position: { x: 140, y: 160 },
+          config: {
+            triggerType: 'schedule',
+            scheduleFrequency: 'daily',
+            scheduleTime: '09:00'
+          }
         },
         {
           id: nAgId,
           kind: 'run_agent',
           label: firstAgent?.name || 'Agente',
-          position: { x: 580, y: 180 },
+          position: { x: 540, y: 160 },
           config: { agentId: firstAgent?.id }
         }
       ],
@@ -244,17 +295,18 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       config:
         kind === 'run_agent'
           ? { agentId: agents[0]?.id }
+          : kind === 'llm'
+          ? { model: 'gpt-4o', reasoning: 'low', promptTemplate: '' }
           : kind === 'read_note'
           ? { noteId: notes[0]?.id, noteTitle: notes[0]?.title, contextRole: 'permanent_ref' }
           : kind === 'condition'
           ? { conditionType: 'no_missing_fields' }
-          : kind === 'deliverable'
-          ? { targetFolder: 'Propostas', outputType: 'note', namingPattern: 'Entrega - {cliente}' }
           : kind === 'approval'
-          ? { approvalMessage: 'Confirme para prosseguir.' }
-          : {}
+          ? { approvalMessage: 'Revisar entregável gerado antes de salvar no cofre.' }
+          : kind === 'deliverable'
+          ? { targetFolder: 'Propostas', outputType: 'note' }
+          : { triggerType: 'schedule', scheduleFrequency: 'daily', scheduleTime: '09:00' }
     }
-
     onSaveWorkflow({
       ...activeWorkflow,
       version: activeWorkflow.version + 1,
@@ -395,6 +447,15 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     })
   }
 
+  const handleExecuteSingleNode = (node: WorkflowNode) => {
+    setExecutingNodeId(node.id)
+    const prompt = node.config.approvalMessage || node.config.promptTemplate || 'Executar etapa do fluxo.'
+    onRunWorkflow(activeWorkflow, false, prompt)
+    setTimeout(() => {
+      setExecutingNodeId(null)
+    }, 1500)
+  }
+
   const addMenuGroups = [
     {
       title: 'Entradas',
@@ -406,7 +467,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     {
       title: 'Etapas',
       items: [
-        { kind: 'run_agent' as WorkflowNodeKind, label: 'LLM', icon: Sparkles, color: '#a855f7' },
+        { kind: 'llm' as WorkflowNodeKind, label: 'LLM', icon: Sparkles, color: '#a855f7' },
         { kind: 'run_agent' as WorkflowNodeKind, label: 'Agente', icon: Bot, color: '#10b981' }
       ]
     },
@@ -422,49 +483,75 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
   return (
     <div className="flex-1 flex flex-col bg-[#09090b] overflow-hidden select-none relative">
-      {/* BARRA SUPERIOR MINIMALISTA IDÊNTICA AO PRINT 02 DO OPENBOT */}
+      {/* ============================================================================ */}
+      {/* 1. BARRA SUPERIOR MINIMALISTA IDÊNTICA AO PRINT 02 DO OPENBOT                */}
+      {/* ============================================================================ */}
       <div className="h-11 px-4 border-b border-zinc-900/90 bg-[#09090b] flex items-center justify-between shrink-0 z-30">
-        {/* Esquerda: Setas <- -> + Seletor de Fluxo de Trabalho */}
+        {/* Esquerda: Status Local + Setas + Nome do Fluxo */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 text-zinc-500">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/60 border border-zinc-800/60 text-xs text-zinc-300 font-medium">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] inline-block" />
+            <span>Local</span>
+          </div>
+
+          <div className="flex items-center gap-0.5 text-zinc-500">
             <button
               type="button"
-              onClick={() => {
-                const idx = workflows.findIndex(w => w.id === activeWorkflow.id)
-                if (idx > 0) onSelectWorkflow(workflows[idx - 1].id)
-              }}
-              className="p-1 rounded hover:bg-zinc-800/60 hover:text-zinc-300 cursor-pointer"
-              title="Fluxo anterior"
+              onClick={handleFitView}
+              className="p-1 rounded hover:bg-zinc-850 hover:text-zinc-200 transition-colors cursor-pointer"
+              title="Centralizar visualização"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
-              onClick={() => {
-                const idx = workflows.findIndex(w => w.id === activeWorkflow.id)
-                if (idx >= 0 && idx < workflows.length - 1) onSelectWorkflow(workflows[idx + 1].id)
-              }}
-              className="p-1 rounded hover:bg-zinc-800/60 hover:text-zinc-300 cursor-pointer"
-              title="Próximo fluxo"
+              onClick={handleFitView}
+              className="p-1 rounded hover:bg-zinc-850 hover:text-zinc-200 transition-colors cursor-pointer"
+              title="Ajustar à tela"
             >
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setIsWorkflowMenuOpen(v => !v)}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-zinc-900 text-xs font-medium text-zinc-200 cursor-pointer"
-            >
-              <span>{activeWorkflow.name}</span>
-              <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
-            </button>
+          <div className="relative" ref={workflowMenuRef}>
+            {isRenamingWorkflow ? (
+              <input
+                type="text"
+                autoFocus
+                value={workflowTitleDraft}
+                onChange={e => setWorkflowTitleDraft(e.target.value)}
+                onBlur={() => {
+                  if (workflowTitleDraft.trim()) {
+                    onSaveWorkflow({ ...activeWorkflow, name: workflowTitleDraft.trim(), updatedAt: Date.now() })
+                  }
+                  setIsRenamingWorkflow(false)
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    if (workflowTitleDraft.trim()) {
+                      onSaveWorkflow({ ...activeWorkflow, name: workflowTitleDraft.trim(), updatedAt: Date.now() })
+                    }
+                    setIsRenamingWorkflow(false)
+                  }
+                  if (e.key === 'Escape') setIsRenamingWorkflow(false)
+                }}
+                className="bg-[#141416] border border-zinc-700 rounded-lg px-2 py-0.5 text-xs text-zinc-100 outline-none font-medium"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsWorkflowMenuOpen(v => !v)}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-zinc-850 text-xs font-medium text-zinc-200 cursor-pointer transition-colors"
+              >
+                <span>{activeWorkflow.name}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
+              </button>
+            )}
 
             {isWorkflowMenuOpen && (
               <div
                 onMouseDown={e => e.stopPropagation()}
-                className="absolute left-0 top-full mt-1.5 w-64 bg-[#141416] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50"
+                className="absolute left-0 top-full mt-1.5 w-64 bg-[#141416] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100"
               >
                 <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
                   Fluxos de trabalho
@@ -488,6 +575,18 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                   </button>
                 ))}
                 <div className="border-t border-zinc-800/80 my-1" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWorkflowTitleDraft(activeWorkflow.name)
+                    setIsRenamingWorkflow(true)
+                    setIsWorkflowMenuOpen(false)
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2 cursor-pointer"
+                >
+                  <Type className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Renomear fluxo atual</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleCreateWorkflow}
@@ -519,16 +618,18 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           <button
             type="button"
             disabled={isExecuting || !validation.valid}
-            onClick={() => onRunWorkflow(activeWorkflow, false, testPrompt)}
+            onClick={() => onRunWorkflow(activeWorkflow, false, 'Executar fluxo completo')}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs transition-all shadow-sm disabled:opacity-40 cursor-pointer"
           >
-            <Play className="w-3 h-3 fill-current" />
-            <span>{isExecuting ? 'Executando...' : 'Executar fluxo de trabalho'}</span>
+            <Play className={`w-3 h-3 fill-current ${isExecuting ? 'animate-spin' : ''}`} />
+            <span>{isExecuting ? 'Executando fluxo...' : 'Executar fluxo de trabalho'}</span>
           </button>
         </div>
       </div>
 
-      {/* ÁREA DO CANVAS INFINITO COM DOT-GRID ESCURO (#09090b) */}
+      {/* ============================================================================ */}
+      {/* 2. ÁREA DO CANVAS INFINITO COM DOT-GRID ESCURO (#09090b)                      */}
+      {/* ============================================================================ */}
       <div className="flex-1 flex overflow-hidden relative">
         <div
           ref={viewportRef}
@@ -570,7 +671,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             backgroundPosition: `${pan.x}px ${pan.y}px`
           }}
         >
-          {/* Camada Transformável */}
+          {/* Camada Transformável com Zoom e Pan */}
           <div
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
@@ -590,7 +691,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 const mid = diagramEdgeMidpoint(fromPt, toPt)
                 const arrowPts = diagramEdgeArrow(toPt)
                 const isSelected = selectedEdgeId === edge.id
-                const strokeColor = isSelected ? '#ffffff' : '#3f3f46'
+                const strokeColor = isSelected ? '#ffffff' : edge.branch === 'false' || edge.branch === 'rejected' ? '#ef4444' : edge.branch === 'true' || edge.branch === 'approved' ? '#10b981' : '#3f3f46'
 
                 return (
                   <g
@@ -626,6 +727,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           dominantBaseline="central"
                           fill="#d4d4d8"
                           fontSize={9}
+                          fontWeight={500}
                         >
                           {edge.label}
                         </text>
@@ -635,7 +737,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 )
               })}
 
-              {/* Fio sendo puxado ao vivo */}
+              {/* Fio sendo puxado ao vivo pelo usuário */}
               {wireDraft && (() => {
                 const src = activeWorkflow.nodes.find(n => n.id === wireDraft.fromNodeId)
                 if (!src) return null
@@ -661,10 +763,13 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               })()}
             </svg>
 
-            {/* CARDS DOS NÓS — ESTILO EXATO DO PRINT 02 DO OPENBOT */}
+            {/* ======================================================================== */}
+            {/* CARDS DOS NÓS — ESTILO EXATO DO PRINT 02 DO OPENBOT                      */}
+            {/* ======================================================================== */}
             {activeWorkflow.nodes.map(node => {
               const isSelected = selectedNodeId === node.id
               const isDropTarget = wireDraft?.hoveredTargetId === node.id
+              const isExecutingThisNode = executingNodeId === node.id || latestNodeStates?.find(s => s.nodeId === node.id)?.status === 'running'
               const nodeAgent =
                 node.kind === 'run_agent'
                   ? agents.find(a => a.id === node.config.agentId) || agents[0]
@@ -679,7 +784,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                   style={{
                     left: node.position.x,
                     top: node.position.y,
-                    width: node.kind === 'run_agent' ? 284 : 264
+                    width: node.kind === 'run_agent' || node.kind === 'llm' ? 284 : 264
                   }}
                   onPointerDown={e => {
                     e.stopPropagation()
@@ -694,21 +799,30 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                   }}
                   className="absolute pointer-events-auto select-none group"
                 >
-                  {/* RÓTULO FLUTUANTE ACIMA DO CARD (ex: ⚡ Gatilho, 🤖 Agente) */}
+                  {/* RÓTULO FLUTUANTE ACIMA DO CARD (ex: ⚡ Gatilho, 🤖 Agente, 🔮 LLM) */}
                   <div className="flex items-center justify-between mb-1.5 px-1">
                     <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
                       {node.kind === 'input' ? (
-                        <Zap className="w-3 h-3 text-zinc-400" />
+                        <Zap className="w-3 h-3 text-amber-400" />
+                      ) : node.kind === 'read_note' ? (
+                        <MessageSquare className="w-3 h-3 text-blue-400" />
+                      ) : node.kind === 'llm' ? (
+                        <Sparkles className="w-3 h-3 text-purple-400" />
                       ) : node.kind === 'run_agent' ? (
-                        <Bot className="w-3 h-3 text-zinc-400" />
+                        <Bot className="w-3 h-3 text-emerald-400" />
                       ) : node.kind === 'approval' ? (
-                        <ShieldCheck className="w-3 h-3 text-zinc-400" />
+                        <ShieldCheck className="w-3 h-3 text-orange-400" />
                       ) : node.kind === 'condition' ? (
-                        <GitBranch className="w-3 h-3 text-zinc-400" />
+                        <GitBranch className="w-3 h-3 text-purple-400" />
                       ) : (
-                        <Send className="w-3 h-3 text-zinc-400" />
+                        <Send className="w-3 h-3 text-blue-400" />
                       )}
                       <span>{node.label || NODE_META[node.kind].label}</span>
+                      {execState && (
+                        <span className={`text-[9px] px-1 py-0.5 rounded font-mono ${execState.status === 'completed' ? 'text-emerald-400 bg-emerald-950/40' : execState.status === 'failed' ? 'text-rose-400 bg-rose-950/40' : 'text-amber-400 bg-amber-950/40'}`}>
+                          {execState.status}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -740,9 +854,9 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     </div>
                   </div>
 
-                  {/* PORTAS CIRCULARES À ESQUERDA (wfn-port: T, Image, File — como no Print 02!) */}
+                  {/* PORTAS CIRCULARES À ESQUERDA (T, Imagem, Arquivo — como no Print 02!) */}
                   {node.kind !== 'input' && (
-                    <div className="absolute -left-9 top-9 flex flex-col gap-1.5 z-20">
+                    <div className="absolute -left-9 top-8 flex flex-col gap-1.5 z-20">
                       <div
                         className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-serif transition-all ${
                           isDropTarget
@@ -753,16 +867,16 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       >
                         T
                       </div>
-                      {node.kind === 'run_agent' && (
+                      {(node.kind === 'run_agent' || node.kind === 'llm') && (
                         <>
                           <div
-                            className="w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-800 text-zinc-400 flex items-center justify-center"
+                            className="w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-800 text-zinc-500 flex items-center justify-center"
                             title="Entrada de Imagem"
                           >
                             <ImageIcon className="w-3 h-3" />
                           </div>
                           <div
-                            className="w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-800 text-zinc-400 flex items-center justify-center"
+                            className="w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-800 text-zinc-500 flex items-center justify-center"
                             title="Entrada de Arquivo / Nota"
                           >
                             <FileText className="w-3 h-3" />
@@ -778,7 +892,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       type="button"
                       onPointerDown={e => {
                         e.stopPropagation()
-                        const outPort = diagramOutputPort(node.position)
+                        const outPort = diagramOutputPort(node.position, node.kind === 'run_agent' || node.kind === 'llm' ? 284 : 264)
                         setWireDraft({
                           fromNodeId: node.id,
                           toWorld: outPort,
@@ -786,7 +900,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         })
                       }}
                       className="absolute -right-9 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 hover:border-white hover:bg-zinc-800 text-zinc-300 text-[11px] font-serif flex items-center justify-center cursor-crosshair z-20 transition-transform hover:scale-110"
-                      title="Arraste para conectar a outro nó"
+                      title="Arraste para conectar ao próximo nó"
                     >
                       T
                     </button>
@@ -804,30 +918,63 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                   >
                     {/* CARD 1: GATILHO / AGENDAMENTO (Idêntico ao Print 02!) */}
                     {node.kind === 'input' && (
-                      <div className="space-y-3">
+                      <div className="space-y-3" onPointerDown={e => e.stopPropagation()}>
                         <div className="flex items-center justify-between bg-[#1c1c1f] border border-zinc-800/80 rounded-xl px-3 py-2">
                           <div className="flex items-center gap-2">
                             <span className="w-5 h-5 rounded-md bg-amber-500/15 text-amber-400 flex items-center justify-center">
                               <Calendar className="w-3.5 h-3.5" />
                             </span>
-                            <span className="text-xs font-semibold text-zinc-100">Agendamento</span>
+                            <select
+                              value={node.config.triggerType || 'schedule'}
+                              onChange={e =>
+                                handleUpdateNodeById(node.id, {
+                                  config: { ...node.config, triggerType: e.target.value as any }
+                                })
+                              }
+                              className="bg-transparent text-xs font-semibold text-zinc-100 outline-none cursor-pointer"
+                            >
+                              <option value="schedule" className="bg-[#18181b]">Agendamento</option>
+                              <option value="manual" className="bg-[#18181b]">Manual (Ao Executar)</option>
+                              <option value="task_event" className="bg-[#18181b]">Ao Criar Tarefa</option>
+                              <option value="note_event" className="bg-[#18181b]">Ao Alterar Nota</option>
+                            </select>
                           </div>
-                          <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
+                          <ChevronDown className="w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
                         </div>
 
-                        <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 flex-wrap">
-                          <span className="px-2 py-1 rounded-lg bg-[#1c1c1f] text-zinc-200 font-medium">
-                            Diariamente
-                          </span>
-                          <span>em</span>
-                          <span className="px-2 py-1 rounded-lg bg-[#1c1c1f] text-zinc-200 font-medium">
-                            Todo ...
-                          </span>
-                          <span>às</span>
-                          <span className="px-2 py-1 rounded-lg bg-[#1c1c1f] text-zinc-200 font-medium">
-                            09:00
-                          </span>
-                        </div>
+                        {node.config.triggerType !== 'manual' && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 flex-wrap">
+                            <select
+                              value={node.config.scheduleFrequency || 'daily'}
+                              onChange={e =>
+                                handleUpdateNodeById(node.id, {
+                                  config: { ...node.config, scheduleFrequency: e.target.value as any }
+                                })
+                              }
+                              className="px-2 py-1 rounded-lg bg-[#1c1c1f] border border-zinc-800/80 text-zinc-200 font-medium outline-none cursor-pointer"
+                            >
+                              <option value="daily" className="bg-[#18181b]">Diariamente</option>
+                              <option value="weekdays" className="bg-[#18181b]">Dias úteis</option>
+                              <option value="weekly" className="bg-[#18181b]">Semanalmente</option>
+                              <option value="monthly" className="bg-[#18181b]">Mensalmente</option>
+                            </select>
+                            <span>em</span>
+                            <span className="px-2 py-1 rounded-lg bg-[#1c1c1f] text-zinc-200 font-medium">
+                              Todo dia
+                            </span>
+                            <span>às</span>
+                            <input
+                              type="time"
+                              value={node.config.scheduleTime || '09:00'}
+                              onChange={e =>
+                                handleUpdateNodeById(node.id, {
+                                  config: { ...node.config, scheduleTime: e.target.value }
+                                })
+                              }
+                              className="px-1.5 py-0.5 rounded-lg bg-[#1c1c1f] border border-zinc-800/80 text-zinc-200 font-medium outline-none text-[11px] cursor-pointer"
+                            />
+                          </div>
+                        )}
 
                         <div className="flex items-center justify-between pt-2 border-t border-zinc-800/70 text-[11px]">
                           <span className="text-zinc-400 leading-tight">
@@ -840,15 +987,11 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
                         <button
                           type="button"
-                          disabled={isExecuting}
-                          onPointerDown={e => e.stopPropagation()}
-                          onClick={e => {
-                            e.stopPropagation()
-                            onRunWorkflow(activeWorkflow, false, testPrompt)
-                          }}
+                          disabled={isExecuting || isExecutingThisNode}
+                          onClick={() => handleExecuteSingleNode(node)}
                           className="w-full py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                         >
-                          <span>Executar agora</span>
+                          <span>{isExecutingThisNode ? 'Executando...' : 'Executar agora'}</span>
                           <Play className="w-3 h-3 fill-current" />
                         </button>
                       </div>
@@ -856,11 +999,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
                     {/* CARD 2: AGENTE (Idêntico ao Print 02!) */}
                     {node.kind === 'run_agent' && (
-                      <div className="space-y-2.5">
-                        <div
-                          onPointerDown={e => e.stopPropagation()}
-                          className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 space-y-2"
-                        >
+                      <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
+                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 space-y-2">
                           <textarea
                             value={node.config.approvalMessage || ''}
                             onChange={e =>
@@ -890,7 +1030,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                                     config: { ...node.config, agentId: e.target.value }
                                   })
                                 }}
-                                className="bg-transparent text-[11px] font-medium text-zinc-200 focus:outline-none truncate cursor-pointer"
+                                className="bg-transparent text-[11px] font-medium text-zinc-200 focus:outline-none truncate cursor-pointer max-w-[100px]"
                               >
                                 {agents.map(ag => (
                                   <option key={ag.id} value={ag.id} className="bg-[#18181b]">
@@ -900,113 +1040,263 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                               </select>
                             </div>
 
-                            {/* Indicador de Modelo inline */}
+                            {/* Indicador / Seletor de Modelo inline */}
                             <div className="flex items-center gap-1 text-[11px] text-zinc-300 shrink-0">
                               <Globe className="w-3 h-3 text-zinc-400" />
-                              <span>GPT-6.1 Terra</span>
-                              <ChevronDown className="w-3 h-3 text-zinc-500" />
+                              <select
+                                value={node.config.model || nodeAgent?.aiConfig?.model || 'GPT-6.1 Terra'}
+                                onChange={e =>
+                                  handleUpdateNodeById(node.id, {
+                                    config: { ...node.config, model: e.target.value }
+                                  })
+                                }
+                                className="bg-transparent text-[11px] text-zinc-300 focus:outline-none cursor-pointer max-w-[100px] truncate"
+                              >
+                                <option value="GPT-6.1 Terra" className="bg-[#18181b]">GPT-6.1 Terra</option>
+                                <option value="google/gemini-2.5-flash" className="bg-[#18181b]">Gemini 2.5</option>
+                                <option value="anthropic/claude-3.5-sonnet" className="bg-[#18181b]">Claude 3.5</option>
+                                <option value="deepseek/deepseek-chat" className="bg-[#18181b]">DeepSeek V3</option>
+                              </select>
                             </div>
                           </div>
                         </div>
 
                         <button
                           type="button"
-                          disabled={isExecuting}
-                          onPointerDown={e => e.stopPropagation()}
-                          onClick={e => {
-                            e.stopPropagation()
-                            onRunWorkflow(
-                              activeWorkflow,
-                              false,
-                              node.config.approvalMessage || testPrompt
-                            )
-                          }}
+                          disabled={isExecuting || isExecutingThisNode}
+                          onClick={() => handleExecuteSingleNode(node)}
                           className="w-full py-2 rounded-xl bg-zinc-700/60 hover:bg-zinc-700 text-zinc-100 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                         >
-                          <span>Executar etapa</span>
+                          <span>{isExecutingThisNode ? 'Executando...' : 'Executar etapa'}</span>
                           <Play className="w-3 h-3" />
                         </button>
                       </div>
                     )}
 
-                    {/* OUTROS CARDS (Prompt/Nota, Condição, Aprovação, Saída) */}
-                    {node.kind !== 'input' && node.kind !== 'run_agent' && (
+                    {/* CARD 3: LLM (Etapa direta de inteligência artificial) */}
+                    {node.kind === 'llm' && (
                       <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
-                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300">
-                          {node.kind === 'read_note' && (
-                            <select
-                              value={node.config.noteId || ''}
-                              onChange={e => {
-                                const nt = notes.find(n => n.id === e.target.value)
-                                handleUpdateNodeById(node.id, {
-                                  config: {
-                                    ...node.config,
-                                    noteId: e.target.value,
-                                    noteTitle: nt?.title
-                                  }
-                                })
-                              }}
-                              className="w-full bg-transparent text-xs text-zinc-200 focus:outline-none"
-                            >
-                              {notes.map(n => (
-                                <option key={n.id} value={n.id} className="bg-[#18181b]">
-                                  {n.title}
-                                </option>
-                              ))}
-                            </select>
-                          )}
+                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 space-y-2">
+                          <textarea
+                            value={node.config.promptTemplate || ''}
+                            onChange={e =>
+                              handleUpdateNodeById(node.id, {
+                                config: { ...node.config, promptTemplate: e.target.value }
+                              })
+                            }
+                            placeholder="Prompt e instruções da etapa LLM..."
+                            className="w-full h-16 bg-transparent text-xs text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none leading-relaxed"
+                          />
 
-                          {node.kind === 'condition' && (
-                            <select
-                              value={node.config.conditionType || 'no_missing_fields'}
+                          <div className="flex items-center justify-between gap-1 pt-1">
+                            <div className="flex items-center gap-1 text-[11px] text-purple-400 min-w-0">
+                              <Sparkles className="w-3 h-3 shrink-0" />
+                              <select
+                                value={node.config.model || 'gpt-4o'}
+                                onChange={e =>
+                                  handleUpdateNodeById(node.id, {
+                                    config: { ...node.config, model: e.target.value }
+                                  })
+                                }
+                                className="bg-transparent text-[11px] font-medium text-zinc-200 focus:outline-none truncate cursor-pointer max-w-[100px]"
+                              >
+                                <option value="gpt-4o" className="bg-[#18181b]">GPT-4o</option>
+                                <option value="google/gemini-2.5-flash" className="bg-[#18181b]">Gemini 2.5</option>
+                                <option value="anthropic/claude-3.5-sonnet" className="bg-[#18181b]">Claude 3.5</option>
+                                <option value="deepseek/deepseek-chat" className="bg-[#18181b]">DeepSeek V3</option>
+                              </select>
+                            </div>
+
+                            <div className="flex items-center gap-1 text-[10.5px] text-zinc-400 shrink-0">
+                              <Sliders className="w-3 h-3 text-zinc-500" />
+                              <select
+                                value={node.config.reasoning || 'low'}
+                                onChange={e =>
+                                  handleUpdateNodeById(node.id, {
+                                    config: { ...node.config, reasoning: e.target.value as any }
+                                  })
+                                }
+                                className="bg-transparent text-[10.5px] text-zinc-300 focus:outline-none cursor-pointer"
+                              >
+                                <option value="low" className="bg-[#18181b]">Raciocínio Baixo</option>
+                                <option value="medium" className="bg-[#18181b]">Raciocínio Médio</option>
+                                <option value="high" className="bg-[#18181b]">Raciocínio Alto</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isExecuting || isExecutingThisNode}
+                          onClick={() => handleExecuteSingleNode(node)}
+                          className="w-full py-2 rounded-xl bg-purple-900/40 hover:bg-purple-900/60 text-purple-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-purple-800/40"
+                        >
+                          <span>{isExecutingThisNode ? 'Processando LLM...' : 'Executar etapa LLM'}</span>
+                          <Play className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* CARD 4: PROMPT (Entrada de texto ou nota do cofre) */}
+                    {node.kind === 'read_note' && (
+                      <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
+                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 space-y-2">
+                          <div className="flex items-center gap-2 border-b border-zinc-800 pb-1.5 text-[10.5px]">
+                            <button
+                              type="button"
+                              onClick={() => setActiveTabPrompt(prev => ({ ...prev, [node.id]: 'text' }))}
+                              className={`px-2 py-0.5 rounded cursor-pointer ${
+                                (activeTabPrompt[node.id] || 'text') === 'text' ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-500 hover:text-zinc-300'
+                              }`}
+                            >
+                              Texto Livre
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveTabPrompt(prev => ({ ...prev, [node.id]: 'note' }))}
+                              className={`px-2 py-0.5 rounded cursor-pointer ${
+                                activeTabPrompt[node.id] === 'note' ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-500 hover:text-zinc-300'
+                              }`}
+                            >
+                              Nota do Cofre
+                            </button>
+                          </div>
+
+                          {(activeTabPrompt[node.id] || 'text') === 'text' ? (
+                            <textarea
+                              value={node.config.promptTemplate || ''}
                               onChange={e =>
                                 handleUpdateNodeById(node.id, {
-                                  config: {
-                                    ...node.config,
-                                    conditionType: e.target.value as WorkflowNode['config']['conditionType']
-                                  }
+                                  config: { ...node.config, promptTemplate: e.target.value }
                                 })
                               }
-                              className="w-full bg-transparent text-xs text-zinc-200 focus:outline-none"
-                            >
-                              <option value="no_missing_fields" className="bg-[#18181b]">
-                                Sem lacunas pendentes
-                              </option>
-                              <option value="no_price_conflicts" className="bg-[#18181b]">
-                                Sem conflitos de preço
-                              </option>
-                              <option value="total_above_threshold" className="bg-[#18181b]">
-                                Valor acima do limite
-                              </option>
-                            </select>
-                          )}
-
-                          {node.kind === 'approval' && (
-                            <input
-                              type="text"
-                              value={node.config.approvalMessage || ''}
-                              onChange={e =>
-                                handleUpdateNodeById(node.id, {
-                                  config: { ...node.config, approvalMessage: e.target.value }
-                                })
-                              }
-                              placeholder="Mensagem de aprovação humana..."
-                              className="w-full bg-transparent text-xs text-zinc-200 focus:outline-none"
+                              placeholder="Digite as orientações iniciais para o fluxo..."
+                              className="w-full h-16 bg-transparent text-xs text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none leading-relaxed"
                             />
-                          )}
-
-                          {(node.kind === 'deliverable' || node.kind === 'finish') && (
-                            <div className="text-[11px] text-zinc-300">
-                              Destino: <span className="text-zinc-100 font-medium">{node.config.targetFolder || 'Propostas'}</span>
+                          ) : (
+                            <div className="py-1">
+                              <select
+                                value={node.config.noteId || ''}
+                                onChange={e => {
+                                  const nt = notes.find(n => n.id === e.target.value)
+                                  handleUpdateNodeById(node.id, {
+                                    config: {
+                                      ...node.config,
+                                      noteId: e.target.value,
+                                      noteTitle: nt?.title
+                                    }
+                                  })
+                                }}
+                                className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                              >
+                                <option value="">Selecione uma nota...</option>
+                                {notes.map(n => (
+                                  <option key={n.id} value={n.id} className="bg-[#18181b]">
+                                    {n.title}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                           )}
                         </div>
 
-                        {execState && (
-                          <div className="text-[10px] text-zinc-400 px-1 truncate">
-                            Status: {execState.status}
+                        <button
+                          type="button"
+                          disabled={isExecuting || isExecutingThisNode}
+                          onClick={() => handleExecuteSingleNode(node)}
+                          className="w-full py-2 rounded-xl bg-blue-900/40 hover:bg-blue-900/60 text-blue-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-blue-800/40"
+                        >
+                          <span>{isExecutingThisNode ? 'Testando...' : 'Testar prompt'}</span>
+                          <Play className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* CARD 5: CONDIÇÃO */}
+                    {node.kind === 'condition' && (
+                      <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
+                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-1.5">
+                          <label className="text-[10.5px] text-zinc-400 font-medium">Regra de Validação:</label>
+                          <select
+                            value={node.config.conditionType || 'no_missing_fields'}
+                            onChange={e =>
+                              handleUpdateNodeById(node.id, {
+                                config: {
+                                  ...node.config,
+                                  conditionType: e.target.value as any
+                                }
+                              })
+                            }
+                            className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
+                          >
+                            <option value="no_missing_fields" className="bg-[#18181b]">Sem lacunas pendentes</option>
+                            <option value="no_price_conflicts" className="bg-[#18181b]">Sem conflitos de preço</option>
+                            <option value="net_total_above" className="bg-[#18181b]">Valor acima do limite</option>
+                            <option value="always" className="bg-[#18181b]">Sempre Verdadeiro</option>
+                          </select>
+
+                          <div className="flex items-center justify-between pt-1 text-[10px] text-zinc-400">
+                            <span className="flex items-center gap-1 text-emerald-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                              Verdadeiro
+                            </span>
+                            <span className="flex items-center gap-1 text-rose-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block" />
+                              Falso
+                            </span>
                           </div>
-                        )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CARD 6: APROVAÇÃO HUMANA */}
+                    {node.kind === 'approval' && (
+                      <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
+                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-1.5">
+                          <label className="text-[10.5px] text-zinc-400 font-medium">Instrução de Aprovação:</label>
+                          <input
+                            type="text"
+                            value={node.config.approvalMessage || ''}
+                            onChange={e =>
+                              handleUpdateNodeById(node.id, {
+                                config: { ...node.config, approvalMessage: e.target.value }
+                              })
+                            }
+                            placeholder="Requer confirmação do usuário..."
+                            className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
+                          />
+                          <div className="text-[10px] text-amber-400/90 pt-0.5">
+                            Pausa o fluxo até aprovação expressa do usuário.
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CARD 7: SAÍDA / ENTREGA */}
+                    {(node.kind === 'deliverable' || node.kind === 'finish') && (
+                      <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
+                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-1.5">
+                          <label className="text-[10.5px] text-zinc-400 font-medium">Pasta de Destino no Cofre:</label>
+                          <select
+                            value={node.config.targetFolder || 'Propostas'}
+                            onChange={e =>
+                              handleUpdateNodeById(node.id, {
+                                config: { ...node.config, targetFolder: e.target.value }
+                              })
+                            }
+                            className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
+                          >
+                            {Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => (
+                              <option key={f} value={f} className="bg-[#18181b]">
+                                {f}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="text-[10px] text-blue-400/90 pt-0.5">
+                            Grava a entrega diretamente no cofre local.
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1015,9 +1305,12 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             })}
           </div>
 
-          {/* POPOVER CENTRAL "BUSCAR NÓS" (Idêntico ao Print 02!) */}
+          {/* ======================================================================== */}
+          {/* 3. POPOVER CENTRAL "BUSCAR NÓS" (Idêntico ao Print 02!)                  */}
+          {/* ======================================================================== */}
           {isAddMenuOpen && (
             <div
+              ref={addMenuRef}
               onPointerDown={e => e.stopPropagation()}
               className="absolute left-1/2 bottom-20 -translate-x-1/2 w-56 bg-[#141416]/98 backdrop-blur-xl border border-zinc-800/90 rounded-2xl shadow-2xl p-2 z-40 animate-in fade-in zoom-in-95 duration-100"
             >
@@ -1033,7 +1326,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 />
               </div>
 
-              <div className="space-y-2 max-h-72 overflow-y-auto py-1">
+              <div className="space-y-2 max-h-72 overflow-y-auto py-1 custom-chat-scrollbar">
                 {addMenuGroups.map(group => {
                   const filtered = group.items.filter(it =>
                     it.label.toLowerCase().includes(addMenuSearch.toLowerCase())
@@ -1065,7 +1358,9 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             </div>
           )}
 
-          {/* PÍLULA DE ZOOM NO CANTO INFERIOR ESQUERDO (Idêntica ao Print 02: - 100% + | [ ] [map]) */}
+          {/* ======================================================================== */}
+          {/* 4. PÍLULA DE ZOOM NO CANTO INFERIOR ESQUERDO (Idêntico ao Print 02!)     */}
+          {/* ======================================================================== */}
           <div
             onPointerDown={e => e.stopPropagation()}
             className="absolute bottom-4 left-4 flex items-center gap-1 bg-[#141416]/95 backdrop-blur-md border border-zinc-800/90 rounded-xl px-2 py-1.5 shadow-2xl z-30 text-xs text-zinc-300"
@@ -1104,13 +1399,15 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               className={`p-1 rounded hover:bg-zinc-800 cursor-pointer ${
                 inspectorOpen ? 'text-white bg-zinc-800' : 'text-zinc-400 hover:text-zinc-100'
               }`}
-              title="Abrir inspetor lateral"
+              title="Configurações do fluxo"
             >
-              <Map className="w-3.5 h-3.5" />
+              <Sliders className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {/* DOCK FLUTUANTE INFERIOR CENTRAL (Idêntico ao Print 02: Pointer, Hand, Sticky, Shape, Text, Search, "+ Adicionar nó") */}
+          {/* ======================================================================== */}
+          {/* 5. DOCK FLUTUANTE INFERIOR CENTRAL (Idêntico ao Print 02!)                */}
+          {/* ======================================================================== */}
           <div
             onPointerDown={e => e.stopPropagation()}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#141416]/95 backdrop-blur-xl border border-zinc-800/90 rounded-2xl p-1.5 shadow-2xl z-30"
@@ -1123,7 +1420,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                   ? 'bg-zinc-800 text-zinc-100'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
               }`}
-              title="Selecionar (Ponteiro)"
+              title="Selecionar / Mover nós (Ponteiro)"
             >
               <MousePointer className="w-4 h-4" />
             </button>
@@ -1135,7 +1432,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                   ? 'bg-zinc-800 text-zinc-100'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
               }`}
-              title="Mover canvas (Mão)"
+              title="Mover tela (Mão)"
             >
               <Hand className="w-4 h-4" />
             </button>
@@ -1146,23 +1443,23 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               type="button"
               onClick={() => handleAddNodeAt('read_note')}
               className="p-2 rounded-xl text-amber-400 hover:bg-zinc-800/60 transition-colors cursor-pointer"
-              title="Adicionar nota / contexto"
+              title="Adicionar nó Prompt / Nota"
             >
               <StickyNote className="w-4 h-4" />
             </button>
             <button
               type="button"
-              onClick={() => handleAddNodeAt('condition')}
+              onClick={() => handleAddNodeAt('run_agent')}
               className="p-2 rounded-xl text-zinc-300 hover:bg-zinc-800/60 transition-colors cursor-pointer"
-              title="Adicionar condição"
+              title="Adicionar nó Agente"
             >
               <Shapes className="w-4 h-4" />
             </button>
             <button
               type="button"
-              onClick={() => handleAddNodeAt('approval')}
+              onClick={() => handleAddNodeAt('llm')}
               className="p-2 rounded-xl text-zinc-300 hover:bg-zinc-800/60 transition-colors cursor-pointer"
-              title="Adicionar etapa de aprovação"
+              title="Adicionar nó LLM"
             >
               <Type className="w-4 h-4" />
             </button>
@@ -1192,9 +1489,11 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           </div>
         </div>
 
-        {/* INSPETOR LATERAL OPCIONAL (Fechado por padrão, abre só ao clicar em ••• ou no botão de mapa) */}
+        {/* ======================================================================== */}
+        {/* 6. INSPETOR LATERAL COMPLETO                                             */}
+        {/* ======================================================================== */}
         {inspectorOpen && (
-          <aside className="w-80 bg-[#111113] border-l border-zinc-800/80 p-4 overflow-y-auto space-y-4 shrink-0 z-30">
+          <aside className="w-80 bg-[#111113] border-l border-zinc-800/80 p-4 overflow-y-auto space-y-4 shrink-0 z-30 custom-chat-scrollbar">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
               <span className="text-xs font-semibold text-zinc-200">Configurações do Fluxo</span>
               <button
@@ -1207,7 +1506,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             </div>
 
             <div className="space-y-2">
-              <label className="block text-[11px] text-zinc-400">Nome do fluxo</label>
+              <label className="block text-[11px] text-zinc-400 font-medium">Nome do fluxo</label>
               <input
                 type="text"
                 value={activeWorkflow.name}
@@ -1218,23 +1517,36 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               />
             </div>
 
+            <div className="space-y-2">
+              <label className="block text-[11px] text-zinc-400 font-medium">Descrição</label>
+              <textarea
+                value={activeWorkflow.description || ''}
+                onChange={e =>
+                  onSaveWorkflow({ ...activeWorkflow, description: e.target.value, updatedAt: Date.now() })
+                }
+                rows={3}
+                className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none resize-none leading-relaxed"
+                placeholder="Objetivo deste fluxo de trabalho..."
+              />
+            </div>
+
             {selectedNode && (
               <div className="space-y-3 pt-3 border-t border-zinc-800">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-zinc-200">
-                    Nó: {selectedNode.label}
+                    Nó Selecionado: {selectedNode.label}
                   </span>
                   <button
                     type="button"
                     onClick={() => handleRemoveNode(selectedNode.id)}
                     className="text-[11px] text-rose-400 hover:underline cursor-pointer"
                   >
-                    Excluir
+                    Excluir nó
                   </button>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-zinc-400 mb-1">Rótulo</label>
+                  <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Rótulo no canvas</label>
                   <input
                     type="text"
                     value={selectedNode.label}
@@ -1245,7 +1557,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
                 {selectedNode.kind === 'deliverable' && (
                   <div>
-                    <label className="block text-[11px] text-zinc-400 mb-1">Pasta de Destino</label>
+                    <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Pasta de Destino</label>
                     <select
                       value={selectedNode.config.targetFolder || 'Propostas'}
                       onChange={e =>
@@ -1255,7 +1567,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       }
                       className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-100"
                     >
-                      {Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', ...folders])).map(f => (
+                      {Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => (
                         <option key={f} value={f} className="bg-[#18181b]">
                           {f}
                         </option>
@@ -1272,7 +1584,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 <button
                   type="button"
                   onClick={() => handleRemoveEdge(selectedEdgeId)}
-                  className="px-2.5 py-1 rounded-lg bg-rose-950/40 text-rose-300 text-xs cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-rose-950/40 text-rose-300 text-xs cursor-pointer hover:bg-rose-900/60"
                 >
                   Remover fio
                 </button>

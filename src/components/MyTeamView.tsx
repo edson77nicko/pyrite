@@ -78,6 +78,24 @@ import {
   ExternalLink
 } from 'lucide-react'
 
+export const WorkflowNodesIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <circle cx="5" cy="12" r="2.8" />
+    <circle cx="19" cy="5.5" r="2.8" />
+    <circle cx="19" cy="18.5" r="2.8" />
+    <path d="M7.8 10.6l8.4-4" />
+    <path d="M7.8 13.4l8.4 4" />
+  </svg>
+)
+
 interface MyTeamViewProps {
   store: MultiAgentStoreState
   onUpdateStore: (next: MultiAgentStoreState) => Promise<{ success: boolean; error?: string }>
@@ -1069,7 +1087,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         {[
           { id: 'agents' as PrimarySection, icon: Bot, title: 'Agentes' },
           { id: 'teams' as PrimarySection, icon: Workflow, title: 'Equipes' },
-          { id: 'workflows' as PrimarySection, icon: GitBranch, title: 'Fluxo de trabalho' },
+          { id: 'workflows' as PrimarySection, icon: WorkflowNodesIcon, title: 'Fluxo de trabalho' },
           { id: 'tasks' as PrimarySection, icon: ListTodo, title: 'Tarefas' },
           { id: 'routines' as PrimarySection, icon: CalendarClock, title: 'Rotinas' },
           { id: 'activity' as PrimarySection, icon: Activity, title: 'Atividade' }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, Component, type ErrorInfo, type ReactNode } from 'react'
-import type { TaskSettings, TaskPropertyConfig, TaskPropertyType, TaskStatusGroup } from '../types/tasks'
+import type { TaskSettings, TaskPropertyConfig, TaskPropertyType, TaskStatusGroup, TaskBoard } from '../types/tasks'
 import { DEFAULT_TASK_SETTINGS } from '../utils/taskStorage'
 import {
   getPropertyItems,
@@ -52,6 +52,8 @@ interface TaskSettingsModalProps {
   onClose: () => void
   settings: TaskSettings
   onUpdateSettings: (newSettings: TaskSettings) => void
+  activeBoardId?: string
+  activeBoard?: TaskBoard
 }
 
 class ModalErrorBoundary extends Component<{ children: ReactNode; onClose: () => void }, { hasError: boolean }> {
@@ -228,7 +230,8 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
   isOpen,
   onClose,
   settings,
-  onUpdateSettings
+  onUpdateSettings,
+  activeBoard
 }) => {
   const [view, setView] = useState<View>({ name: 'list' })
 
@@ -510,6 +513,33 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
               </button>
             </div>
             <div className="px-2 pb-2 overflow-y-auto custom-chat-scrollbar flex-1">
+              {/* Propriedade Principal: Título / Nome da Coluna */}
+              <div className="flex items-center gap-2 pl-2 pr-2 py-2 rounded-lg bg-zinc-900/60 border border-zinc-800/80 mb-2">
+                <Type className="w-4 h-4 shrink-0 text-[var(--accent,#c59b27)]" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
+                    Coluna Principal ({activeBoard?.category === 'item' ? 'Item' : 'Projeto'})
+                  </div>
+                  <input
+                    type="text"
+                    value={activeBoard?.titleColumnName || settings.titleColumnName || (activeBoard?.category === 'item' ? 'Nome' : 'Tarefa')}
+                    onChange={e => {
+                      const newTitle = e.target.value
+                      if (activeBoard) {
+                        const updatedBoards = (settings.boards || []).map(b =>
+                          b.id === activeBoard.id ? { ...b, titleColumnName: newTitle } : b
+                        )
+                        save({ ...settings, boards: updatedBoards })
+                      } else {
+                        save({ ...settings, titleColumnName: newTitle })
+                      }
+                    }}
+                    placeholder={activeBoard?.category === 'item' ? 'Nome' : 'Tarefa'}
+                    className="w-full bg-transparent text-xs text-zinc-100 outline-none border-b border-transparent focus:border-[var(--accent,#c59b27)] py-0.5 font-medium placeholder-zinc-500"
+                  />
+                </div>
+              </div>
+
               {properties.map(prop => {
                 const Icon = propIcon(prop)
                 return (

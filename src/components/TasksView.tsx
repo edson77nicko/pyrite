@@ -33,7 +33,8 @@ import {
   ChevronRight,
   Check,
   CheckSquare,
-  CornerDownRight
+  CornerDownRight,
+  Pencil
 } from 'lucide-react'
 
 interface TasksViewProps {
@@ -97,6 +98,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [isGroupingMenuOpen, setIsGroupingMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+
+  // Nome customizável da primeira coluna (ex: "Nome", "Tarefa", "Cliente", etc.)
+  const [isEditingTitleCol, setIsEditingTitleCol] = useState(false)
+  const [titleColDraft, setTitleColDraft] = useState('')
 
   // Subtasks expanded state in list view
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set())
@@ -317,6 +322,23 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const currentBoard = useMemo(() => {
     return taskBoards.find(b => b.id === currentBoardId)
   }, [taskBoards, currentBoardId])
+
+  const defaultColName = currentBoard?.category === 'item' ? 'Nome' : 'Tarefa'
+  const currentTitleColName = currentBoard?.titleColumnName || settings.titleColumnName || defaultColName
+
+  const handleSaveTitleCol = () => {
+    const nextName = titleColDraft.trim() || defaultColName
+    setIsEditingTitleCol(false)
+    if (currentBoard) {
+      const allBoards = settings.boards && settings.boards.length > 0 ? settings.boards : taskBoards
+      const updatedBoards = allBoards.map(b =>
+        b.id === currentBoard.id ? { ...b, titleColumnName: nextName } : b
+      )
+      onUpdateSettings({ ...settings, boards: updatedBoards })
+    } else {
+      onUpdateSettings({ ...settings, titleColumnName: nextName })
+    }
+  }
 
   // Column visibility check (Olhinho feature)
   const isColumnHidden = (propId: string) => {
@@ -695,13 +717,38 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   <CheckSquare className="w-3.5 h-3.5 mx-auto text-zinc-500 opacity-70" />
                 </th>
 
-                {/* Task Title */}
+                {/* Task Title / Item Name */}
                 <th
                   style={{ width: columnWidths.col_title || 320 }}
-                  className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#18181b] select-none text-zinc-300"
+                  className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#18181b] select-none text-zinc-300 group"
                 >
                   <div className="flex items-center justify-between gap-1">
-                    <span>Tarefa</span>
+                    {isEditingTitleCol ? (
+                      <input
+                        type="text"
+                        autoFocus
+                        value={titleColDraft}
+                        onChange={e => setTitleColDraft(e.target.value)}
+                        onBlur={handleSaveTitleCol}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleSaveTitleCol()
+                          if (e.key === 'Escape') setIsEditingTitleCol(false)
+                        }}
+                        className="bg-[#121215] border border-zinc-700 rounded px-1.5 py-0.5 text-xs text-zinc-100 outline-none w-full"
+                      />
+                    ) : (
+                      <div
+                        onClick={() => {
+                          setTitleColDraft(currentTitleColName)
+                          setIsEditingTitleCol(true)
+                        }}
+                        className="flex items-center gap-1.5 cursor-pointer hover:text-white"
+                        title="Clique para renomear esta coluna"
+                      >
+                        <span className="font-medium">{currentTitleColName}</span>
+                        <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-70 text-zinc-400 hover:text-zinc-200 transition-opacity" />
+                      </div>
+                    )}
                   </div>
                   {/* Resizer */}
                   <div
@@ -1700,6 +1747,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onUpdateSettings={onUpdateSettings}
+        activeBoardId={activeBoardId}
+        activeBoard={currentBoard}
       />
       </div>
 

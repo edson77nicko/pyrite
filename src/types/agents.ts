@@ -320,12 +320,13 @@ export interface TeamDefinition {
 // ==========================================
 
 export type WorkflowNodeKind =
-  | 'input'        // Entrada / Pedido
-  | 'read_note'    // Consultar Nota ou Pasta
+  | 'input'        // Entrada / Gatilho
+  | 'read_note'    // Prompt / Consultar Nota
   | 'run_agent'    // Executar Agente
+  | 'llm'          // Chamada Direta LLM
   | 'condition'    // Verificar Condição
   | 'approval'     // Solicitar Aprovação
-  | 'deliverable'  // Criar ou Atualizar Entrega
+  | 'deliverable'  // Saída / Criar Entrega
   | 'finish'       // Finalizar
 
 export interface WorkflowNode {
@@ -340,6 +341,14 @@ export interface WorkflowNode {
     contextRole?: ContextRole
     agentId?: string
     teamId?: string
+    model?: string
+    temperature?: number
+    reasoning?: 'low' | 'medium' | 'high'
+    promptTemplate?: string
+    triggerType?: 'schedule' | 'manual' | 'task_event' | 'note_event'
+    scheduleFrequency?: 'daily' | 'weekly' | 'weekdays' | 'monthly'
+    scheduleTime?: string
+    scheduleDays?: string[]
     conditionType?: 'no_missing_fields' | 'no_price_conflicts' | 'net_total_above' | 'always'
     conditionThreshold?: number
     targetFolder?: string

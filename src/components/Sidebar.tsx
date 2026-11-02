@@ -15,6 +15,7 @@ import {
   Calendar,
   Star,
   ChevronDown,
+  ChevronRight,
   ChevronsDownUp,
   Palette,
   CheckCircle2,
@@ -420,6 +421,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [editingBoardName, setEditingBoardName] = useState('')
   const [boardMenuId, setBoardMenuId] = useState<string | null>(null)
   const [boardToDelete, setBoardToDelete] = useState<TaskBoard | null>(null)
+
+  // Estados para recolher/expandir seções de Itens e Projetos
+  const [isItemsCollapsed, setIsItemsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('pyrite_sidebar_items_collapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
+  const [isProjectsCollapsed, setIsProjectsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('pyrite_sidebar_projects_collapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  const toggleItemsCollapse = () => {
+    setIsItemsCollapsed(prev => {
+      const next = !prev
+      try {
+        localStorage.setItem('pyrite_sidebar_items_collapsed', String(next))
+      } catch {}
+      return next
+    })
+  }
+
+  const toggleProjectsCollapse = () => {
+    setIsProjectsCollapsed(prev => {
+      const next = !prev
+      try {
+        localStorage.setItem('pyrite_sidebar_projects_collapsed', String(next))
+      } catch {}
+      return next
+    })
+  }
 
   const effectiveBoards: TaskBoard[] = taskBoards.length > 0
     ? taskBoards
@@ -1133,222 +1170,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* 4. Hierarchical File Tree & Favorites - High Density & Horizontal Flexibility */}
       <div className="flex-1 overflow-y-auto overflow-x-auto px-1.5 py-1 space-y-2 custom-chat-scrollbar min-w-0">
         
-        {/* PARTE 1: PROJETOS */}
+        {/* PARTE 1: ITENS (Clientes, Conteúdo, etc.) */}
         <div className="space-y-1 pt-1 pb-1">
           <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            <span>Projetos</span>
-            {onCreateTaskBoard && (
-              <button
-                type="button"
-                onClick={() => {
-                  setCreatingBoardCategory('project')
-                  setNewBoardIcon('CheckCircle2')
-                  setIsCreatingBoard(true)
-                }}
-                className="p-0.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
-                title="Novo Projeto"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Form to create new board in Projetos */}
-          {isCreatingBoard && creatingBoardCategory === 'project' && (
-            <div className="p-2.5 bg-[#16161a] border border-zinc-700/60 rounded-xl space-y-2 mb-1.5 animate-in fade-in duration-100">
-              <input
-                type="text"
-                autoFocus
-                value={newBoardName}
-                onChange={e => setNewBoardName(e.target.value)}
-                placeholder="Nome do projeto..."
-                className="w-full bg-[#121215] border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none"
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    if (newBoardName.trim()) {
-                      onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'project')
-                      setNewBoardName('')
-                      setIsCreatingBoard(false)
-                    }
-                  }
-                  if (e.key === 'Escape') setIsCreatingBoard(false)
-                }}
-              />
-              <div className="flex items-center gap-1 flex-wrap">
-                <span className="text-[10px] text-zinc-400 font-mono">Ícone:</span>
-                {BOARD_ICON_OPTIONS.map(ico => (
-                  <button
-                    type="button"
-                    key={ico}
-                    onClick={() => setNewBoardIcon(ico)}
-                    className={`p-1 rounded border transition-all cursor-pointer ${newBoardIcon === ico ? 'bg-zinc-700 border-zinc-500 text-white' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
-                  >
-                    {renderBoardIcon(ico, "w-3 h-3")}
-                  </button>
-                ))}
-              </div>
-              <div className="flex justify-end gap-1.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingBoard(false)}
-                  className="px-2 py-0.5 rounded text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (newBoardName.trim()) {
-                      onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'project')
-                      setNewBoardName('')
-                      setIsCreatingBoard(false)
-                    }
-                  }}
-                  className="px-2.5 py-0.5 rounded text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium cursor-pointer"
-                >
-                  Criar
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* List project boards */}
-          {projectBoards.map((b) => {
-            const isBoardActive = currentView === 'tasks' && activeBoardId === b.id
-            const boardPendingCount = tasks.filter(t => (t.boardId || 'default') === b.id && !t.completed).length
-            const isEditing = editingBoardId === b.id
-
-            return (
-              <div key={b.id} className="group relative">
-                {isEditing ? (
-                  <div className="flex items-center gap-1.5 px-2 py-1 bg-[#16161a] border border-zinc-700/60 rounded-lg">
-                    <input
-                      type="text"
-                      autoFocus
-                      value={editingBoardName}
-                      onChange={e => setEditingBoardName(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          if (editingBoardName.trim()) {
-                            onRenameTaskBoard?.(b.id, editingBoardName.trim())
-                            setEditingBoardId(null)
-                          }
-                        }
-                        if (e.key === 'Escape') setEditingBoardId(null)
-                      }}
-                      className="flex-1 bg-transparent text-xs text-zinc-100 outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (editingBoardName.trim()) {
-                          onRenameTaskBoard?.(b.id, editingBoardName.trim())
-                          setEditingBoardId(null)
-                        }
-                      }}
-                      className="text-[10px] bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded hover:bg-zinc-700 cursor-pointer"
-                    >
-                      OK
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    onClick={() => {
-                      onSelectTaskBoard ? onSelectTaskBoard(b.id) : onOpenTasks?.()
-                    }}
-                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors border ${
-                      isBoardActive
-                        ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
-                        : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'
-                    }`}
-                    style={isBoardActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
-                  >
-                    <div className="flex items-center gap-2 truncate min-w-0">
-                      {renderBoardIcon(b.icon, "w-4 h-4 shrink-0")}
-                      <span className="truncate font-medium">{b.name}</span>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      {boardPendingCount > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[9.5px] font-mono bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
-                          {boardPendingCount}
-                        </span>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={e => {
-                          e.stopPropagation()
-                          setBoardMenuId(boardMenuId === b.id ? null : b.id)
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-opacity cursor-pointer"
-                        title="Opções do projeto"
-                      >
-                        <MoreVertical className="w-3 h-3" />
-                      </button>
-                    </div>
-
-                    {boardMenuId === b.id && (
-                      <div
-                        onClick={e => e.stopPropagation()}
-                        className="absolute right-0 top-full mt-1 z-30 w-36 bg-[#16161a] border border-zinc-700/80 rounded-xl shadow-xl p-1 text-xs space-y-0.5 animate-in fade-in duration-75"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingBoardId(b.id)
-                            setEditingBoardName(b.name)
-                            setBoardMenuId(null)
-                          }}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white text-left cursor-pointer"
-                        >
-                          <Pencil className="w-3 h-3 text-zinc-400" />
-                          <span>Renomear</span>
-                        </button>
-
-                        <div className="px-2 py-1 text-[10px] text-zinc-500 font-mono">Ícone:</div>
-                        <div className="grid grid-cols-4 gap-1 p-1">
-                          {BOARD_ICON_OPTIONS.map(ico => (
-                            <button
-                              type="button"
-                              key={ico}
-                              onClick={() => {
-                                onChangeTaskBoardIcon?.(b.id, ico)
-                                setBoardMenuId(null)
-                              }}
-                              className={`p-1 rounded flex items-center justify-center hover:bg-zinc-800 cursor-pointer ${b.icon === ico ? 'bg-zinc-800 text-white' : 'text-zinc-400'}`}
-                            >
-                              {renderBoardIcon(ico, "w-3 h-3")}
-                            </button>
-                          ))}
-                        </div>
-
-                        {b.id !== 'default' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setBoardToDelete(b)
-                              setBoardMenuId(null)
-                            }}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 text-left cursor-pointer"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>Excluir</span>
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* PARTE 2: ITENS (Clientes, Produtos, etc.) */}
-        <div className="space-y-1 pt-1 pb-1">
-          <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            <span>Itens</span>
+            <button
+              type="button"
+              onClick={toggleItemsCollapse}
+              className="flex items-center gap-1.5 hover:text-zinc-300 transition-colors cursor-pointer select-none"
+              title={isItemsCollapsed ? "Expandir Itens" : "Recolher Itens"}
+            >
+              <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${!isItemsCollapsed ? 'rotate-90' : ''}`} />
+              <span>Itens</span>
+              {itemBoards.length > 0 && <span className="text-[9px] font-normal opacity-70">({itemBoards.length})</span>}
+            </button>
             {onCreateTaskBoard && (
               <button
                 type="button"
@@ -1356,6 +1190,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   setCreatingBoardCategory('item')
                   setNewBoardIcon('Folder')
                   setIsCreatingBoard(true)
+                  if (isItemsCollapsed) setIsItemsCollapsed(false)
                 }}
                 className="p-0.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
                 title="Novo Grupo de Itens (ex: Clientes, Produtos)"
@@ -1364,6 +1199,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             )}
           </div>
+
+          {!isItemsCollapsed && (
+            <>
 
           {/* Form to create new board in Itens */}
           {isCreatingBoard && creatingBoardCategory === 'item' && (
@@ -1567,6 +1405,235 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               )
             })
+          )}
+            </>
+          )}
+        </div>
+
+        {/* PARTE 2: PROJETOS */}
+        <div className="space-y-1 pt-1 pb-1">
+          <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            <button
+              type="button"
+              onClick={toggleProjectsCollapse}
+              className="flex items-center gap-1.5 hover:text-zinc-300 transition-colors cursor-pointer select-none"
+              title={isProjectsCollapsed ? "Expandir Projetos" : "Recolher Projetos"}
+            >
+              <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${!isProjectsCollapsed ? 'rotate-90' : ''}`} />
+              <span>Projetos</span>
+              {projectBoards.length > 0 && <span className="text-[9px] font-normal opacity-70">({projectBoards.length})</span>}
+            </button>
+            {onCreateTaskBoard && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatingBoardCategory('project')
+                  setNewBoardIcon('CheckCircle2')
+                  setIsCreatingBoard(true)
+                  if (isProjectsCollapsed) setIsProjectsCollapsed(false)
+                }}
+                className="p-0.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+                title="Novo Projeto"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {!isProjectsCollapsed && (
+            <>
+
+          {/* Form to create new board in Projetos */}
+          {isCreatingBoard && creatingBoardCategory === 'project' && (
+            <div className="p-2.5 bg-[#16161a] border border-zinc-700/60 rounded-xl space-y-2 mb-1.5 animate-in fade-in duration-100">
+              <input
+                type="text"
+                autoFocus
+                value={newBoardName}
+                onChange={e => setNewBoardName(e.target.value)}
+                placeholder="Nome do projeto..."
+                className="w-full bg-[#121215] border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    if (newBoardName.trim()) {
+                      onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'project')
+                      setNewBoardName('')
+                      setIsCreatingBoard(false)
+                    }
+                  }
+                  if (e.key === 'Escape') setIsCreatingBoard(false)
+                }}
+              />
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-[10px] text-zinc-400 font-mono">Ícone:</span>
+                {BOARD_ICON_OPTIONS.map(ico => (
+                  <button
+                    type="button"
+                    key={ico}
+                    onClick={() => setNewBoardIcon(ico)}
+                    className={`p-1 rounded border transition-all cursor-pointer ${newBoardIcon === ico ? 'bg-zinc-700 border-zinc-500 text-white' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
+                  >
+                    {renderBoardIcon(ico, "w-3 h-3")}
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-end gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingBoard(false)}
+                  className="px-2 py-0.5 rounded text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (newBoardName.trim()) {
+                      onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'project')
+                      setNewBoardName('')
+                      setIsCreatingBoard(false)
+                    }
+                  }}
+                  className="px-2.5 py-0.5 rounded text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium cursor-pointer"
+                >
+                  Criar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* List project boards */}
+          {projectBoards.map((b) => {
+            const isBoardActive = currentView === 'tasks' && activeBoardId === b.id
+            const boardPendingCount = tasks.filter(t => (t.boardId || 'default') === b.id && !t.completed).length
+            const isEditing = editingBoardId === b.id
+
+            return (
+              <div key={b.id} className="group relative">
+                {isEditing ? (
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-[#16161a] border border-zinc-700/60 rounded-lg">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={editingBoardName}
+                      onChange={e => setEditingBoardName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          if (editingBoardName.trim()) {
+                            onRenameTaskBoard?.(b.id, editingBoardName.trim())
+                            setEditingBoardId(null)
+                          }
+                        }
+                        if (e.key === 'Escape') setEditingBoardId(null)
+                      }}
+                      className="flex-1 bg-transparent text-xs text-zinc-100 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editingBoardName.trim()) {
+                          onRenameTaskBoard?.(b.id, editingBoardName.trim())
+                          setEditingBoardId(null)
+                        }
+                      }}
+                      className="text-[10px] bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded hover:bg-zinc-700 cursor-pointer"
+                    >
+                      OK
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => {
+                      onSelectTaskBoard ? onSelectTaskBoard(b.id) : onOpenTasks?.()
+                    }}
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors border ${
+                      isBoardActive
+                        ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
+                        : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'
+                    }`}
+                    style={isBoardActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
+                  >
+                    <div className="flex items-center gap-2 truncate min-w-0">
+                      {renderBoardIcon(b.icon, "w-4 h-4 shrink-0")}
+                      <span className="truncate font-medium">{b.name}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {boardPendingCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9.5px] font-mono bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
+                          {boardPendingCount}
+                        </span>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation()
+                          setBoardMenuId(boardMenuId === b.id ? null : b.id)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-opacity cursor-pointer"
+                        title="Opções do projeto"
+                      >
+                        <MoreVertical className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {boardMenuId === b.id && (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        className="absolute right-0 top-full mt-1 z-30 w-36 bg-[#16161a] border border-zinc-700/80 rounded-xl shadow-xl p-1 text-xs space-y-0.5 animate-in fade-in duration-75"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingBoardId(b.id)
+                            setEditingBoardName(b.name)
+                            setBoardMenuId(null)
+                          }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white text-left cursor-pointer"
+                        >
+                          <Pencil className="w-3 h-3 text-zinc-400" />
+                          <span>Renomear</span>
+                        </button>
+
+                        <div className="px-2 py-1 text-[10px] text-zinc-500 font-mono">Ícone:</div>
+                        <div className="grid grid-cols-4 gap-1 p-1">
+                          {BOARD_ICON_OPTIONS.map(ico => (
+                            <button
+                              type="button"
+                              key={ico}
+                              onClick={() => {
+                                onChangeTaskBoardIcon?.(b.id, ico)
+                                setBoardMenuId(null)
+                              }}
+                              className={`p-1 rounded flex items-center justify-center hover:bg-zinc-800 cursor-pointer ${b.icon === ico ? 'bg-zinc-800 text-white' : 'text-zinc-400'}`}
+                            >
+                              {renderBoardIcon(ico, "w-3 h-3")}
+                            </button>
+                          ))}
+                        </div>
+
+                        {b.id !== 'default' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBoardToDelete(b)
+                              setBoardMenuId(null)
+                            }}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 text-left cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Excluir</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+            </>
           )}
         </div>
 

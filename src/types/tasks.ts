@@ -13,6 +13,7 @@ export interface TaskBoard {
   icon?: string
   createdAt: number
   category?: 'project' | 'item'
+  titleColumnName?: string
 }
 
 export type TaskStatusGroup = 'todo' | 'in_progress' | 'done'
@@ -81,4 +82,5 @@ export interface TaskSettings {
   properties: TaskPropertyConfig[]
   boards?: TaskBoard[]
   statusIndicatorStyle?: StatusIndicatorStyle
+  titleColumnName?: string
 }
