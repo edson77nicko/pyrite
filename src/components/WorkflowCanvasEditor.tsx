@@ -1526,21 +1526,21 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
                         <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-1.5">
                           <label className="text-[10.5px] text-zinc-400 font-medium">Pasta de Destino no Cofre:</label>
-                          <select
+                          <CustomSelect
                             value={node.config.targetFolder || 'Propostas'}
-                            onChange={e =>
+                            onChange={folder =>
                               handleUpdateNodeById(node.id, {
-                                config: { ...node.config, targetFolder: e.target.value }
+                                config: { ...node.config, targetFolder: folder }
                               })
                             }
-                            className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
-                          >
-                            {Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => (
-                              <option key={f} value={f} className="bg-[#18181b]">
-                                {f}
-                              </option>
-                            ))}
-                          </select>
+                            options={Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => ({
+                              value: f,
+                              label: f,
+                              icon: <Folder className="w-3 h-3 text-zinc-400" />
+                            }))}
+                            size="sm"
+                            className="w-full"
+                          />
                           <div className="text-[10px] text-blue-400/90 pt-0.5">
                             Grava a entrega diretamente no cofre local.
                           </div>
@@ -1818,21 +1818,21 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 {selectedNode.kind === 'deliverable' && (
                   <div>
                     <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Pasta de Destino</label>
-                    <select
+                    <CustomSelect
                       value={selectedNode.config.targetFolder || 'Propostas'}
-                      onChange={e =>
+                      onChange={folder =>
                         handleUpdateSelectedNode({
-                          config: { ...selectedNode.config, targetFolder: e.target.value }
+                          config: { ...selectedNode.config, targetFolder: folder }
                         })
                       }
-                      className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-100"
-                    >
-                      {Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => (
-                        <option key={f} value={f} className="bg-[#18181b]">
-                          {f}
-                        </option>
-                      ))}
-                    </select>
+                      options={Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => ({
+                        value: f,
+                        label: f,
+                        icon: <Folder className="w-3 h-3 text-zinc-400" />
+                      }))}
+                      size="sm"
+                      className="w-full"
+                    />
                   </div>
                 )}
               </div>
