@@ -80,6 +80,7 @@ import {
   Folder,
   FolderOpen,
   Tag,
+  Users,
   Maximize2,
   ExternalLink
 } from 'lucide-react'
@@ -135,6 +136,19 @@ interface MyTeamViewProps {
   onLoadDemoSeedNotes?: () => void
 }
 
+export interface UnifiedContextItem {
+  id: string
+  source: 'store_project' | 'task' | 'board'
+  groupName: string               // Nome do grupo ou projeto contêiner (ex: "Clientes", "Marketing", "Blog")
+  displayName: string             // Nome específico (ex: "Blowmind", "Artigo 1", "Lançamento Q4")
+  category: 'project' | 'item'    // Categoria
+  description?: string
+  briefingNoteIds: string[]
+  boardId?: string
+  taskId?: string
+  rawProject?: ProjectContext
+}
+
 type PrimarySection = 'agents' | 'teams' | 'workflows' | 'tasks' | 'routines' | 'activity'
 
 const ACTION_PERMISSION_LABELS: Record<AgentActionPermission, string> = {
@@ -165,7 +179,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   onCreateCommittedNote,
   onCreateTask,
   taskBoards = [],
-  tasks: _tasks = [],
+  tasks = [],
   preselectedNoteForBinding,
   onClearPreselectedNote,
   onLoadDemoSeedNotes
@@ -384,51 +398,140 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     )
   }
 
-  const projectItems = useMemo(() => {
-    return store.projects.filter(p => !isItemProject(p))
-  }, [store.projects])
+  // Unificação inteligente de contextos integrando TaskBoards, Tasks e Store Projects
+  const allUnifiedItems = useMemo<UnifiedContextItem[]>(() => {
+    const list: UnifiedContextItem[] = []
+    const seenIds = new Set<string>()
 
-  const contentItems = useMemo(() => {
-    return store.projects.filter(p => isItemProject(p))
-  }, [store.projects])
+    // 1. TaskBoards e suas tarefas (Kanban / Sidebar)
+    taskBoards.forEach(board => {
+      const isItem = board.category === 'item'
+      const boardTasks = tasks.filter(t => (t.boardId || 'default') === board.id)
+
+      boardTasks.forEach(task => {
+        const id = `task:${task.id}`
+        if (!seenIds.has(id)) {
+          seenIds.add(id)
+          list.push({
+            id,
+            source: 'task',
+            groupName: board.name,
+            displayName: task.title,
+            category: isItem ? 'item' : 'project',
+            description: task.description || '',
+            briefingNoteIds: task.contextNoteId ? [task.contextNoteId] : [],
+            boardId: board.id,
+            taskId: task.id
+          })
+        }
+      })
+
+      // Também inclui o Board como contêiner/grupo selecionável
+      const boardId = `board:${board.id}`
+      if (!seenIds.has(boardId)) {
+        seenIds.add(boardId)
+        list.push({
+          id: boardId,
+          source: 'board',
+          groupName: board.name,
+          displayName: board.name,
+          category: isItem ? 'item' : 'project',
+          description: isItem ? `Grupo de itens: ${board.name}` : `Projeto contêiner: ${board.name}`,
+          briefingNoteIds: [],
+          boardId: board.id
+        })
+      }
+    })
+
+    // 2. Projetos explícitos do store (ProjectContext)
+    store.projects.forEach(p => {
+      const isItem = isItemProject(p)
+      if (!seenIds.has(p.id)) {
+        seenIds.add(p.id)
+        list.push({
+          id: p.id,
+          source: 'store_project',
+          groupName: p.name || (isItem ? 'Clientes' : 'Geral'),
+          displayName: p.itemName || p.clientName || p.name,
+          category: isItem ? 'item' : 'project',
+          description: p.description || '',
+          briefingNoteIds: p.briefingNoteIds || [],
+          rawProject: p
+        })
+      }
+    })
+
+    return list
+  }, [taskBoards, tasks, store.projects])
+
+  // Itens unificados filtrados por categoria
+  const unifiedItemItems = useMemo(() => {
+    return allUnifiedItems.filter(item => item.category === 'item')
+  }, [allUnifiedItems])
+
+  const unifiedProjectItems = useMemo(() => {
+    return allUnifiedItems.filter(item => item.category === 'project')
+  }, [allUnifiedItems])
+
+  // Agrupamento dos itens por grupo/board
+  const groupedContentItems = useMemo(() => {
+    const map: Record<string, UnifiedContextItem[]> = {}
+    unifiedItemItems.forEach(item => {
+      const g = item.groupName.trim() || 'Clientes'
+      if (!map[g]) map[g] = []
+      map[g].push(item)
+    })
+    return map
+  }, [unifiedItemItems])
 
   const groupedProjectItems = useMemo(() => {
-    const map: Record<string, ProjectContext[]> = {}
-    projectItems.forEach(p => {
-      const g = p.name?.trim() || 'Geral'
+    const map: Record<string, UnifiedContextItem[]> = {}
+    unifiedProjectItems.forEach(item => {
+      const g = item.groupName.trim() || 'Geral'
       if (!map[g]) map[g] = []
-      map[g].push(p)
+      map[g].push(item)
     })
     return map
-  }, [projectItems])
+  }, [unifiedProjectItems])
 
-  const groupedContentItems = useMemo(() => {
-    const map: Record<string, ProjectContext[]> = {}
-    contentItems.forEach(p => {
-      const g = p.name?.trim() || 'Clientes'
-      if (!map[g]) map[g] = []
-      map[g].push(p)
+  // Conversão para ProjectContext para retrocompatibilidade
+  const allUnifiedAsProjects = useMemo<ProjectContext[]>(() => {
+    return allUnifiedItems.map(item => {
+      if (item.rawProject) return item.rawProject
+      return {
+        id: item.id,
+        name: item.groupName,
+        itemName: item.displayName,
+        clientName: item.displayName,
+        category: item.category,
+        description: item.description,
+        briefingNoteIds: item.briefingNoteIds,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }
     })
-    return map
-  }, [contentItems])
+  }, [allUnifiedItems])
+
+  const resolveActiveContext = (id: string | null | undefined): UnifiedContextItem | undefined => {
+    if (!id) return undefined
+    return allUnifiedItems.find(item => item.id === id)
+  }
 
   // Grupos disponíveis para o combobox customizado do modal
   const availableGroupsForCategory = useMemo(() => {
-    const query = projName.toLowerCase().trim()
+    const set = new Set<string>()
     if (projCategory === 'item') {
-      const set = new Set<string>()
       taskBoards.filter(b => b.category === 'item').forEach(b => set.add(b.name))
-      contentItems.forEach(p => set.add(p.name))
+      Object.keys(groupedContentItems).forEach(g => set.add(g))
       ;['Clientes', 'Produtos & Recursos', 'Blog & Conteúdo', 'Marketing', 'Campanhas', 'Pesquisa'].forEach(d => set.add(d))
-      return Array.from(set).filter(name => !query || name.toLowerCase().includes(query))
     } else {
-      const set = new Set<string>()
       taskBoards.filter(b => b.category !== 'item').forEach(b => set.add(b.name))
-      projectItems.forEach(p => set.add(p.name))
+      Object.keys(groupedProjectItems).forEach(g => set.add(g))
       ;['Geral', 'Desenvolvimento', 'Operações', 'Planejamento Estratégico', 'Lançamento Q4'].forEach(d => set.add(d))
-      return Array.from(set).filter(name => !query || name.toLowerCase().includes(query))
     }
-  }, [projCategory, projName, taskBoards, contentItems, projectItems])
+    const query = projName.toLowerCase().trim()
+    return Array.from(set).filter(name => !query || name.toLowerCase().includes(query))
+  }, [projCategory, projName, taskBoards, groupedContentItems, groupedProjectItems])
 
 
   const toggleSpeechRecognition = () => {
@@ -691,7 +794,20 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     if (!selectedAgent) return
     const effectiveProjectId =
       opts.overrideProjectId !== undefined ? opts.overrideProjectId : selectedProjectId
-    const effectiveProject = store.projects.find(p => p.id === effectiveProjectId)
+    const effectiveContext = resolveActiveContext(effectiveProjectId)
+    const effectiveProject: ProjectContext | undefined = effectiveContext ? {
+      id: effectiveContext.id,
+      name: effectiveContext.groupName,
+      itemName: effectiveContext.displayName,
+      clientName: effectiveContext.displayName,
+      itemType: effectiveContext.groupName,
+      category: effectiveContext.category,
+      description: effectiveContext.description,
+      folderPath: effectiveContext.groupName,
+      briefingNoteIds: effectiveContext.briefingNoteIds,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    } : store.projects.find(p => p.id === effectiveProjectId)
     const effectivePrompt = (
       opts.overridePrompt ??
       opts.existingRunToUpdate?.prompt ??
@@ -723,7 +839,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         agent: selectedAgent,
         allAgents: store.agents,
         allNotes: notes,
-        allProjects: store.projects,
+        allProjects: allUnifiedAsProjects,
         prompt: effectivePrompt,
         isTestRun: opts.isTest,
         projectContext: effectiveProject,
@@ -789,7 +905,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
           workflow: wf,
           allAgents: store.agents,
           allNotes: notes,
-          allProjects: store.projects
+          allProjects: allUnifiedAsProjects
         })
       } finally {
         setIsExecuting(false)
@@ -1089,8 +1205,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       <aside className="w-11 shrink-0 h-full bg-[#09090b] border-r border-zinc-900 flex flex-col items-center py-2.5 gap-1.5 z-30">
         {[
           { id: 'agents' as PrimarySection, icon: Bot, title: 'Agentes' },
-          { id: 'teams' as PrimarySection, icon: Workflow, title: 'Equipes' },
-          { id: 'workflows' as PrimarySection, icon: WorkflowNodesIcon, title: 'Fluxo de trabalho' },
+          { id: 'teams' as PrimarySection, icon: Users, title: 'Equipes' },
+          { id: 'workflows' as PrimarySection, icon: Workflow, title: 'Fluxo de trabalho' },
           { id: 'tasks' as PrimarySection, icon: ListTodo, title: 'Tarefas' },
           { id: 'routines' as PrimarySection, icon: CalendarClock, title: 'Rotinas' },
           { id: 'activity' as PrimarySection, icon: Activity, title: 'Atividade' }
@@ -1321,9 +1437,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                       <Briefcase className="w-3.5 h-3.5 text-zinc-400" />
                       <span className="truncate max-w-[130px]">
                         {(() => {
-                          const activeProj = store.projects.find(p => p.id === selectedProjectId)
+                          const activeProj = resolveActiveContext(selectedProjectId)
                           if (!activeProj) return 'Contexto: Automático'
-                          return activeProj.itemName || activeProj.clientName || activeProj.name
+                          return activeProj.displayName
                         })()}
                       </span>
                       <ChevronDown className="w-3 h-3 text-zinc-500" />
@@ -1340,6 +1456,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           <input
                             type="text"
                             autoFocus
+                            autoComplete="off"
                             value={contextSearchQuery}
                             onChange={e => setContextSearchQuery(e.target.value)}
                             placeholder="Buscar projetos ou itens..."
@@ -1358,21 +1475,18 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
                         {/* Se estiver buscando: exibe lista filtrada direta */}
                         {contextSearchQuery.trim() ? (
-                          <div className="max-h-56 overflow-y-auto space-y-0.5 pr-0.5">
-                            {store.projects
+                          <div className="max-h-56 overflow-y-auto space-y-0.5 pr-0.5 custom-scrollbar">
+                            {allUnifiedItems
                               .filter(p => {
                                 const q = contextSearchQuery.toLowerCase()
                                 return (
-                                  p.name.toLowerCase().includes(q) ||
-                                  (p.itemName && p.itemName.toLowerCase().includes(q)) ||
-                                  (p.clientName && p.clientName.toLowerCase().includes(q)) ||
+                                  p.displayName.toLowerCase().includes(q) ||
+                                  p.groupName.toLowerCase().includes(q) ||
                                   (p.description && p.description.toLowerCase().includes(q))
                                 )
                               })
                               .map(p => {
                                 const isSel = selectedProjectId === p.id
-                                const displayName = p.itemName || p.clientName || p.name
-                                const isItem = isItemProject(p)
                                 return (
                                   <button
                                     key={p.id}
@@ -1390,16 +1504,18 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                     }`}
                                   >
                                     <div className="min-w-0 pr-2">
-                                      <div className="truncate font-medium">{displayName}</div>
+                                      <div className="truncate font-medium">{p.displayName}</div>
                                       <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 mt-0.5">
-                                        <span>{p.name}</span>
+                                        <span>{p.groupName}</span>
                                         <span className="px-1 rounded bg-zinc-800 text-zinc-400">
-                                          {isItem ? 'Item' : 'Projeto'}
+                                          {p.category === 'item' ? 'Item' : 'Projeto'}
                                         </span>
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-1.5 shrink-0">
-                                      <span className="text-[10px] text-zinc-500">{p.briefingNoteIds.length} notas</span>
+                                      {p.briefingNoteIds.length > 0 && (
+                                        <span className="text-[10px] text-zinc-500">{p.briefingNoteIds.length} notas</span>
+                                      )}
                                       {isSel && <Check className="w-3.5 h-3.5 text-emerald-400" />}
                                     </div>
                                   </button>
@@ -1431,27 +1547,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
                             <div className="border-t border-zinc-800/70 my-1" />
 
-                            {/* Menu 1: Projetos */}
-                            <div
-                              onMouseEnter={() => setHoveredCategory('project')}
-                              onClick={() => setHoveredCategory(h => (h === 'project' ? null : 'project'))}
-                              className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs cursor-pointer transition-colors ${
-                                hoveredCategory === 'project'
-                                  ? 'bg-zinc-800 text-white font-medium'
-                                  : 'text-zinc-300 hover:bg-zinc-800/50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <Briefcase className="w-3.5 h-3.5 text-zinc-400" />
-                                <span>Projetos</span>
-                              </div>
-                              <div className="flex items-center gap-1.5 text-zinc-500">
-                                <span className="text-[10px] font-mono">{projectItems.length}</span>
-                                <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
-                              </div>
-                            </div>
-
-                            {/* Menu 2: Itens (Clientes, Produtos, etc.) */}
+                            {/* Menu 1: Itens (Clientes, Produtos, etc.) - ACIMA */}
                             <div
                               onMouseEnter={() => setHoveredCategory('item')}
                               onClick={() => setHoveredCategory(h => (h === 'item' ? null : 'item'))}
@@ -1466,7 +1562,27 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                 <span>Itens (Clientes, etc.)</span>
                               </div>
                               <div className="flex items-center gap-1.5 text-zinc-500">
-                                <span className="text-[10px] font-mono">{contentItems.length}</span>
+                                <span className="text-[10px] font-mono">{unifiedItemItems.length}</span>
+                                <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
+                              </div>
+                            </div>
+
+                            {/* Menu 2: Projetos - ABAIXO */}
+                            <div
+                              onMouseEnter={() => setHoveredCategory('project')}
+                              onClick={() => setHoveredCategory(h => (h === 'project' ? null : 'project'))}
+                              className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs cursor-pointer transition-colors ${
+                                hoveredCategory === 'project'
+                                  ? 'bg-zinc-800 text-white font-medium'
+                                  : 'text-zinc-300 hover:bg-zinc-800/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Briefcase className="w-3.5 h-3.5 text-zinc-400" />
+                                <span>Projetos</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-zinc-500">
+                                <span className="text-[10px] font-mono">{unifiedProjectItems.length}</span>
                                 <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
                               </div>
                             </div>
@@ -1491,26 +1607,26 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                         {hoveredCategory && !contextSearchQuery.trim() && (
                           <div
                             onMouseEnter={() => setHoveredCategory(hoveredCategory)}
-                            className="absolute right-full top-0 mr-1.5 w-76 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100 max-h-84 overflow-hidden flex flex-col"
+                            className="absolute right-[calc(100%-2px)] top-0 w-80 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100 max-h-96 overflow-hidden flex flex-col pointer-events-auto"
                           >
                             <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 shrink-0">
                               <span>
-                                {hoveredCategory === 'project' ? 'Projetos Cadastrados' : 'Itens Cadastrados (Clientes, etc.)'}
+                                {hoveredCategory === 'item' ? 'Itens Cadastrados (Clientes, etc.)' : 'Projetos Cadastrados'}
                               </span>
-                              <span className="text-zinc-500">
-                                {hoveredCategory === 'project' ? projectItems.length : contentItems.length} itens
+                              <span className="text-zinc-500 font-mono">
+                                {hoveredCategory === 'item' ? unifiedItemItems.length : unifiedProjectItems.length} {hoveredCategory === 'item' ? 'itens' : 'projetos'}
                               </span>
                             </div>
 
-                            <div className="overflow-y-auto space-y-2 flex-1 pr-0.5 mt-1 max-h-64">
+                            <div className="overflow-y-auto space-y-2 flex-1 pr-0.5 mt-1 max-h-80 custom-scrollbar">
                               {(() => {
                                 const currentGrouped =
-                                  hoveredCategory === 'project' ? groupedProjectItems : groupedContentItems
+                                  hoveredCategory === 'item' ? groupedContentItems : groupedProjectItems
                                 const keys = Object.keys(currentGrouped)
                                 if (keys.length === 0) {
                                   return (
-                                    <div className="text-[11px] text-zinc-500 px-2 py-4 text-center">
-                                      Nenhum {hoveredCategory === 'project' ? 'projeto' : 'item'} cadastrado ainda.
+                                    <div className="text-[11px] text-zinc-500 px-2 py-6 text-center">
+                                      Nenhum {hoveredCategory === 'item' ? 'item' : 'projeto'} cadastrado ainda.
                                     </div>
                                   )
                                 }
@@ -1518,12 +1634,12 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                   const items = currentGrouped[groupName] || []
                                   return (
                                     <div key={groupName} className="space-y-0.5">
-                                      <div className="flex items-center justify-between px-2 py-1 text-[10px] font-medium text-zinc-500 bg-zinc-900/60 rounded-lg">
+                                      <div className="flex items-center justify-between px-2 py-1 text-[10px] font-medium text-zinc-500 bg-zinc-900/70 rounded-lg">
                                         <span className="truncate flex items-center gap-1.5 font-semibold text-zinc-400">
-                                          {hoveredCategory === 'project' ? (
-                                            <Folder className="w-3 h-3 text-zinc-400" />
-                                          ) : (
+                                          {hoveredCategory === 'item' ? (
                                             <Tag className="w-3 h-3 text-zinc-400" />
+                                          ) : (
+                                            <Folder className="w-3 h-3 text-zinc-400" />
                                           )}
                                           {groupName}
                                         </span>
@@ -1531,7 +1647,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                       </div>
                                       {items.map(p => {
                                         const isSel = selectedProjectId === p.id
-                                        const displayName = p.itemName || p.clientName || p.name
                                         return (
                                           <button
                                             key={p.id}
@@ -1541,14 +1656,14 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                               setIsProjectDropdownOpen(false)
                                               setHoveredCategory(null)
                                             }}
-                                            className={`w-full text-left pl-3.5 pr-2 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
+                                            className={`w-full text-left pl-3.5 pr-2 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer transition-colors ${
                                               isSel
                                                 ? 'bg-zinc-800/90 text-white font-medium'
                                                 : 'text-zinc-300 hover:bg-zinc-800/50'
                                             }`}
                                           >
                                             <div className="min-w-0 pr-2">
-                                              <div className="truncate font-medium">{displayName}</div>
+                                              <div className="truncate font-medium">{p.displayName}</div>
                                               {p.description && (
                                                 <div className="text-[10px] text-zinc-500 truncate">
                                                   {p.description}
@@ -1556,9 +1671,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                               )}
                                             </div>
                                             <div className="flex items-center gap-1.5 shrink-0">
-                                              <span className="text-[10px] text-zinc-500">
-                                                {p.briefingNoteIds.length} notas
-                                              </span>
+                                              {p.briefingNoteIds.length > 0 && (
+                                                <span className="text-[10px] text-zinc-500">
+                                                  {p.briefingNoteIds.length} {p.briefingNoteIds.length === 1 ? 'nota' : 'notas'}
+                                                </span>
+                                              )}
                                               {isSel && <Check className="w-3.5 h-3.5 text-emerald-400" />}
                                             </div>
                                           </button>
@@ -3238,7 +3355,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             selectedWorkflowId={selectedWorkflowId}
             latestNodeStates={activeRun?.workflowNodeStates}
             activeRun={activeRun}
-            allProjects={store.projects}
+            allProjects={allUnifiedAsProjects}
             onSelectWorkflow={setSelectedWorkflowId}
             onSaveWorkflow={async wf => {
               const exists = workflows.some(w => w.id === wf.id)
@@ -3255,12 +3372,25 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             onRunWorkflow={async (wf, isTest, prompt) => {
               setIsExecuting(true)
               try {
-                const proj = store.projects.find(p => p.id === selectedProjectId)
+                const wfContext = resolveActiveContext(selectedProjectId)
+                const proj: ProjectContext | undefined = wfContext ? {
+                  id: wfContext.id,
+                  name: wfContext.groupName,
+                  itemName: wfContext.displayName,
+                  clientName: wfContext.displayName,
+                  itemType: wfContext.groupName,
+                  category: wfContext.category,
+                  description: wfContext.description,
+                  folderPath: wfContext.groupName,
+                  briefingNoteIds: wfContext.briefingNoteIds,
+                  createdAt: Date.now(),
+                  updatedAt: Date.now()
+                } : store.projects.find(p => p.id === selectedProjectId)
                 const wfRun = await executeWorkflowRun({
                   workflow: wf,
                   allAgents: store.agents,
                   allNotes: notes,
-                  allProjects: store.projects,
+                  allProjects: allUnifiedAsProjects,
                   prompt,
                   projectContext: proj,
                   explicitClientName: proj?.clientName,
@@ -3286,7 +3416,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   workflow: wf,
                   allAgents: store.agents,
                   allNotes: notes,
-                  allProjects: store.projects
+                  allProjects: allUnifiedAsProjects
                 })
                 await onUpdateStore({
                   ...store,
@@ -3346,7 +3476,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             agents={store.agents}
             teams={teams}
             workflows={workflows}
-            projects={store.projects}
+            projects={allUnifiedAsProjects}
             folders={folders}
             selectedRoutineId={selectedRoutineId}
             onSelectRoutine={setSelectedRoutineId}
@@ -3662,25 +3792,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 )}
               </div>
 
-              {/* Seletor de Categoria: Projeto vs Item */}
+              {/* Seletor de Categoria: Item vs Projeto */}
               <div className="flex items-center gap-2 pt-1">
                 <span className="text-[11px] text-zinc-400 font-medium">Categoria:</span>
                 <div className="inline-flex rounded-xl bg-[#18181b] p-0.5 border border-zinc-800">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProjCategory('project')
-                      setIsProjGroupDropdownOpen(false)
-                    }}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 ${
-                      projCategory === 'project'
-                        ? 'bg-zinc-800 text-white shadow-xs'
-                        : 'text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    <Briefcase className="w-3.5 h-3.5" />
-                    <span>Projeto</span>
-                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -3696,13 +3811,28 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     <Tag className="w-3.5 h-3.5" />
                     <span>Item (Cliente, etc.)</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProjCategory('project')
+                      setIsProjGroupDropdownOpen(false)
+                    }}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 ${
+                      projCategory === 'project'
+                        ? 'bg-zinc-800 text-white shadow-xs'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <Briefcase className="w-3.5 h-3.5" />
+                    <span>Projeto</span>
+                  </button>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="relative" ref={projGroupDropdownRef}>
                   <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
-                    {projCategory === 'item' ? 'Grupo de Itens' : 'Projeto Contêiner'}
+                    {projCategory === 'item' ? 'Grupo de Itens (ex: Clientes)' : 'Projeto Contêiner (ex: Geral)'}
                   </label>
                   <div className="relative flex items-center">
                     <input
@@ -3715,7 +3845,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                       }}
                       onFocus={() => setIsProjGroupDropdownOpen(true)}
                       placeholder={projCategory === 'item' ? 'Ex: Clientes, Produtos, Campanhas' : 'Ex: Geral, Lançamento Q4, Marketing'}
-                      className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl pl-3 pr-8 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                      className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl pl-3 pr-8 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 text-xs"
                     />
                     <button
                       type="button"
@@ -3728,7 +3858,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   </div>
 
                   {isProjGroupDropdownOpen && (
-                    <div className="absolute left-0 top-full mt-1.5 w-full bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl p-1.5 z-50 space-y-1 max-h-52 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+                    <div className="absolute left-0 top-full mt-1.5 w-full bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl p-1.5 z-50 space-y-1 max-h-52 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-100">
                       <div className="text-[10px] uppercase font-semibold text-zinc-500 px-2 py-0.5">
                         {projCategory === 'item' ? 'Grupos de Itens Disponíveis' : 'Projetos Disponíveis'}
                       </div>
@@ -3756,15 +3886,15 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
                 <div>
                   <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
-                    Nome do Item de Conteúdo
+                    {projCategory === 'item' ? 'Nome do Item (ex: Nome do Cliente)' : 'Nome do Subprojeto / Tarefa'}
                   </label>
                   <input
                     type="text"
                     autoComplete="off"
                     value={projItem}
                     onChange={e => setProjItem(e.target.value)}
-                    placeholder="Ex: Nome do cliente, Artigo, etc."
-                    className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                    placeholder={projCategory === 'item' ? 'Ex: Blowmind, Construtora Horizonte' : 'Ex: Nova Landing Page, Integração API'}
+                    className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 text-xs"
                   />
                 </div>
               </div>
