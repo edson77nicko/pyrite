@@ -27,8 +27,8 @@ import { AGENT_SPECIALTIES } from './AiAssistant'
 export interface AiSettingsModalProps {
   isOpen: boolean
   onClose: () => void
-  activeSpecialtyId: string
-  onSelectSpecialty: (id: string) => void
+  activeSpecialtyId?: string
+  onSelectSpecialty?: (id: string) => void
   onConfigSaved?: () => void
 }
 
@@ -91,8 +91,8 @@ export const DEFAULT_AGENT_SKILLS: AgentSkill[] = []
 export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
   isOpen,
   onClose,
-  activeSpecialtyId,
-  onSelectSpecialty,
+  activeSpecialtyId = 'general',
+  onSelectSpecialty = () => {},
   onConfigSaved
 }) => {
   // Navigation tab

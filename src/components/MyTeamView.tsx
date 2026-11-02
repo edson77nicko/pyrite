@@ -31,6 +31,7 @@ import { MarkdownRenderer } from './MarkdownRenderer'
 import { TeamCanvasEditor } from './TeamCanvasEditor'
 import { WorkflowCanvasEditor } from './WorkflowCanvasEditor'
 import { RoutineCanvasEditor } from './RoutineCanvasEditor'
+import { AiSettingsModal } from './AiSettingsModal'
 import {
   Bot,
   Workflow,
@@ -70,7 +71,8 @@ import {
   Brain,
   Wrench,
   FolderOpen,
-  Maximize2
+  Maximize2,
+  ExternalLink
 } from 'lucide-react'
 
 interface MyTeamViewProps {
@@ -216,9 +218,162 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const [projBriefingIds, setProjBriefingIds] = useState<string[]>([])
 
   // Estado para adicionar vínculo de conhecimento na aba Arquivos (Print 04)
-  const [bindNoteId, setBindNoteId] = useState<string>('')
   const [bindRole, setBindRole] = useState<ContextRole>('permanent_ref')
-  const [bindPolicy] = useState<'follow_latest' | 'pin_revision'>('follow_latest')
+  const [bindPolicy, setBindPolicy] = useState<'follow_latest' | 'pin_revision'>('follow_latest')
+
+  // Modais e Popovers customizados de alta usabilidade
+  const [isAiSettingsModalOpen, setIsAiSettingsModalOpen] = useState(false)
+  const [activeProviderName, setActiveProviderName] = useState<string>('openrouter')
+  const [activeModelName, setActiveModelName] = useState<string>('google/gemini-2.5-flash')
+  const [hasActiveKey, setHasActiveKey] = useState<boolean>(true)
+  const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false)
+  const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false)
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
+  const [isNoteBindPickerOpen, setIsNoteBindPickerOpen] = useState(false)
+  const [noteSearchQuery, setNoteSearchQuery] = useState('')
+  const [selectedNoteForBind, setSelectedNoteForBind] = useState<Note | null>(null)
+  const [composerNoteSearch, setComposerNoteSearch] = useState('')
+  const [isListening, setIsListening] = useState(false)
+  const speechRecRef = useRef<any>(null)
+
+  const loadAiConfigs = async () => {
+    if (typeof window !== 'undefined' && window.electronAPI?.aiGetAllConfigs) {
+      try {
+        const data = await window.electronAPI.aiGetAllConfigs()
+        if (data.activeProvider) {
+          const prov = data.activeProvider.toLowerCase()
+          setActiveProviderName(prov)
+          const pConfig = data.providers?.[prov]
+          if (pConfig?.model) {
+            setActiveModelName(pConfig.model)
+          }
+          setHasActiveKey(prov === 'ollama' ? true : !!pConfig?.hasKey)
+        }
+      } catch (err) {
+        console.error('Failed to load AI configs in MyTeamView:', err)
+      }
+    }
+  }
+
+  useEffect(() => {
+    loadAiConfigs()
+  }, [])
+
+  const toggleSpeechRecognition = () => {
+    const SpeechRec = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+    if (!SpeechRec) {
+      setStatusBanner({
+        type: 'warning',
+        text: 'Reconhecimento de voz não suportado neste navegador.'
+      })
+      return
+    }
+
+    if (isListening && speechRecRef.current) {
+      speechRecRef.current.stop()
+      setIsListening(false)
+      return
+    }
+
+    try {
+      const rec = new SpeechRec()
+      rec.lang = 'pt-BR'
+      rec.continuous = false
+      rec.interimResults = true
+
+      rec.onresult = (event: any) => {
+        let text = ''
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          text += event.results[i][0].transcript
+        }
+        if (text) {
+          setPromptInput(prev => (prev ? prev + ' ' + text : text))
+        }
+      }
+
+      rec.onend = () => setIsListening(false)
+      rec.onerror = () => setIsListening(false)
+
+      speechRecRef.current = rec
+      rec.start()
+      setIsListening(true)
+    } catch {
+      setIsListening(false)
+    }
+  }
+
+  const handleConfirmBindNote = async () => {
+    if (!selectedNoteForBind || !selectedAgent) return
+    const noteId = selectedNoteForBind.id
+    const existing = selectedAgent.knowledgeBindings.some(
+      b => b.noteId === noteId && b.role === bindRole
+    )
+    if (existing) {
+      setStatusBanner({
+        type: 'warning',
+        text: `A nota "${selectedNoteForBind.title}" já está vinculada neste papel a este agente.`
+      })
+      setIsNoteBindPickerOpen(false)
+      setSelectedNoteForBind(null)
+      return
+    }
+
+    const revisionHash =
+      bindPolicy === 'pin_revision'
+        ? computeHashSync(selectedNoteForBind.content || '')
+        : undefined
+
+    const newBinding: ContextBinding = {
+      id: `bind_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      targetType: 'note',
+      noteId: selectedNoteForBind.id,
+      noteTitle: selectedNoteForBind.title,
+      folderPath: selectedNoteForBind.folder,
+      role: bindRole,
+      required: bindRole === 'template',
+      precedence: bindRole === 'template' ? 100 : 80,
+      updatePolicy: bindPolicy,
+      pinnedHash: revisionHash,
+      pinnedContentSnapshot: bindPolicy === 'pin_revision' ? selectedNoteForBind.content : undefined
+    }
+
+    const updatedAgent: AgentProfileVersion = {
+      ...selectedAgent,
+      knowledgeBindings: [...selectedAgent.knowledgeBindings, newBinding]
+    }
+    const nextStore = updateAgentProfileWithVersion(store, updatedAgent)
+    await onUpdateStore(nextStore)
+    setStatusBanner({
+      type: 'success',
+      text: `Nota "${selectedNoteForBind.title}" vinculada como ${ROLE_LABELS[bindRole]?.label || bindRole}.`
+    })
+    setIsNoteBindPickerOpen(false)
+    setSelectedNoteForBind(null)
+    setNoteSearchQuery('')
+  }
+
+  const handleDeleteAgent = async (agentId: string) => {
+    if (store.agents.length <= 1) {
+      setStatusBanner({ type: 'warning', text: 'Você precisa manter pelo menos um agente na equipe.' })
+      return
+    }
+    const targetAgent = store.agents.find(a => a.id === agentId)
+    if (!targetAgent) return
+
+    const confirmed = window.confirm(`Deseja realmente excluir o agente "${targetAgent.name}"?`)
+    if (!confirmed) return
+
+    const nextAgents = store.agents.filter(a => a.id !== agentId)
+    const nextStore = {
+      ...store,
+      agents: nextAgents,
+      runs: store.runs.filter(r => r.agentId !== agentId)
+    }
+    await onUpdateStore(nextStore)
+    setSelectedAgentId(nextAgents[0]?.id || '')
+    setIsAgentSettingsOpen(false)
+    setStatusBanner({ type: 'success', text: `Agente "${targetAgent.name}" excluído com sucesso.` })
+  }
 
   const storeRef = useRef(store)
   storeRef.current = store
@@ -227,8 +382,15 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const activeRun = store.runs.find(r => r.id === selectedRunId) || store.runs[0] || null
 
   const getAgentColor = (agentId?: string) => {
+    const ag = store.agents.find(a => a.id === agentId)
+    if (ag?.color) return ag.color
     const idx = store.agents.findIndex(a => a.id === agentId)
     return AGENT_AVATAR_COLORS[Math.max(0, idx) % AGENT_AVATAR_COLORS.length]
+  }
+
+  const getAgentIcon = (agentId?: string) => {
+    const ag = store.agents.find(a => a.id === agentId)
+    return ag?.icon || '••'
   }
 
   const formatTimeShort = (ts?: number) => {
@@ -715,34 +877,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     setProjBriefingIds([])
   }
 
-  const handleAddKnowledgeBinding = async () => {
-    if (!selectedAgent || !bindNoteId) return
-    const targetNote = notes.find(n => n.id === bindNoteId)
-    if (!targetNote) return
-
-    const newBind: ContextBinding = {
-      id: `bind_${Date.now()}`,
-      targetType: 'note',
-      noteId: targetNote.id,
-      noteTitle: targetNote.title,
-      folderPath: targetNote.folder,
-      projectId: bindRole === 'project_context' ? selectedProjectId || undefined : undefined,
-      role: bindRole,
-      required: bindRole === 'template',
-      precedence: bindRole === 'template' ? 100 : 85,
-      updatePolicy: bindPolicy,
-      pinnedHash: bindPolicy === 'pin_revision' ? computeHashSync(targetNote.content) : undefined,
-      pinnedContentSnapshot: bindPolicy === 'pin_revision' ? targetNote.content : undefined
-    }
-
-    const updatedAgent: AgentProfileVersion = {
-      ...selectedAgent,
-      knowledgeBindings: [...selectedAgent.knowledgeBindings, newBind]
-    }
-    await onUpdateStore(updateAgentProfileWithVersion(store, updatedAgent))
-    setBindNoteId('')
-  }
-
   const filteredAgents = store.agents.filter(
     ag =>
       ag.name.toLowerCase().includes(agentSearchQuery.toLowerCase()) ||
@@ -910,12 +1044,12 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             : 'hover:bg-[#151518] text-zinc-300'
                         }`}
                       >
-                        {/* Avatar colorido com olhinhos do OpenBot */}
+                        {/* Avatar colorido com ícone customizado do OpenBot */}
                         <div
                           className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm"
                           style={{ backgroundColor: color }}
                         >
-                          <span className="tracking-tighter text-sm">••</span>
+                          <span className="tracking-tighter text-sm">{getAgentIcon(ag.id)}</span>
                         </div>
 
                         <div className="flex-1 min-w-0">
@@ -963,7 +1097,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                         className="w-4 h-4 rounded-md flex items-center justify-center text-[9px] text-white font-bold"
                         style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
                       >
-                        ••
+                        {getAgentIcon(selectedAgent.id)}
                       </span>
                       <span className="text-xs font-medium text-zinc-100 truncate max-w-[160px]">
                         {selectedAgent.name}
@@ -984,37 +1118,181 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   </button>
                 </div>
 
-                {/* Direita: Seletor discreto de Cliente + Modelo (GPT-6.1 Terra · Baixo) + Toggle Configurações */}
+                {/* Direita: Dropdowns Customizados (Cliente + Modelo/IA + Toggle Configurações) */}
                 <div className="flex items-center gap-2">
-                  {store.projects.length > 0 && (
-                    <select
-                      value={selectedProjectId}
-                      onChange={e => setSelectedProjectId(e.target.value)}
-                      className="bg-[#18181b] border border-zinc-800/80 rounded-lg px-2 py-1 text-[11px] text-zinc-300 focus:outline-none cursor-pointer"
-                      title="Contexto de cliente opcional"
+                  {/* Dropdown Customizado de Cliente */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsProjectDropdownOpen(v => !v)
+                        setIsModelDropdownOpen(false)
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#18181b] border border-zinc-800/80 hover:border-zinc-700 text-xs text-zinc-200 transition-colors cursor-pointer"
+                      title="Contexto de cliente ou briefing"
                     >
-                      <option value="" className="bg-[#18181b]">
-                        Cliente: Automático
-                      </option>
-                      {store.projects.map(p => (
-                        <option key={p.id} value={p.id} className="bg-[#18181b]">
-                          {p.clientName}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                      <Briefcase className="w-3.5 h-3.5 text-zinc-400" />
+                      <span className="truncate max-w-[130px]">
+                        {store.projects.find(p => p.id === selectedProjectId)?.clientName || 'Cliente: Automático'}
+                      </span>
+                      <ChevronDown className="w-3 h-3 text-zinc-500" />
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setIsAgentSettingsOpen(v => !v)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 cursor-pointer"
-                    title="Modelo e raciocínio"
-                  >
-                    <Globe className="w-3.5 h-3.5 text-zinc-400" />
-                    <span className="font-medium text-zinc-200">GPT-6.1 Terra</span>
-                    <span className="text-zinc-500">· {reasoningEffort}</span>
-                    <ChevronDown className="w-3 h-3 text-zinc-500" />
-                  </button>
+                    {isProjectDropdownOpen && (
+                      <div
+                        onPointerDown={e => e.stopPropagation()}
+                        className="absolute right-0 top-full mt-1.5 w-64 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-40 space-y-0.5 animate-in fade-in zoom-in-95 duration-100"
+                      >
+                        <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                          Contexto de Cliente
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedProjectId('')
+                            setIsProjectDropdownOpen(false)
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
+                            !selectedProjectId
+                              ? 'bg-zinc-800/90 text-white font-medium'
+                              : 'text-zinc-300 hover:bg-zinc-800/50'
+                          }`}
+                        >
+                          <span>Automático (conforme o pedido)</span>
+                          {!selectedProjectId && <Check className="w-3.5 h-3.5 text-zinc-200" />}
+                        </button>
+
+                        {store.projects.map(p => {
+                          const isSel = selectedProjectId === p.id
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedProjectId(p.id)
+                                setIsProjectDropdownOpen(false)
+                              }}
+                              className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
+                                isSel
+                                  ? 'bg-zinc-800/90 text-white font-medium'
+                                  : 'text-zinc-300 hover:bg-zinc-800/50'
+                              }`}
+                            >
+                              <span className="truncate">{p.clientName}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-zinc-500">{p.briefingNoteIds.length} notas</span>
+                                {isSel && <Check className="w-3.5 h-3.5 text-zinc-200" />}
+                              </div>
+                            </button>
+                          )
+                        })}
+
+                        <div className="border-t border-zinc-800/80 my-1" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsProjectDropdownOpen(false)
+                            setIsProjectsModalOpen(true)
+                          }}
+                          className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Gerenciar clientes e projetos</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dropdown Customizado de Modelo / IA */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModelDropdownOpen(v => !v)
+                        setIsProjectDropdownOpen(false)
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#18181b] border border-zinc-800/80 hover:border-zinc-700 text-xs text-zinc-300 transition-colors cursor-pointer"
+                      title="Modelo de IA e raciocínio"
+                    >
+                      <Globe className="w-3.5 h-3.5 text-zinc-400" />
+                      <span className="font-medium text-zinc-200 truncate max-w-[130px]">
+                        {selectedAgent?.aiConfig?.model || activeModelName}
+                      </span>
+                      <span className="text-zinc-500">· {reasoningEffort}</span>
+                      <ChevronDown className="w-3 h-3 text-zinc-500" />
+                    </button>
+
+                    {isModelDropdownOpen && (
+                      <div
+                        onPointerDown={e => e.stopPropagation()}
+                        className="absolute right-0 top-full mt-1.5 w-64 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-2 animate-in fade-in zoom-in-95 duration-100"
+                      >
+                        <div className="px-1 text-xs">
+                          <div className="text-[10px] uppercase font-semibold text-zinc-500">IA Conectada</div>
+                          <div className="flex items-center justify-between text-zinc-200 font-medium mt-0.5">
+                            <span className="capitalize">{activeProviderName}</span>
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                hasActiveKey ? 'bg-emerald-400' : 'bg-amber-400'
+                              }`}
+                            />
+                          </div>
+                          <div className="text-[11px] text-zinc-400 font-mono truncate mt-0.5">
+                            {selectedAgent?.aiConfig?.model || activeModelName}
+                          </div>
+                        </div>
+
+                        <div className="border-t border-zinc-800 pt-1.5">
+                          <div className="text-[10px] text-zinc-500 uppercase font-semibold px-1 mb-1">
+                            Raciocínio
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 bg-[#131316] p-1 rounded-xl">
+                            {(['Baixo', 'Médio', 'Alto'] as const).map(effort => {
+                              const isSel = reasoningEffort === effort
+                              const temp = effort === 'Baixo' ? 0.2 : effort === 'Médio' ? 0.5 : 0.8
+                              return (
+                                <button
+                                  key={effort}
+                                  type="button"
+                                  onClick={() => {
+                                    setReasoningEffort(effort)
+                                    onUpdateStore(
+                                      updateAgentProfileWithVersion(store, {
+                                        ...selectedAgent,
+                                        aiConfig: {
+                                          ...selectedAgent.aiConfig,
+                                          temperature: temp
+                                        }
+                                      })
+                                    )
+                                  }}
+                                  className={`py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                                    isSel ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
+                                  }`}
+                                >
+                                  {effort}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="border-t border-zinc-800 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsModelDropdownOpen(false)
+                              setIsAiSettingsModalOpen(true)
+                            }}
+                            className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-zinc-800 text-xs text-zinc-200 flex items-center justify-between cursor-pointer"
+                          >
+                            <span>Configurações de IA do Pyrite</span>
+                            <ExternalLink className="w-3.5 h-3.5 text-zinc-400" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <button
                     type="button"
@@ -1400,38 +1678,104 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   </div>
                 )}
 
-                {/* Menu Popover do botão "+" no Composer */}
+                {/* Menu Popover do botão "+" no Composer com Busca Instantânea */}
                 {isComposerPlusOpen && (
-                  <div className="absolute bottom-16 left-6 w-64 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1">
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase text-zinc-500">
-                      Anexar nota do cofre ao pedido
+                  <div
+                    onPointerDown={e => e.stopPropagation()}
+                    className="absolute bottom-16 left-6 w-80 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2.5 z-40 space-y-2 animate-in fade-in zoom-in-95 duration-100"
+                  >
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                        Anexar Nota ao Pedido
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsComposerPlusOpen(false)}
+                        className="text-zinc-500 hover:text-zinc-300 p-0.5 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <div className="max-h-40 overflow-y-auto space-y-0.5">
-                      {notes.map(n => (
+
+                    {/* Campo de Busca Rápida (Igual Mover para...) */}
+                    <div className="relative flex items-center">
+                      <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 pointer-events-none" />
+                      <input
+                        type="text"
+                        autoFocus
+                        value={composerNoteSearch}
+                        onChange={e => setComposerNoteSearch(e.target.value)}
+                        placeholder="Buscar nota por título ou pasta..."
+                        className="w-full bg-[#121214] border border-zinc-800 rounded-xl pl-8 pr-7 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                      />
+                      {composerNoteSearch && (
                         <button
-                          key={n.id}
                           type="button"
-                          onClick={() => {
-                            setExtraNoteIds(prev =>
-                              prev.includes(n.id) ? prev : [...prev, n.id]
-                            )
-                            setIsComposerPlusOpen(false)
-                          }}
-                          className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-zinc-800 text-xs text-zinc-200 flex items-center gap-2 truncate cursor-pointer"
+                          onClick={() => setComposerNoteSearch('')}
+                          className="absolute right-2 text-zinc-500 hover:text-zinc-300 cursor-pointer"
                         >
-                          <FileText className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                          <span className="truncate">{n.title}</span>
+                          <X className="w-3 h-3" />
                         </button>
-                      ))}
+                      )}
                     </div>
-                    <div className="border-t border-zinc-800 pt-1">
-                      <label className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-zinc-300 cursor-pointer">
+
+                    <div className="max-h-52 overflow-y-auto space-y-0.5 pr-0.5">
+                      {notes
+                        .filter(n => {
+                          const q = composerNoteSearch.toLowerCase().trim()
+                          if (!q) return true
+                          return (
+                            n.title.toLowerCase().includes(q) ||
+                            (n.folder && n.folder.toLowerCase().includes(q))
+                          )
+                        })
+                        .map(n => {
+                          const isAlreadyAttached = extraNoteIds.includes(n.id)
+                          return (
+                            <button
+                              key={n.id}
+                              type="button"
+                              onClick={() => {
+                                setExtraNoteIds(prev =>
+                                  prev.includes(n.id)
+                                    ? prev.filter(id => id !== n.id)
+                                    : [...prev, n.id]
+                                )
+                              }}
+                              className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                                isAlreadyAttached
+                                  ? 'bg-zinc-800 text-white font-medium'
+                                  : 'text-zinc-300 hover:bg-zinc-800/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <FileText className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                                <span className="truncate">{n.title}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {n.folder && (
+                                  <span className="text-[10px] text-zinc-500 max-w-[80px] truncate">
+                                    {n.folder}
+                                  </span>
+                                )}
+                                {isAlreadyAttached && (
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
+                    </div>
+
+                    <div className="border-t border-zinc-800 pt-1.5">
+                      <label className="flex items-center gap-2 px-1 text-xs text-zinc-300 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={useTeamDelegation}
                           onChange={e => setUseTeamDelegation(e.target.checked)}
+                          className="rounded bg-zinc-800 border-zinc-700 text-emerald-500"
                         />
-                        <span>Coordenar com equipe</span>
+                        <span>Coordenar com equipe de especialistas</span>
                       </label>
                     </div>
                   </div>
@@ -1463,8 +1807,13 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
                   <button
                     type="button"
-                    className="w-7 h-7 rounded-full text-zinc-400 hover:text-zinc-200 flex items-center justify-center shrink-0 cursor-pointer"
-                    title="Ditado de voz"
+                    onClick={toggleSpeechRecognition}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+                      isListening
+                        ? 'bg-rose-500/20 text-rose-400 animate-pulse'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                    title={isListening ? 'Ouvindo... Clique para parar' : 'Ditado de voz (pt-BR)'}
                   >
                     <Mic className="w-3.5 h-3.5" />
                   </button>
@@ -1535,15 +1884,16 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   <div className="flex justify-center py-2">
                     <div className="relative">
                       <div
-                        className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg"
+                        className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg transition-transform hover:scale-105"
                         style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
                       >
-                        <span className="tracking-tighter text-2xl">••</span>
+                        <span className="text-2xl">{getAgentIcon(selectedAgent.id)}</span>
                       </div>
                       <button
                         type="button"
-                        className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#1c1c20] border border-zinc-700 text-zinc-200 flex items-center justify-center shadow-md cursor-pointer"
-                        title="Editar ícone"
+                        onClick={() => setIsAvatarPickerOpen(true)}
+                        className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#1c1c20] border border-zinc-700 text-zinc-200 flex items-center justify-center shadow-md cursor-pointer hover:bg-zinc-700 hover:text-white transition-colors"
+                        title="Editar ícone e cor"
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
@@ -1617,11 +1967,18 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           <Cpu className="w-3.5 h-3.5 text-zinc-400" />
                           <span>Modelo</span>
                         </div>
-                        <div className="flex items-center gap-1 text-zinc-300">
-                          <Globe className="w-3 h-3 text-zinc-400" />
-                          <span>GPT-6.1 Terra</span>
-                          <ChevronDown className="w-3 h-3 text-zinc-500" />
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsAiSettingsModalOpen(true)}
+                          className="flex items-center gap-1.5 text-zinc-300 hover:text-white transition-colors cursor-pointer group"
+                          title="Clique para configurar no Pyrite"
+                        >
+                          <Globe className="w-3 h-3 text-zinc-400 group-hover:text-zinc-200" />
+                          <span className="font-mono text-[11px] truncate max-w-[120px]">
+                            {selectedAgent?.aiConfig?.model || activeModelName}
+                          </span>
+                          <ExternalLink className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" />
+                        </button>
                       </div>
 
                       <div className="px-3 py-2.5 flex items-center justify-between text-xs">
@@ -1629,35 +1986,54 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           <Brain className="w-3.5 h-3.5 text-zinc-400" />
                           <span>Raciocínio</span>
                         </div>
-                        <select
-                          value={reasoningEffort}
-                          onChange={e =>
-                            setReasoningEffort(e.target.value as 'Baixo' | 'Médio' | 'Alto')
-                          }
-                          className="bg-transparent text-xs text-zinc-300 focus:outline-none cursor-pointer"
-                        >
-                          <option value="Baixo" className="bg-[#18181b]">
-                            Baixo
-                          </option>
-                          <option value="Médio" className="bg-[#18181b]">
-                            Médio
-                          </option>
-                          <option value="Alto" className="bg-[#18181b]">
-                            Alto
-                          </option>
-                        </select>
+                        <div className="flex items-center gap-1 bg-[#121215] p-0.5 rounded-lg border border-zinc-800/60">
+                          {(['Baixo', 'Médio', 'Alto'] as const).map(effort => {
+                            const isSel = reasoningEffort === effort
+                            const temp = effort === 'Baixo' ? 0.2 : effort === 'Médio' ? 0.5 : 0.8
+                            return (
+                              <button
+                                key={effort}
+                                type="button"
+                                onClick={() => {
+                                  setReasoningEffort(effort)
+                                  onUpdateStore(
+                                    updateAgentProfileWithVersion(store, {
+                                      ...selectedAgent,
+                                      aiConfig: {
+                                        ...selectedAgent.aiConfig,
+                                        temperature: temp
+                                      }
+                                    })
+                                  )
+                                }}
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                                  isSel
+                                    ? 'bg-zinc-800 text-white font-semibold shadow-xs'
+                                    : 'text-zinc-400 hover:text-zinc-200'
+                                }`}
+                              >
+                                {effort}
+                              </button>
+                            )
+                          })}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="bg-[#18181b] border border-zinc-800/80 rounded-2xl px-3 py-2.5 flex items-center justify-between text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setIsAiSettingsModalOpen(true)}
+                      className="w-full bg-[#18181b] hover:bg-[#1f1f23] border border-zinc-800/80 rounded-2xl px-3 py-2.5 flex items-center justify-between text-xs transition-colors cursor-pointer"
+                    >
                       <div className="flex items-center gap-2 text-zinc-200 font-medium">
                         <RefreshCw className="w-3.5 h-3.5 text-zinc-400" />
-                        <span>Modelos de reserva</span>
+                        <span>Chaves & Provedores de IA</span>
                       </div>
-                      <span className="text-zinc-400 flex items-center gap-1">
-                        Perguntar antes <ChevronRight className="w-3 h-3" />
+                      <span className="text-zinc-400 flex items-center gap-1 text-[11px]">
+                        <span className="capitalize">{activeProviderName}</span>
+                        <ExternalLink className="w-3 h-3 text-zinc-500" />
                       </span>
-                    </div>
+                    </button>
                   </div>
 
                   {/* Seção Sabe (Instruções, Memórias, Habilidades, Arquivos — Print 04!) */}
@@ -1679,12 +2055,12 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             <FileText className="w-3.5 h-3.5 text-zinc-400" />
                             <span>Instruções</span>
                           </div>
-                          <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${expandedSettingsSection === 'instructions' ? 'rotate-90' : ''}`} />
                         </button>
                         {expandedSettingsSection === 'instructions' && (
-                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-2.5 text-xs">
+                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-3 text-xs">
                             <div>
-                              <label className="block text-[11px] text-zinc-400 mb-1">
+                              <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
                                 Regras de trabalho (1 por linha)
                               </label>
                               <textarea
@@ -1703,14 +2079,68 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                     })
                                   )
                                 }
-                                className="w-full h-24 bg-[#18181b] border border-zinc-800 rounded-xl p-2 text-xs text-zinc-200 resize-none focus:outline-none"
+                                placeholder="Diretrizes de execução..."
+                                className="w-full h-20 bg-[#18181b] border border-zinc-800 rounded-xl p-2 text-xs text-zinc-200 resize-none focus:outline-none focus:border-zinc-700"
                               />
                             </div>
+
                             <div>
-                              <label className="block text-[11px] text-zinc-400 mb-1">
-                                Pasta padrão de entrega
+                              <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
+                                Perguntas obrigatórias antes da entrega (1 por linha)
                               </label>
-                              <select
+                              <textarea
+                                value={(selectedAgent.workStyle.requiredQuestions || []).join('\n')}
+                                onChange={e =>
+                                  onUpdateStore(
+                                    updateAgentProfileWithVersion(store, {
+                                      ...selectedAgent,
+                                      workStyle: {
+                                        ...selectedAgent.workStyle,
+                                        requiredQuestions: e.target.value
+                                          .split('\n')
+                                          .map(s => s.trim())
+                                          .filter(Boolean)
+                                      }
+                                    })
+                                  )
+                                }
+                                placeholder="Ex: Qual o cliente? Qual o prazo estimado?"
+                                className="w-full h-16 bg-[#18181b] border border-zinc-800 rounded-xl p-2 text-xs text-zinc-200 resize-none focus:outline-none focus:border-zinc-700"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
+                                Travas de segurança / Guardrails (1 por linha)
+                              </label>
+                              <textarea
+                                value={(selectedAgent.workStyle.guardrails || []).join('\n')}
+                                onChange={e =>
+                                  onUpdateStore(
+                                    updateAgentProfileWithVersion(store, {
+                                      ...selectedAgent,
+                                      workStyle: {
+                                        ...selectedAgent.workStyle,
+                                        guardrails: e.target.value
+                                          .split('\n')
+                                          .map(s => s.trim())
+                                          .filter(Boolean)
+                                      }
+                                    })
+                                  )
+                                }
+                                placeholder="Ex: Proibido alterar modelo original..."
+                                className="w-full h-16 bg-[#18181b] border border-zinc-800 rounded-xl p-2 text-xs text-zinc-200 resize-none focus:outline-none focus:border-zinc-700"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
+                                Pasta padrão de entrega no cofre
+                              </label>
+                              <input
+                                type="text"
+                                list="available-folders-list"
                                 value={selectedAgent.deliverables.targetFolder}
                                 onChange={e =>
                                   onUpdateStore(
@@ -1723,16 +2153,14 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                     })
                                   )
                                 }
-                                className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200"
-                              >
-                                {Array.from(
-                                  new Set(['Propostas', 'Escopos', 'Tarefas', ...folders])
-                                ).map(f => (
-                                  <option key={f} value={f} className="bg-[#18181b]">
-                                    {f}
-                                  </option>
+                                placeholder="Propostas, Escopos, Tarefas..."
+                                className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
+                              />
+                              <datalist id="available-folders-list">
+                                {Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Equipe', ...folders])).map(f => (
+                                  <option key={f} value={f} />
                                 ))}
-                              </select>
+                              </datalist>
                             </div>
                           </div>
                         )}
@@ -1754,30 +2182,51 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             <span>Memórias</span>
                           </div>
                           <span className="text-zinc-400 flex items-center gap-1">
-                            {store.projects.length} salva <ChevronRight className="w-3.5 h-3.5" />
+                            {store.projects.length} salva <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${expandedSettingsSection === 'memories' ? 'rotate-90' : ''}`} />
                           </span>
                         </button>
                         {expandedSettingsSection === 'memories' && (
-                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-2 text-xs">
+                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-2.5 text-xs">
                             <div className="flex items-center justify-between">
-                              <span className="text-[11px] text-zinc-400">Clientes e Projetos</span>
+                              <span className="text-[11px] text-zinc-400 font-medium">Clientes e Projetos</span>
                               <button
                                 type="button"
                                 onClick={() => setIsProjectsModalOpen(true)}
-                                className="text-[11px] text-zinc-200 hover:underline cursor-pointer"
+                                className="text-[11px] text-zinc-200 hover:text-white underline cursor-pointer"
                               >
                                 Gerenciar
                               </button>
                             </div>
-                            {store.projects.map(p => (
-                              <div
-                                key={p.id}
-                                className="px-2.5 py-1.5 rounded-lg bg-[#18181b] text-zinc-300 text-[11px] flex items-center justify-between"
-                              >
-                                <span className="truncate">{p.clientName}</span>
-                                <span className="text-zinc-500">{p.briefingNoteIds.length} notas</span>
+                            {store.projects.length === 0 ? (
+                              <div className="text-[11px] text-zinc-500 py-1">
+                                Nenhum cliente ou projeto cadastrado.
                               </div>
-                            ))}
+                            ) : (
+                              store.projects.map(p => (
+                                <div
+                                  key={p.id}
+                                  className="px-2.5 py-2 rounded-xl bg-[#18181b] border border-zinc-800/60 text-zinc-300 text-[11px] flex items-center justify-between"
+                                >
+                                  <div>
+                                    <div className="font-medium text-zinc-200">{p.clientName}</div>
+                                    <div className="text-[10px] text-zinc-500">{p.name}</div>
+                                  </div>
+                                  <span className="text-[10px] bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">
+                                    {p.briefingNoteIds.length} notas
+                                  </span>
+                                </div>
+                              ))
+                            )}
+                            <div className="pt-1 border-t border-zinc-800/80">
+                              <button
+                                type="button"
+                                onClick={() => setIsProjectsModalOpen(true)}
+                                className="w-full py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs flex items-center justify-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Novo Cliente / Projeto</span>
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1797,18 +2246,19 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           </div>
                           <span className="text-zinc-400 flex items-center gap-1">
                             {selectedAgent.allowedActions.length} atribuída{' '}
-                            <ChevronRight className="w-3.5 h-3.5" />
+                            <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${expandedSettingsSection === 'skills' ? 'rotate-90' : ''}`} />
                           </span>
                         </button>
                         {expandedSettingsSection === 'skills' && (
-                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-1.5 text-xs">
+                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-2 text-xs">
+                            <div className="text-[11px] text-zinc-400 font-medium mb-1">Permissões de Ação</div>
                             {(Object.keys(ACTION_PERMISSION_LABELS) as AgentActionPermission[]).map(
                               perm => {
                                 const checked = selectedAgent.allowedActions.includes(perm)
                                 return (
                                   <label
                                     key={perm}
-                                    className="flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer py-0.5"
+                                    className="flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer py-1 px-1.5 rounded-lg hover:bg-zinc-800/40"
                                   >
                                     <input
                                       type="checkbox"
@@ -1824,12 +2274,68 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                           })
                                         )
                                       }}
+                                      className="rounded bg-zinc-800 border-zinc-700 text-emerald-500 focus:ring-0"
                                     />
                                     <span>{ACTION_PERMISSION_LABELS[perm]}</span>
                                   </label>
                                 )
                               }
                             )}
+
+                            <div className="pt-2 border-t border-zinc-800/80 space-y-1.5">
+                              <div className="text-[11px] text-zinc-400 font-medium">Delegação em Equipe</div>
+                              <label className="flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer py-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedAgent.limits.allowDelegation}
+                                  onChange={e =>
+                                    onUpdateStore(
+                                      updateAgentProfileWithVersion(store, {
+                                        ...selectedAgent,
+                                        limits: {
+                                          ...selectedAgent.limits,
+                                          allowDelegation: e.target.checked
+                                        }
+                                      })
+                                    )
+                                  }
+                                  className="rounded bg-zinc-800 border-zinc-700 text-emerald-500 focus:ring-0"
+                                />
+                                <span>Permitir delegação para especialistas</span>
+                              </label>
+
+                              {selectedAgent.limits.allowDelegation && (
+                                <div className="flex items-center justify-between text-[11px] text-zinc-400 pl-5">
+                                  <span>Limite de profundidade:</span>
+                                  <div className="flex items-center gap-1">
+                                    {[1, 2, 3].map(depth => (
+                                      <button
+                                        key={depth}
+                                        type="button"
+                                        onClick={() =>
+                                          onUpdateStore(
+                                            updateAgentProfileWithVersion(store, {
+                                              ...selectedAgent,
+                                              limits: {
+                                                ...selectedAgent.limits,
+                                                maxDelegationDepth: depth
+                                              }
+                                            })
+                                          )
+                                        }
+                                        className={`px-2 py-0.5 rounded text-[10px] cursor-pointer ${
+                                          selectedAgent.limits.maxDelegationDepth === depth
+                                            ? 'bg-zinc-700 text-white font-bold'
+                                            : 'bg-zinc-800/60 text-zinc-400'
+                                        }`}
+                                      >
+                                        {depth}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1849,88 +2355,97 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           </div>
                           <span className="text-zinc-400 flex items-center gap-1">
                             {selectedAgent.knowledgeBindings.length} vinculadas{' '}
-                            <ChevronRight className="w-3.5 h-3.5" />
+                            <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${expandedSettingsSection === 'files' ? 'rotate-90' : ''}`} />
                           </span>
                         </button>
                         {expandedSettingsSection === 'files' && (
                           <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-2.5 text-xs">
-                            {selectedAgent.knowledgeBindings.map(b => (
-                              <div
-                                key={b.id}
-                                className="p-2 rounded-xl bg-[#18181b] border border-zinc-800/80 flex items-center justify-between gap-2"
-                              >
-                                <div className="min-w-0">
-                                  <div className="text-[11px] font-medium text-zinc-200 truncate">
-                                    {b.noteTitle || b.folderPath}
+                            {selectedAgent.knowledgeBindings.length === 0 ? (
+                              <div className="text-[11px] text-zinc-500 py-2 text-center">
+                                Nenhuma nota do cofre vinculada a este agente.
+                              </div>
+                            ) : (
+                              selectedAgent.knowledgeBindings.map(b => (
+                                <div
+                                  key={b.id}
+                                  className="p-2.5 rounded-xl bg-[#18181b] border border-zinc-800/80 flex items-center justify-between gap-2"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => b.noteId && onOpenNote(b.noteId)}
+                                      className="text-[11px] font-medium text-zinc-200 hover:text-white truncate block text-left cursor-pointer"
+                                      title={b.noteTitle}
+                                    >
+                                      {b.noteTitle || b.folderPath || 'Documento'}
+                                    </button>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      <span
+                                        className="text-[9px] px-1.5 py-0.2 rounded font-medium"
+                                        style={{
+                                          backgroundColor: `${ROLE_LABELS[b.role]?.badgeColor || '#3b82f6'}20`,
+                                          color: ROLE_LABELS[b.role]?.badgeColor || '#3b82f6'
+                                        }}
+                                      >
+                                        {ROLE_LABELS[b.role]?.label || b.role}
+                                      </span>
+                                      <span className="text-[9px] text-zinc-500">
+                                        {b.updatePolicy === 'pin_revision' ? '🔒 Fixado' : '🔄 Acompanha'}
+                                      </span>
+                                    </div>
                                   </div>
-                                  <div className="text-[10px] text-zinc-500">
-                                    {ROLE_LABELS[b.role].label}
-                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onUpdateStore(
+                                        updateAgentProfileWithVersion(store, {
+                                          ...selectedAgent,
+                                          knowledgeBindings: selectedAgent.knowledgeBindings.filter(
+                                            x => x.id !== b.id
+                                          )
+                                        })
+                                      )
+                                    }
+                                    className="text-zinc-500 hover:text-rose-400 p-1 cursor-pointer transition-colors"
+                                    title="Remover vínculo"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    onUpdateStore(
-                                      updateAgentProfileWithVersion(store, {
-                                        ...selectedAgent,
-                                        knowledgeBindings: selectedAgent.knowledgeBindings.filter(
-                                          x => x.id !== b.id
-                                        )
-                                      })
-                                    )
-                                  }
-                                  className="text-zinc-500 hover:text-rose-400 p-1 cursor-pointer"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ))}
+                              ))
+                            )}
 
-                            <div className="space-y-1.5 pt-1 border-t border-zinc-800">
-                              <select
-                                value={bindNoteId}
-                                onChange={e => setBindNoteId(e.target.value)}
-                                className="w-full bg-[#18181b] border border-zinc-800 rounded-lg px-2 py-1.5 text-[11px] text-zinc-200"
-                              >
-                                <option value="" className="bg-[#18181b]">
-                                  Vincular nota do cofre...
-                                </option>
-                                {notes.map(n => (
-                                  <option key={n.id} value={n.id} className="bg-[#18181b]">
-                                    {n.title}
-                                  </option>
-                                ))}
-                              </select>
-                              <div className="flex items-center gap-1.5">
-                                <select
-                                  value={bindRole}
-                                  onChange={e => setBindRole(e.target.value as ContextRole)}
-                                  className="flex-1 bg-[#18181b] border border-zinc-800 rounded-lg px-2 py-1 text-[11px] text-zinc-200"
-                                >
-                                  <option value="template" className="bg-[#18181b]">
-                                    Modelo
-                                  </option>
-                                  <option value="permanent_ref" className="bg-[#18181b]">
-                                    Catálogo / Regra
-                                  </option>
-                                  <option value="project_context" className="bg-[#18181b]">
-                                    Contexto Cliente
-                                  </option>
-                                </select>
-                                <button
-                                  type="button"
-                                  onClick={handleAddKnowledgeBinding}
-                                  className="px-2.5 py-1 rounded-lg bg-zinc-100 text-zinc-950 font-semibold text-[11px] cursor-pointer"
-                                >
-                                  Vincular
-                                </button>
-                              </div>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNoteSearchQuery('')
+                                setSelectedNoteForBind(null)
+                                setIsNoteBindPickerOpen(true)
+                              }}
+                              className="w-full py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Vincular nota do cofre...</span>
+                            </button>
                           </div>
                         )}
                       </div>
                     </div>
                   </div>
+
+                  {/* Excluir Agente se houver mais de 1 */}
+                  {store.agents.length > 1 && (
+                    <div className="pt-2 border-t border-zinc-900/90">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAgent(selectedAgent.id)}
+                        className="w-full py-2 rounded-xl border border-rose-900/40 text-rose-400 hover:bg-rose-950/30 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Excluir este agente</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </aside>
             )}
@@ -2739,6 +3254,297 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {/* ============================================================================ */}
+      {/* MODAL: PERSONALIZAR ÍCONE E COR DO AGENTE                                    */}
+      {/* ============================================================================ */}
+      {isAvatarPickerOpen && selectedAgent && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#141416] border border-zinc-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-zinc-100">
+                Personalizar Avatar do Agente
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsAvatarPickerOpen(false)}
+                className="text-zinc-500 hover:text-zinc-200 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Pré-visualização ao vivo */}
+            <div className="flex justify-center py-3">
+              <div
+                className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-xl transition-all"
+                style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
+              >
+                <span>{getAgentIcon(selectedAgent.id)}</span>
+              </div>
+            </div>
+
+            {/* Paleta de Cores */}
+            <div className="space-y-1.5">
+              <label className="block text-[11px] text-zinc-400 font-medium">Cor de Destaque</label>
+              <div className="flex items-center justify-between gap-1.5">
+                {[
+                  '#10b981', // Emerald
+                  '#2563eb', // Blue
+                  '#8b5cf6', // Violet
+                  '#f59e0b', // Amber
+                  '#f43f5e', // Rose
+                  '#06b6d4', // Cyan
+                  '#6366f1', // Indigo
+                  '#14b8a6'  // Teal
+                ].map(c => {
+                  const isSel = getAgentColor(selectedAgent.id) === c
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() =>
+                        onUpdateStore(
+                          updateAgentProfileWithVersion(store, {
+                            ...selectedAgent,
+                            color: c
+                          })
+                        )
+                      }
+                      className={`w-7 h-7 rounded-xl transition-transform cursor-pointer ${
+                        isSel ? 'ring-2 ring-white scale-110' : 'hover:scale-105 opacity-80 hover:opacity-100'
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Símbolo ou Emoji */}
+            <div className="space-y-1.5">
+              <label className="block text-[11px] text-zinc-400 font-medium">Símbolo ou Emoji</label>
+              <div className="grid grid-cols-8 gap-1.5 bg-[#121214] p-2 rounded-xl border border-zinc-800/70">
+                {['••', '🤖', '💼', '⚡', '🧠', '🎯', '🛡️', '📊', '📝', '🔍', '🚀', '💡', '⚙️', '💬', '✨', '👑'].map(glyph => {
+                  const isSel = getAgentIcon(selectedAgent.id) === glyph
+                  return (
+                    <button
+                      key={glyph}
+                      type="button"
+                      onClick={() =>
+                        onUpdateStore(
+                          updateAgentProfileWithVersion(store, {
+                            ...selectedAgent,
+                            icon: glyph
+                          })
+                        )
+                      }
+                      className={`h-8 rounded-lg flex items-center justify-center text-sm transition-colors cursor-pointer ${
+                        isSel ? 'bg-zinc-700 text-white font-bold' : 'hover:bg-zinc-800 text-zinc-300'
+                      }`}
+                    >
+                      {glyph}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setIsAvatarPickerOpen(false)}
+                className="px-4 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs cursor-pointer"
+              >
+                Concluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================ */}
+      {/* MODAL: VINCULAR NOTA DO COFRE AO AGENTE (BUSCA RÁPIDA ESTILO MOVER PARA)   */}
+      {/* ============================================================================ */}
+      {isNoteBindPickerOpen && selectedAgent && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#141416] border border-zinc-800 rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-100">
+                  Vincular Nota do Cofre ao Agente
+                </h3>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Conecte documentos do cofre ao cérebro de <strong>{selectedAgent.name}</strong>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNoteBindPickerOpen(false)
+                  setSelectedNoteForBind(null)
+                  setNoteSearchQuery('')
+                }}
+                className="text-zinc-500 hover:text-zinc-200 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Campo de Busca Rápida */}
+            <div className="relative flex items-center">
+              <Search className="w-4 h-4 text-zinc-500 absolute left-3 pointer-events-none" />
+              <input
+                type="text"
+                autoFocus
+                value={noteSearchQuery}
+                onChange={e => setNoteSearchQuery(e.target.value)}
+                placeholder="Buscar nota por título ou pasta..."
+                className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl pl-9 pr-8 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+              />
+              {noteSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setNoteSearchQuery('')}
+                  className="absolute right-2.5 text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Lista Filtrada de Notas */}
+            <div className="max-h-56 overflow-y-auto space-y-1 pr-1 border border-zinc-800/60 rounded-xl p-1 bg-[#121214]">
+              {notes
+                .filter(n => {
+                  const q = noteSearchQuery.toLowerCase().trim()
+                  if (!q) return true
+                  return (
+                    n.title.toLowerCase().includes(q) ||
+                    (n.folder && n.folder.toLowerCase().includes(q))
+                  )
+                })
+                .map(n => {
+                  const isSelected = selectedNoteForBind?.id === n.id
+                  return (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => setSelectedNoteForBind(n)}
+                      className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-zinc-800 text-white font-medium shadow-xs'
+                          : 'text-zinc-300 hover:bg-zinc-800/40'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-4 h-4 text-zinc-400 shrink-0" />
+                        <span className="truncate">{n.title}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {n.folder && (
+                          <span className="text-[10px] text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded">
+                            {n.folder}
+                          </span>
+                        )}
+                        {isSelected && <Check className="w-4 h-4 text-emerald-400" />}
+                      </div>
+                    </button>
+                  )
+                })}
+            </div>
+
+            {/* Configurações de Papel e Política de Integridade */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
+                  Papel da Nota
+                </label>
+                <select
+                  value={bindRole}
+                  onChange={e => setBindRole(e.target.value as ContextRole)}
+                  className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600"
+                >
+                  <option value="template" className="bg-[#1c1c1f]">
+                    Modelo a seguir (Preserva original)
+                  </option>
+                  <option value="permanent_ref" className="bg-[#1c1c1f]">
+                    Referência / Catálogo de preços
+                  </option>
+                  <option value="project_context" className="bg-[#1c1c1f]">
+                    Contexto do Cliente / Briefing
+                  </option>
+                  <option value="request_context" className="bg-[#1c1c1f]">
+                    Contexto deste pedido (Temporário)
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
+                  Integridade & Versão
+                </label>
+                <select
+                  value={bindPolicy}
+                  onChange={e => setBindPolicy(e.target.value as 'follow_latest' | 'pin_revision')}
+                  className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600"
+                >
+                  <option value="follow_latest" className="bg-[#1c1c1f]">
+                    🔄 Acompanhar versão atualizada
+                  </option>
+                  <option value="pin_revision" className="bg-[#1c1c1f]">
+                    🔒 Fixar snapshot imutável
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
+              <span className="text-[11px] text-zinc-500">
+                {selectedNoteForBind
+                  ? `Selecionada: ${selectedNoteForBind.title}`
+                  : 'Selecione uma nota acima para vincular'}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsNoteBindPickerOpen(false)
+                    setSelectedNoteForBind(null)
+                    setNoteSearchQuery('')
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedNoteForBind}
+                  onClick={handleConfirmBindNote}
+                  className="px-4 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs disabled:opacity-40 cursor-pointer"
+                >
+                  Vincular ao Agente
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================ */}
+      {/* MODAL: CONFIGURAÇÕES DE IA DO PYRITE (CHAVES, MODELOS, PROVEDORES)          */}
+      {/* ============================================================================ */}
+      {isAiSettingsModalOpen && (
+        <AiSettingsModal
+          isOpen={isAiSettingsModalOpen}
+          onClose={() => {
+            setIsAiSettingsModalOpen(false)
+            loadAiConfigs()
+          }}
+          onConfigSaved={() => {
+            loadAiConfigs()
+          }}
+        />
       )}
     </div>
   )
