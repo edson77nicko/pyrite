@@ -12,6 +12,7 @@ export interface TaskBoard {
   name: string
   icon?: string
   createdAt: number
+  category?: 'project' | 'item'
 }
 
 export type TaskStatusGroup = 'todo' | 'in_progress' | 'done'

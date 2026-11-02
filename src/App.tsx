@@ -623,12 +623,13 @@ export const App: React.FC = () => {
     })
   }
 
-  const handleCreateTaskBoard = (name: string, icon: string = 'CheckCircle2') => {
+  const handleCreateTaskBoard = (name: string, icon: string = 'CheckCircle2', category: 'project' | 'item' = 'project') => {
     const newBoard: TaskBoard = {
       id: `board_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: name.trim() || 'Nova Aba',
-      icon: icon || 'CheckCircle2',
-      createdAt: Date.now()
+      name: name.trim() || (category === 'item' ? 'Novo Grupo de Itens' : 'Novo Projeto'),
+      icon: icon || (category === 'item' ? 'Folder' : 'CheckCircle2'),
+      createdAt: Date.now(),
+      category
     }
     const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
     const updatedBoards = [...currentBoards, newBoard]
@@ -1779,6 +1780,8 @@ export const App: React.FC = () => {
                     return { success: true, note: newNote, filePath, revisionHash }
                   }}
                   onCreateTask={handleCreateTask}
+                  taskBoards={taskBoards}
+                  tasks={tasks}
                   preselectedNoteForBinding={preselectedNoteForBinding}
                   onClearPreselectedNote={() => setPreselectedNoteForBinding(null)}
                   onLoadDemoSeedNotes={() => {

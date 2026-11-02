@@ -78,6 +78,7 @@ export interface ProjectContext {
   itemName?: string             // Nome do Item de Conteúdo específico (ex: "Construtora Horizonte", "Artigo Multiagentes")
   clientName: string            // Mantido para compatibilidade total; espelha (itemName || clientName)
   itemType?: string             // Tipo de conteúdo flexível (ex: "Cliente", "Artigo", "Produto", "Módulo", "Geral")
+  category?: 'project' | 'item' // Categoria de agrupamento: 'project' (Projetos) ou 'item' (Itens: Clientes, Produtos, etc.)
   description?: string
   folderPath?: string
   briefingNoteIds: string[]

@@ -13,6 +13,7 @@ import type {
   TeamDefinition
 } from '../types/agents'
 import type { Note, NoteType, TaskItem } from '../types'
+import type { TaskBoard } from '../types/tasks'
 import {
   ROLE_LABELS,
   computeHashSync,
@@ -72,6 +73,7 @@ import {
   Wrench,
   Folder,
   FolderOpen,
+  Tag,
   Maximize2,
   ExternalLink
 } from 'lucide-react'
@@ -101,6 +103,8 @@ interface MyTeamViewProps {
     error?: string
   }>
   onCreateTask: (title?: string, initialData?: Partial<TaskItem>) => TaskItem
+  taskBoards?: TaskBoard[]
+  tasks?: TaskItem[]
   preselectedNoteForBinding?: { noteId: string; role: ContextRole } | null
   onClearPreselectedNote?: () => void
   onLoadDemoSeedNotes?: () => void
@@ -135,6 +139,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   onOpenNote,
   onCreateCommittedNote,
   onCreateTask,
+  taskBoards = [],
+  tasks: _tasks = [],
   preselectedNoteForBinding,
   onClearPreselectedNote,
   onLoadDemoSeedNotes
@@ -213,7 +219,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
   // Estado de formulário para Projetos & Itens de Conteúdo
   const [editingProject, setEditingProject] = useState<ProjectContext | null>(null)
+  const [projCategory, setProjCategory] = useState<'project' | 'item'>('project')
   const [projName, setProjName] = useState('')
+  const [isProjGroupDropdownOpen, setIsProjGroupDropdownOpen] = useState(false)
   const [projItem, setProjItem] = useState('')
   const [projDesc, setProjDesc] = useState('')
   const [projBriefingIds, setProjBriefingIds] = useState<string[]>([])
@@ -232,6 +240,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const [hasActiveKey, setHasActiveKey] = useState<boolean>(true)
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false)
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false)
+  const [contextSearchQuery, setContextSearchQuery] = useState('')
+  const [hoveredCategory, setHoveredCategory] = useState<'project' | 'item' | null>(null)
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
   const [isNoteBindPickerOpen, setIsNoteBindPickerOpen] = useState(false)
   const [noteSearchQuery, setNoteSearchQuery] = useState('')
@@ -242,6 +252,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
   // Referências para fechamento com clique externo (dropdowns e popovers)
   const projectDropdownRef = useRef<HTMLDivElement>(null)
+  const projGroupDropdownRef = useRef<HTMLDivElement>(null)
   const modelDropdownRef = useRef<HTMLDivElement>(null)
   const composerPlusRef = useRef<HTMLDivElement>(null)
 
@@ -310,6 +321,13 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       ) {
         setIsComposerPlusOpen(false)
       }
+      if (
+        isProjGroupDropdownOpen &&
+        projGroupDropdownRef.current &&
+        !projGroupDropdownRef.current.contains(target)
+      ) {
+        setIsProjGroupDropdownOpen(false)
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
@@ -318,20 +336,74 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('touchstart', handleClickOutside)
     }
-  }, [isProjectDropdownOpen, isModelDropdownOpen, isComposerPlusOpen])
+  }, [isProjectDropdownOpen, isModelDropdownOpen, isComposerPlusOpen, isProjGroupDropdownOpen])
 
-  // Agrupamento dos itens de conteúdo por conjunto/projeto (como nó Data Task)
-  const groupedProjects = useMemo(() => {
+  // Identificação inteligente de Itens vs Projetos
+  const isItemProject = (p: ProjectContext) => {
+    if (p.category === 'item') return true
+    if (p.category === 'project') return false
+    const n = (p.name || '').toLowerCase()
+    const t = (p.itemType || '').toLowerCase()
+    return (
+      n.includes('cliente') ||
+      t.includes('cliente') ||
+      n.includes('produto') ||
+      t.includes('produto') ||
+      n.includes('artigo') ||
+      t.includes('artigo') ||
+      n.includes('campanha') ||
+      t.includes('campanha') ||
+      n.includes('post') ||
+      t.includes('post')
+    )
+  }
+
+  const projectItems = useMemo(() => {
+    return store.projects.filter(p => !isItemProject(p))
+  }, [store.projects])
+
+  const contentItems = useMemo(() => {
+    return store.projects.filter(p => isItemProject(p))
+  }, [store.projects])
+
+  const groupedProjectItems = useMemo(() => {
     const map: Record<string, ProjectContext[]> = {}
-    store.projects.forEach(p => {
-      const groupName = p.name?.trim() || 'Geral'
-      if (!map[groupName]) {
-        map[groupName] = []
-      }
-      map[groupName].push(p)
+    projectItems.forEach(p => {
+      const g = p.name?.trim() || 'Geral'
+      if (!map[g]) map[g] = []
+      map[g].push(p)
     })
     return map
-  }, [store.projects])
+  }, [projectItems])
+
+  const groupedContentItems = useMemo(() => {
+    const map: Record<string, ProjectContext[]> = {}
+    contentItems.forEach(p => {
+      const g = p.name?.trim() || 'Clientes'
+      if (!map[g]) map[g] = []
+      map[g].push(p)
+    })
+    return map
+  }, [contentItems])
+
+  // Grupos disponíveis para o combobox customizado do modal
+  const availableGroupsForCategory = useMemo(() => {
+    const query = projName.toLowerCase().trim()
+    if (projCategory === 'item') {
+      const set = new Set<string>()
+      taskBoards.filter(b => b.category === 'item').forEach(b => set.add(b.name))
+      contentItems.forEach(p => set.add(p.name))
+      ;['Clientes', 'Produtos & Recursos', 'Blog & Conteúdo', 'Marketing', 'Campanhas', 'Pesquisa'].forEach(d => set.add(d))
+      return Array.from(set).filter(name => !query || name.toLowerCase().includes(query))
+    } else {
+      const set = new Set<string>()
+      taskBoards.filter(b => b.category !== 'item').forEach(b => set.add(b.name))
+      projectItems.forEach(p => set.add(p.name))
+      ;['Geral', 'Desenvolvimento', 'Operações', 'Planejamento Estratégico', 'Lançamento Q4'].forEach(d => set.add(d))
+      return Array.from(set).filter(name => !query || name.toLowerCase().includes(query))
+    }
+  }, [projCategory, projName, taskBoards, contentItems, projectItems])
+
 
   const toggleSpeechRecognition = () => {
     const SpeechRec = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
@@ -935,7 +1007,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   }
 
   const handleSaveProject = async () => {
-    const containerName = projName.trim() || 'Geral'
+    const defaultContainer = projCategory === 'item' ? 'Clientes' : 'Geral'
+    const containerName = projName.trim() || defaultContainer
     const itemName = projItem.trim() || containerName
     if (!itemName) return
     const nextProj: ProjectContext = {
@@ -944,6 +1017,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       itemName,
       clientName: itemName,
       itemType: containerName,
+      category: projCategory,
       description: projDesc.trim(),
       folderPath: containerName,
       briefingNoteIds: projBriefingIds,
@@ -959,12 +1033,14 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     setEditingProject(null)
     setProjName('')
     setProjItem('')
+    setProjCategory('project')
+    setIsProjGroupDropdownOpen(false)
     setProjDesc('')
     setProjBriefingIds([])
     setProjBriefingSearch('')
     setStatusBanner({
       type: 'success',
-      text: `Item "${itemName}" salvo no conjunto "${containerName}".`
+      text: `${projCategory === 'item' ? 'Item' : 'Projeto'} "${itemName}" salvo no conjunto "${containerName}".`
     })
   }
 
@@ -1235,98 +1311,246 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
                     {isProjectDropdownOpen && (
                       <div
-                        className="absolute right-0 top-full mt-1.5 w-76 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-100 max-h-84 overflow-hidden flex flex-col"
+                        onMouseLeave={() => setHoveredCategory(null)}
+                        className="absolute right-0 top-full mt-1.5 w-64 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1.5 animate-in fade-in zoom-in-95 duration-100"
                       >
-                        <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 shrink-0">
-                          <span>Conjuntos & Itens de Dados</span>
-                          <span className="text-zinc-500">{store.projects.length} itens</span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedProjectId('')
-                            setIsProjectDropdownOpen(false)
-                          }}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer shrink-0 ${
-                            !selectedProjectId
-                              ? 'bg-zinc-800/90 text-white font-medium'
-                              : 'text-zinc-300 hover:bg-zinc-800/50'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                            <span>Automático (detectado no pedido)</span>
-                          </div>
-                          {!selectedProjectId && <Check className="w-3.5 h-3.5 text-zinc-200" />}
-                        </button>
-
-                        <div className="overflow-y-auto space-y-2 flex-1 pr-0.5 mt-1 max-h-56">
-                          {Object.keys(groupedProjects).length === 0 ? (
-                            <div className="text-[11px] text-zinc-500 px-2 py-3 text-center">
-                              Nenhum conjunto cadastrado. Clique abaixo para adicionar.
-                            </div>
-                          ) : (
-                            (Object.entries(groupedProjects) as [string, ProjectContext[]][]).map(([groupName, items]) => (
-                              <div key={groupName} className="space-y-0.5">
-                                <div className="flex items-center justify-between px-2 py-1 text-[10px] font-medium text-zinc-500 bg-zinc-900/60 rounded-lg">
-                                  <span className="truncate flex items-center gap-1.5 font-semibold text-zinc-400">
-                                    <Folder className="w-3 h-3 text-zinc-400" />
-                                    {groupName}
-                                  </span>
-                                  <span className="text-[9px] text-zinc-500 font-mono">{items.length}</span>
-                                </div>
-                                {items.map(p => {
-                                  const isSel = selectedProjectId === p.id
-                                  const displayName = p.itemName || p.clientName || p.name
-                                  return (
-                                    <button
-                                      key={p.id}
-                                      type="button"
-                                      onClick={() => {
-                                        setSelectedProjectId(p.id)
-                                        setIsProjectDropdownOpen(false)
-                                      }}
-                                      className={`w-full text-left pl-3.5 pr-2 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
-                                        isSel
-                                          ? 'bg-zinc-800/90 text-white font-medium'
-                                          : 'text-zinc-300 hover:bg-zinc-800/50'
-                                      }`}
-                                    >
-                                      <div className="min-w-0 pr-2">
-                                        <div className="truncate font-medium">{displayName}</div>
-                                        {p.description && (
-                                          <div className="text-[10px] text-zinc-500 truncate">
-                                            {p.description}
-                                          </div>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-1.5 shrink-0">
-                                        <span className="text-[10px] text-zinc-500">
-                                          {p.briefingNoteIds.length} notas
-                                        </span>
-                                        {isSel && <Check className="w-3.5 h-3.5 text-emerald-400" />}
-                                      </div>
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            ))
+                        {/* Campo de Busca Rápida Unificada */}
+                        <div className="relative flex items-center px-1">
+                          <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 pointer-events-none" />
+                          <input
+                            type="text"
+                            autoFocus
+                            value={contextSearchQuery}
+                            onChange={e => setContextSearchQuery(e.target.value)}
+                            placeholder="Buscar projetos ou itens..."
+                            className="w-full bg-[#121215] border border-zinc-800 rounded-xl pl-8 pr-7 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                          />
+                          {contextSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setContextSearchQuery('')}
+                              className="absolute right-2 text-zinc-500 hover:text-zinc-300 p-0.5 cursor-pointer"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
                           )}
                         </div>
+
+                        {/* Se estiver buscando: exibe lista filtrada direta */}
+                        {contextSearchQuery.trim() ? (
+                          <div className="max-h-56 overflow-y-auto space-y-0.5 pr-0.5">
+                            {store.projects
+                              .filter(p => {
+                                const q = contextSearchQuery.toLowerCase()
+                                return (
+                                  p.name.toLowerCase().includes(q) ||
+                                  (p.itemName && p.itemName.toLowerCase().includes(q)) ||
+                                  (p.clientName && p.clientName.toLowerCase().includes(q)) ||
+                                  (p.description && p.description.toLowerCase().includes(q))
+                                )
+                              })
+                              .map(p => {
+                                const isSel = selectedProjectId === p.id
+                                const displayName = p.itemName || p.clientName || p.name
+                                const isItem = isItemProject(p)
+                                return (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedProjectId(p.id)
+                                      setIsProjectDropdownOpen(false)
+                                      setContextSearchQuery('')
+                                      setHoveredCategory(null)
+                                    }}
+                                    className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
+                                      isSel
+                                        ? 'bg-zinc-800 text-white font-medium'
+                                        : 'text-zinc-300 hover:bg-zinc-800/50'
+                                    }`}
+                                  >
+                                    <div className="min-w-0 pr-2">
+                                      <div className="truncate font-medium">{displayName}</div>
+                                      <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 mt-0.5">
+                                        <span>{p.name}</span>
+                                        <span className="px-1 rounded bg-zinc-800 text-zinc-400">
+                                          {isItem ? 'Item' : 'Projeto'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className="text-[10px] text-zinc-500">{p.briefingNoteIds.length} notas</span>
+                                      {isSel && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                                    </div>
+                                  </button>
+                                )
+                              })}
+                          </div>
+                        ) : (
+                          <>
+                            {/* Opção Automático */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedProjectId('')
+                                setIsProjectDropdownOpen(false)
+                                setHoveredCategory(null)
+                              }}
+                              className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
+                                !selectedProjectId
+                                  ? 'bg-zinc-800/90 text-white font-medium'
+                                  : 'text-zinc-300 hover:bg-zinc-800/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                                <span>Automático (detectado no pedido)</span>
+                              </div>
+                              {!selectedProjectId && <Check className="w-3.5 h-3.5 text-zinc-200" />}
+                            </button>
+
+                            <div className="border-t border-zinc-800/70 my-1" />
+
+                            {/* Menu 1: Projetos */}
+                            <div
+                              onMouseEnter={() => setHoveredCategory('project')}
+                              onClick={() => setHoveredCategory(h => (h === 'project' ? null : 'project'))}
+                              className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs cursor-pointer transition-colors ${
+                                hoveredCategory === 'project'
+                                  ? 'bg-zinc-800 text-white font-medium'
+                                  : 'text-zinc-300 hover:bg-zinc-800/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Briefcase className="w-3.5 h-3.5 text-zinc-400" />
+                                <span>Projetos</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-zinc-500">
+                                <span className="text-[10px] font-mono">{projectItems.length}</span>
+                                <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
+                              </div>
+                            </div>
+
+                            {/* Menu 2: Itens (Clientes, Produtos, etc.) */}
+                            <div
+                              onMouseEnter={() => setHoveredCategory('item')}
+                              onClick={() => setHoveredCategory(h => (h === 'item' ? null : 'item'))}
+                              className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs cursor-pointer transition-colors ${
+                                hoveredCategory === 'item'
+                                  ? 'bg-zinc-800 text-white font-medium'
+                                  : 'text-zinc-300 hover:bg-zinc-800/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Tag className="w-3.5 h-3.5 text-zinc-400" />
+                                <span>Itens (Clientes, etc.)</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-zinc-500">
+                                <span className="text-[10px] font-mono">{contentItems.length}</span>
+                                <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
+                              </div>
+                            </div>
+                          </>
+                        )}
 
                         <div className="border-t border-zinc-800/80 my-1 pt-1 shrink-0" />
                         <button
                           type="button"
                           onClick={() => {
                             setIsProjectDropdownOpen(false)
+                            setHoveredCategory(null)
                             setIsProjectsModalOpen(true)
                           }}
                           className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2 cursor-pointer shrink-0"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>Gerenciar conjuntos e itens</span>
+                          <span>Gerenciar projetos e itens</span>
                         </button>
+
+                        {/* SUBMENU FLUTUANTE (FLYOUT) AO MOVER O MOUSE OU CLICAR */}
+                        {hoveredCategory && !contextSearchQuery.trim() && (
+                          <div
+                            onMouseEnter={() => setHoveredCategory(hoveredCategory)}
+                            className="absolute right-full top-0 mr-1.5 w-76 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100 max-h-84 overflow-hidden flex flex-col"
+                          >
+                            <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 shrink-0">
+                              <span>
+                                {hoveredCategory === 'project' ? 'Projetos Cadastrados' : 'Itens Cadastrados (Clientes, etc.)'}
+                              </span>
+                              <span className="text-zinc-500">
+                                {hoveredCategory === 'project' ? projectItems.length : contentItems.length} itens
+                              </span>
+                            </div>
+
+                            <div className="overflow-y-auto space-y-2 flex-1 pr-0.5 mt-1 max-h-64">
+                              {(() => {
+                                const currentGrouped =
+                                  hoveredCategory === 'project' ? groupedProjectItems : groupedContentItems
+                                const keys = Object.keys(currentGrouped)
+                                if (keys.length === 0) {
+                                  return (
+                                    <div className="text-[11px] text-zinc-500 px-2 py-4 text-center">
+                                      Nenhum {hoveredCategory === 'project' ? 'projeto' : 'item'} cadastrado ainda.
+                                    </div>
+                                  )
+                                }
+                                return keys.map(groupName => {
+                                  const items = currentGrouped[groupName] || []
+                                  return (
+                                    <div key={groupName} className="space-y-0.5">
+                                      <div className="flex items-center justify-between px-2 py-1 text-[10px] font-medium text-zinc-500 bg-zinc-900/60 rounded-lg">
+                                        <span className="truncate flex items-center gap-1.5 font-semibold text-zinc-400">
+                                          {hoveredCategory === 'project' ? (
+                                            <Folder className="w-3 h-3 text-zinc-400" />
+                                          ) : (
+                                            <Tag className="w-3 h-3 text-zinc-400" />
+                                          )}
+                                          {groupName}
+                                        </span>
+                                        <span className="text-[9px] text-zinc-500 font-mono">{items.length}</span>
+                                      </div>
+                                      {items.map(p => {
+                                        const isSel = selectedProjectId === p.id
+                                        const displayName = p.itemName || p.clientName || p.name
+                                        return (
+                                          <button
+                                            key={p.id}
+                                            type="button"
+                                            onClick={() => {
+                                              setSelectedProjectId(p.id)
+                                              setIsProjectDropdownOpen(false)
+                                              setHoveredCategory(null)
+                                            }}
+                                            className={`w-full text-left pl-3.5 pr-2 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
+                                              isSel
+                                                ? 'bg-zinc-800/90 text-white font-medium'
+                                                : 'text-zinc-300 hover:bg-zinc-800/50'
+                                            }`}
+                                          >
+                                            <div className="min-w-0 pr-2">
+                                              <div className="truncate font-medium">{displayName}</div>
+                                              {p.description && (
+                                                <div className="text-[10px] text-zinc-500 truncate">
+                                                  {p.description}
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                              <span className="text-[10px] text-zinc-500">
+                                                {p.briefingNoteIds.length} notas
+                                              </span>
+                                              {isSel && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                                            </div>
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  )
+                                })
+                              })()}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3320,6 +3544,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-zinc-100 truncate">{displayName}</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-400">
+                            {isItemProject(p) ? 'Item' : 'Projeto'}
+                          </span>
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
                           <span>Grupo / Projeto: <strong className="text-zinc-400">{p.name}</strong></span>
@@ -3334,6 +3561,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             setEditingProject(p)
                             setProjItem(p.itemName || p.clientName || '')
                             setProjName(p.name)
+                            setProjCategory(p.category || (isItemProject(p) ? 'item' : 'project'))
                             setProjDesc(p.description || '')
                             setProjBriefingIds(p.briefingNoteIds || [])
                           }}
@@ -3377,6 +3605,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                       setEditingProject(null)
                       setProjName('')
                       setProjItem('')
+                      setProjCategory('project')
+                      setIsProjGroupDropdownOpen(false)
                       setProjDesc('')
                       setProjBriefingIds([])
                     }}
@@ -3387,24 +3617,95 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 )}
               </div>
 
+              {/* Seletor de Categoria: Projeto vs Item */}
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] text-zinc-400 font-medium">Categoria:</span>
+                <div className="inline-flex rounded-xl bg-[#18181b] p-0.5 border border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProjCategory('project')
+                      setIsProjGroupDropdownOpen(false)
+                    }}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 ${
+                      projCategory === 'project'
+                        ? 'bg-zinc-800 text-white shadow-xs'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <Briefcase className="w-3.5 h-3.5" />
+                    <span>Projeto</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProjCategory('item')
+                      setIsProjGroupDropdownOpen(false)
+                    }}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 ${
+                      projCategory === 'item'
+                        ? 'bg-zinc-800 text-white shadow-xs'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <Tag className="w-3.5 h-3.5" />
+                    <span>Item (Cliente, etc.)</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
-                <div>
+                <div className="relative" ref={projGroupDropdownRef}>
                   <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
-                    Grupo / Projeto
+                    {projCategory === 'item' ? 'Grupo de Itens' : 'Projeto Contêiner'}
                   </label>
-                  <input
-                    type="text"
-                    list="existing-projects-datalist"
-                    value={projName}
-                    onChange={e => setProjName(e.target.value)}
-                    placeholder="Ex: Clientes, Blog, Campanhas"
-                    className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
-                  />
-                  <datalist id="existing-projects-datalist">
-                    {Array.from(new Set(['Clientes', 'Blog & Conteúdo', 'Marketing', 'Produtos & Recursos', 'Pesquisa', ...folders])).map(f => (
-                      <option key={f} value={f} />
-                    ))}
-                  </datalist>
+                  <div className="relative flex items-center">
+                    <input
+                      type="text"
+                      value={projName}
+                      onChange={e => {
+                        setProjName(e.target.value)
+                        setIsProjGroupDropdownOpen(true)
+                      }}
+                      onFocus={() => setIsProjGroupDropdownOpen(true)}
+                      placeholder={projCategory === 'item' ? 'Ex: Clientes, Produtos, Campanhas' : 'Ex: Geral, Lançamento Q4, Marketing'}
+                      className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl pl-3 pr-8 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsProjGroupDropdownOpen(v => !v)}
+                      className="absolute right-2 text-zinc-500 hover:text-zinc-300 p-1 cursor-pointer"
+                      title="Selecionar existente"
+                    >
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {isProjGroupDropdownOpen && (
+                    <div className="absolute left-0 top-full mt-1.5 w-full bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl p-1.5 z-50 space-y-1 max-h-52 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+                      <div className="text-[10px] uppercase font-semibold text-zinc-500 px-2 py-0.5">
+                        {projCategory === 'item' ? 'Grupos de Itens Disponíveis' : 'Projetos Disponíveis'}
+                      </div>
+                      {availableGroupsForCategory.map(grp => (
+                        <button
+                          key={grp}
+                          type="button"
+                          onClick={() => {
+                            setProjName(grp)
+                            setIsProjGroupDropdownOpen(false)
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between cursor-pointer ${
+                            projName === grp
+                              ? 'bg-zinc-800 text-white font-medium'
+                              : 'text-zinc-300 hover:bg-zinc-800/50'
+                          }`}
+                        >
+                          <span className="truncate">{grp}</span>
+                          {projName === grp && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div>
