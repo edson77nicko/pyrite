@@ -44,6 +44,7 @@ import {
   Shapes,
   Type
 } from 'lucide-react'
+import { CustomSelect } from './CustomSelect'
 
 interface TeamCanvasEditorProps {
   teams: TeamDefinition[]
@@ -166,6 +167,14 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
       y: Math.round(rect.height / 2 - centerY * nextZoom)
     })
   }
+
+  // Centralização automática ao abrir ou alternar de equipe
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleFitView()
+    }, 60)
+    return () => clearTimeout(timer)
+  }, [selectedTeamId])
 
   const handleCreateTeam = () => {
     const coord = agents.find(a => a.specialistRole === 'coordinator') || agents[0]
@@ -462,23 +471,19 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
 
         {/* Direita: Relação ao conectar + Botão Pílula Branco */}
         <div className="flex items-center gap-2.5">
-          <div className="hidden sm:flex items-center gap-1.5 bg-[#141416] border border-zinc-800/80 rounded-xl px-2.5 py-1 text-[11px] text-zinc-400">
+          <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-zinc-400">
             <span>Relação:</span>
-            <select
+            <CustomSelect
               value={connectionRelation}
-              onChange={e => setConnectionRelation(e.target.value as TeamEdge['relation'])}
-              className="bg-transparent text-zinc-200 focus:outline-none cursor-pointer"
-            >
-              <option value="delegates_to" className="bg-[#18181b]">
-                Delega subtarefa
-              </option>
-              <option value="reviews_output" className="bg-[#18181b]">
-                Revisa entrega
-              </option>
-              <option value="depends_on" className="bg-[#18181b]">
-                Depende de
-              </option>
-            </select>
+              onChange={val => setConnectionRelation(val as TeamEdge['relation'])}
+              options={[
+                { value: 'delegates_to', label: 'Delega subtarefa' },
+                { value: 'reviews_output', label: 'Revisa entrega' },
+                { value: 'depends_on', label: 'Depende de' }
+              ]}
+              size="xs"
+              className="w-36"
+            />
           </div>
 
           <button
@@ -521,7 +526,9 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
           }}
           onPointerDown={e => {
             if (e.button === 2) return
-            if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.canvasBg === 'true') {
+            const target = e.target as HTMLElement
+            const isInteractive = target?.closest?.('button, input, textarea, select, [data-node-id], [data-no-pan="true"]')
+            if (!isInteractive) {
               setSelectedNodeId(null)
               setSelectedEdgeId(null)
               setIsTeamMenuOpen(false)
@@ -551,7 +558,7 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
             className="absolute inset-0 pointer-events-none"
           >
             {/* Arestas Bezier Suaves */}
-            <svg className="overflow-visible w-full h-full pointer-events-auto">
+            <svg className="overflow-visible w-full h-full pointer-events-none">
               {activeTeam.edges.map(edge => {
                 const src = activeTeam.nodes.find(n => n.id === edge.sourceNodeId)
                 const dst = activeTeam.nodes.find(n => n.id === edge.targetNodeId)
@@ -573,7 +580,7 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
                       setSelectedEdgeId(edge.id)
                       setSelectedNodeId(null)
                     }}
-                    className="cursor-pointer group"
+                    className="cursor-pointer group pointer-events-auto"
                   >
                     <path d={pathD} fill="none" stroke="transparent" strokeWidth={16} />
                     <path
@@ -658,6 +665,7 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
                       y: e.clientY - (node.position.y * zoom + pan.y)
                     }
                   }}
+                  data-node-id={node.id}
                   className="absolute pointer-events-auto select-none group"
                 >
                   {/* RÓTULO FLUTUANTE ACIMA DO CARD */}
@@ -1048,25 +1056,21 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
 
                 <div>
                   <label className="block text-[11px] text-zinc-400 mb-1">Papel na equipe</label>
-                  <select
+                  <CustomSelect
                     value={selectedNode.roleInTeam}
-                    onChange={e =>
+                    onChange={val =>
                       handleUpdateNode(selectedNode.id, {
-                        roleInTeam: e.target.value as TeamMemberNode['roleInTeam']
+                        roleInTeam: val as TeamMemberNode['roleInTeam']
                       })
                     }
-                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-100"
-                  >
-                    <option value="coordinator" className="bg-[#18181b]">
-                      Coordenador
-                    </option>
-                    <option value="specialist" className="bg-[#18181b]">
-                      Especialista
-                    </option>
-                    <option value="reviewer" className="bg-[#18181b]">
-                      Revisor
-                    </option>
-                  </select>
+                    options={[
+                      { value: 'coordinator', label: 'Coordenador', icon: <Crown className="w-3.5 h-3.5 text-amber-400" /> },
+                      { value: 'specialist', label: 'Especialista', icon: <Bot className="w-3.5 h-3.5 text-blue-400" /> },
+                      { value: 'reviewer', label: 'Revisor', icon: <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> }
+                    ]}
+                    className="w-full"
+                    size="sm"
+                  />
                 </div>
 
                 <div>
