@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react'
 import type { TaskItem, TaskSettings, TaskPriority, SubTask, TaskBoard, TaskPropertyConfig } from '../types/tasks'
 import type { Note } from '../types'
 import { DEFAULT_TASK_SETTINGS, DEFAULT_PRIORITIES } from '../utils/taskStorage'
-import { getPropertyItems, isBuiltinProperty, isOptionProperty, type PropertyItem } from '../utils/taskProperties'
+import { getPropertyItems, isBuiltinProperty, isOptionProperty, getBoardProperties, type PropertyItem } from '../utils/taskProperties'
 import { Pill } from './TaskCustomPropertyField'
 import { TaskSettingsModal } from './TaskSettingsModal'
 import { TaskDocumentView } from './TaskDocumentView'
@@ -213,8 +213,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   const todayStr = new Date().toISOString().slice(0, 10)
 
+  // Board filtering
+  const currentBoardId = activeBoardId || 'default'
+  const currentBoard = useMemo(() => {
+    return taskBoards.find(b => b.id === currentBoardId)
+  }, [taskBoards, currentBoardId])
+
   const safeStatuses = Array.isArray(settings?.statuses) ? settings.statuses : DEFAULT_TASK_SETTINGS.statuses
-  const safeProperties = Array.isArray(settings?.properties) ? settings.properties : DEFAULT_TASK_SETTINGS.properties
+  const safeProperties = useMemo(() => {
+    return getBoardProperties(settings, currentBoardId)
+  }, [settings, currentBoardId])
 
   const safePriorities = useMemo(() => {
     return Array.isArray(settings?.priorities) && settings.priorities.length > 0
@@ -313,15 +321,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
     }
   }
 
-  // Board filtering
-  const currentBoardId = activeBoardId || 'default'
   const boardTasks = useMemo(() => {
     return tasks.filter(t => (t.boardId || 'default') === currentBoardId)
   }, [tasks, currentBoardId])
-
-  const currentBoard = useMemo(() => {
-    return taskBoards.find(b => b.id === currentBoardId)
-  }, [taskBoards, currentBoardId])
 
   const defaultColName = currentBoard?.category === 'item' ? 'Nome' : 'Tarefa'
   const currentTitleColName = currentBoard?.titleColumnName || settings.titleColumnName || defaultColName
@@ -340,14 +342,15 @@ export const TasksView: React.FC<TasksViewProps> = ({
     }
   }
 
-  // Column visibility check (Olhinho feature)
+  // Column visibility check (Olhinho feature & deletion check)
   const isColumnHidden = (propId: string) => {
     const prop = safeProperties.find(p => p.id === propId)
-    return Boolean(prop?.hidden)
+    if (!prop) return true // deleted from this board!
+    return Boolean(prop.hidden)
   }
 
   const visibleColumnCount =
-    3 +
+    4 +
     (!isColumnHidden('prop_status') ? 1 : 0) +
     (!isColumnHidden('prop_priority') ? 1 : 0) +
     (!isColumnHidden('prop_deadline') ? 1 : 0) +
@@ -904,6 +907,21 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   </th>
                 ))}
 
+                {/* Add Property Column */}
+                <th
+                  style={{ width: 36 }}
+                  className="w-9 px-1 py-2.5 text-center bg-[#18181b] select-none border-r border-zinc-800/60"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setIsSettingsOpen(true)}
+                    className="p-1 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/70 transition-colors cursor-pointer mx-auto flex items-center justify-center"
+                    title="Adicionar ou gerenciar propriedades deste projeto"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </th>
+
                 {/* Actions column */}
                 <th
                   style={{ width: columnWidths.col_actions || 44 }}
@@ -1254,6 +1272,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             {renderCustomCell(task, cp)}
                           </td>
                         ))}
+
+                        {/* Add Property Column Empty Cell */}
+                        <td
+                          style={{ width: 36 }}
+                          className={`w-9 px-1 py-2 text-center border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                        />
 
                         {/* Row Action */}
                         <td

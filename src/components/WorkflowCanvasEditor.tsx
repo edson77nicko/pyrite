@@ -59,9 +59,10 @@ import {
   XCircle,
   Copy,
   Clock,
-  Power,
   Folder,
-  ListTodo
+  ListTodo,
+  Loader2,
+  AlertTriangle
 } from 'lucide-react'
 import { CustomSelect } from './CustomSelect'
 import { CustomTimePicker } from './CustomTimePicker'
@@ -91,7 +92,8 @@ interface WorkflowCanvasEditorProps {
 const ResultField: React.FC<{
   output?: string
   isRunning?: boolean
-}> = ({ output, isRunning }) => {
+  lastExecutedAt?: number
+}> = ({ output, isRunning, lastExecutedAt }) => {
   const [copied, setCopied] = useState(false)
   if (!output && !isRunning) return null
 
@@ -102,14 +104,21 @@ const ResultField: React.FC<{
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const timeLabel = lastExecutedAt
+    ? new Date(lastExecutedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : undefined
+
   return (
     <div className="mt-2.5 pt-2 border-t border-zinc-800/60 text-xs">
       <div className="flex items-center justify-between text-[10.5px] text-zinc-400 font-medium pb-1.5">
-        <span className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          Resultado da etapa
+        <span className="flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-amber-400 animate-ping' : 'bg-emerald-500'}`} />
+          <span>{isRunning ? 'Executando novo teste...' : 'Resultado do teste'}</span>
+          {timeLabel && !isRunning && (
+            <span className="text-[9.5px] text-zinc-500 font-mono">({timeLabel})</span>
+          )}
         </span>
-        {output && (
+        {output && !isRunning && (
           <button
             type="button"
             onClick={handleCopy}
@@ -123,10 +132,15 @@ const ResultField: React.FC<{
       </div>
 
       {isRunning ? (
-        <div className="space-y-1.5 py-1">
-          <div className="h-2.5 bg-zinc-800 rounded animate-pulse w-3/4" />
-          <div className="h-2.5 bg-zinc-800 rounded animate-pulse w-5/6" />
-          <div className="h-2.5 bg-zinc-800 rounded animate-pulse w-1/2" />
+        <div className="bg-[#101012] border border-amber-500/30 rounded-lg p-2.5 space-y-1.5 animate-pulse">
+          <div className="flex items-center gap-2 text-[11px] text-amber-300 font-medium">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+            <span>Processando etapa em tempo real...</span>
+          </div>
+          <div className="space-y-1 pt-0.5 opacity-60">
+            <div className="h-2 bg-zinc-700/60 rounded w-4/5" />
+            <div className="h-2 bg-zinc-700/40 rounded w-2/3" />
+          </div>
         </div>
       ) : (
         <div className="bg-[#141416] border border-zinc-800/80 rounded-lg p-2 text-zinc-300 leading-relaxed max-h-36 overflow-y-auto custom-chat-scrollbar text-[11px] whitespace-pre-wrap select-text">
@@ -226,6 +240,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   const [addMenuSearch, setAddMenuSearch] = useState('')
   const [addMenuPos, setAddMenuPos] = useState<{ x: number; y: number } | null>(null)
   const [executingNodeId, setExecutingNodeId] = useState<string | null>(null)
+  const [cardHeights, setCardHeights] = useState<Record<string, number>>({})
   const [activeTabPrompt, setActiveTabPrompt] = useState<Record<string, 'text' | 'note'>>({})
 
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
@@ -557,6 +572,14 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
   const handleExecuteSingleNode = async (node: WorkflowNode) => {
     setExecutingNodeId(node.id)
+    // Limpar o resultado anterior imediatamente para dar feedback visual instantâneo
+    handleUpdateNodeById(node.id, {
+      config: {
+        ...node.config,
+        lastOutput: undefined,
+        lastExecutedAt: undefined
+      }
+    })
     try {
       const res = await executeWorkflowSingleNode({
         node,
@@ -570,6 +593,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
         config: {
           ...node.config,
           lastOutput: res.output,
+          lastExecutedAt: Date.now(),
           branchTaken: res.branchTaken || node.config.branchTaken
         }
       })
@@ -577,7 +601,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       handleUpdateNodeById(node.id, {
         config: {
           ...node.config,
-          lastOutput: `Erro na execução da etapa: ${err?.message || 'Falha ao processar'}`
+          lastOutput: `Erro na execução da etapa: ${err?.message || 'Falha ao processar'}`,
+          lastExecutedAt: Date.now()
         }
       })
     } finally {
@@ -767,13 +792,33 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           </div>
         </div>
 
-        {/* Direita: Botão Pílula Branco "▷ Executar fluxo de trabalho" (Idêntico ao Print 02!) */}
+        {/* Direita: Botão Pílula Branco "▷ Executar fluxo de trabalho" */}
         <div className="flex items-center gap-2">
+          {!validation.valid && (
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-950/70 border border-amber-800/60 text-amber-300 text-[11px]"
+              title={validation.errors.join('\n')}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="truncate max-w-[220px]">{validation.errors[0]}</span>
+            </div>
+          )}
           <button
             type="button"
-            disabled={isExecuting || !validation.valid}
-            onClick={() => onRunWorkflow(activeWorkflow, false, 'Executar fluxo completo')}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs transition-all shadow-sm disabled:opacity-40 cursor-pointer"
+            disabled={isExecuting}
+            onClick={() => {
+              if (!validation.valid) {
+                alert(`Para executar o fluxo:\n\n• ${validation.errors.join('\n• ')}`)
+                return
+              }
+              onRunWorkflow(activeWorkflow, false, 'Executar fluxo completo')
+            }}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-semibold text-xs transition-all shadow-sm cursor-pointer ${
+              validation.valid
+                ? 'bg-zinc-100 hover:bg-white text-zinc-950 active:scale-95'
+                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+            }`}
+            title={validation.valid ? 'Iniciar execução do fluxo' : validation.errors.join('\n')}
           >
             <Play className={`w-3 h-3 fill-current ${isExecuting ? 'animate-spin' : ''}`} />
             <span>{isExecuting ? 'Executando fluxo...' : 'Executar fluxo de trabalho'}</span>
@@ -845,8 +890,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 const src = activeWorkflow.nodes.find(n => n.id === edge.sourceNodeId)
                 const dst = activeWorkflow.nodes.find(n => n.id === edge.targetNodeId)
                 if (!src || !dst) return null
-                const fromPt = getNodeOutputPort(src)
-                const toPt = getNodeInputPort(dst)
+                const fromPt = getNodeOutputPort(src, cardHeights[src.id])
+                const toPt = getNodeInputPort(dst, cardHeights[dst.id])
                 const pathD = diagramEdgePath(fromPt, toPt)
                 const mid = diagramEdgeMidpoint(fromPt, toPt)
                 const arrowPts = diagramEdgeArrow(toPt)
@@ -901,7 +946,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               {wireDraft && (() => {
                 const src = activeWorkflow.nodes.find(n => n.id === wireDraft.fromNodeId)
                 if (!src) return null
-                const fromPt = getNodeOutputPort(src)
+                const fromPt = getNodeOutputPort(src, cardHeights[src.id])
                 const pathD = diagramEdgePath(fromPt, wireDraft.toWorld)
                 return (
                   <g>
@@ -936,6 +981,143 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               const incomingEdges = activeWorkflow.edges.filter(e => e.targetNodeId === node.id)
               const incomingNodes = incomingEdges.map(e => activeWorkflow.nodes.find(n => n.id === e.sourceNodeId)).filter(Boolean)
 
+              // 1. NOTA ADESIVA VISUAL LIVRE (sem card escuro, sem handlers)
+              if (node.kind === 'sticky_note') {
+                return (
+                  <div
+                    key={node.id}
+                    style={{
+                      left: node.position.x,
+                      top: node.position.y,
+                      width: cardDim.width
+                    }}
+                    onPointerDown={e => {
+                      const target = e.target as HTMLElement
+                      if (target?.closest?.('textarea, button, input')) return
+                      e.stopPropagation()
+                      setSelectedNodeId(node.id)
+                      setSelectedEdgeId(null)
+                      if (toolMode === 'hand') return
+                      setDraggingNodeId(node.id)
+                      dragOffsetRef.current = {
+                        x: e.clientX - (node.position.x * zoom + pan.x),
+                        y: e.clientY - (node.position.y * zoom + pan.y)
+                      }
+                    }}
+                    data-node-id={node.id}
+                    className="absolute pointer-events-auto select-none group"
+                  >
+                    <div className="relative rounded-2xl bg-[#2a2415] border border-amber-500/40 p-3 shadow-2xl transition-all hover:border-amber-400/70">
+                      <div className="flex items-center justify-between pb-1.5 border-b border-amber-500/20 mb-2">
+                        <div className="flex items-center gap-1.5 text-amber-400 text-xs font-semibold">
+                          <StickyNote className="w-3.5 h-3.5" />
+                          <span>Nota Adesiva</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation()
+                            handleRemoveNode(node.id)
+                          }}
+                          className="text-amber-500/60 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 cursor-pointer"
+                          title="Remover nota"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <textarea
+                        value={node.config.content || ''}
+                        onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, content: e.target.value } })}
+                        placeholder="Escreva anotações, lembretes ou orientações sobre este fluxo..."
+                        className="w-full h-28 bg-transparent text-xs text-amber-100 placeholder-amber-500/40 resize-none focus:outline-none leading-relaxed custom-chat-scrollbar"
+                      />
+                    </div>
+                  </div>
+                )
+              }
+
+              // 2. TARJA DE TÍTULO / SEÇÃO LIVRE (sem card escuro, sem handlers, com cores)
+              if (node.kind === 'text_block') {
+                const color = node.config.color || 'zinc'
+                const colorMap: Record<string, { bg: string; border: string; bar: string; text: string }> = {
+                  zinc: { bg: 'bg-[#18181b]/95', border: 'border-zinc-700/80', bar: 'bg-zinc-400', text: 'text-zinc-100' },
+                  amber: { bg: 'bg-[#261f12]/95', border: 'border-amber-600/60', bar: 'bg-amber-400', text: 'text-amber-200' },
+                  emerald: { bg: 'bg-[#0f241a]/95', border: 'border-emerald-600/60', bar: 'bg-emerald-400', text: 'text-emerald-200' },
+                  blue: { bg: 'bg-[#0e1d33]/95', border: 'border-blue-600/60', bar: 'bg-blue-400', text: 'text-blue-200' },
+                  purple: { bg: 'bg-[#1e1333]/95', border: 'border-purple-600/60', bar: 'bg-purple-400', text: 'text-purple-200' },
+                  rose: { bg: 'bg-[#29121a]/95', border: 'border-rose-600/60', bar: 'bg-rose-400', text: 'text-rose-200' },
+                }
+                const theme = colorMap[color] || colorMap.zinc
+
+                return (
+                  <div
+                    key={node.id}
+                    style={{
+                      left: node.position.x,
+                      top: node.position.y,
+                      width: cardDim.width
+                    }}
+                    onPointerDown={e => {
+                      const target = e.target as HTMLElement
+                      if (target?.closest?.('input, button')) return
+                      e.stopPropagation()
+                      setSelectedNodeId(node.id)
+                      setSelectedEdgeId(null)
+                      if (toolMode === 'hand') return
+                      setDraggingNodeId(node.id)
+                      dragOffsetRef.current = {
+                        x: e.clientX - (node.position.x * zoom + pan.x),
+                        y: e.clientY - (node.position.y * zoom + pan.y)
+                      }
+                    }}
+                    data-node-id={node.id}
+                    className="absolute pointer-events-auto select-none group"
+                  >
+                    <div className={`relative rounded-xl ${theme.bg} ${theme.border} border shadow-lg pl-3 pr-2 py-2 flex items-center gap-2 backdrop-blur-md`}>
+                      <div className={`w-1 h-5 rounded-full ${theme.bar} shrink-0`} />
+                      <input
+                        type="text"
+                        value={node.label || ''}
+                        onChange={e => handleUpdateNodeById(node.id, { label: e.target.value })}
+                        placeholder="Título da Seção..."
+                        className={`w-full bg-transparent text-xs font-bold ${theme.text} placeholder-zinc-500 focus:outline-none`}
+                      />
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        {(['zinc', 'amber', 'emerald', 'blue', 'purple', 'rose'] as const).map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation()
+                              handleUpdateNodeById(node.id, { config: { ...node.config, color: c } })
+                            }}
+                            className={`w-2.5 h-2.5 rounded-full cursor-pointer hover:scale-125 transition-transform ${
+                              c === 'zinc' ? 'bg-zinc-400' :
+                              c === 'amber' ? 'bg-amber-400' :
+                              c === 'emerald' ? 'bg-emerald-400' :
+                              c === 'blue' ? 'bg-blue-400' :
+                              c === 'purple' ? 'bg-purple-400' : 'bg-rose-400'
+                            } ${color === c ? 'ring-2 ring-white/60' : ''}`}
+                            title={`Cor ${c}`}
+                          />
+                        ))}
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation()
+                            handleRemoveNode(node.id)
+                          }}
+                          className="text-zinc-500 hover:text-rose-400 ml-1 p-0.5 cursor-pointer"
+                          title="Remover tarja de título"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+
               return (
                 <div
                   key={node.id}
@@ -963,16 +1145,12 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                   className="absolute pointer-events-auto select-none group"
                 >
                   {/* RÓTULO FLUTUANTE ACIMA DO CARD (ex: ⚡ Gatilho, 🤖 Agente, 🔮 LLM) */}
-                  <div className="flex items-center justify-between mb-1.5 px-1">
+                  <div className="flex items-center justify-between mb-1.5 px-1 h-5">
                     <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
                       {node.kind === 'input' ? (
                         <Zap className="w-3 h-3 text-amber-400" />
                       ) : node.kind === 'read_note' ? (
                         <MessageSquare className="w-3 h-3 text-blue-400" />
-                      ) : node.kind === 'sticky_note' ? (
-                        <StickyNote className="w-3 h-3 text-amber-400" />
-                      ) : node.kind === 'text_block' ? (
-                        <Type className="w-3 h-3 text-zinc-400" />
                       ) : node.kind === 'llm' ? (
                         <Sparkles className="w-3 h-3 text-purple-400" />
                       ) : node.kind === 'run_agent' ? (
@@ -1021,43 +1199,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     </div>
                   </div>
 
-                  {/* PORTA DE ENTRADA CENTRALIZADA À ESQUERDA (Handler elegante no meio vertical) */}
-                  {node.kind !== 'input' && node.kind !== 'sticky_note' && node.kind !== 'text_block' && (
-                    <div
-                      className={`absolute -left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center transition-all z-20 ${
-                        isDropTarget
-                          ? 'bg-emerald-500 ring-4 ring-emerald-500/40 scale-125 border-white'
-                          : 'bg-[#141416] border border-zinc-700 hover:border-emerald-400 group-hover:scale-110 shadow-md'
-                      }`}
-                      title="Entrada da etapa (Conecte o fluxo anterior aqui)"
-                    >
-                      <div className={`w-2 h-2 rounded-full ${isDropTarget ? 'bg-white' : 'bg-zinc-400 group-hover:bg-emerald-400'} transition-colors`} />
-                    </div>
-                  )}
-
-                  {/* PORTA DE SAÍDA CENTRALIZADA À DIREITA (Handler elegante no meio vertical) */}
-                  {node.kind !== 'finish' && node.kind !== 'text_block' && (
-                    <button
-                      type="button"
-                      onPointerDown={e => {
-                        e.stopPropagation()
-                        const outPort = getNodeOutputPort(node)
-                        setWireDraft({
-                          fromNodeId: node.id,
-                          toWorld: outPort,
-                          hoveredTargetId: null
-                        })
-                      }}
-                      className="absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#141416] border border-zinc-700 hover:border-emerald-400 hover:bg-zinc-850 text-zinc-300 flex items-center justify-center cursor-crosshair z-20 transition-all hover:scale-125 shadow-md hover:ring-2 hover:ring-emerald-500/30"
-                      title="Arraste para conectar ao próximo nó"
-                    >
-                      <div className="w-2 h-2 rounded-full bg-zinc-300 group-hover:bg-emerald-400 transition-colors" />
-                    </button>
-                  )}
-
                   {/* CORPO DO CARD ESCURO (#141416) */}
                   <div
-                    className={`rounded-2xl bg-[#141416] border p-3.5 shadow-2xl transition-all ${
+                    ref={el => {
+                      if (el) {
+                        const h = el.offsetHeight
+                        if (h && cardHeights[node.id] !== h) {
+                          setCardHeights(prev => ({ ...prev, [node.id]: h }))
+                        }
+                      }
+                    }}
+                    className={`relative rounded-2xl bg-[#141416] border p-3.5 shadow-2xl transition-all ${
                       isSelected
                         ? 'border-zinc-500 ring-1 ring-zinc-500/30'
                         : isDropTarget
@@ -1065,6 +1217,39 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         : 'border-zinc-800/90 hover:border-zinc-700/80'
                     }`}
                   >
+                    {/* PORTA DE ENTRADA CENTRALIZADA À ESQUERDA NO CORPO DO CARD */}
+                    {node.kind !== 'input' && (
+                      <div
+                        className={`absolute -left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center transition-all z-20 ${
+                          isDropTarget
+                            ? 'bg-emerald-500 ring-4 ring-emerald-500/40 scale-125 border-white'
+                            : 'bg-[#141416] border border-zinc-700 hover:border-emerald-400 group-hover:scale-110 shadow-md'
+                        }`}
+                        title="Entrada da etapa (Conecte o fluxo anterior aqui)"
+                      >
+                        <div className={`w-2 h-2 rounded-full ${isDropTarget ? 'bg-white' : 'bg-zinc-400 group-hover:bg-emerald-400'} transition-colors`} />
+                      </div>
+                    )}
+
+                    {/* PORTA DE SAÍDA CENTRALIZADA À DIREITA NO CORPO DO CARD */}
+                    {node.kind !== 'finish' && (
+                      <button
+                        type="button"
+                        onPointerDown={e => {
+                          e.stopPropagation()
+                          const outPort = getNodeOutputPort(node, cardHeights[node.id])
+                          setWireDraft({
+                            fromNodeId: node.id,
+                            toWorld: outPort,
+                            hoveredTargetId: null
+                          })
+                        }}
+                        className="absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#141416] border border-zinc-700 hover:border-emerald-400 hover:bg-zinc-850 text-zinc-300 flex items-center justify-center cursor-crosshair z-20 transition-all hover:scale-125 shadow-md hover:ring-2 hover:ring-emerald-500/30"
+                        title="Arraste para conectar ao próximo nó"
+                      >
+                        <div className="w-2 h-2 rounded-full bg-zinc-300 group-hover:bg-emerald-400 transition-colors" />
+                      </button>
+                    )}
                     {/* CARD 1: GATILHO INDEPENDENTE (Manual, Agendamento, Tarefa, Nota) */}
                     {node.kind === 'input' && (
                       <div className="space-y-3" onPointerDown={e => e.stopPropagation()}>
@@ -1080,7 +1265,13 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                                   )
                                 : undefined
                               handleUpdateNodeById(node.id, {
-                                config: { ...node.config, triggerType: newType as any, nextRunAt: nextIso }
+                                config: {
+                                  ...node.config,
+                                  triggerType: newType as any,
+                                  nextRunAt: nextIso,
+                                  lastOutput: undefined, // LIMPA RESULTADO DO TESTE ANTERIOR
+                                  lastExecutedAt: undefined
+                                }
                               })
                             }}
                             options={[
@@ -1109,41 +1300,40 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
                         {/* Gatilho Manual */}
                         {(node.config.triggerType === 'manual' || !node.config.triggerType) && (
-                          <div className="text-[11px] text-zinc-400 bg-[#1c1c1f]/80 p-2 rounded-xl flex items-center gap-2 border border-zinc-800/50">
+                          <div className="text-[11px] text-zinc-400 bg-[#1c1c1f]/80 p-2.5 rounded-xl flex items-center gap-2 border border-zinc-800/50">
                             <Play className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                            <span>Executado sob demanda pelo botão 'Executar agora' ou no topo do fluxo.</span>
+                            <span>Executado sob demanda. Clique no botão abaixo para iniciar o fluxo.</span>
                           </div>
                         )}
 
                         {/* Gatilho Agendamento */}
                         {node.config.triggerType === 'schedule' && (
-                          <>
-                            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 flex-wrap">
-                              <CustomSelect
-                                value={node.config.scheduleFrequency || 'daily'}
-                                onChange={newFreq => {
-                                  const nextIso = computeWorkflowNextRunISO(
-                                    newFreq as any,
-                                    node.config.scheduleTime || '09:00',
-                                    node.config.scheduleDays
-                                  )
-                                  handleUpdateNodeById(node.id, {
-                                    config: { ...node.config, scheduleFrequency: newFreq as any, nextRunAt: nextIso }
-                                  })
-                                }}
-                                options={[
-                                  { value: 'daily', label: 'Diariamente' },
-                                  { value: 'weekdays', label: 'Dias úteis' },
-                                  { value: 'weekly', label: 'Semanalmente' },
-                                  { value: 'monthly', label: 'Mensalmente' },
-                                ]}
-                                size="xs"
-                              />
-                              <span>em</span>
-                              <span className="px-2 py-1 rounded-lg bg-[#1c1c1f] text-zinc-200 font-medium text-[11px]">
-                                {node.config.scheduleFrequency === 'weekdays' ? 'Dias úteis' : 'Todo dia'}
-                              </span>
-                              <span>às</span>
+                          <div className="space-y-2.5">
+                            {/* Linha 1: Frequência e Horário na mesma linha sem quebras */}
+                            <div className="flex items-center justify-between gap-2 text-xs bg-[#18181b] p-2 rounded-xl border border-zinc-800/80">
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <CustomSelect
+                                  value={node.config.scheduleFrequency || 'daily'}
+                                  onChange={newFreq => {
+                                    const nextIso = computeWorkflowNextRunISO(
+                                      newFreq as any,
+                                      node.config.scheduleTime || '09:00',
+                                      node.config.scheduleDays
+                                    )
+                                    handleUpdateNodeById(node.id, {
+                                      config: { ...node.config, scheduleFrequency: newFreq as any, nextRunAt: nextIso }
+                                    })
+                                  }}
+                                  options={[
+                                    { value: 'daily', label: 'Diariamente' },
+                                    { value: 'weekdays', label: 'Dias úteis' },
+                                    { value: 'weekly', label: 'Semanalmente' },
+                                    { value: 'monthly', label: 'Mensalmente' },
+                                  ]}
+                                  size="xs"
+                                />
+                                <span className="text-zinc-500 text-[11px]">às</span>
+                              </div>
                               <CustomTimePicker
                                 value={node.config.scheduleTime || '09:00'}
                                 onChange={newTime => {
@@ -1159,78 +1349,63 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                               />
                             </div>
 
-                            <div className="flex items-center justify-between pt-2 border-t border-zinc-800/70 text-[11px]">
-                              <div className="flex flex-col">
-                                <span className="text-zinc-400 leading-tight">
-                                  Próxima
-                                  <br />
-                                  execução
+                            {/* Linha 2: Próxima execução na esquerda e badge Agendado/Pausado na direita */}
+                            <div className="flex items-center justify-between text-xs px-1 pt-1 border-t border-zinc-800/60">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                                <span className="text-[11px] text-zinc-400 truncate">
+                                  Próxima: <strong className="text-zinc-200 font-medium">{formatWorkflowNextRun(node.config.nextRunAt)}</strong>
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const nextActive = activeWorkflow.active === false ? true : false
-                                    onSaveWorkflow({
-                                      ...activeWorkflow,
-                                      active: nextActive,
-                                      version: activeWorkflow.version + 1,
-                                      updatedAt: Date.now()
-                                    })
-                                  }}
-                                  className={`mt-1 text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 cursor-pointer w-fit ${
-                                    activeWorkflow.active !== false
-                                      ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40'
-                                      : 'bg-zinc-800 text-zinc-400'
-                                  }`}
-                                  title="Ativar/pausar execução automática em segundo plano"
-                                >
-                                  <Power className="w-2.5 h-2.5" />
-                                  <span>{activeWorkflow.active !== false ? 'Agendado' : 'Pausado'}</span>
-                                </button>
                               </div>
-                              <span className="text-zinc-100 font-medium text-right text-[11px]">
-                                {formatWorkflowNextRun(
-                                  node.config.nextRunAt ||
-                                  computeWorkflowNextRunISO(
-                                    node.config.scheduleFrequency || 'daily',
-                                    node.config.scheduleTime || '09:00',
-                                    node.config.scheduleDays
-                                  )
-                                )}
-                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextActive = activeWorkflow.active === false ? true : false
+                                  onSaveWorkflow({
+                                    ...activeWorkflow,
+                                    active: nextActive,
+                                    version: activeWorkflow.version + 1,
+                                    updatedAt: Date.now()
+                                  })
+                                }}
+                                className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1.5 cursor-pointer font-medium transition-colors shrink-0 ${
+                                  activeWorkflow.active !== false
+                                    ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 hover:bg-emerald-900/50'
+                                    : 'bg-zinc-800 text-zinc-400 border border-zinc-700/60 hover:bg-zinc-700/60'
+                                }`}
+                                title={activeWorkflow.active !== false ? 'Pausar agendamento' : 'Ativar agendamento'}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${activeWorkflow.active !== false ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`} />
+                                <span>{activeWorkflow.active !== false ? 'Agendado' : 'Pausado'}</span>
+                              </button>
                             </div>
-                          </>
+                          </div>
                         )}
 
-                        {/* Gatilho Evento de Tarefa */}
+                        {/* Gatilho Tarefa */}
                         {node.config.triggerType === 'task_event' && (
-                          <div className="space-y-2">
-                            <div>
-                              <label className="text-[10px] text-zinc-500 font-medium mb-1 block">Evento Disparador</label>
+                          <div className="space-y-2 text-xs">
+                            <CustomSelect
+                              value={node.config.eventType || 'task_created'}
+                              onChange={newEvt => handleUpdateNodeById(node.id, { config: { ...node.config, eventType: newEvt } })}
+                              options={[
+                                { value: 'task_created', label: 'Ao Criar Nova Tarefa' },
+                                { value: 'task_completed', label: 'Ao Concluir Tarefa' },
+                                { value: 'task_moved', label: 'Ao Mover de Status/Coluna' },
+                              ]}
+                              size="xs"
+                            />
+                            {taskBoards && taskBoards.length > 0 && (
                               <CustomSelect
-                                value={node.config.eventType || 'task_created'}
-                                onChange={ev => handleUpdateNodeById(node.id, { config: { ...node.config, eventType: ev } })}
+                                value={node.config.boardId || ''}
+                                onChange={newBoard => handleUpdateNodeById(node.id, { config: { ...node.config, boardId: newBoard } })}
                                 options={[
-                                  { value: 'task_created', label: 'Ao Criar Nova Tarefa' },
-                                  { value: 'task_completed', label: 'Ao Concluir Tarefa' },
-                                  { value: 'status_changed', label: 'Ao Mover de Status/Coluna' },
+                                  { value: '', label: 'Todos os Quadros e Grupos' },
+                                  ...taskBoards.map(b => ({ value: b.id, label: `Quadro: ${b.name}` }))
                                 ]}
                                 size="xs"
                               />
-                            </div>
-                            {taskBoards && taskBoards.length > 0 && (
-                              <div>
-                                <label className="text-[10px] text-zinc-500 font-medium mb-1 block">Quadro / Grupo Específico</label>
-                                <CustomSelect
-                                  value={node.config.boardId || ''}
-                                  onChange={bId => handleUpdateNodeById(node.id, { config: { ...node.config, boardId: bId } })}
-                                  options={[
-                                    { value: '', label: 'Todos os Quadros e Grupos' },
-                                    ...taskBoards.map(b => ({ value: b.id, label: b.name }))
-                                  ]}
-                                  size="xs"
-                                />
-                              </div>
                             )}
                             <div className="text-[10.5px] text-amber-400/90 bg-amber-950/20 border border-amber-800/30 p-2 rounded-xl flex items-center gap-2">
                               <Zap className="w-3 h-3 text-amber-400 shrink-0" />
@@ -1239,33 +1414,27 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           </div>
                         )}
 
-                        {/* Gatilho Evento de Nota */}
+                        {/* Gatilho Nota */}
                         {node.config.triggerType === 'note_event' && (
-                          <div className="space-y-2">
-                            <div>
-                              <label className="text-[10px] text-zinc-500 font-medium mb-1 block">Evento Disparador</label>
-                              <CustomSelect
-                                value={node.config.eventType || 'note_created'}
-                                onChange={ev => handleUpdateNodeById(node.id, { config: { ...node.config, eventType: ev } })}
-                                options={[
-                                  { value: 'note_created', label: 'Ao Criar Nova Nota' },
-                                  { value: 'note_modified', label: 'Ao Editar / Salvar Nota' },
-                                ]}
-                                size="xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[10px] text-zinc-500 font-medium mb-1 block">Pasta Monitorada</label>
-                              <CustomSelect
-                                value={node.config.targetFolder || ''}
-                                onChange={f => handleUpdateNodeById(node.id, { config: { ...node.config, targetFolder: f } })}
-                                options={[
-                                  { value: '', label: 'Todo o Cofre' },
-                                  ...folders.map(f => ({ value: f, label: f }))
-                                ]}
-                                size="xs"
-                              />
-                            </div>
+                          <div className="space-y-2 text-xs">
+                            <CustomSelect
+                              value={node.config.eventType || 'note_created'}
+                              onChange={newEvt => handleUpdateNodeById(node.id, { config: { ...node.config, eventType: newEvt } })}
+                              options={[
+                                { value: 'note_created', label: 'Ao Criar Nova Nota' },
+                                { value: 'note_modified', label: 'Ao Editar / Salvar Nota' },
+                              ]}
+                              size="xs"
+                            />
+                            <CustomSelect
+                              value={node.config.targetFolder || ''}
+                              onChange={newFolder => handleUpdateNodeById(node.id, { config: { ...node.config, targetFolder: newFolder } })}
+                              options={[
+                                { value: '', label: 'Todo o Cofre' },
+                                ...folders.map(f => ({ value: f, label: `📁 ${f}` }))
+                              ]}
+                              size="xs"
+                            />
                             <div className="text-[10.5px] text-blue-400/90 bg-blue-950/20 border border-blue-800/30 p-2 rounded-xl flex items-center gap-2">
                               <FileText className="w-3 h-3 text-blue-400 shrink-0" />
                               <span>Monitorando arquivos do cofre em tempo real.</span>
@@ -1276,14 +1445,30 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         <button
                           type="button"
                           disabled={isExecuting || isExecutingThisNode}
-                          onClick={() => handleExecuteSingleNode(node)}
-                          className="w-full py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          onClick={() => {
+                            if (node.config.triggerType === 'manual' || !node.config.triggerType) {
+                              onRunWorkflow(activeWorkflow, false, 'Execução manual via gatilho')
+                            } else {
+                              handleExecuteSingleNode(node)
+                            }
+                          }}
+                          className="w-full py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
                         >
-                          <span>{isExecutingThisNode ? 'Executando...' : 'Executar agora'}</span>
-                          <Play className="w-3 h-3 fill-current" />
+                          <Play className={`w-3.5 h-3.5 fill-current ${isExecutingThisNode || isExecuting ? 'animate-spin' : ''}`} />
+                          <span>
+                            {isExecutingThisNode || isExecuting
+                              ? 'Executando...'
+                              : node.config.triggerType === 'manual' || !node.config.triggerType
+                              ? 'Executar agora (iniciar fluxo)'
+                              : 'Testar gatilho'}
+                          </span>
                         </button>
 
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
+                        <ResultField
+                          output={node.config.lastOutput}
+                          isRunning={isExecutingThisNode}
+                          lastExecutedAt={node.config.lastExecutedAt}
+                        />
                       </div>
                     )}
 
@@ -1368,7 +1553,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <Play className="w-3 h-3" />
                         </button>
 
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
                       </div>
                     )}
 
@@ -1438,7 +1623,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <Play className="w-3 h-3" />
                         </button>
 
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
                       </div>
                     )}
 
@@ -1508,7 +1693,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <Play className="w-3 h-3" />
                         </button>
 
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
                       </div>
                     )}
 
@@ -1599,7 +1784,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <Play className="w-3 h-3" />
                         </button>
 
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
                       </div>
                     )}
 
@@ -1667,7 +1852,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                             )}
                           </div>
 
-                          <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
+                          <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
                         </div>
                       )
                     })()}
@@ -1707,39 +1892,11 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <Play className="w-3 h-3" />
                         </button>
 
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
                       </div>
                     )}
 
-                    {/* CARD 8: NOTA VISUAL / ADESIVA (sticky_note) */}
-                    {node.kind === 'sticky_note' && (
-                      <div className="space-y-2" onPointerDown={e => e.stopPropagation()}>
-                        <div className="bg-[#211e15] border border-amber-500/30 rounded-xl p-2.5 shadow-lg">
-                          <textarea
-                            value={node.config.content || ''}
-                            onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, content: e.target.value } })}
-                            placeholder="Escreva anotações de apoio, observações ou orientações sobre este fluxo..."
-                            className="w-full h-24 bg-transparent text-xs text-amber-100 placeholder-amber-500/50 resize-none focus:outline-none leading-relaxed"
-                          />
-                        </div>
-                      </div>
-                    )}
 
-                    {/* CARD 9: TARJA DE TÍTULO / SEÇÃO (text_block) */}
-                    {node.kind === 'text_block' && (
-                      <div className="space-y-1" onPointerDown={e => e.stopPropagation()}>
-                        <div className="bg-[#18181b]/90 border border-zinc-700/80 rounded-xl px-2.5 py-1.5 flex items-center gap-2 shadow-md">
-                          <Type className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                          <input
-                            type="text"
-                            value={node.label || ''}
-                            onChange={e => handleUpdateNodeById(node.id, { label: e.target.value })}
-                            placeholder="Título da Seção..."
-                            className="w-full bg-transparent text-xs font-semibold text-zinc-100 placeholder-zinc-500 focus:outline-none"
-                          />
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               )
@@ -2153,7 +2310,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     <Play className="w-3.5 h-3.5" />
                     <span>{executingNodeId === selectedNode.id ? 'Testando...' : 'Testar esta etapa'}</span>
                   </button>
-                  <ResultField output={selectedNode.config.lastOutput} isRunning={executingNodeId === selectedNode.id} />
+                  <ResultField output={selectedNode.config.lastOutput} isRunning={executingNodeId === selectedNode.id} lastExecutedAt={selectedNode.config.lastExecutedAt} />
                 </div>
               </div>
             ) : (

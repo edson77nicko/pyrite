@@ -2966,10 +2966,8 @@ export function validateWorkflowDefinition(
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = []
   const inputNodes = workflow.nodes.filter(n => n.kind === 'input')
-  const finishNodes = workflow.nodes.filter(n => n.kind === 'finish')
 
-  if (inputNodes.length === 0) errors.push('O fluxo precisa ter pelo menos um bloco "Entrada / Pedido".')
-  if (finishNodes.length === 0) errors.push('O fluxo precisa ter pelo menos um bloco "Finalizar".')
+  if (inputNodes.length === 0) errors.push('O fluxo precisa ter pelo menos um bloco "Gatilho".')
 
   const validNodeIds = new Set(workflow.nodes.map(n => n.id))
   for (const edge of workflow.edges) {
@@ -3020,40 +3018,44 @@ export function validateWorkflowDefinition(
     }
   }
 
-  if (inputNodes.length > 0 && finishNodes.length > 0) {
-    const anyFinishReachable = finishNodes.some(f => reachableFromInput.has(f.id))
-    if (!anyFinishReachable) {
-      errors.push('Não existe caminho conectado entre "Entrada / Pedido" e "Finalizar".')
-    }
-  }
-
   for (const node of workflow.nodes) {
+    // Ignorar elementos visuais de apoio (notas adesivas e tarjas de título) na validação de grafo
+    if (node.kind === 'sticky_note' || node.kind === 'text_block') continue
+
     const hasIncoming = workflow.edges.some(e => e.targetNodeId === node.id)
     const hasOutgoing = workflow.edges.some(e => e.sourceNodeId === node.id)
 
     if (node.kind !== 'input' && (!hasIncoming || !reachableFromInput.has(node.id))) {
       errors.push(`O bloco "${node.label}" está desconectado do fluxo principal.`)
     }
-    if (node.kind !== 'finish' && !hasOutgoing) {
-      errors.push(`O bloco "${node.label}" não possui saída conectada.`)
+    if (node.kind === 'input' && !hasOutgoing) {
+      errors.push(`O Gatilho "${node.label}" precisa ser conectado à primeira etapa do fluxo.`)
+    }
+    if (node.kind === 'condition' && !hasOutgoing) {
+      errors.push(`O bloco de Condição "${node.label}" precisa ter pelo menos uma ramificação conectada.`)
     }
 
     if (node.kind === 'run_agent') {
-      const ag = allAgents.find(a => a.id === node.config.agentId)
-      if (!ag) {
-        errors.push(`O bloco "${node.label}" precisa selecionar um Agente válido.`)
+      if (allAgents.length > 0 && node.config.agentId) {
+        const ag = allAgents.find(a => a.id === node.config.agentId)
+        if (!ag) {
+          errors.push(`O bloco "${node.label}" precisa selecionar um Agente válido.`)
+        }
       }
     }
 
     if (node.kind === 'read_note') {
-      const found = resolveNoteByIdOrFallback(
-        allNotes,
-        node.config.noteId,
-        node.config.noteTitle,
-        node.config.folderPath
-      )
-      if (!found && !node.config.folderPath) {
-        errors.push(`O bloco "${node.label}" aponta para uma nota não encontrada no cofre.`)
+      const hasPromptText = Boolean(node.config.promptTemplate && node.config.promptTemplate.trim())
+      if (!hasPromptText) {
+        const found = resolveNoteByIdOrFallback(
+          allNotes,
+          node.config.noteId,
+          node.config.noteTitle,
+          node.config.folderPath
+        )
+        if (!found && !node.config.folderPath) {
+          errors.push(`O bloco "${node.label}" precisa conter uma instrução de Prompt ou nota selecionada do cofre.`)
+        }
       }
     }
 
@@ -3905,11 +3907,21 @@ export async function executeWorkflowSingleNode(params: {
   const { node, allAgents, allNotes, allProjects, prompt = '' } = params
 
   if (node.kind === 'input') {
-    const freq = node.config.scheduleFrequency || 'daily'
-    const timeStr = node.config.scheduleTime || '09:00'
-    const nextRun = computeWorkflowNextRunISO(freq, timeStr, node.config.scheduleDays)
-    const formatted = formatWorkflowNextRun(nextRun)
-    return { output: `Gatilho pronto. Próxima execução estimada: ${formatted}` }
+    const triggerType = node.config.triggerType || 'manual'
+    if (triggerType === 'schedule') {
+      const freq = node.config.scheduleFrequency || 'daily'
+      const timeStr = node.config.scheduleTime || '09:00'
+      const nextRun = computeWorkflowNextRunISO(freq, timeStr, node.config.scheduleDays)
+      const formatted = formatWorkflowNextRun(nextRun)
+      return { output: `Gatilho Agendado configurado (${freq === 'daily' ? 'Diário' : freq === 'weekdays' ? 'Dias úteis' : freq} às ${timeStr}).\nPróxima execução calculada: ${formatted}` }
+    }
+    if (triggerType === 'task_event') {
+      return { output: `Gatilho de Tarefa ativo (${node.config.eventType || 'Criar ou Alterar Tarefa'}).\nMonitorando eventos dos quadros em tempo real.` }
+    }
+    if (triggerType === 'note_event') {
+      return { output: `Gatilho de Notas ativo.\nMonitorando alterações no cofre na pasta "${node.config.folderPath || 'Todas as pastas'}".` }
+    }
+    return { output: `Gatilho Manual pronto. Clique no botão de executar fluxo para iniciar a automação sob demanda.` }
   }
 
   if (node.kind === 'read_note') {

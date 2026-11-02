@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef, Component, type ErrorInfo, type ReactNode } from 'react'
+import React, { useState, useEffect, useRef, useMemo, Component, type ErrorInfo, type ReactNode } from 'react'
 import type { TaskSettings, TaskPropertyConfig, TaskPropertyType, TaskStatusGroup, TaskBoard } from '../types/tasks'
-import { DEFAULT_TASK_SETTINGS } from '../utils/taskStorage'
 import {
   getPropertyItems,
   setPropertyItems,
-  isBuiltinProperty,
   STATUS_GROUPS,
   defaultStatusItems,
+  getBoardProperties,
+  setBoardProperties,
   type PropertyItem
 } from '../utils/taskProperties'
 import {
@@ -231,14 +231,17 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
   onClose,
   settings,
   onUpdateSettings,
+  activeBoardId,
   activeBoard
 }) => {
   const [view, setView] = useState<View>({ name: 'list' })
 
-  const properties: TaskPropertyConfig[] =
-    Array.isArray(settings?.properties) && settings.properties.length > 0
-      ? settings.properties
-      : DEFAULT_TASK_SETTINGS.properties
+  const effectiveBoardId = activeBoardId || activeBoard?.id || 'default'
+  const boardName = activeBoard?.name || 'Geral'
+
+  const properties: TaskPropertyConfig[] = useMemo(() => {
+    return getBoardProperties(settings, effectiveBoardId)
+  }, [settings, effectiveBoardId])
 
   useEffect(() => {
     if (!isOpen) return
@@ -251,16 +254,19 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
 
   if (!isOpen) return null
 
-  const save = (next: TaskSettings) => onUpdateSettings({ ...next, properties: next.properties?.length ? next.properties : properties })
+  const saveProperties = (nextProps: TaskPropertyConfig[]) => {
+    const nextSettings = setBoardProperties(settings, effectiveBoardId, nextProps)
+    onUpdateSettings(nextSettings)
+  }
 
   const updateProp = (propId: string, patch: Partial<TaskPropertyConfig>) => {
-    save({ ...settings, properties: properties.map(p => (p.id === propId ? { ...p, ...patch } : p)) })
+    saveProperties(properties.map(p => (p.id === propId ? { ...p, ...patch } : p)))
   }
 
   const handleCreate = (type: TaskPropertyType) => {
-    const meta = TYPE_META[type]
+    const meta = TYPE_META[type] || { label: 'Nova Propriedade' }
     const newProp: TaskPropertyConfig = {
-      id: `prop_${Date.now().toString(36)}`,
+      id: `prop_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
       name: meta.label,
       type,
       options:
@@ -270,12 +276,12 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
             ? []
             : undefined
     }
-    save({ ...settings, properties: [...properties, newProp] })
+    saveProperties([...properties, newProp])
     setView({ name: 'edit', propId: newProp.id })
   }
 
   const handleDelete = (propId: string) => {
-    save({ ...settings, properties: properties.filter(p => p.id !== propId) })
+    saveProperties(properties.filter(p => p.id !== propId))
     setView({ name: 'list' })
   }
 
@@ -283,10 +289,16 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
 
   const renderEdit = (prop: TaskPropertyConfig) => {
     const Icon = propIcon(prop)
-    const builtin = isBuiltinProperty(prop.id)
     const hasItems = prop.type === 'status' || prop.type === 'select' || prop.type === 'multiselect' || prop.type === 'priority'
     const items = hasItems ? getPropertyItems(settings, prop) : []
-    const commitItems = (next: PropertyItem[]) => save(setPropertyItems(settings, prop, next))
+    const commitItems = (next: PropertyItem[]) => {
+      if (prop.id === 'prop_status' || prop.id === 'prop_priority') {
+        const nextSettings = setPropertyItems(settings, prop, next)
+        onUpdateSettings(nextSettings)
+      } else {
+        updateProp(prop.id, { options: next })
+      }
+    }
     const addItem = (group?: TaskStatusGroup) => {
       const base: PropertyItem = {
         id: `opt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
@@ -352,7 +364,7 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                 <div className="grid grid-cols-3 gap-1.5 bg-[#14151b] p-1 rounded-lg border border-zinc-800/50">
                   <button
                     type="button"
-                    onClick={() => save({ ...settings, statusIndicatorStyle: 'circle' })}
+                    onClick={() => onUpdateSettings({ ...settings, statusIndicatorStyle: 'circle' })}
                     className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
                       (settings.statusIndicatorStyle || 'circle') === 'circle'
                         ? 'bg-zinc-800 text-white shadow-xs font-semibold'
@@ -366,7 +378,7 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => save({ ...settings, statusIndicatorStyle: 'bar' })}
+                    onClick={() => onUpdateSettings({ ...settings, statusIndicatorStyle: 'bar' })}
                     className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
                       settings.statusIndicatorStyle === 'bar'
                         ? 'bg-zinc-800 text-white shadow-xs font-semibold'
@@ -380,7 +392,7 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => save({ ...settings, statusIndicatorStyle: 'dot' })}
+                    onClick={() => onUpdateSettings({ ...settings, statusIndicatorStyle: 'dot' })}
                     className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
                       settings.statusIndicatorStyle === 'dot'
                         ? 'bg-zinc-800 text-white shadow-xs font-semibold'
@@ -476,16 +488,14 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
             </button>
           </div>
 
-          {!builtin && (
-            <button
-              type="button"
-              onClick={() => handleDelete(prop.id)}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-rose-400 hover:bg-rose-500/10 cursor-pointer transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Excluir propriedade</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => handleDelete(prop.id)}
+            className="w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-lg text-xs text-rose-400 hover:bg-rose-500/10 cursor-pointer transition-colors border border-rose-500/20 mt-2"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Excluir propriedade deste projeto</span>
+          </button>
         </div>
       </>
     )
@@ -503,7 +513,12 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
         {view.name === 'list' && (
           <>
             <div className="px-4 pt-4 pb-2 flex items-center justify-between shrink-0">
-              <span className="text-sm font-semibold text-zinc-100">Propriedades</span>
+              <div className="min-w-0 flex-1 pr-2">
+                <span className="text-sm font-semibold text-zinc-100 block">Propriedades</span>
+                <span className="text-[11px] text-zinc-400 truncate block">
+                  Projeto / Item: <strong className="text-zinc-200">{boardName}</strong>
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={onClose}
@@ -529,9 +544,9 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                         const updatedBoards = (settings.boards || []).map(b =>
                           b.id === activeBoard.id ? { ...b, titleColumnName: newTitle } : b
                         )
-                        save({ ...settings, boards: updatedBoards })
+                        onUpdateSettings({ ...settings, boards: updatedBoards })
                       } else {
-                        save({ ...settings, titleColumnName: newTitle })
+                        onUpdateSettings({ ...settings, titleColumnName: newTitle })
                       }
                     }}
                     placeholder={activeBoard?.category === 'item' ? 'Nome' : 'Tarefa'}
@@ -565,6 +580,17 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                       title={prop.hidden ? 'Mostrar na lista' : 'Ocultar da lista'}
                     >
                       {prop.hidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation()
+                        handleDelete(prop.id)
+                      }}
+                      className="p-1 text-zinc-600 hover:text-rose-400 cursor-pointer shrink-0 transition-colors"
+                      title="Excluir propriedade deste projeto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       type="button"

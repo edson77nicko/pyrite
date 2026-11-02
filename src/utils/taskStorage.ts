@@ -139,7 +139,10 @@ export function loadTaskSettings(vaultKey = 'default'): TaskSettings {
           statuses: Array.isArray(parsed.statuses) && parsed.statuses.length > 0 ? parsed.statuses : DEFAULT_TASK_SETTINGS.statuses,
           priorities: Array.isArray(parsed.priorities) && parsed.priorities.length > 0 ? parsed.priorities : DEFAULT_TASK_SETTINGS.priorities,
           properties: Array.isArray(parsed.properties) && parsed.properties.length > 0 ? parsed.properties : DEFAULT_TASK_SETTINGS.properties,
-          boards: Array.isArray(parsed.boards) && parsed.boards.length > 0 ? parsed.boards : DEFAULT_TASK_SETTINGS.boards
+          boards: Array.isArray(parsed.boards) && parsed.boards.length > 0 ? parsed.boards : DEFAULT_TASK_SETTINGS.boards,
+          boardProperties: parsed.boardProperties && typeof parsed.boardProperties === 'object' ? parsed.boardProperties : undefined,
+          statusIndicatorStyle: parsed.statusIndicatorStyle,
+          titleColumnName: parsed.titleColumnName
         }
       }
     }

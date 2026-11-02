@@ -44,7 +44,7 @@ export const Editor: React.FC<EditorProps> = ({
   const [content, setContent] = useState(note.content)
   const [title, setTitle] = useState(note.title)
   const isTitleFocusedRef = useRef(false)
-  const titleDebounceRef = useRef<any>(null)
+  const previousNoteIdRef = useRef(note.id)
   const [isAgentRoleMenuOpen, setIsAgentRoleMenuOpen] = useState(false)
   const liveEditorRef = useRef<LivePreviewEditorHandle>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -52,14 +52,18 @@ export const Editor: React.FC<EditorProps> = ({
   // Keep internal state in sync when note changes
   useEffect(() => {
     setContent(note.content)
-    if (!isTitleFocusedRef.current) {
+    if (previousNoteIdRef.current !== note.id) {
+      isTitleFocusedRef.current = false
+      previousNoteIdRef.current = note.id
+      setTitle(note.title)
+    } else if (!isTitleFocusedRef.current) {
       setTitle(note.title)
     }
   }, [note.id, note.content, note.title])
 
-  const commitTitleChange = (newTitle: string) => {
-    if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current)
-    const trimmed = newTitle.trim()
+  const commitTitleChange = (candidateTitle?: string) => {
+    const raw = candidateTitle !== undefined ? candidateTitle : title
+    const trimmed = raw.trim()
     if (!trimmed || trimmed === note.title) {
       setTitle(note.title)
       return
@@ -69,11 +73,8 @@ export const Editor: React.FC<EditorProps> = ({
   }
 
   const handleTitleChange = (newTitle: string) => {
+    // Only update local state while typing. Never trim or commit mid-typing so spaces are fully preserved!
     setTitle(newTitle)
-    if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current)
-    titleDebounceRef.current = setTimeout(() => {
-      commitTitleChange(newTitle)
-    }, 600)
   }
 
   // Handle typing inside editor

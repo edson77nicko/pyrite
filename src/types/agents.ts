@@ -367,6 +367,8 @@ export interface WorkflowNode {
     description?: string
     branchTaken?: 'yes' | 'no' | 'true' | 'false'
     lastOutput?: string
+    lastExecutedAt?: number
+    color?: string
     nextRunAt?: string
   }
 }

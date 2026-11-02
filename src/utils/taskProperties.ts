@@ -93,3 +93,41 @@ export const defaultStatusItems = (): PropertyItem[] => [
   { id: `opt_${Date.now()}_b`, name: 'Em andamento', color: '#f59e0b', group: 'in_progress' },
   { id: `opt_${Date.now()}_c`, name: 'Concluído', color: '#10b981', group: 'done' }
 ]
+
+export const getBoardProperties = (settings: TaskSettings, boardId?: string): TaskPropertyConfig[] => {
+  const targetId = boardId || 'default'
+  const board = (settings?.boards || []).find(b => b.id === targetId)
+  if (board && Array.isArray(board.properties) && board.properties.length > 0) {
+    return board.properties
+  }
+  if (settings?.boardProperties && Array.isArray(settings.boardProperties[targetId]) && settings.boardProperties[targetId].length > 0) {
+    return settings.boardProperties[targetId]
+  }
+  const fallback = Array.isArray(settings?.properties) && settings.properties.length > 0
+    ? settings.properties
+    : DEFAULT_TASK_SETTINGS.properties
+  return JSON.parse(JSON.stringify(fallback))
+}
+
+export const setBoardProperties = (
+  settings: TaskSettings,
+  boardId: string,
+  properties: TaskPropertyConfig[]
+): TaskSettings => {
+  const targetId = boardId || 'default'
+  const allBoards = settings.boards && settings.boards.length > 0 ? settings.boards : DEFAULT_TASK_SETTINGS.boards || []
+  const boardExists = allBoards.some(b => b.id === targetId)
+
+  const updatedBoards = boardExists
+    ? allBoards.map(b => (b.id === targetId ? { ...b, properties } : b))
+    : [...allBoards, { id: targetId, name: 'Geral', createdAt: Date.now(), properties }]
+
+  return {
+    ...settings,
+    boards: updatedBoards,
+    boardProperties: {
+      ...(settings.boardProperties || {}),
+      [targetId]: properties
+    }
+  }
+}

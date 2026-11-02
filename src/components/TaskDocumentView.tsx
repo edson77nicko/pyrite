@@ -6,6 +6,7 @@ import { TaskContextPicker } from './TaskContextPicker'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import { TaskCustomPropertyField } from './TaskCustomPropertyField'
 import { StatusBadge, computeStatusProgress } from './StatusIndicator'
+import { getBoardProperties } from '../utils/taskProperties'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -92,11 +93,17 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
     return safePriorities.find(p => p.id === task.priority) || safePriorities.find(p => p.id === 'none') || safePriorities[0]
   }, [safePriorities, task.priority])
 
+  const boardProps = useMemo(() => {
+    return getBoardProperties(settings, task.boardId)
+  }, [settings, task.boardId])
+
+  const isPropActive = (id: string) => boardProps.some(p => p.id === id)
+
   const customProps = useMemo(() => {
-    return (settings.properties || []).filter(
+    return boardProps.filter(
       p => !['prop_status', 'prop_priority', 'prop_deadline', 'prop_context', 'prop_tags'].includes(p.id) && !p.hidden
     )
-  }, [settings.properties])
+  }, [boardProps])
 
   const handleToggleComplete = () => {
     const nextCompleted = !task.completed
@@ -420,282 +427,293 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
             {/* Properties Grid (Notion / ClickUp style table) */}
             <div className="bg-[#141416] border border-zinc-800/80 rounded-xl p-3.5 space-y-2.5 text-xs task-properties-card">
               {/* Status Row */}
-              <div className="grid grid-cols-[120px_1fr] items-center gap-2">
-                <span className="text-zinc-500 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>Status</span>
-                </span>
-                <div className="relative inline-block">
-                  <button
-                    ref={statusBtnRef}
-                    type="button"
-                    onClick={() => {
-                      setIsStatusDropdownOpen(o => !o)
-                      setIsPriorityDropdownOpen(false)
-                    }}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer"
-                  >
-                    <StatusBadge
-                      name={activeStatus.name}
-                      color={activeStatus.color}
-                      progress={computeStatusProgress(activeStatus.id, settings.statuses)}
-                      indicatorStyle={indicatorStyle}
-                    />
-                    <ChevronDown className="w-3 h-3 text-zinc-500" />
-                  </button>
+              {isPropActive('prop_status') && (
+                <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                  <span className="text-zinc-500 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>Status</span>
+                  </span>
+                  <div className="relative inline-block">
+                    <button
+                      ref={statusBtnRef}
+                      type="button"
+                      onClick={() => {
+                        setIsStatusDropdownOpen(o => !o)
+                        setIsPriorityDropdownOpen(false)
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer"
+                    >
+                      <StatusBadge
+                        name={activeStatus.name}
+                        color={activeStatus.color}
+                        progress={computeStatusProgress(activeStatus.id, settings.statuses)}
+                        indicatorStyle={indicatorStyle}
+                      />
+                      <ChevronDown className="w-3 h-3 text-zinc-500" />
+                    </button>
 
-                  {isStatusDropdownOpen && (
-                    <div className="absolute z-40 top-full left-0 mt-1 w-48 rounded-xl bg-[#18181b] border border-zinc-700/80 shadow-2xl p-1 space-y-0.5 animate-in fade-in-50">
-                      {settings.statuses.map(st => {
-                        const isCur = st.id === activeStatus.id
-                        const prog = computeStatusProgress(st.id, settings.statuses)
-                        return (
-                          <button
-                            key={st.id}
-                            type="button"
-                            onClick={() => handleStatusChange(st.id)}
-                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                              isCur ? 'bg-[#222226] text-white font-medium' : 'hover:bg-[#1f1f23] text-zinc-300'
-                            }`}
-                          >
-                            <StatusBadge
-                              name={st.name}
-                              color={st.color}
-                              progress={prog}
-                              indicatorStyle={indicatorStyle}
-                            />
-                            {isCur && <Check className="w-3.5 h-3.5 text-zinc-400 shrink-0" />}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
+                    {isStatusDropdownOpen && (
+                      <div className="absolute z-40 top-full left-0 mt-1 w-48 rounded-xl bg-[#18181b] border border-zinc-700/80 shadow-2xl p-1 space-y-0.5 animate-in fade-in-50">
+                        {settings.statuses.map(st => {
+                          const isCur = st.id === activeStatus.id
+                          const prog = computeStatusProgress(st.id, settings.statuses)
+                          return (
+                            <button
+                              key={st.id}
+                              type="button"
+                              onClick={() => handleStatusChange(st.id)}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                                isCur ? 'bg-[#222226] text-white font-medium' : 'hover:bg-[#1f1f23] text-zinc-300'
+                              }`}
+                            >
+                              <StatusBadge
+                                name={st.name}
+                                color={st.color}
+                                progress={prog}
+                                indicatorStyle={indicatorStyle}
+                              />
+                              {isCur && <Check className="w-3.5 h-3.5 text-zinc-400 shrink-0" />}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Priority Row */}
-              <div className="grid grid-cols-[120px_1fr] items-center gap-2">
-                <span className="text-zinc-500 flex items-center gap-1.5">
-                  <Flag className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>Prioridade</span>
-                </span>
-                <div className="relative inline-block">
-                  <button
-                    ref={priorityBtnRef}
-                    type="button"
-                    onClick={() => {
-                      setIsPriorityDropdownOpen(o => !o)
-                      setIsStatusDropdownOpen(false)
-                    }}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer"
-                  >
-                    <span
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium"
-                      style={{
-                        backgroundColor: `${activePriority.color}20`,
-                        color: activePriority.color
+              {isPropActive('prop_priority') && (
+                <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                  <span className="text-zinc-500 flex items-center gap-1.5">
+                    <Flag className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>Prioridade</span>
+                  </span>
+                  <div className="relative inline-block">
+                    <button
+                      ref={priorityBtnRef}
+                      type="button"
+                      onClick={() => {
+                        setIsPriorityDropdownOpen(o => !o)
+                        setIsStatusDropdownOpen(false)
                       }}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer"
                     >
-                      <Flag className="w-3 h-3" />
-                      <span>{activePriority.label}</span>
+                      <span
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium"
+                        style={{
+                          backgroundColor: `${activePriority.color}20`,
+                          color: activePriority.color
+                        }}
+                      >
+                        <Flag className="w-3 h-3" />
+                        <span>{activePriority.label}</span>
+                      </span>
+                      <ChevronDown className="w-3 h-3 text-zinc-500" />
+                    </button>
+
+                    {isPriorityDropdownOpen && (
+                      <div className="absolute z-40 top-full left-0 mt-1 w-44 rounded-xl bg-[#18181b] border border-zinc-700/80 shadow-2xl p-1 space-y-0.5 animate-in fade-in-50">
+                        {safePriorities.map(p => {
+                          const isCur = p.id === activePriority.id
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => handlePriorityChange(p.id)}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                                isCur ? 'bg-[#222226] text-white font-medium' : 'hover:bg-[#1f1f23] text-zinc-300'
+                              }`}
+                            >
+                              <span className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
+                                <span>{p.label}</span>
+                              </span>
+                              {isCur && <Check className="w-3.5 h-3.5 text-zinc-400" />}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Start Date / Início & End Date / Término Rows */}
+              {isPropActive('prop_deadline') && (
+                <>
+                  <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                    <span className="text-zinc-500 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>Início</span>
                     </span>
-                    <ChevronDown className="w-3 h-3 text-zinc-500" />
-                  </button>
-
-                  {isPriorityDropdownOpen && (
-                    <div className="absolute z-40 top-full left-0 mt-1 w-44 rounded-xl bg-[#18181b] border border-zinc-700/80 shadow-2xl p-1 space-y-0.5 animate-in fade-in-50">
-                      {safePriorities.map(p => {
-                        const isCur = p.id === activePriority.id
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => handlePriorityChange(p.id)}
-                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                              isCur ? 'bg-[#222226] text-white font-medium' : 'hover:bg-[#1f1f23] text-zinc-300'
-                            }`}
+                    <div className="relative inline-block">
+                      <button
+                        ref={startDateBtnRef}
+                        type="button"
+                        onClick={() => {
+                          setIsStartDatePickerOpen(o => !o)
+                          setIsEndDatePickerOpen(false)
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer font-mono text-zinc-300"
+                      >
+                        <span>{task.startDate || task.date || 'Definir início...'}</span>
+                        {(task.startDate || task.date) && (task.startDate || task.date)!.slice(0, 10) === todayStr && (
+                          <span
+                            className="text-[9.5px] px-1.5 py-0.2 rounded font-medium font-sans"
+                            style={{
+                              backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
+                              color: 'var(--accent, #c59b27)'
+                            }}
                           >
-                            <span className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
-                              <span>{p.label}</span>
-                            </span>
-                            {isCur && <Check className="w-3.5 h-3.5 text-zinc-400" />}
-                          </button>
-                        )
-                      })}
+                            Hoje
+                          </span>
+                        )}
+                      </button>
+
+                      {isStartDatePickerOpen && (
+                        <CustomDatePickerPopover
+                          value={task.startDate || task.date}
+                          endDate={task.endDate || task.deadline}
+                          anchorEl={startDateBtnRef.current}
+                          onRangeChange={handleRangeChange}
+                          onChange={handleStartDateChange}
+                          onClose={() => setIsStartDatePickerOpen(false)}
+                          align="left"
+                        />
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
+                  </div>
 
-              {/* Start Date / Início Row */}
-              <div className="grid grid-cols-[120px_1fr] items-center gap-2">
-                <span className="text-zinc-500 flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>Início</span>
-                </span>
-                <div className="relative inline-block">
-                  <button
-                    ref={startDateBtnRef}
-                    type="button"
-                    onClick={() => {
-                      setIsStartDatePickerOpen(o => !o)
-                      setIsEndDatePickerOpen(false)
-                    }}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer font-mono text-zinc-300"
-                  >
-                    <span>{task.startDate || task.date || 'Definir início...'}</span>
-                    {(task.startDate || task.date) && (task.startDate || task.date)!.slice(0, 10) === todayStr && (
-                      <span
-                        className="text-[9.5px] px-1.5 py-0.2 rounded font-medium font-sans"
-                        style={{
-                          backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
-                          color: 'var(--accent, #c59b27)'
+                  <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                    <span className="text-zinc-500 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>Término</span>
+                    </span>
+                    <div className="relative inline-block">
+                      <button
+                        ref={endDateBtnRef}
+                        type="button"
+                        onClick={() => {
+                          setIsEndDatePickerOpen(o => !o)
+                          setIsStartDatePickerOpen(false)
                         }}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer font-mono text-zinc-300"
                       >
-                        Hoje
-                      </span>
-                    )}
-                  </button>
+                        <span>{task.endDate || task.deadline || 'Definir término...'}</span>
+                        {(task.endDate || task.deadline) && (task.endDate || task.deadline)!.slice(0, 10) === todayStr && (
+                          <span
+                            className="text-[9.5px] px-1.5 py-0.2 rounded font-medium font-sans"
+                            style={{
+                              backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
+                              color: 'var(--accent, #c59b27)'
+                            }}
+                          >
+                            Hoje
+                          </span>
+                        )}
+                      </button>
 
-                  {isStartDatePickerOpen && (
-                    <CustomDatePickerPopover
-                      value={task.startDate || task.date}
-                      endDate={task.endDate || task.deadline}
-                      anchorEl={startDateBtnRef.current}
-                      onRangeChange={handleRangeChange}
-                      onChange={handleStartDateChange}
-                      onClose={() => setIsStartDatePickerOpen(false)}
-                      align="left"
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* End Date / Término Row */}
-              <div className="grid grid-cols-[120px_1fr] items-center gap-2">
-                <span className="text-zinc-500 flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>Término</span>
-                </span>
-                <div className="relative inline-block">
-                  <button
-                    ref={endDateBtnRef}
-                    type="button"
-                    onClick={() => {
-                      setIsEndDatePickerOpen(o => !o)
-                      setIsStartDatePickerOpen(false)
-                    }}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer font-mono text-zinc-300"
-                  >
-                    <span>{task.endDate || task.deadline || 'Definir término...'}</span>
-                    {(task.endDate || task.deadline) && (task.endDate || task.deadline)!.slice(0, 10) === todayStr && (
-                      <span
-                        className="text-[9.5px] px-1.5 py-0.2 rounded font-medium font-sans"
-                        style={{
-                          backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))',
-                          color: 'var(--accent, #c59b27)'
-                        }}
-                      >
-                        Hoje
-                      </span>
-                    )}
-                  </button>
-
-                  {isEndDatePickerOpen && (
-                    <CustomDatePickerPopover
-                      value={task.startDate || task.date}
-                      endDate={task.endDate || task.deadline}
-                      anchorEl={endDateBtnRef.current}
-                      onRangeChange={handleRangeChange}
-                      onChange={handleEndDateChange}
-                      onClose={() => setIsEndDatePickerOpen(false)}
-                      align="left"
-                    />
-                  )}
-                </div>
-              </div>
+                      {isEndDatePickerOpen && (
+                        <CustomDatePickerPopover
+                          value={task.startDate || task.date}
+                          endDate={task.endDate || task.deadline}
+                          anchorEl={endDateBtnRef.current}
+                          onRangeChange={handleRangeChange}
+                          onChange={handleEndDateChange}
+                          onClose={() => setIsEndDatePickerOpen(false)}
+                          align="left"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Context Note Row */}
-              <div className="grid grid-cols-[120px_1fr] items-center gap-2">
-                <span className="text-zinc-500 flex items-center gap-1.5">
-                  <Compass className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>Contexto</span>
-                </span>
-                <div className="relative inline-block">
-                  <button
-                    type="button"
-                    onClick={() => setIsContextPickerOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer text-zinc-300"
-                  >
-                    {task.contextNoteTitle ? (
-                      <span className="flex items-center gap-1.5 text-[var(--accent,#c59b27)] font-medium">
-                        <Compass className="w-3.5 h-3.5" />
-                        <span>{task.contextNoteTitle}</span>
-                      </span>
-                    ) : (
-                      <span className="text-zinc-500">Vincular nota...</span>
-                    )}
-                  </button>
-
-                  {isContextPickerOpen && (
-                    <TaskContextPicker
-                      allNotes={allNotes}
-                      selectedNoteId={task.contextNoteId}
-                      onSelectNote={handleContextSelect}
-                      onClose={() => setIsContextPickerOpen(false)}
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* Tags Row */}
-              <div className="grid grid-cols-[120px_1fr] items-center gap-2">
-                <span className="text-zinc-500 flex items-center gap-1.5">
-                  <span>#</span>
-                  <span>Tags</span>
-                </span>
-                <div className="flex items-center flex-wrap gap-1.5">
-                  {task.tags.map(t => (
-                    <span
-                      key={t}
-                      className="group flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-800 text-[11px] text-zinc-300 font-mono"
-                    >
-                      #{t}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTag(t)}
-                        className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-rose-400 cursor-pointer"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-
-                  {isAddingTag ? (
-                    <form onSubmit={handleAddTag} className="inline-flex">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={newTagInput}
-                        onChange={e => setNewTagInput(e.target.value)}
-                        onBlur={() => setIsAddingTag(false)}
-                        placeholder="tag..."
-                        className="w-20 px-1.5 py-0.5 bg-[#18181b] border rounded text-[11px] text-zinc-200 outline-none"
-                        style={{ borderColor: 'var(--accent, #c59b27)' }}
-                      />
-                    </form>
-                  ) : (
+              {isPropActive('prop_context') && (
+                <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                  <span className="text-zinc-500 flex items-center gap-1.5">
+                    <Compass className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>Contexto</span>
+                  </span>
+                  <div className="relative inline-block">
                     <button
                       type="button"
-                      onClick={() => setIsAddingTag(true)}
-                      className="text-[11px] text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded hover:bg-[#1c1c20] transition-colors cursor-pointer"
+                      onClick={() => setIsContextPickerOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer text-zinc-300"
                     >
-                      + Tag
+                      {task.contextNoteTitle ? (
+                        <span className="flex items-center gap-1.5 text-[var(--accent,#c59b27)] font-medium">
+                          <Compass className="w-3.5 h-3.5" />
+                          <span>{task.contextNoteTitle}</span>
+                        </span>
+                      ) : (
+                        <span className="text-zinc-500">Vincular nota...</span>
+                      )}
                     </button>
-                  )}
+
+                    {isContextPickerOpen && (
+                      <TaskContextPicker
+                        allNotes={allNotes}
+                        selectedNoteId={task.contextNoteId}
+                        onSelectNote={handleContextSelect}
+                        onClose={() => setIsContextPickerOpen(false)}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Tags Row */}
+              {isPropActive('prop_tags') && (
+                <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                  <span className="text-zinc-500 flex items-center gap-1.5">
+                    <span>#</span>
+                    <span>Tags</span>
+                  </span>
+                  <div className="flex items-center flex-wrap gap-1.5">
+                    {task.tags.map(t => (
+                      <span
+                        key={t}
+                        className="group flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-800 text-[11px] text-zinc-300 font-mono"
+                      >
+                        #{t}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTag(t)}
+                          className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-rose-400 cursor-pointer"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+
+                    {isAddingTag ? (
+                      <form onSubmit={handleAddTag} className="inline-flex">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={newTagInput}
+                          onChange={e => setNewTagInput(e.target.value)}
+                          onBlur={() => setIsAddingTag(false)}
+                          placeholder="tag..."
+                          className="w-20 px-1.5 py-0.5 bg-[#18181b] border rounded text-[11px] text-zinc-200 outline-none"
+                          style={{ borderColor: 'var(--accent, #c59b27)' }}
+                        />
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingTag(true)}
+                        className="text-[11px] text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded hover:bg-[#1c1c20] transition-colors cursor-pointer"
+                      >
+                        + Tag
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Custom Properties */}
               {customProps.map(cp => (

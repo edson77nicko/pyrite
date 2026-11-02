@@ -250,7 +250,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   } | null>(null)
 
   const [statusBanner, setStatusBanner] = useState<{
-    type: 'success' | 'warning' | 'error'
+    type: 'success' | 'warning' | 'error' | 'info'
     text: string
   } | null>(null)
 
@@ -3583,8 +3583,15 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   runs: [wfRun, ...store.runs]
                 })
                 setSelectedRunId(wfRun.id)
-                setSelectedAgentId(wfRun.agentId)
-                setActiveSection('agents')
+                if (wfRun.agentId) setSelectedAgentId(wfRun.agentId)
+                setStatusBanner({
+                  type: wfRun.status === 'completed' ? 'success' : wfRun.status === 'waiting_approval' ? 'warning' : 'warning',
+                  text: wfRun.status === 'completed'
+                    ? `Fluxo "${wf.name}" executado com sucesso!`
+                    : wfRun.status === 'waiting_approval'
+                    ? `Fluxo "${wf.name}" pausado aguardando aprovação humana.`
+                    : `Fluxo "${wf.name}" finalizado (${wfRun.status})`
+                })
               } finally {
                 setIsExecuting(false)
               }

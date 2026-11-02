@@ -12,7 +12,7 @@ import {
 } from './utils/vault'
 import { createEmptyDrawDocument, isDrawContent, serializeDrawDocument } from './utils/drawUtils'
 import { createEmptyMindMapDocument, isMindMapContent, parseMindMapDocument, serializeMindMapDocument } from './utils/mindMapUtils'
-import { loadTasks, saveTasks, loadTaskSettings, saveTaskSettings, DEFAULT_BOARDS } from './utils/taskStorage'
+import { loadTasks, saveTasks, loadTaskSettings, saveTaskSettings, DEFAULT_BOARDS, DEFAULT_TASK_SETTINGS } from './utils/taskStorage'
 import { loadMultiAgentStoreSync, saveMultiAgentStore, evaluateAutomationsBackground } from './utils/multiAgentEngine'
 import { Ribbon } from './components/Ribbon'
 import { TabHeader } from './components/TabHeader'
@@ -624,16 +624,26 @@ export const App: React.FC = () => {
   }
 
   const handleCreateTaskBoard = (name: string, icon: string = 'CheckCircle2', category: 'project' | 'item' = 'project') => {
+    const newBoardId = `board_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    const defaultProps = JSON.parse(JSON.stringify(DEFAULT_TASK_SETTINGS.properties))
     const newBoard: TaskBoard = {
-      id: `board_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: newBoardId,
       name: name.trim() || (category === 'item' ? 'Novo Grupo de Itens' : 'Novo Projeto'),
       icon: icon || (category === 'item' ? 'Folder' : 'CheckCircle2'),
       createdAt: Date.now(),
-      category
+      category,
+      properties: defaultProps
     }
     const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
     const updatedBoards = [...currentBoards, newBoard]
-    const updatedSettings: TaskSettings = { ...taskSettings, boards: updatedBoards }
+    const updatedSettings: TaskSettings = {
+      ...taskSettings,
+      boards: updatedBoards,
+      boardProperties: {
+        ...(taskSettings.boardProperties || {}),
+        [newBoardId]: defaultProps
+      }
+    }
     handleUpdateTaskSettings(updatedSettings)
     setActiveBoardId(newBoard.id)
     setCurrentView('tasks')
@@ -852,7 +862,7 @@ export const App: React.FC = () => {
       ? serializeDrawDocument(createEmptyDrawDocument(title))
       : type === 'html'
       ? defaultHtmlStarter
-      : `Escreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`
+      : ''
 
     const newNote: Note = {
       id: `${type}_${Date.now()}`,
@@ -1515,7 +1525,7 @@ export const App: React.FC = () => {
               const type: NoteType = isHtml ? 'html' : isMind ? 'mindmap' : 'note'
               const content = isMind
                 ? serializeMindMapDocument(parseMindMapDocument(initialContent, title))
-                : (initialContent || `Escreva sua nota aqui... Conecte com [[${currentNote?.title || 'Bem-vindo ao Pyrite'}]].\n`)
+                : (initialContent || '')
 
               const newNote: Note = {
                 id: `${type}_${Date.now()}`,
