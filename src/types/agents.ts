@@ -118,6 +118,7 @@ export interface AgentProfileVersion {
   }
   knowledgeBindings: ContextBinding[]
   allowedActions: AgentActionPermission[]
+  skills?: string[]        // IDs das skills de IA cadastradas no Pyrite atribuídas a este agente
   deliverables: AgentDeliverableConfig
   aiConfig: {
     useDefault: boolean

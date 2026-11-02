@@ -30,6 +30,7 @@ export interface AiSettingsModalProps {
   activeSpecialtyId?: string
   onSelectSpecialty?: (id: string) => void
   onConfigSaved?: () => void
+  initialTab?: SettingsTab
 }
 
 export type SettingsTab = 'models' | 'specialties' | 'skills'
@@ -93,10 +94,17 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
   onClose,
   activeSpecialtyId = 'general',
   onSelectSpecialty = () => {},
-  onConfigSaved
+  onConfigSaved,
+  initialTab = 'models'
 }) => {
   // Navigation tab
-  const [currentTab, setCurrentTab] = useState<SettingsTab>('models')
+  const [currentTab, setCurrentTab] = useState<SettingsTab>(initialTab)
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setCurrentTab(initialTab)
+    }
+  }, [isOpen, initialTab])
 
   // Tab 1: Models & Providers State
   const [activeProvider, setActiveProvider] = useState<ProviderKey>('openrouter')

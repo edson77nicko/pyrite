@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import type {
   AgentActionPermission,
   AgentArtifact,
@@ -31,7 +31,7 @@ import { MarkdownRenderer } from './MarkdownRenderer'
 import { TeamCanvasEditor } from './TeamCanvasEditor'
 import { WorkflowCanvasEditor } from './WorkflowCanvasEditor'
 import { RoutineCanvasEditor } from './RoutineCanvasEditor'
-import { AiSettingsModal } from './AiSettingsModal'
+import { AiSettingsModal, type CustomAgentSkill } from './AiSettingsModal'
 import {
   Bot,
   Workflow,
@@ -70,6 +70,7 @@ import {
   Cpu,
   Brain,
   Wrench,
+  Folder,
   FolderOpen,
   Maximize2,
   ExternalLink
@@ -214,7 +215,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const [editingProject, setEditingProject] = useState<ProjectContext | null>(null)
   const [projName, setProjName] = useState('')
   const [projItem, setProjItem] = useState('')
-  const [projType, setProjType] = useState('Cliente')
   const [projDesc, setProjDesc] = useState('')
   const [projBriefingIds, setProjBriefingIds] = useState<string[]>([])
   const [projBriefingSearch, setProjBriefingSearch] = useState('')
@@ -225,6 +225,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
   // Modais e Popovers customizados de alta usabilidade
   const [isAiSettingsModalOpen, setIsAiSettingsModalOpen] = useState(false)
+  const [aiSettingsInitialTab, setAiSettingsInitialTab] = useState<'models' | 'specialties' | 'skills'>('models')
+  const [installedAiSkills, setInstalledAiSkills] = useState<CustomAgentSkill[]>([])
   const [activeProviderName, setActiveProviderName] = useState<string>('openrouter')
   const [activeModelName, setActiveModelName] = useState<string>('google/gemini-2.5-flash')
   const [hasActiveKey, setHasActiveKey] = useState<boolean>(true)
@@ -237,6 +239,27 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const [composerNoteSearch, setComposerNoteSearch] = useState('')
   const [isListening, setIsListening] = useState(false)
   const speechRecRef = useRef<any>(null)
+
+  // Referências para fechamento com clique externo (dropdowns e popovers)
+  const projectDropdownRef = useRef<HTMLDivElement>(null)
+  const modelDropdownRef = useRef<HTMLDivElement>(null)
+  const composerPlusRef = useRef<HTMLDivElement>(null)
+
+  const loadInstalledAiSkills = () => {
+    if (typeof window === 'undefined') return
+    try {
+      const saved =
+        localStorage.getItem('pyrite_agent_custom_skills_v1') ||
+        localStorage.getItem('pyrita_agent_custom_skills_v1')
+      if (saved) {
+        setInstalledAiSkills(JSON.parse(saved))
+      } else {
+        setInstalledAiSkills([])
+      }
+    } catch {
+      setInstalledAiSkills([])
+    }
+  }
 
   const loadAiConfigs = async () => {
     if (typeof window !== 'undefined' && window.electronAPI?.aiGetAllConfigs) {
@@ -259,7 +282,56 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
   useEffect(() => {
     loadAiConfigs()
+    loadInstalledAiSkills()
   }, [])
+
+  // Fechar dropdowns e menus flutuantes ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node
+      if (
+        isProjectDropdownOpen &&
+        projectDropdownRef.current &&
+        !projectDropdownRef.current.contains(target)
+      ) {
+        setIsProjectDropdownOpen(false)
+      }
+      if (
+        isModelDropdownOpen &&
+        modelDropdownRef.current &&
+        !modelDropdownRef.current.contains(target)
+      ) {
+        setIsModelDropdownOpen(false)
+      }
+      if (
+        isComposerPlusOpen &&
+        composerPlusRef.current &&
+        !composerPlusRef.current.contains(target)
+      ) {
+        setIsComposerPlusOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+    }
+  }, [isProjectDropdownOpen, isModelDropdownOpen, isComposerPlusOpen])
+
+  // Agrupamento dos itens de conteúdo por conjunto/projeto (como nó Data Task)
+  const groupedProjects = useMemo(() => {
+    const map: Record<string, ProjectContext[]> = {}
+    store.projects.forEach(p => {
+      const groupName = p.name?.trim() || 'Geral'
+      if (!map[groupName]) {
+        map[groupName] = []
+      }
+      map[groupName].push(p)
+    })
+    return map
+  }, [store.projects])
 
   const toggleSpeechRecognition = () => {
     const SpeechRec = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
@@ -700,6 +772,15 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       return
     }
 
+    const runAgent = store.agents.find(a => a.id === run.agentId)
+    if (conflictStrategy === 'overwrite' && !runAgent?.allowedActions.includes('propose_patch')) {
+      setStatusBanner({
+        type: 'warning',
+        text: `Habilidade não autorizada: O agente "${runAgent?.name || 'Agente'}" não possui permissão para editar notas existentes ("propose_patch"). Ative esta permissão nas configurações do agente.`
+      })
+      return
+    }
+
     const res = await onCreateCommittedNote({
       folder: frozenFolder,
       title: targetTitle,
@@ -739,7 +820,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       ? 'pending_info'
       : 'draft'
 
-    const runAgent = store.agents.find(a => a.id === run.agentId)
     if (finalApproval && runAgent?.allowedActions.includes('create_tasks')) {
       const scopeItems = run.calculation?.items || []
       if (scopeItems.length > 0) {
@@ -855,15 +935,15 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   }
 
   const handleSaveProject = async () => {
-    const itemName = projItem.trim() || projName.trim()
-    if (!itemName) return
     const containerName = projName.trim() || 'Geral'
+    const itemName = projItem.trim() || containerName
+    if (!itemName) return
     const nextProj: ProjectContext = {
       id: editingProject?.id || `proj_${Date.now()}`,
       name: containerName,
       itemName,
       clientName: itemName,
-      itemType: projType.trim() || 'Geral',
+      itemType: containerName,
       description: projDesc.trim(),
       folderPath: containerName,
       briefingNoteIds: projBriefingIds,
@@ -879,13 +959,12 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     setEditingProject(null)
     setProjName('')
     setProjItem('')
-    setProjType('Cliente')
     setProjDesc('')
     setProjBriefingIds([])
     setProjBriefingSearch('')
     setStatusBanner({
       type: 'success',
-      text: `Item "${itemName}" salvo no projeto "${containerName}".`
+      text: `Item "${itemName}" salvo no conjunto "${containerName}".`
     })
   }
 
@@ -1133,7 +1212,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 {/* Direita: Dropdowns Customizados (Cliente + Modelo/IA + Toggle Configurações) */}
                 <div className="flex items-center gap-2">
                   {/* Dropdown Customizado de Projeto & Item de Conteúdo */}
-                  <div className="relative">
+                  <div className="relative" ref={projectDropdownRef}>
                     <button
                       type="button"
                       onClick={() => {
@@ -1156,85 +1235,104 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
                     {isProjectDropdownOpen && (
                       <div
-                        onPointerDown={e => e.stopPropagation()}
-                        className="absolute right-0 top-full mt-1.5 w-72 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-100"
+                        className="absolute right-0 top-full mt-1.5 w-76 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-100 max-h-84 overflow-hidden flex flex-col"
                       >
-                        <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                          <span>Contexto de Conteúdo</span>
+                        <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 shrink-0">
+                          <span>Conjuntos & Itens de Dados</span>
                           <span className="text-zinc-500">{store.projects.length} itens</span>
                         </div>
+
                         <button
                           type="button"
                           onClick={() => {
                             setSelectedProjectId('')
                             setIsProjectDropdownOpen(false)
                           }}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
+                          className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer shrink-0 ${
                             !selectedProjectId
                               ? 'bg-zinc-800/90 text-white font-medium'
                               : 'text-zinc-300 hover:bg-zinc-800/50'
                           }`}
                         >
-                          <span>Automático (detectado no pedido)</span>
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                            <span>Automático (detectado no pedido)</span>
+                          </div>
                           {!selectedProjectId && <Check className="w-3.5 h-3.5 text-zinc-200" />}
                         </button>
 
-                        <div className="max-h-56 overflow-y-auto space-y-0.5">
-                          {store.projects.map(p => {
-                            const isSel = selectedProjectId === p.id
-                            const displayName = p.itemName || p.clientName || p.name
-                            return (
-                              <button
-                                key={p.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedProjectId(p.id)
-                                  setIsProjectDropdownOpen(false)
-                                }}
-                                className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
-                                  isSel
-                                    ? 'bg-zinc-800/90 text-white font-medium'
-                                    : 'text-zinc-300 hover:bg-zinc-800/50'
-                                }`}
-                              >
-                                <div className="min-w-0 pr-2">
-                                  <div className="truncate font-medium">{displayName}</div>
-                                  <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 mt-0.5">
-                                    <span>{p.name}</span>
-                                    {p.itemType && (
-                                      <span className="px-1 rounded bg-zinc-800 text-zinc-400">
-                                        {p.itemType}
-                                      </span>
-                                    )}
-                                  </div>
+                        <div className="overflow-y-auto space-y-2 flex-1 pr-0.5 mt-1 max-h-56">
+                          {Object.keys(groupedProjects).length === 0 ? (
+                            <div className="text-[11px] text-zinc-500 px-2 py-3 text-center">
+                              Nenhum conjunto cadastrado. Clique abaixo para adicionar.
+                            </div>
+                          ) : (
+                            (Object.entries(groupedProjects) as [string, ProjectContext[]][]).map(([groupName, items]) => (
+                              <div key={groupName} className="space-y-0.5">
+                                <div className="flex items-center justify-between px-2 py-1 text-[10px] font-medium text-zinc-500 bg-zinc-900/60 rounded-lg">
+                                  <span className="truncate flex items-center gap-1.5 font-semibold text-zinc-400">
+                                    <Folder className="w-3 h-3 text-zinc-400" />
+                                    {groupName}
+                                  </span>
+                                  <span className="text-[9px] text-zinc-500 font-mono">{items.length}</span>
                                 </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <span className="text-[10px] text-zinc-500">{p.briefingNoteIds.length} notas</span>
-                                  {isSel && <Check className="w-3.5 h-3.5 text-emerald-400" />}
-                                </div>
-                              </button>
-                            )
-                          })}
+                                {items.map(p => {
+                                  const isSel = selectedProjectId === p.id
+                                  const displayName = p.itemName || p.clientName || p.name
+                                  return (
+                                    <button
+                                      key={p.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedProjectId(p.id)
+                                        setIsProjectDropdownOpen(false)
+                                      }}
+                                      className={`w-full text-left pl-3.5 pr-2 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
+                                        isSel
+                                          ? 'bg-zinc-800/90 text-white font-medium'
+                                          : 'text-zinc-300 hover:bg-zinc-800/50'
+                                      }`}
+                                    >
+                                      <div className="min-w-0 pr-2">
+                                        <div className="truncate font-medium">{displayName}</div>
+                                        {p.description && (
+                                          <div className="text-[10px] text-zinc-500 truncate">
+                                            {p.description}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className="text-[10px] text-zinc-500">
+                                          {p.briefingNoteIds.length} notas
+                                        </span>
+                                        {isSel && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                                      </div>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            ))
+                          )}
                         </div>
 
-                        <div className="border-t border-zinc-800/80 my-1 pt-1" />
+                        <div className="border-t border-zinc-800/80 my-1 pt-1 shrink-0" />
                         <button
                           type="button"
                           onClick={() => {
                             setIsProjectDropdownOpen(false)
                             setIsProjectsModalOpen(true)
                           }}
-                          className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2 cursor-pointer"
+                          className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2 cursor-pointer shrink-0"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>Gerenciar projetos e itens</span>
+                          <span>Gerenciar conjuntos e itens</span>
                         </button>
                       </div>
                     )}
                   </div>
 
                   {/* Dropdown Customizado de Modelo / IA */}
-                  <div className="relative">
+                  <div className="relative" ref={modelDropdownRef}>
                     <button
                       type="button"
                       onClick={() => {
@@ -1254,7 +1352,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
                     {isModelDropdownOpen && (
                       <div
-                        onPointerDown={e => e.stopPropagation()}
                         className="absolute right-0 top-full mt-1.5 w-64 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-2 animate-in fade-in zoom-in-95 duration-100"
                       >
                         <div className="px-1 text-xs">
@@ -1312,6 +1409,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             type="button"
                             onClick={() => {
                               setIsModelDropdownOpen(false)
+                              setAiSettingsInitialTab('models')
                               setIsAiSettingsModalOpen(true)
                             }}
                             className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-zinc-800 text-xs text-zinc-200 flex items-center justify-between cursor-pointer"
@@ -1679,7 +1777,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               </div>
 
               {/* COMPOSER PÍLULA INFERIOR (Idêntico ao Print 01 e Print 04: "+ | Mensagem para Pessoal | mic | ↑") */}
-              <div className="px-6 pb-4 pt-1 shrink-0 relative">
+              <div className="px-6 pb-4 pt-1 shrink-0 relative" ref={composerPlusRef}>
                 {/* Notas anexadas a este envio */}
                 {extraNoteIds.length > 0 && (
                   <div className="flex items-center gap-1.5 flex-wrap mb-2 px-2">
@@ -1711,7 +1809,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 {/* Menu Popover do botão "+" no Composer com Busca Instantânea */}
                 {isComposerPlusOpen && (
                   <div
-                    onPointerDown={e => e.stopPropagation()}
                     className="absolute bottom-16 left-6 w-80 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2.5 z-40 space-y-2 animate-in fade-in zoom-in-95 duration-100"
                   >
                     <div className="flex items-center justify-between px-1">
@@ -1999,7 +2096,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                         </div>
                         <button
                           type="button"
-                          onClick={() => setIsAiSettingsModalOpen(true)}
+                          onClick={() => {
+                            setAiSettingsInitialTab('models')
+                            setIsAiSettingsModalOpen(true)
+                          }}
                           className="flex items-center gap-1.5 text-zinc-300 hover:text-white transition-colors cursor-pointer group"
                           title="Clique para configurar no Pyrite"
                         >
@@ -2052,7 +2152,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => setIsAiSettingsModalOpen(true)}
+                      onClick={() => {
+                        setAiSettingsInitialTab('models')
+                        setIsAiSettingsModalOpen(true)
+                      }}
                       className="w-full bg-[#18181b] hover:bg-[#1f1f23] border border-zinc-800/80 rounded-2xl px-3 py-2.5 flex items-center justify-between text-xs transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-2 text-zinc-200 font-medium">
@@ -2271,7 +2374,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                         )}
                       </div>
 
-                      {/* 3. Habilidades (Permissões) */}
+                      {/* 3. Habilidades (Permissões e Skills de IA) */}
                       <div>
                         <button
                           type="button"
@@ -2285,43 +2388,49 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             <span>Habilidades</span>
                           </div>
                           <span className="text-zinc-400 flex items-center gap-1">
-                            {selectedAgent.allowedActions.length} atribuída{' '}
+                            {selectedAgent.allowedActions.length + (selectedAgent.skills?.length || 0)} atribuídas{' '}
                             <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${expandedSettingsSection === 'skills' ? 'rotate-90' : ''}`} />
                           </span>
                         </button>
                         {expandedSettingsSection === 'skills' && (
-                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-2 text-xs">
-                            <div className="text-[11px] text-zinc-400 font-medium mb-1">Permissões de Ação</div>
-                            {(Object.keys(ACTION_PERMISSION_LABELS) as AgentActionPermission[]).map(
-                              perm => {
-                                const checked = selectedAgent.allowedActions.includes(perm)
-                                return (
-                                  <label
-                                    key={perm}
-                                    className="flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer py-1 px-1.5 rounded-lg hover:bg-zinc-800/40"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={e => {
-                                        const nextPerms = e.target.checked
-                                          ? [...selectedAgent.allowedActions, perm]
-                                          : selectedAgent.allowedActions.filter(p => p !== perm)
-                                        onUpdateStore(
-                                          updateAgentProfileWithVersion(store, {
-                                            ...selectedAgent,
-                                            allowedActions: nextPerms
-                                          })
-                                        )
-                                      }}
-                                      className="rounded bg-zinc-800 border-zinc-700 text-emerald-500 focus:ring-0"
-                                    />
-                                    <span>{ACTION_PERMISSION_LABELS[perm]}</span>
-                                  </label>
-                                )
-                              }
-                            )}
+                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-3 text-xs">
+                            {/* Permissões do Cofre */}
+                            <div className="space-y-1">
+                              <div className="text-[11px] text-zinc-400 font-medium mb-1">
+                                Permissões de Ação no Cofre
+                              </div>
+                              {(Object.keys(ACTION_PERMISSION_LABELS) as AgentActionPermission[]).map(
+                                perm => {
+                                  const checked = selectedAgent.allowedActions.includes(perm)
+                                  return (
+                                    <label
+                                      key={perm}
+                                      className="flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer py-1 px-1.5 rounded-lg hover:bg-zinc-800/40"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={e => {
+                                          const nextPerms = e.target.checked
+                                            ? [...selectedAgent.allowedActions, perm]
+                                            : selectedAgent.allowedActions.filter(p => p !== perm)
+                                          onUpdateStore(
+                                            updateAgentProfileWithVersion(store, {
+                                              ...selectedAgent,
+                                              allowedActions: nextPerms
+                                            })
+                                          )
+                                        }}
+                                        className="rounded bg-zinc-800 border-zinc-700 text-emerald-500 focus:ring-0"
+                                      />
+                                      <span>{ACTION_PERMISSION_LABELS[perm]}</span>
+                                    </label>
+                                  )
+                                }
+                              )}
+                            </div>
 
+                            {/* Delegação em Equipe */}
                             <div className="pt-2 border-t border-zinc-800/80 space-y-1.5">
                               <div className="text-[11px] text-zinc-400 font-medium">Delegação em Equipe</div>
                               <label className="flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer py-0.5">
@@ -2373,6 +2482,88 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                       </button>
                                     ))}
                                   </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Skills de IA Conectadas (do Popup de Configurações de IA) */}
+                            <div className="pt-2 border-t border-zinc-800/80 space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <div className="text-[11px] text-zinc-400 font-medium">
+                                  Skills de IA Conectadas
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAiSettingsInitialTab('skills')
+                                    setIsAiSettingsModalOpen(true)
+                                  }}
+                                  className="text-[10px] text-zinc-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                                  title="Abrir gerenciador de skills no popup de IA"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  <span>Gerenciar skills</span>
+                                </button>
+                              </div>
+
+                              {installedAiSkills.length === 0 ? (
+                                <div className="p-2.5 rounded-xl bg-[#18181b] border border-zinc-800/60 text-[11px] text-zinc-400 space-y-2">
+                                  <p>Nenhuma skill de IA importada ou cadastrada no Pyrite ainda.</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAiSettingsInitialTab('skills')
+                                      setIsAiSettingsModalOpen(true)
+                                    }}
+                                    className="w-full py-1.5 px-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium cursor-pointer text-center"
+                                  >
+                                    Importar ou criar skills no Popup de IA
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="space-y-1 max-h-40 overflow-y-auto pr-0.5">
+                                  {installedAiSkills.map(sk => {
+                                    const agentSkills = selectedAgent.skills || []
+                                    const isAssigned = agentSkills.includes(sk.id)
+                                    return (
+                                      <label
+                                        key={sk.id}
+                                        className="flex items-start gap-2 p-1.5 rounded-lg hover:bg-zinc-800/40 cursor-pointer text-[11px]"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isAssigned}
+                                          onChange={e => {
+                                            const nextSkills = e.target.checked
+                                              ? [...agentSkills, sk.id]
+                                              : agentSkills.filter(id => id !== sk.id)
+                                            onUpdateStore(
+                                              updateAgentProfileWithVersion(store, {
+                                                ...selectedAgent,
+                                                skills: nextSkills
+                                              })
+                                            )
+                                          }}
+                                          className="mt-0.5 rounded bg-zinc-800 border-zinc-700 text-emerald-500 focus:ring-0"
+                                        />
+                                        <div className="min-w-0">
+                                          <div className="font-medium text-zinc-200 flex items-center gap-1.5">
+                                            <span>{sk.name}</span>
+                                            {sk.folderPath && (
+                                              <span className="text-[9px] px-1 rounded bg-zinc-800 text-zinc-400">
+                                                local
+                                              </span>
+                                            )}
+                                          </div>
+                                          {sk.description && (
+                                            <div className="text-[10px] text-zinc-400 truncate">
+                                              {sk.description}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </label>
+                                    )
+                                  })}
                                 </div>
                               )}
                             </div>
@@ -3129,14 +3320,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-zinc-100 truncate">{displayName}</span>
-                          {p.itemType && (
-                            <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-[10px] text-zinc-400">
-                              {p.itemType}
-                            </span>
-                          )}
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
-                          <span>Projeto: <strong>{p.name}</strong></span>
+                          <span>Grupo / Projeto: <strong className="text-zinc-400">{p.name}</strong></span>
                           <span>•</span>
                           <span>{p.briefingNoteIds.length} notas vinculadas</span>
                         </div>
@@ -3148,7 +3334,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             setEditingProject(p)
                             setProjItem(p.itemName || p.clientName || '')
                             setProjName(p.name)
-                            setProjType(p.itemType || 'Cliente')
                             setProjDesc(p.description || '')
                             setProjBriefingIds(p.briefingNoteIds || [])
                           }}
@@ -3192,7 +3377,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                       setEditingProject(null)
                       setProjName('')
                       setProjItem('')
-                      setProjType('Cliente')
                       setProjDesc('')
                       setProjBriefingIds([])
                     }}
@@ -3203,17 +3387,17 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
-                    Projeto / Categoria
+                    Grupo / Projeto
                   </label>
                   <input
                     type="text"
                     list="existing-projects-datalist"
                     value={projName}
                     onChange={e => setProjName(e.target.value)}
-                    placeholder="Ex: Clientes, Blog, Produto"
+                    placeholder="Ex: Clientes, Blog, Campanhas"
                     className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
                   />
                   <datalist id="existing-projects-datalist">
@@ -3234,29 +3418,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     placeholder="Ex: Nome do cliente, Artigo, etc."
                     className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
-                    Tipo de Conteúdo
-                  </label>
-                  <input
-                    type="text"
-                    list="content-types-datalist"
-                    value={projType}
-                    onChange={e => setProjType(e.target.value)}
-                    placeholder="Ex: Cliente, Artigo, Produto"
-                    className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
-                  />
-                  <datalist id="content-types-datalist">
-                    <option value="Cliente" />
-                    <option value="Artigo / Post" />
-                    <option value="Produto / Feature" />
-                    <option value="Campanha" />
-                    <option value="Documento" />
-                    <option value="Pesquisa" />
-                    <option value="Geral" />
-                  </datalist>
                 </div>
               </div>
 
@@ -3775,12 +3936,15 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       {isAiSettingsModalOpen && (
         <AiSettingsModal
           isOpen={isAiSettingsModalOpen}
+          initialTab={aiSettingsInitialTab}
           onClose={() => {
             setIsAiSettingsModalOpen(false)
             loadAiConfigs()
+            loadInstalledAiSkills()
           }}
           onConfigSaved={() => {
             loadAiConfigs()
+            loadInstalledAiSkills()
           }}
         />
       )}
