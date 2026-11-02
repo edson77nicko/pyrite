@@ -74,8 +74,10 @@ export interface ContextBinding {
 
 export interface ProjectContext {
   id: string
-  name: string
-  clientName: string
+  name: string                  // Nome do Projeto / Pasta / Categoria (ex: "Clientes", "Marketing", "Blog", "Desenvolvimento")
+  itemName?: string             // Nome do Item de Conteúdo específico (ex: "Construtora Horizonte", "Artigo Multiagentes")
+  clientName: string            // Mantido para compatibilidade total; espelha (itemName || clientName)
+  itemType?: string             // Tipo de conteúdo flexível (ex: "Cliente", "Artigo", "Produto", "Módulo", "Geral")
   description?: string
   folderPath?: string
   briefingNoteIds: string[]

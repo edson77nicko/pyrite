@@ -210,12 +210,14 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const [convDescription, setConvDescription] = useState('')
   const [newAgentDraft, setNewAgentDraft] = useState<AgentProfileVersion | null>(null)
 
-  // Estado de formulário para Novo Projeto/Cliente
+  // Estado de formulário para Projetos & Itens de Conteúdo
   const [editingProject, setEditingProject] = useState<ProjectContext | null>(null)
   const [projName, setProjName] = useState('')
-  const [projClient, setProjClient] = useState('')
+  const [projItem, setProjItem] = useState('')
+  const [projType, setProjType] = useState('Cliente')
   const [projDesc, setProjDesc] = useState('')
   const [projBriefingIds, setProjBriefingIds] = useState<string[]>([])
+  const [projBriefingSearch, setProjBriefingSearch] = useState('')
 
   // Estado para adicionar vínculo de conhecimento na aba Arquivos (Print 04)
   const [bindRole, setBindRole] = useState<ContextRole>('permanent_ref')
@@ -853,13 +855,17 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   }
 
   const handleSaveProject = async () => {
-    if (!projClient.trim() || !projName.trim()) return
+    const itemName = projItem.trim() || projName.trim()
+    if (!itemName) return
+    const containerName = projName.trim() || 'Geral'
     const nextProj: ProjectContext = {
       id: editingProject?.id || `proj_${Date.now()}`,
-      name: projName.trim(),
-      clientName: projClient.trim(),
+      name: containerName,
+      itemName,
+      clientName: itemName,
+      itemType: projType.trim() || 'Geral',
       description: projDesc.trim(),
-      folderPath: 'Clientes',
+      folderPath: containerName,
       briefingNoteIds: projBriefingIds,
       createdAt: editingProject?.createdAt || Date.now(),
       updatedAt: Date.now()
@@ -872,9 +878,15 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     setSelectedProjectId(nextProj.id)
     setEditingProject(null)
     setProjName('')
-    setProjClient('')
+    setProjItem('')
+    setProjType('Cliente')
     setProjDesc('')
     setProjBriefingIds([])
+    setProjBriefingSearch('')
+    setStatusBanner({
+      type: 'success',
+      text: `Item "${itemName}" salvo no projeto "${containerName}".`
+    })
   }
 
   const filteredAgents = store.agents.filter(
@@ -941,7 +953,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         <button
           type="button"
           onClick={() => setIsProjectsModalOpen(true)}
-          title="Clientes e Projetos"
+          title="Projetos & Itens de Conteúdo"
           className="w-8 h-8 rounded-xl flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors cursor-pointer"
         >
           <Briefcase className="w-4 h-4 stroke-[1.8]" />
@@ -1120,7 +1132,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
                 {/* Direita: Dropdowns Customizados (Cliente + Modelo/IA + Toggle Configurações) */}
                 <div className="flex items-center gap-2">
-                  {/* Dropdown Customizado de Cliente */}
+                  {/* Dropdown Customizado de Projeto & Item de Conteúdo */}
                   <div className="relative">
                     <button
                       type="button"
@@ -1129,11 +1141,15 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                         setIsModelDropdownOpen(false)
                       }}
                       className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#18181b] border border-zinc-800/80 hover:border-zinc-700 text-xs text-zinc-200 transition-colors cursor-pointer"
-                      title="Contexto de cliente ou briefing"
+                      title="Contexto de Projeto & Item de Conteúdo"
                     >
                       <Briefcase className="w-3.5 h-3.5 text-zinc-400" />
                       <span className="truncate max-w-[130px]">
-                        {store.projects.find(p => p.id === selectedProjectId)?.clientName || 'Cliente: Automático'}
+                        {(() => {
+                          const activeProj = store.projects.find(p => p.id === selectedProjectId)
+                          if (!activeProj) return 'Contexto: Automático'
+                          return activeProj.itemName || activeProj.clientName || activeProj.name
+                        })()}
                       </span>
                       <ChevronDown className="w-3 h-3 text-zinc-500" />
                     </button>
@@ -1141,10 +1157,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     {isProjectDropdownOpen && (
                       <div
                         onPointerDown={e => e.stopPropagation()}
-                        className="absolute right-0 top-full mt-1.5 w-64 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-40 space-y-0.5 animate-in fade-in zoom-in-95 duration-100"
+                        className="absolute right-0 top-full mt-1.5 w-72 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-100"
                       >
-                        <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                          Contexto de Cliente
+                        <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                          <span>Contexto de Conteúdo</span>
+                          <span className="text-zinc-500">{store.projects.length} itens</span>
                         </div>
                         <button
                           type="button"
@@ -1158,36 +1175,49 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                               : 'text-zinc-300 hover:bg-zinc-800/50'
                           }`}
                         >
-                          <span>Automático (conforme o pedido)</span>
+                          <span>Automático (detectado no pedido)</span>
                           {!selectedProjectId && <Check className="w-3.5 h-3.5 text-zinc-200" />}
                         </button>
 
-                        {store.projects.map(p => {
-                          const isSel = selectedProjectId === p.id
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedProjectId(p.id)
-                                setIsProjectDropdownOpen(false)
-                              }}
-                              className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
-                                isSel
-                                  ? 'bg-zinc-800/90 text-white font-medium'
-                                  : 'text-zinc-300 hover:bg-zinc-800/50'
-                              }`}
-                            >
-                              <span className="truncate">{p.clientName}</span>
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] text-zinc-500">{p.briefingNoteIds.length} notas</span>
-                                {isSel && <Check className="w-3.5 h-3.5 text-zinc-200" />}
-                              </div>
-                            </button>
-                          )
-                        })}
+                        <div className="max-h-56 overflow-y-auto space-y-0.5">
+                          {store.projects.map(p => {
+                            const isSel = selectedProjectId === p.id
+                            const displayName = p.itemName || p.clientName || p.name
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedProjectId(p.id)
+                                  setIsProjectDropdownOpen(false)
+                                }}
+                                className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
+                                  isSel
+                                    ? 'bg-zinc-800/90 text-white font-medium'
+                                    : 'text-zinc-300 hover:bg-zinc-800/50'
+                                }`}
+                              >
+                                <div className="min-w-0 pr-2">
+                                  <div className="truncate font-medium">{displayName}</div>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 mt-0.5">
+                                    <span>{p.name}</span>
+                                    {p.itemType && (
+                                      <span className="px-1 rounded bg-zinc-800 text-zinc-400">
+                                        {p.itemType}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-[10px] text-zinc-500">{p.briefingNoteIds.length} notas</span>
+                                  {isSel && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
 
-                        <div className="border-t border-zinc-800/80 my-1" />
+                        <div className="border-t border-zinc-800/80 my-1 pt-1" />
                         <button
                           type="button"
                           onClick={() => {
@@ -1197,7 +1227,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2 cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>Gerenciar clientes e projetos</span>
+                          <span>Gerenciar projetos e itens</span>
                         </button>
                       </div>
                     )}
@@ -2166,7 +2196,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                         )}
                       </div>
 
-                      {/* 2. Memórias (Clientes/Projetos) */}
+                      {/* 2. Memórias (Projetos & Itens de Conteúdo) */}
                       <div>
                         <button
                           type="button"
@@ -2179,16 +2209,16 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                         >
                           <div className="flex items-center gap-2 text-zinc-200 font-medium">
                             <Brain className="w-3.5 h-3.5 text-zinc-400" />
-                            <span>Memórias</span>
+                            <span>Projetos & Itens</span>
                           </div>
                           <span className="text-zinc-400 flex items-center gap-1">
-                            {store.projects.length} salva <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${expandedSettingsSection === 'memories' ? 'rotate-90' : ''}`} />
+                            {store.projects.length} salvos <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${expandedSettingsSection === 'memories' ? 'rotate-90' : ''}`} />
                           </span>
                         </button>
                         {expandedSettingsSection === 'memories' && (
                           <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-2.5 text-xs">
                             <div className="flex items-center justify-between">
-                              <span className="text-[11px] text-zinc-400 font-medium">Clientes e Projetos</span>
+                              <span className="text-[11px] text-zinc-400 font-medium">Itens de Conteúdo & Projetos</span>
                               <button
                                 type="button"
                                 onClick={() => setIsProjectsModalOpen(true)}
@@ -2199,23 +2229,33 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             </div>
                             {store.projects.length === 0 ? (
                               <div className="text-[11px] text-zinc-500 py-1">
-                                Nenhum cliente ou projeto cadastrado.
+                                Nenhum projeto ou item de conteúdo cadastrado.
                               </div>
                             ) : (
-                              store.projects.map(p => (
-                                <div
-                                  key={p.id}
-                                  className="px-2.5 py-2 rounded-xl bg-[#18181b] border border-zinc-800/60 text-zinc-300 text-[11px] flex items-center justify-between"
-                                >
-                                  <div>
-                                    <div className="font-medium text-zinc-200">{p.clientName}</div>
-                                    <div className="text-[10px] text-zinc-500">{p.name}</div>
+                              store.projects.map(p => {
+                                const displayName = p.itemName || p.clientName || p.name
+                                return (
+                                  <div
+                                    key={p.id}
+                                    className="px-2.5 py-2 rounded-xl bg-[#18181b] border border-zinc-800/60 text-zinc-300 text-[11px] flex items-center justify-between"
+                                  >
+                                    <div className="min-w-0 pr-2">
+                                      <div className="font-medium text-zinc-200 truncate">{displayName}</div>
+                                      <div className="text-[10px] text-zinc-500 truncate flex items-center gap-1 mt-0.5">
+                                        <span>{p.name}</span>
+                                        {p.itemType && (
+                                          <span className="px-1 rounded bg-zinc-800 text-zinc-400">
+                                            {p.itemType}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <span className="text-[10px] bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400 shrink-0">
+                                      {p.briefingNoteIds.length} notas
+                                    </span>
                                   </div>
-                                  <span className="text-[10px] bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">
-                                    {p.briefingNoteIds.length} notas
-                                  </span>
-                                </div>
-                              ))
+                                )
+                              })
                             )}
                             <div className="pt-1 border-t border-zinc-800/80">
                               <button
@@ -2224,7 +2264,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                 className="w-full py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs flex items-center justify-center gap-1 cursor-pointer"
                               >
                                 <Plus className="w-3.5 h-3.5" />
-                                <span>Novo Cliente / Projeto</span>
+                                <span>Novo Projeto ou Item</span>
                               </button>
                             </div>
                           </div>
@@ -3046,90 +3086,288 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       )}
 
       {/* ============================================================================ */}
-      {/* MODAL: CLIENTES E PROJETOS                                                   */}
+      {/* MODAL: PROJETOS E ITENS DE CONTEÚDO (CLIENTES, ARTIGOS, PRODUTOS, ETC.)       */}
       {/* ============================================================================ */}
       {isProjectsModalOpen && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#141416] border border-zinc-800 rounded-2xl max-w-xl w-full p-5 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+          <div className="bg-[#141416] border border-zinc-800 rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl max-h-[88vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <span className="text-sm font-semibold text-zinc-100">Clientes e Projetos</span>
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-100">
+                  Projetos & Itens de Conteúdo
+                </h3>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Organize itens de qualquer tipo (Clientes, Artigos, Produtos, Campanhas). Seus agentes usam essas notas como contexto isolado de trabalho.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => setIsProjectsModalOpen(false)}
-                className="text-zinc-400 hover:text-white cursor-pointer"
+                onClick={() => {
+                  setIsProjectsModalOpen(false)
+                  setEditingProject(null)
+                }}
+                className="text-zinc-400 hover:text-white p-1 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-2">
-              {store.projects.map(p => (
-                <div
-                  key={p.id}
-                  className="p-3 rounded-xl bg-[#1c1c1f] border border-zinc-800 flex items-center justify-between gap-2 text-xs"
-                >
-                  <div>
-                    <div className="font-semibold text-zinc-100">{p.clientName}</div>
-                    <div className="text-zinc-400">{p.name}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingProject(p)
-                        setProjClient(p.clientName)
-                        setProjName(p.name)
-                        setProjDesc(p.description || '')
-                        setProjBriefingIds(p.briefingNoteIds)
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 cursor-pointer"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await onUpdateStore({
-                          ...store,
-                          projects: store.projects.filter(x => x.id !== p.id)
-                        })
-                      }}
-                      className="text-rose-400 hover:underline px-2 cursor-pointer"
-                    >
-                      Excluir
-                    </button>
-                  </div>
+            {/* Lista de Itens Cadastrados */}
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              {store.projects.length === 0 ? (
+                <div className="text-xs text-zinc-500 py-4 text-center">
+                  Nenhum projeto ou item de conteúdo cadastrado ainda.
                 </div>
-              ))}
+              ) : (
+                store.projects.map(p => {
+                  const displayName = p.itemName || p.clientName || p.name
+                  return (
+                    <div
+                      key={p.id}
+                      className="p-3 rounded-xl bg-[#1c1c1f] border border-zinc-800/80 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-zinc-100 truncate">{displayName}</span>
+                          {p.itemType && (
+                            <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-[10px] text-zinc-400">
+                              {p.itemType}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
+                          <span>Projeto: <strong>{p.name}</strong></span>
+                          <span>•</span>
+                          <span>{p.briefingNoteIds.length} notas vinculadas</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingProject(p)
+                            setProjItem(p.itemName || p.clientName || '')
+                            setProjName(p.name)
+                            setProjType(p.itemType || 'Cliente')
+                            setProjDesc(p.description || '')
+                            setProjBriefingIds(p.briefingNoteIds || [])
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs cursor-pointer"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await onUpdateStore({
+                              ...store,
+                              projects: store.projects.filter(x => x.id !== p.id)
+                            })
+                            if (selectedProjectId === p.id) {
+                              setSelectedProjectId('')
+                            }
+                          }}
+                          className="p-1 rounded-lg hover:bg-rose-950/40 text-rose-400 cursor-pointer"
+                          title="Excluir item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
             </div>
 
-            <div className="border-t border-zinc-800 pt-3 space-y-2.5 text-xs">
-              <div className="font-semibold text-zinc-200">
-                {editingProject ? 'Editar Cliente' : 'Adicionar Cliente'}
+            {/* Formulário de Criação / Edição */}
+            <div className="border-t border-zinc-800 pt-3.5 space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-zinc-200">
+                  {editingProject ? 'Editar Item de Conteúdo' : 'Adicionar Novo Item de Conteúdo'}
+                </span>
+                {editingProject && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingProject(null)
+                      setProjName('')
+                      setProjItem('')
+                      setProjType('Cliente')
+                      setProjDesc('')
+                      setProjBriefingIds([])
+                    }}
+                    className="text-[11px] text-zinc-400 hover:text-white underline cursor-pointer"
+                  >
+                    Cancelar edição
+                  </button>
+                )}
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={projClient}
-                  onChange={e => setProjClient(e.target.value)}
-                  placeholder="Nome do Cliente"
-                  className="bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100"
-                />
-                <input
-                  type="text"
-                  value={projName}
-                  onChange={e => setProjName(e.target.value)}
-                  placeholder="Projeto"
-                  className="bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100"
+
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
+                    Projeto / Categoria
+                  </label>
+                  <input
+                    type="text"
+                    list="existing-projects-datalist"
+                    value={projName}
+                    onChange={e => setProjName(e.target.value)}
+                    placeholder="Ex: Clientes, Blog, Produto"
+                    className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                  />
+                  <datalist id="existing-projects-datalist">
+                    {Array.from(new Set(['Clientes', 'Blog & Conteúdo', 'Marketing', 'Produtos & Recursos', 'Pesquisa', ...folders])).map(f => (
+                      <option key={f} value={f} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
+                    Nome do Item de Conteúdo
+                  </label>
+                  <input
+                    type="text"
+                    value={projItem}
+                    onChange={e => setProjItem(e.target.value)}
+                    placeholder="Ex: Nome do cliente, Artigo, etc."
+                    className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
+                    Tipo de Conteúdo
+                  </label>
+                  <input
+                    type="text"
+                    list="content-types-datalist"
+                    value={projType}
+                    onChange={e => setProjType(e.target.value)}
+                    placeholder="Ex: Cliente, Artigo, Produto"
+                    className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                  />
+                  <datalist id="content-types-datalist">
+                    <option value="Cliente" />
+                    <option value="Artigo / Post" />
+                    <option value="Produto / Feature" />
+                    <option value="Campanha" />
+                    <option value="Documento" />
+                    <option value="Pesquisa" />
+                    <option value="Geral" />
+                  </datalist>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-zinc-400 mb-1 font-medium">
+                  Descrição / Diretrizes do Item (opcional)
+                </label>
+                <textarea
+                  value={projDesc}
+                  onChange={e => setProjDesc(e.target.value)}
+                  placeholder="Instruções de escopo ou objetivos específicos para este item..."
+                  className="w-full h-16 bg-[#1c1c1f] border border-zinc-800 rounded-xl p-2.5 text-xs text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-zinc-700"
                 />
               </div>
-              <div className="flex justify-end">
+
+              {/* Seletor de Notas de Briefing com Busca Rápida */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] text-zinc-400 font-medium">
+                  Notas de Briefing / Fontes Vinculadas a este Item ({projBriefingIds.length} selecionadas)
+                </label>
+
+                {projBriefingIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
+                    {projBriefingIds.map(nid => {
+                      const found = notes.find(n => n.id === nid)
+                      if (!found) return null
+                      return (
+                        <span
+                          key={nid}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-zinc-800 text-[11px] text-zinc-200"
+                        >
+                          <FileText className="w-3 h-3 text-zinc-400" />
+                          <span className="truncate max-w-[140px]">{found.title}</span>
+                          <button
+                            type="button"
+                            onClick={() => setProjBriefingIds(prev => prev.filter(id => id !== nid))}
+                            className="text-zinc-400 hover:text-white cursor-pointer ml-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+
+                <div className="relative flex items-center">
+                  <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={projBriefingSearch}
+                    onChange={e => setProjBriefingSearch(e.target.value)}
+                    placeholder="Buscar nota para vincular a este item..."
+                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl pl-8 pr-7 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                  />
+                  {projBriefingSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setProjBriefingSearch('')}
+                      className="absolute right-2 text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {projBriefingSearch && (
+                  <div className="max-h-32 overflow-y-auto space-y-0.5 border border-zinc-800 rounded-xl p-1 bg-[#121214]">
+                    {notes
+                      .filter(n => {
+                        const q = projBriefingSearch.toLowerCase().trim()
+                        return (
+                          n.title.toLowerCase().includes(q) ||
+                          (n.folder && n.folder.toLowerCase().includes(q))
+                        )
+                      })
+                      .map(n => {
+                        const isAttached = projBriefingIds.includes(n.id)
+                        return (
+                          <button
+                            key={n.id}
+                            type="button"
+                            onClick={() => {
+                              setProjBriefingIds(prev =>
+                                isAttached ? prev.filter(id => id !== n.id) : [...prev, n.id]
+                              )
+                            }}
+                            className={`w-full text-left px-2 py-1 rounded-lg text-xs flex items-center justify-between gap-2 cursor-pointer ${
+                              isAttached ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800/40'
+                            }`}
+                          >
+                            <span className="truncate">{n.title}</span>
+                            <div className="flex items-center gap-1.5">
+                              {n.folder && <span className="text-[10px] text-zinc-500">{n.folder}</span>}
+                              {isAttached && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                            </div>
+                          </button>
+                        )
+                      })}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-1">
                 <button
                   type="button"
+                  disabled={!projItem.trim() && !projName.trim()}
                   onClick={handleSaveProject}
-                  className="px-4 py-1.5 rounded-xl bg-zinc-100 text-zinc-950 font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs disabled:opacity-40 cursor-pointer transition-colors"
                 >
-                  Salvar Cliente
+                  {editingProject ? 'Atualizar Item de Conteúdo' : 'Salvar Item de Conteúdo'}
                 </button>
               </div>
             </div>

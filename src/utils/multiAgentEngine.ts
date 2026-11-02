@@ -666,8 +666,10 @@ export const INITIAL_WORKFLOWS: WorkflowDefinition[] = [
 export const DEMO_PROJECTS: ProjectContext[] = [
   {
     id: 'proj-joao-horizonte',
-    name: 'Site Institucional + Manutenção — Construtora Horizonte',
+    name: 'Clientes & Contratos',
+    itemName: 'João Silva (Construtora Horizonte)',
     clientName: 'João Silva (Construtora Horizonte)',
+    itemType: 'Cliente',
     description: 'Criação de site institucional de 5 páginas com SEO e plano de manutenção mensal.',
     folderPath: 'Clientes',
     briefingNoteIds: ['note-briefing-joao'],
@@ -676,13 +678,27 @@ export const DEMO_PROJECTS: ProjectContext[] = [
   },
   {
     id: 'proj-maria-botanico',
-    name: 'E-commerce + Identidade Visual — Atelier Botânico',
+    name: 'Clientes & Contratos',
+    itemName: 'Maria Oliveira (Atelier Botânico)',
     clientName: 'Maria Oliveira (Atelier Botânico)',
+    itemType: 'Cliente',
     description: 'Loja virtual completa com frete integrado e identidade visual/UI Kit.',
     folderPath: 'Clientes',
     briefingNoteIds: ['note-briefing-maria'],
     createdAt: Date.now() - 86400000 * 2,
     updatedAt: Date.now() - 3600000
+  },
+  {
+    id: 'proj-blog-multiagentes',
+    name: 'Blog & Conteúdo',
+    itemName: 'Guia Prático de Multiagentes Locais',
+    clientName: 'Guia Prático de Multiagentes Locais',
+    itemType: 'Artigo',
+    description: 'Produção de ensaio técnico sobre agentes autônomos locais, privacidade e contratos de dados.',
+    folderPath: 'Blog',
+    briefingNoteIds: [],
+    createdAt: Date.now() - 86400000,
+    updatedAt: Date.now() - 1800000
   }
 ]
 
