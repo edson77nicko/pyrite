@@ -32,25 +32,44 @@ import { WorkflowCanvasEditor } from './WorkflowCanvasEditor'
 import { RoutineCanvasEditor } from './RoutineCanvasEditor'
 import {
   Bot,
-  Users,
+  Workflow,
   GitBranch,
-  Clock,
+  ListTodo,
+  CalendarClock,
   Activity,
   Plus,
-  Play,
-  FlaskConical,
-  BookOpen,
   Settings,
   AlertTriangle,
-  XCircle,
   Sparkles,
   FileText,
   Trash2,
   X,
   Briefcase,
-  ShieldAlert,
   RefreshCw,
-  StopCircle
+  StopCircle,
+  Search,
+  PanelLeft,
+  PanelRight,
+  ArrowUp,
+  ArrowLeft,
+  ArrowRight,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  CheckCircle2,
+  Clock,
+  Copy,
+  CornerUpLeft,
+  Smile,
+  Mic,
+  Pencil,
+  Globe,
+  Cpu,
+  Brain,
+  Wrench,
+  FolderOpen,
+  Maximize2
 } from 'lucide-react'
 
 interface MyTeamViewProps {
@@ -83,7 +102,7 @@ interface MyTeamViewProps {
   onLoadDemoSeedNotes?: () => void
 }
 
-type PrimarySection = 'agents' | 'teams' | 'workflows' | 'routines' | 'activity'
+type PrimarySection = 'agents' | 'teams' | 'workflows' | 'tasks' | 'routines' | 'activity'
 
 const ACTION_PERMISSION_LABELS: Record<AgentActionPermission, string> = {
   read_context: 'Ler notas e referências vinculadas',
@@ -94,6 +113,15 @@ const ACTION_PERMISSION_LABELS: Record<AgentActionPermission, string> = {
   edit_diagram: 'Criar ou editar Diagramas por ID',
   delegate_team: 'Coordenar e delegar para equipe de especialistas'
 }
+
+const AGENT_AVATAR_COLORS = [
+  '#10b981', // Emerald (Project Partner style)
+  '#2563eb', // Blue (Pessoal style)
+  '#8b5cf6', // Violet
+  '#f59e0b', // Amber
+  '#ec4899', // Pink
+  '#06b6d4'  // Cyan
+]
 
 export const MyTeamView: React.FC<MyTeamViewProps> = ({
   store,
@@ -121,6 +149,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
   // Pedido atual e contexto temporário (request_context)
   const [promptInput, setPromptInput] = useState('')
+  const [taskPromptInput, setTaskPromptInput] = useState('')
+  const [isTaskAgentMenuOpen, setIsTaskAgentMenuOpen] = useState(false)
+  const [agentSearchQuery, setAgentSearchQuery] = useState('')
   const [extraNoteIds, setExtraNoteIds] = useState<string[]>([])
   const [useTeamDelegation, setUseTeamDelegation] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
@@ -132,15 +163,23 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     Record<string, { chosenValue: string; chosenPriceCents: number }>
   >({})
 
-  // Gavetas e Modais Secundários (todos iniciam FECHADOS para dar 100% de largura ao chat e aos canvases, como no OpenBot!)
-  const [isAgentsListDrawerOpen, setIsAgentsListDrawerOpen] = useState(false)
-  const [isKnowledgeDrawerOpen, setIsKnowledgeDrawerOpen] = useState(false)
-  const [isConfigDrawerOpen, setIsConfigDrawerOpen] = useState(false)
+  // Painéis estilo OpenBot:
+  // - Coluna esquerda de lista de agentes (Print 01 e Print 04)
+  // - Sidebar direita de Configurações do Agente (Print 04 — fecha/abre pelo ícone no topo direito!)
+  const [isAgentListOpen, setIsAgentListOpen] = useState(true)
+  const [isAgentSettingsOpen, setIsAgentSettingsOpen] = useState(false)
+  const [expandedSettingsSection, setExpandedSettingsSection] = useState<
+    'instructions' | 'memories' | 'skills' | 'files' | null
+  >(null)
+  const [reasoningEffort, setReasoningEffort] = useState<'Baixo' | 'Médio' | 'Alto'>('Baixo')
+  const [isComposerPlusOpen, setIsComposerPlusOpen] = useState(false)
+  const [expandedDraftRunIds, setExpandedDraftRunIds] = useState<Record<string, boolean>>({})
+  const [expandedStepsRunIds, setExpandedStepsRunIds] = useState<Record<string, boolean>>({})
+
+  // Modais pontuais
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false)
   const [isNewAgentModalOpen, setIsNewAgentModalOpen] = useState(false)
   const [newAgentTab, setNewAgentTab] = useState<'guided' | 'conversation'>('guided')
-  const [attachNoteSelectId, setAttachNoteSelectId] = useState<string>('')
-  const [expandedStepsRunIds, setExpandedStepsRunIds] = useState<Record<string, boolean>>({})
 
   // Modal de seleção de agente quando o usuário clica em "Usar com um agente" no Editor
   const [pendingNoteBindModal, setPendingNoteBindModal] = useState<{
@@ -149,7 +188,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     targetAgentId: string
   } | null>(null)
 
-  // Modal de colisão de arquivo existente (Achado 2)
+  // Modal de colisão de arquivo existente
   const [overwritePrompt, setOverwritePrompt] = useState<{
     run: AgentRun
     finalApproval: boolean
@@ -168,28 +207,48 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const [convDescription, setConvDescription] = useState('')
   const [newAgentDraft, setNewAgentDraft] = useState<AgentProfileVersion | null>(null)
 
-  // Estado de formulário para Novo Projeto/Cliente (Achado 10)
+  // Estado de formulário para Novo Projeto/Cliente
   const [editingProject, setEditingProject] = useState<ProjectContext | null>(null)
   const [projName, setProjName] = useState('')
   const [projClient, setProjClient] = useState('')
   const [projDesc, setProjDesc] = useState('')
   const [projBriefingIds, setProjBriefingIds] = useState<string[]>([])
 
-  // Estado para adicionar vínculo de conhecimento
+  // Estado para adicionar vínculo de conhecimento na aba Arquivos (Print 04)
   const [bindNoteId, setBindNoteId] = useState<string>('')
   const [bindRole, setBindRole] = useState<ContextRole>('permanent_ref')
-  const [bindPolicy, setBindPolicy] = useState<'follow_latest' | 'pin_revision'>('follow_latest')
+  const [bindPolicy] = useState<'follow_latest' | 'pin_revision'>('follow_latest')
 
   const storeRef = useRef(store)
   storeRef.current = store
 
   const selectedAgent = store.agents.find(a => a.id === selectedAgentId) || store.agents[0]
-  const selectedProject = store.projects.find(p => p.id === selectedProjectId)
   const activeRun = store.runs.find(r => r.id === selectedRunId) || store.runs[0] || null
 
-  // 1. Tratar "Usar com um agente" vindo do Editor (Achados 3 e 10):
-  // Permite escolher QUAL agente receberá a nota, e quando o papel é `request_context`,
-  // anexa APENAS ao pedido atual (`extraNoteIds`) sem alterar o perfil permanente do agente!
+  const getAgentColor = (agentId?: string) => {
+    const idx = store.agents.findIndex(a => a.id === agentId)
+    return AGENT_AVATAR_COLORS[Math.max(0, idx) % AGENT_AVATAR_COLORS.length]
+  }
+
+  const formatTimeShort = (ts?: number) => {
+    if (!ts) return ''
+    const d = new Date(ts)
+    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const getRunSummaryText = (run: AgentRun) => {
+    if (run.status === 'waiting_user' && run.clarifyingQuestions.length > 0) {
+      return `Preciso de ${run.clarifyingQuestions.length} informação(ões) complementar(es) para concluir.`
+    }
+    if (run.calculation) {
+      return `Entrega estruturada (${run.calculation.items.length} itens • Total líquido: ${formatCentsBRL(run.calculation.netTotalCents)}).`
+    }
+    if (run.changeSet?.operations[0]) {
+      return `Documento "${run.changeSet.operations[0].targetTitle}" preparado em ${run.changeSet.operations[0].targetFolder}.`
+    }
+    return 'Entendido. Solicitação processada.'
+  }
+
   useEffect(() => {
     if (preselectedNoteForBinding) {
       setPendingNoteBindModal({
@@ -215,18 +274,18 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     setActiveSection('agents')
 
     if (role === 'request_context') {
-      // Anexar SOMENTE à execução/pedido atual!
       setExtraNoteIds(prev => (prev.includes(noteId) ? prev : [...prev, noteId]))
       setStatusBanner({
         type: 'success',
-        text: `A nota "${targetNote.title}" foi anexada apenas para este pedido com ${targetAgent.name} (não altera o perfil permanente).`
+        text: `Nota "${targetNote.title}" anexada ao próximo envio para ${targetAgent.name}.`
       })
       setPendingNoteBindModal(null)
       return
     }
 
-    // Para papéis permanentes (template, permanent_ref, project_context), vincular ao agente escolhido
-    const existing = targetAgent.knowledgeBindings.some(b => b.noteId === targetNote.id && b.role === role)
+    const existing = targetAgent.knowledgeBindings.some(
+      b => b.noteId === targetNote.id && b.role === role
+    )
     if (!existing) {
       const newBinding: ContextBinding = {
         id: `bind_${Date.now()}`,
@@ -248,13 +307,12 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       await onUpdateStore(nextStore)
       setStatusBanner({
         type: 'success',
-        text: `Nota "${targetNote.title}" vinculada a ${targetAgent.name} como "${ROLE_LABELS[role].label}".`
+        text: `Nota "${targetNote.title}" vinculada a ${targetAgent.name}.`
       })
     }
     setPendingNoteBindModal(null)
   }
 
-  // Execução direta de uma rotina usando o motor determinístico isolado (nunca herda selectedProject da UI!)
   const executeRoutineDirectly = async (
     routine: AutomationVersion,
     _isTest: boolean,
@@ -265,8 +323,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     const currentStore = storeRef.current
     setIsExecuting(true)
     try {
-      const promptText =
-        customPrompt || `[Rotina: ${routine.name}] ${routine.description}`
+      const promptText = customPrompt || `[Rotina: ${routine.name}] ${routine.description}`
       const res = await executeAutomationRun({
         automation: routine,
         store: currentStore,
@@ -276,10 +333,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         eventFingerprint
       })
       if (res.skippedReason) {
-        setStatusBanner({
-          type: 'warning',
-          text: res.skippedReason
-        })
+        setStatusBanner({ type: 'warning', text: res.skippedReason })
         return
       }
       await onUpdateStore(res.updatedStore)
@@ -287,17 +341,12 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         setSelectedRunId(res.run.id)
         setSelectedAgentId(res.run.agentId)
         setActiveSection('agents')
-        setStatusBanner({
-          type: 'success',
-          text: `Rotina "${routine.name}" executada. Revise o resultado na conversa do agente.`
-        })
       }
     } finally {
       setIsExecuting(false)
     }
   }
 
-  // 3. Executar ou Testar Agente (com persistência prévia em `running`, suporte a cancelamento e atualização in-place da mesma Run)
   const handleRunAgent = async (opts: {
     isTest: boolean
     overridePrompt?: string
@@ -314,13 +363,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       promptInput
     ).trim()
 
-    if (!effectivePrompt) {
-      setStatusBanner({
-        type: 'warning',
-        text: 'Descreva o pedido ou objetivo antes de acionar o agente.'
-      })
-      return
-    }
+    if (!effectivePrompt) return
 
     setIsExecuting(true)
     setStatusBanner(null)
@@ -378,6 +421,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       })
       setSelectedRunId(resultRun.id)
       setAnswerInputs({})
+      if (!opts.existingRunToUpdate) {
+        setPromptInput('')
+        setTaskPromptInput('')
+      }
     } finally {
       setIsExecuting(false)
       abortControllerRef.current = null
@@ -387,14 +434,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const handleCancelActiveExecution = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
-      setStatusBanner({
-        type: 'warning',
-        text: 'Execução cancelada pelo usuário.'
-      })
     }
   }
 
-  // 4. Salvar Rascunho vs Aprovar Proposta Final com Retomada de Fluxo Pausado em `approval` e Proteção contra Sobrescrita
   const handleCommitDeliverable = async (
     initialRun: AgentRun,
     finalApproval: boolean,
@@ -402,7 +444,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   ) => {
     let run = initialRun
 
-    // Se a execução for um Fluxo pausado em um bloco `approval`, retomar o grafo a partir do bloco de aprovação primeiro!
     if (run.pausedAtWorkflowNodeId && finalApproval) {
       setIsExecuting(true)
       try {
@@ -423,7 +464,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     if (!primaryOp) {
       setStatusBanner({
         type: 'warning',
-        text: 'Esta execução não possui operação de escrita autorizada (verifique as permissões do agente).'
+        text: 'Esta execução não possui operação de escrita autorizada.'
       })
       return
     }
@@ -431,12 +472,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     if (primaryOp.status === 'committed' && !conflictStrategy) {
       setStatusBanner({
         type: 'warning',
-        text: 'Esta entrega já foi salva no cofre. Faça uma nova execução ou edite a nota aberta.'
+        text: 'Esta entrega já foi salva no cofre.'
       })
       return
     }
 
-    // Bloquear aprovação final se houver informações obrigatórias faltantes, placeholders não preenchidos ou conflitos sem decisão (Achado 7)
     const hasMissing = Boolean(run.calculation && run.calculation.missingFields.length > 0)
     const hasUnresolvedConflicts = Boolean(
       run.calculation && run.calculation.conflicts.some(c => c.resolution === 'unresolved')
@@ -448,7 +488,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     if (finalApproval && (hasMissing || hasUnresolvedConflicts || hasFixedViolations)) {
       setStatusBanner({
         type: 'error',
-        text: 'Não é possível aprovar como versão final enquanto houver campos obrigatórios pendentes, conflitos de preços ou violação de seção fixa. Resolva abaixo ou salve apenas como rascunho.'
+        text: 'Resolva os campos pendentes ou conflitos de preço antes de aprovar como versão final.'
       })
       return
     }
@@ -478,7 +518,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         ).length + 1
       targetTitle = `${targetTitle} (v${revNum})`
     } else if (!conflictStrategy && existingNoteInVault) {
-      // Solicitar decisão explícita antes de sobrescrever documento existente no cofre!
       setOverwritePrompt({
         run,
         finalApproval,
@@ -529,7 +568,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       ? 'pending_info'
       : 'draft'
 
-    // Criar tarefas reais derivadas dos itens do escopo se for aprovação final e o agente tiver permissão `create_tasks` (Achado 10)
     const runAgent = store.agents.find(a => a.id === run.agentId)
     if (finalApproval && runAgent?.allowedActions.includes('create_tasks')) {
       const scopeItems = run.calculation?.items || []
@@ -624,7 +662,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     })
   }
 
-  // 5. Carregar Exemplos de Demonstração sob demanda (sem poluir o espaço principal com botões fixos de João/Maria)
   const handleLoadDemoExamples = async () => {
     onLoadDemoSeedNotes?.()
     const existingIds = new Set(store.projects.map(p => p.id))
@@ -642,11 +679,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     }
     setStatusBanner({
       type: 'success',
-      text: 'Exemplos de demonstração carregados (Projetos João Silva e Maria Oliveira disponíveis no seletor de cliente).'
+      text: 'Exemplos de demonstração carregados.'
     })
   }
 
-  // 6. CRUD de Projetos / Clientes (Achado 10)
   const handleSaveProject = async () => {
     if (!projClient.trim() || !projName.trim()) return
     const nextProj: ProjectContext = {
@@ -672,7 +708,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     setProjBriefingIds([])
   }
 
-  // 7. Adicionar vínculo de nota ao Agente com suporte real a `pin_revision` (Achado 6)
   const handleAddKnowledgeBinding = async () => {
     if (!selectedAgent || !bindNoteId) return
     const targetNote = notes.find(n => n.id === bindNoteId)
@@ -701,1083 +736,1498 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     setBindNoteId('')
   }
 
-  const primaryOpCommitted = activeRun?.changeSet?.operations[0]?.status === 'committed'
-  const canApproveFinal =
-    activeRun &&
-    (!activeRun.calculation ||
-      (activeRun.calculation.missingFields.length === 0 &&
-        activeRun.calculation.conflicts.every(c => c.resolution !== 'unresolved') &&
-        activeRun.calculation.fixedSectionViolations.length === 0))
+  const filteredAgents = store.agents.filter(
+    ag =>
+      ag.name.toLowerCase().includes(agentSearchQuery.toLowerCase()) ||
+      ag.roleDescription.toLowerCase().includes(agentSearchQuery.toLowerCase()) ||
+      ag.workStyle.tone.toLowerCase().includes(agentSearchQuery.toLowerCase())
+  )
+
+  const agentRuns = store.runs
+    .filter(r => r.agentId === selectedAgent?.id)
+    .slice()
+    .reverse()
+
+  const answeredRuns = store.runs.filter(r => r.status === 'completed')
+  const workingRuns = store.runs.filter(r => r.status === 'running')
+  const waitingRuns = store.runs.filter(r => r.status === 'waiting_user')
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#0b0c10] text-zinc-100 overflow-hidden">
-      {/* BARRA SUPERIOR UNIFICADA ESTILO OPENBOT (Sem duas sidebars fixas espremendo a tela!) */}
-      <header className="px-4 py-2.5 border-b border-zinc-800/80 bg-[#11131a]/95 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 shrink-0 z-30">
-        {/* Esquerda: Botão Gaveta de Agentes + SlidingTabs (Conversar com Agentes | Equipes | Fluxos | Rotinas | Atividade) */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setIsAgentsListDrawerOpen(v => !v)}
-            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
-              isAgentsListDrawerOpen
-                ? 'border-[#c59b27] bg-[#c59b27]/15 text-[#c59b27]'
-                : 'border-zinc-800 bg-[#181b24] text-zinc-200 hover:border-zinc-700'
-            }`}
-            title="Abrir/Fechar gaveta de agentes e clientes"
-          >
-            <Bot className="w-4 h-4 text-[#c59b27]" />
-            <span>{selectedAgent ? `${selectedAgent.icon} ${selectedAgent.name}` : 'Agentes'}</span>
-          </button>
-
-          {/* OpenBot SlidingTabs Switcher */}
-          <nav className="flex items-center bg-[#161821] p-1 rounded-xl border border-zinc-800/90 gap-1">
-            {[
-              { id: 'agents' as PrimarySection, label: 'Conversar com Agentes', icon: Bot, count: store.agents.length },
-              { id: 'teams' as PrimarySection, label: 'Canvas de Equipe', icon: Users, count: teams.length },
-              { id: 'workflows' as PrimarySection, label: 'Canvas de Fluxos', icon: GitBranch, count: workflows.length },
-              { id: 'routines' as PrimarySection, label: 'Canvas de Rotinas', icon: Clock, count: store.automations.length },
-              { id: 'activity' as PrimarySection, label: 'Atividade', icon: Activity, count: store.runs.length }
-            ].map(item => {
-              const Icon = item.icon
-              const isActive = activeSection === item.id
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setActiveSection(item.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-[#c59b27] text-black font-semibold shadow-sm'
-                      : 'text-zinc-300 hover:bg-white/5 hover:text-white'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{item.label}</span>
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                      isActive ? 'bg-black/20 text-black' : 'bg-zinc-900 text-zinc-400'
-                    }`}
-                  >
-                    {item.count}
-                  </span>
-                </button>
-              )
-            })}
-          </nav>
-        </div>
-
-        {/* Direita: Seletor de Cliente + Ações Rápidas (Exemplos, Conhecimento, Configurações — abrem só ao clicar!) */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 bg-[#161821] border border-zinc-800 rounded-xl px-2.5 py-1">
-            <Briefcase className="w-3.5 h-3.5 text-[#c59b27]" />
-            <select
-              value={selectedProjectId}
-              onChange={e => setSelectedProjectId(e.target.value)}
-              className="bg-transparent text-xs text-zinc-200 focus:outline-none"
-              title="Cliente ou Projeto ativo"
-            >
-              <option value="" className="bg-[#161821]">
-                Sem cliente fixo (Por pedido)
-              </option>
-              {store.projects.map(p => (
-                <option key={p.id} value={p.id} className="bg-[#161821]">
-                  {p.clientName}
-                </option>
-              ))}
-            </select>
+    <div className="flex h-full w-full bg-[#09090b] text-zinc-100 overflow-hidden select-none">
+      {/* ============================================================================ */}
+      {/* BARRA VERTICAL ESQUERDA DE ÍCONES (Idêntica aos Prints 01, 02, 03 e 04!)     */}
+      {/* ============================================================================ */}
+      <aside className="w-11 shrink-0 h-full bg-[#09090b] border-r border-zinc-900 flex flex-col items-center py-2.5 gap-1.5 z-30">
+        {[
+          { id: 'agents' as PrimarySection, icon: Bot, title: 'Agentes' },
+          { id: 'teams' as PrimarySection, icon: Workflow, title: 'Equipes' },
+          { id: 'workflows' as PrimarySection, icon: GitBranch, title: 'Fluxo de trabalho' },
+          { id: 'tasks' as PrimarySection, icon: ListTodo, title: 'Tarefas' },
+          { id: 'routines' as PrimarySection, icon: CalendarClock, title: 'Rotinas' },
+          { id: 'activity' as PrimarySection, icon: Activity, title: 'Atividade' }
+        ].map(nav => {
+          const Icon = nav.icon
+          const isActive = activeSection === nav.id
+          return (
             <button
+              key={nav.id}
               type="button"
-              onClick={() => setIsProjectsModalOpen(true)}
-              className="text-[11px] text-[#c59b27] hover:underline pl-1 border-l border-zinc-800 cursor-pointer"
+              onClick={() => setActiveSection(nav.id)}
+              title={nav.title}
+              className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                isActive
+                  ? 'bg-zinc-800/90 text-zinc-100 shadow-xs'
+                  : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900'
+              }`}
             >
-              Clientes
+              <Icon className="w-4 h-4 stroke-[1.8]" />
             </button>
-          </div>
+          )
+        })}
 
-          <button
-            type="button"
-            onClick={handleLoadDemoExamples}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-zinc-800 bg-[#161821] hover:border-zinc-700 text-xs text-zinc-300 hover:text-white cursor-pointer"
-            title="Carregar exemplos de demonstração"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-[#c59b27]" />
-            <span className="hidden sm:inline">Exemplos</span>
-          </button>
+        <div className="flex-1" />
 
-          {activeSection === 'agents' && selectedAgent && (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsKnowledgeDrawerOpen(v => !v)
-                  setIsConfigDrawerOpen(false)
-                }}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium cursor-pointer ${
-                  isKnowledgeDrawerOpen
-                    ? 'border-[#c59b27] bg-[#c59b27]/15 text-[#c59b27]'
-                    : 'border-zinc-800 bg-[#161821] text-zinc-200 hover:border-zinc-700'
-                }`}
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>Fontes ({selectedAgent.knowledgeBindings.length})</span>
-              </button>
+        {/* Utilitários discretos na base do rail */}
+        <button
+          type="button"
+          onClick={handleLoadDemoExamples}
+          title="Carregar exemplos de demonstração"
+          className="w-8 h-8 rounded-xl flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors cursor-pointer"
+        >
+          <Sparkles className="w-4 h-4 stroke-[1.8]" />
+        </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setIsConfigDrawerOpen(v => !v)
-                  setIsKnowledgeDrawerOpen(false)
-                }}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium cursor-pointer ${
-                  isConfigDrawerOpen
-                    ? 'border-[#c59b27] bg-[#c59b27]/15 text-[#c59b27]'
-                    : 'border-zinc-800 bg-[#161821] text-zinc-200 hover:border-zinc-700'
-                }`}
-              >
-                <Settings className="w-3.5 h-3.5" />
-                <span>Configurar</span>
-              </button>
-            </>
-          )}
-        </div>
-      </header>
+        <button
+          type="button"
+          onClick={() => setIsProjectsModalOpen(true)}
+          title="Clientes e Projetos"
+          className="w-8 h-8 rounded-xl flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors cursor-pointer"
+        >
+          <Briefcase className="w-4 h-4 stroke-[1.8]" />
+        </button>
 
-      {/* Conteúdo Principal em Tela Cheia */}
-      <main className="relative flex-1 flex flex-col overflow-hidden">
-        {/* Gaveta Deslizante de Agentes à Esquerda (Abre SOMENTE quando o usuário clica no botão do topo!) */}
-        {isAgentsListDrawerOpen && (
-          <div className="absolute top-0 left-0 bottom-0 w-72 bg-[#141720]/98 backdrop-blur-xl border-r border-zinc-800 z-40 flex flex-col shadow-2xl animate-in slide-in-from-left duration-150">
-            <div className="p-3.5 border-b border-zinc-800 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
-                Seus Agentes ({store.agents.length})
-              </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewAgentDraft(null)
-                    setConvDescription('')
-                    setIsNewAgentModalOpen(true)
-                  }}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#c59b27] text-black font-semibold text-xs hover:bg-[#d4a930] cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Novo</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsAgentsListDrawerOpen(false)}
-                  className="p-1 rounded-lg text-zinc-400 hover:text-white cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
-              {store.agents.map(ag => {
-                const isSelected = selectedAgent?.id === ag.id
-                const waitingCount = store.runs.filter(
-                  r =>
-                    r.agentId === ag.id &&
-                    (r.status === 'waiting_user' || r.status === 'waiting_approval')
-                ).length
-                return (
-                  <button
-                    key={ag.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedAgentId(ag.id)
-                      setActiveSection('agents')
-                      const latestForAgent = store.runs.find(r => r.agentId === ag.id)
-                      if (latestForAgent) setSelectedRunId(latestForAgent.id)
-                      setIsAgentsListDrawerOpen(false)
-                    }}
-                    className={`w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#1c202c] border-[#c59b27]/60 shadow-md'
-                        : 'bg-transparent border-transparent hover:bg-white/5'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-xl">{ag.icon}</span>
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-zinc-100 truncate">{ag.name}</div>
-                          <div className="text-[11px] text-zinc-400 truncate">
-                            {ag.knowledgeBindings.length} fonte(s) • {ag.deliverables.targetFolder}
-                          </div>
-                        </div>
-                      </div>
-                      {waitingCount > 0 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold shrink-0">
-                          {waitingCount}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveSection('agents')
+            setIsAgentSettingsOpen(v => !v)
+          }}
+          title="Configurações do agente"
+          className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
+            isAgentSettingsOpen
+              ? 'bg-zinc-800 text-zinc-100'
+              : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900'
+          }`}
+        >
+          <Settings className="w-4 h-4 stroke-[1.8]" />
+        </button>
+      </aside>
 
-        {statusBanner && (
-          <div
-            className={`px-6 py-2 border-b flex items-center justify-between text-xs shrink-0 ${
-              statusBanner.type === 'success'
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-                : statusBanner.type === 'warning'
-                ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
-                : 'bg-rose-500/10 border-rose-500/30 text-rose-200'
-            }`}
-          >
-            <span>{statusBanner.text}</span>
-            <button
-              type="button"
-              onClick={() => setStatusBanner(null)}
-              className="text-zinc-400 hover:text-white cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+      {/* ============================================================================ */}
+      {/* ÁREA DE CONTEÚDO PRINCIPAL                                                   */}
+      {/* ============================================================================ */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* ========================================================================== */}
+        {/* TELA 01 & 04: AGENTES + CHAT DIRETO + SIDEBAR DE CONFIGURAÇÕES DO AGENTE   */}
+        {/* ========================================================================== */}
+        {activeSection === 'agents' && (
+          <div className="flex-1 flex overflow-hidden bg-[#111113]">
+            {/* COLUNA ESQUERDA: LISTA DE AGENTES (Print 01 e Print 04) */}
+            {isAgentListOpen && (
+              <aside className="w-64 shrink-0 h-full bg-[#0c0c0e] border-r border-zinc-900/90 flex flex-col">
+                {/* Topo da coluna: Setas e botão + para novo agente */}
+                <div className="h-11 px-3 flex items-center justify-between border-b border-zinc-900/80">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                    <span className="text-xs font-medium text-zinc-200">Local</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-zinc-400">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewAgentDraft(
+                          generateAgentDraftFromPrompt(
+                            'Agente para atividades rotineiras e propostas',
+                            notes
+                          ).draft
+                        )
+                        setIsNewAgentModalOpen(true)
+                      }}
+                      className="p-1 rounded-lg hover:bg-zinc-800/70 hover:text-zinc-100 cursor-pointer"
+                      title="Criar novo agente"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
 
-        {/* SEÇÃO 1: CONVERSA DIRETA COM CADA AGENTE (OpenBot AgentThreadView + QuestionPromptBubble + ApprovalCard + Composer) */}
-        {activeSection === 'agents' && selectedAgent && (
-          <div className="flex-1 flex overflow-hidden relative">
-            <div className="flex-1 flex flex-col overflow-hidden bg-[#0b0c10]">
-              {/* Faixa rápida de seleção de Agente estilo OpenBot (Clique em qualquer agente para conversar diretamente com ele!) */}
-              <div className="px-5 py-2.5 border-b border-zinc-800/80 bg-[#11131a] flex items-center justify-between gap-3 overflow-x-auto shrink-0">
-                <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-                  {store.agents.map(ag => {
-                    const isSelected = ag.id === selectedAgent.id
-                    const needsYou = store.runs.some(
-                      r =>
-                        r.agentId === ag.id &&
-                        (r.status === 'waiting_user' || r.status === 'waiting_approval')
-                    )
+                {/* Campo Buscar (Idêntico ao Print 01) */}
+                <div className="px-2.5 pt-2.5 pb-1.5">
+                  <div className="relative flex items-center">
+                    <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={agentSearchQuery}
+                      onChange={e => setAgentSearchQuery(e.target.value)}
+                      placeholder="Buscar"
+                      className="w-full bg-[#161618] border border-zinc-800/60 rounded-xl pl-8 pr-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                    />
+                  </div>
+                </div>
+
+                {/* Lista de Agentes estilo OpenBot (Avatar colorido arredondado + Nome + Badge + Hora + Preview) */}
+                <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5">
+                  {filteredAgents.map(ag => {
+                    const isSelected = selectedAgent?.id === ag.id
+                    const color = getAgentColor(ag.id)
+                    const lastRun = store.runs.find(r => r.agentId === ag.id)
+                    const previewText = lastRun
+                      ? getRunSummaryText(lastRun)
+                      : ag.roleDescription || 'No messages yet'
+                    const timeStr = lastRun
+                      ? formatTimeShort(lastRun.updatedAt || lastRun.startedAt)
+                      : formatTimeShort(ag.createdAt)
+
                     return (
                       <button
                         key={ag.id}
                         type="button"
                         onClick={() => {
                           setSelectedAgentId(ag.id)
-                          const latestForAgent = store.runs.find(r => r.agentId === ag.id)
-                          setSelectedRunId(latestForAgent?.id || null)
+                          const firstAgRun = store.runs.find(r => r.agentId === ag.id)
+                          setSelectedRunId(firstAgRun?.id || null)
                         }}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
+                        className={`w-full text-left px-2.5 py-2.5 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer ${
                           isSelected
-                            ? 'bg-[#1c202c] border-[#c59b27] text-white shadow-sm'
-                            : 'bg-[#151822]/70 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                            ? 'bg-[#1c1c20] text-zinc-100'
+                            : 'hover:bg-[#151518] text-zinc-300'
                         }`}
                       >
-                        <span>{ag.icon}</span>
-                        <span>{ag.name}</span>
-                        {needsYou && (
-                          <span
-                            className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"
-                            title="Aguardando sua resposta ou aprovação"
-                          />
-                        )}
+                        {/* Avatar colorido com olhinhos do OpenBot */}
+                        <div
+                          className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm"
+                          style={{ backgroundColor: color }}
+                        >
+                          <span className="tracking-tighter text-sm">••</span>
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-xs font-semibold text-zinc-100 truncate">
+                                {ag.name}
+                              </span>
+                              {ag.workStyle.tone && (
+                                <span className="px-1.5 py-0.2 rounded bg-zinc-800/90 text-[10px] text-zinc-400 truncate max-w-[76px]">
+                                  {ag.workStyle.tone}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-zinc-500 shrink-0">{timeStr}</span>
+                          </div>
+                          <div className="text-[11px] text-zinc-500 truncate mt-0.5">
+                            {previewText}
+                          </div>
+                        </div>
                       </button>
                     )
                   })}
+                </div>
+              </aside>
+            )}
+
+            {/* CENTRO: CONVERSA DIRETA COM O AGENTE (Print 01 e Print 04) */}
+            <div className="flex-1 flex flex-col overflow-hidden bg-[#111113]">
+              {/* Topbar da conversa (Idêntica ao Print 01/04: Tab do Agente + "+" à esquerda; Modelo + Ícone Painel à direita) */}
+              <header className="h-11 px-4 border-b border-zinc-900/90 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsAgentListOpen(v => !v)}
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 cursor-pointer"
+                    title="Alternar lista de agentes"
+                  >
+                    <PanelLeft className="w-3.5 h-3.5" />
+                  </button>
+
+                  {selectedAgent && (
+                    <div className="flex items-center gap-1.5 bg-[#1b1b1f] border border-zinc-800/80 rounded-xl px-2.5 py-1">
+                      <span
+                        className="w-4 h-4 rounded-md flex items-center justify-center text-[9px] text-white font-bold"
+                        style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
+                      >
+                        ••
+                      </span>
+                      <span className="text-xs font-medium text-zinc-100 truncate max-w-[160px]">
+                        {selectedAgent.name}
+                      </span>
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => {
-                      setNewAgentDraft(null)
-                      setConvDescription('')
-                      setIsNewAgentModalOpen(true)
+                      setSelectedRunId(null)
+                      setPromptInput('')
                     }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-dashed border-zinc-700 hover:border-[#c59b27] text-xs text-zinc-300 hover:text-[#c59b27] whitespace-nowrap cursor-pointer"
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 cursor-pointer"
+                    title="Nova conversa com este agente"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Novo Agente</span>
                   </button>
                 </div>
 
-                {/* Seletor de conversas/execuções deste agente */}
-                {store.runs.filter(r => r.agentId === selectedAgent.id).length > 1 && (
-                  <select
-                    value={activeRun?.id || ''}
-                    onChange={e => setSelectedRunId(e.target.value)}
-                    className="bg-[#181b24] border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-300 shrink-0"
-                  >
-                    {store.runs
-                      .filter(r => r.agentId === selectedAgent.id)
-                      .map(r => (
-                        <option key={r.id} value={r.id}>
-                          {new Date(r.startedAt).toLocaleTimeString('pt-BR', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}{' '}
-                          — {r.prompt.slice(0, 38)}...
+                {/* Direita: Seletor discreto de Cliente + Modelo (GPT-6.1 Terra · Baixo) + Toggle Configurações */}
+                <div className="flex items-center gap-2">
+                  {store.projects.length > 0 && (
+                    <select
+                      value={selectedProjectId}
+                      onChange={e => setSelectedProjectId(e.target.value)}
+                      className="bg-[#18181b] border border-zinc-800/80 rounded-lg px-2 py-1 text-[11px] text-zinc-300 focus:outline-none cursor-pointer"
+                      title="Contexto de cliente opcional"
+                    >
+                      <option value="" className="bg-[#18181b]">
+                        Cliente: Automático
+                      </option>
+                      {store.projects.map(p => (
+                        <option key={p.id} value={p.id} className="bg-[#18181b]">
+                          {p.clientName}
                         </option>
                       ))}
-                  </select>
-                )}
-              </div>
+                    </select>
+                  )}
 
-              {/* Stream de Conversa do Agente (OpenBot DirectConversation / AgentThreadView) */}
-              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 max-w-4xl mx-auto w-full">
-                {/* Cartão de Boas-Vindas do Agente no topo da thread */}
-                <div className="flex items-start gap-3.5 p-4 rounded-2xl border border-zinc-800/80 bg-[#131620]/90">
-                  <span
-                    className="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shrink-0 border border-white/10"
-                    style={{
-                      backgroundColor: `${selectedAgent.color}22`,
-                      color: selectedAgent.color
-                    }}
+                  <button
+                    type="button"
+                    onClick={() => setIsAgentSettingsOpen(v => !v)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 cursor-pointer"
+                    title="Modelo e raciocínio"
                   >
-                    {selectedAgent.icon}
-                  </span>
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-sm font-bold text-zinc-100">{selectedAgent.name}</h2>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                        Online • Pasta {selectedAgent.deliverables.targetFolder}
-                      </span>
-                      <span className="text-[11px] text-zinc-400">
-                        ({selectedAgent.workStyle.tone})
-                      </span>
-                    </div>
-                    <p className="text-xs text-zinc-300 leading-relaxed">
-                      {selectedAgent.roleDescription}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                      {selectedAgent.knowledgeBindings.map(b => (
-                        <span
-                          key={b.id}
-                          className="text-[10px] px-2 py-0.5 rounded-md border border-zinc-800 bg-zinc-900/80 text-zinc-300"
-                        >
-                          📚 {b.noteTitle} ({ROLE_LABELS[b.role].label})
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+                    <Globe className="w-3.5 h-3.5 text-zinc-400" />
+                    <span className="font-medium text-zinc-200">GPT-6.1 Terra</span>
+                    <span className="text-zinc-500">· {reasoningEffort}</span>
+                    <ChevronDown className="w-3 h-3 text-zinc-500" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAgentSettingsOpen(v => !v)}
+                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                      isAgentSettingsOpen
+                        ? 'bg-zinc-800 text-zinc-100'
+                        : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
+                    }`}
+                    title="Configurações do agente"
+                  >
+                    <PanelRight className="w-4 h-4" />
+                  </button>
                 </div>
+              </header>
 
-                {/* Se ainda não houver mensagens para este agente, exibir sugestões clicáveis estilo OpenBot */}
-                {!activeRun && (
-                  <div className="py-8 text-center space-y-4">
-                    <p className="text-sm text-zinc-400">
-                      Envie uma mensagem abaixo para conversar diretamente com{' '}
-                      <strong className="text-zinc-200">{selectedAgent.name}</strong> ou escolha uma
-                      sugestão rápida:
-                    </p>
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {[
-                        `Gere uma proposta comercial para ${selectedProject?.clientName || 'Construtora Horizonte'} com Site Institucional e Manutenção Mensal no prazo de 3 semanas`,
-                        `Analise as notas vinculadas e liste os principais entregáveis e prazos`,
-                        `Monte um plano de tarefas acionáveis para o projeto atual`
-                      ].map((sug, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => setPromptInput(sug)}
-                          className="px-3.5 py-2 rounded-xl border border-zinc-800 bg-[#141720] hover:border-[#c59b27]/50 text-xs text-zinc-300 hover:text-white transition-all cursor-pointer"
-                        >
-                          "{sug.slice(0, 72)}..."
-                        </button>
-                      ))}
+              {/* Banner sutil de status se houver */}
+              {statusBanner && (
+                <div className="mx-6 mt-3 px-3.5 py-2 rounded-xl bg-[#18181b] border border-zinc-800 flex items-center justify-between text-xs text-zinc-200">
+                  <span>{statusBanner.text}</span>
+                  <button
+                    type="button"
+                    onClick={() => setStatusBanner(null)}
+                    className="text-zinc-500 hover:text-zinc-200 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Área de Mensagens Limpa (Idêntica ao Print 01) */}
+              <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+                {selectedAgent && (
+                  <>
+                    {/* Data centralizada */}
+                    <div className="text-center text-[11px] text-zinc-500">
+                      Hoje {formatTimeShort(selectedAgent.createdAt || Date.now())}
                     </div>
-                  </div>
-                )}
 
-                {/* Mensagem do Usuário + Turno de Resposta do Agente */}
-                {activeRun && (
-                  <div className="space-y-4">
-                    {/* Bolha da Mensagem do Usuário */}
+                    {/* Mensagem inicial de papel do agente (igual ao Print 01: "Your ongoing role is: ...") */}
                     <div className="flex justify-end">
-                      <div className="max-w-2xl rounded-2xl rounded-tr-sm bg-[#c59b27]/15 border border-[#c59b27]/40 px-4 py-3 text-sm text-zinc-100 space-y-1.5">
-                        <div className="flex items-center justify-between gap-3 text-[11px] text-amber-300/90">
-                          <span>Você</span>
-                          <span>
-                            {new Date(activeRun.startedAt).toLocaleTimeString('pt-BR', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
-                        </div>
-                        <p className="leading-relaxed">{activeRun.prompt}</p>
-                        {activeRun.clientName && (
-                          <div className="text-[11px] text-amber-200/90 pt-1">
-                            Cliente: <strong>{activeRun.clientName}</strong>
-                          </div>
-                        )}
+                      <div className="max-w-xl bg-[#1f1f23] text-zinc-100 rounded-2xl px-4 py-2.5 text-xs leading-relaxed">
+                        Your ongoing role is: {selectedAgent.roleDescription || selectedAgent.workStyle.tone}
                       </div>
                     </div>
 
-                    {/* Turno do Agente (OpenBot Turn + StepsDisclosure + QuestionPromptBubble + ApprovalCard) */}
-                    <div className="flex items-start gap-3">
-                      <span
-                        className="w-8 h-8 rounded-xl flex items-center justify-center text-base shrink-0 border border-white/10 mt-1"
-                        style={{
-                          backgroundColor: `${selectedAgent.color}22`,
-                          color: selectedAgent.color
-                        }}
-                      >
-                        {selectedAgent.icon}
-                      </span>
+                    <div className="flex flex-col items-start gap-1">
+                      <div className="max-w-xl bg-[#18181b] text-zinc-200 rounded-2xl px-4 py-2.5 text-xs leading-relaxed">
+                        Entendido. Vou ajudar com {selectedAgent.roleDescription.toLowerCase() || 'suas solicitações'}.
+                      </div>
+                      <div className="flex items-center gap-2.5 px-1 text-zinc-500 text-[10px]">
+                        <Copy className="w-3 h-3 hover:text-zinc-300 cursor-pointer" />
+                        <Smile className="w-3 h-3 hover:text-zinc-300 cursor-pointer" />
+                        <CornerUpLeft className="w-3 h-3 hover:text-zinc-300 cursor-pointer" />
+                        <span>{formatTimeShort(selectedAgent.createdAt || Date.now())}</span>
+                      </div>
+                    </div>
 
-                      <div className="flex-1 min-w-0 rounded-2xl rounded-tl-sm border border-zinc-800/90 bg-[#141720] p-5 space-y-4 shadow-xl">
-                        {/* Cabeçalho do Turno + OpenBot AgentStepsDisclosure */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-bold text-zinc-100">
-                              {activeRun.agentName}
-                            </span>
-                            <span
-                              className={`text-[11px] px-2.5 py-0.5 rounded-full font-medium border ${
-                                activeRun.status === 'completed'
-                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                                  : activeRun.status === 'waiting_user' ||
-                                    activeRun.status === 'waiting_approval'
-                                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                              }`}
-                            >
-                              {activeRun.status === 'completed'
-                                ? 'Pronto para revisão'
-                                : activeRun.status === 'waiting_user'
-                                ? 'Aguardando sua resposta'
-                                : activeRun.status === 'waiting_approval'
-                                ? 'Aguardando aprovação'
-                                : activeRun.status === 'cancelled'
-                                ? 'Cancelada'
-                                : 'Atenção necessária'}
-                            </span>
+                    {/* Histórico real de conversas / execuções deste agente */}
+                    {agentRuns.map(run => {
+                      const runOp = run.changeSet?.operations[0]
+                      const runCommitted = runOp?.status === 'committed'
+                      const canApprove =
+                        !run.calculation ||
+                        (run.calculation.missingFields.length === 0 &&
+                          run.calculation.conflicts.every(c => c.resolution !== 'unresolved') &&
+                          run.calculation.fixedSectionViolations.length === 0)
+                      const isDraftExpanded = expandedDraftRunIds[run.id] ?? (run.id === activeRun?.id)
 
-                            {/* OpenBot Collapsible Steps & Sources Disclosure */}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedStepsRunIds(prev => ({
-                                  ...prev,
-                                  [activeRun.id]: !prev[activeRun.id]
-                                }))
-                              }
-                              className="text-[11px] px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white cursor-pointer"
-                            >
-                              {activeRun.sourceSnapshots.filter(s => s.available).length} fonte(s) •{' '}
-                              {activeRun.subagentSteps.length} etapa(s) da equipe{' '}
-                              {expandedStepsRunIds[activeRun.id] ? '▲' : '▼'}
-                            </button>
+                      return (
+                        <div key={run.id} className="space-y-4">
+                          {/* Bolha do Usuário à direita */}
+                          <div className="flex justify-end">
+                            <div className="max-w-xl bg-[#1f1f23] text-zinc-100 rounded-2xl px-4 py-2.5 text-xs leading-relaxed">
+                              {run.prompt}
+                            </div>
                           </div>
 
-                          {/* Botões de Aprovação / Gravação no Cofre */}
-                          {activeRun.changeSet && activeRun.changeSet.operations.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                disabled={primaryOpCommitted}
-                                onClick={() => handleCommitDeliverable(activeRun, false)}
-                                className="px-3 py-1.5 rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-100 cursor-pointer disabled:opacity-40"
-                              >
-                                {primaryOpCommitted ? 'Já salvo no cofre' : 'Salvar Rascunho'}
-                              </button>
+                          {/* Bolha do Agente à esquerda */}
+                          <div className="flex flex-col items-start gap-1.5">
+                            <div className="max-w-2xl w-full bg-[#18181b] border border-zinc-800/70 text-zinc-200 rounded-2xl p-4 text-xs space-y-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium text-zinc-100">
+                                  {getRunSummaryText(run)}
+                                </span>
+                                {run.calculation && (
+                                  <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-200 font-semibold text-[11px] shrink-0">
+                                    Total: {formatCentsBRL(run.calculation.netTotalCents)}
+                                  </span>
+                                )}
+                              </div>
 
-                              <button
-                                type="button"
-                                disabled={primaryOpCommitted || !canApproveFinal}
-                                onClick={() => handleCommitDeliverable(activeRun, true)}
-                                className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                {activeRun.pausedAtWorkflowNodeId
-                                  ? 'Aprovar Fluxo e Salvar Entrega'
-                                  : 'Aprovar e Salvar Entrega Final'}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Detalhes recolhíveis de Fontes e Subagentes (OpenBot AgentStepsDisclosure) */}
-                        {expandedStepsRunIds[activeRun.id] && (
-                          <div className="p-3.5 rounded-xl bg-[#0e1017] border border-zinc-800/90 space-y-3 text-xs">
-                            <div className="flex flex-wrap gap-1.5">
-                              {activeRun.sourceSnapshots.map(snap => (
-                                <button
-                                  key={snap.sourceId}
-                                  type="button"
-                                  disabled={!snap.available}
-                                  onClick={() => onOpenNote(snap.sourceId)}
-                                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-800 bg-zinc-900 hover:border-zinc-700 text-zinc-200 cursor-pointer"
-                                >
-                                  <FileText className="w-3 h-3 text-[#c59b27]" />
-                                  <span>{snap.title}</span>
-                                  <span className="text-zinc-500">({ROLE_LABELS[snap.role].label})</span>
-                                </button>
-                              ))}
-                            </div>
-                            {activeRun.subagentSteps.length > 0 && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2 border-t border-zinc-800/80">
-                                {activeRun.subagentSteps.map(step => (
-                                  <div
-                                    key={step.id}
-                                    className="p-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60"
+                              {/* Se o agente estiver aguardando respostas obrigatórias */}
+                              {run.clarifyingQuestions.length > 0 && (
+                                <div className="p-3 rounded-xl bg-[#121215] border border-zinc-800 space-y-2.5">
+                                  <div className="text-[11px] font-semibold text-amber-300">
+                                    Responda para concluir a entrega:
+                                  </div>
+                                  {run.clarifyingQuestions.map((qText: string, qIdx: number) => {
+                                    const qKey = `q_${qIdx}`
+                                    return (
+                                      <div key={qKey} className="space-y-1">
+                                        <label className="block text-[11px] text-zinc-300">
+                                          {qText}
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={
+                                            answerInputs[qKey] ?? run.userAnswers?.[qKey] ?? ''
+                                          }
+                                          onChange={e =>
+                                            setAnswerInputs(prev => ({
+                                              ...prev,
+                                              [qKey]: e.target.value
+                                            }))
+                                          }
+                                          placeholder="Digite sua resposta..."
+                                          className="w-full bg-[#18181b] border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600"
+                                        />
+                                      </div>
+                                    )
+                                  })}
+                                  <button
+                                    type="button"
+                                    disabled={isExecuting}
+                                    onClick={() =>
+                                      handleRunAgent({
+                                        isTest: run.isTestRun,
+                                        existingRunToUpdate: run
+                                      })
+                                    }
+                                    className="px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs cursor-pointer"
                                   >
-                                    <div className="flex items-center justify-between font-semibold text-zinc-100">
-                                      <span>{step.specialistName}</span>
-                                      <span
-                                        className={
-                                          step.status === 'failed'
-                                            ? 'text-rose-400 text-[10px]'
-                                            : 'text-emerald-400 text-[10px]'
-                                        }
-                                      >
-                                        {step.status === 'failed' ? 'Bloqueado' : 'Concluído'}
+                                    Enviar respostas e atualizar
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Se houver conflito de preços entre fontes */}
+                              {run.calculation && run.calculation.conflicts.length > 0 && (
+                                <div className="p-3 rounded-xl bg-[#121215] border border-zinc-800 space-y-2">
+                                  <div className="text-[11px] font-semibold text-rose-300">
+                                    Divergência entre notas vinculadas — escolha qual valor aplicar:
+                                  </div>
+                                  {run.calculation.conflicts.map(conf => (
+                                    <div
+                                      key={conf.id}
+                                      className="flex flex-wrap items-center justify-between gap-2 text-[11px] bg-[#18181b] p-2 rounded-lg"
+                                    >
+                                      <span className="text-zinc-200 font-medium">
+                                        {conf.serviceKey} ({conf.field})
                                       </span>
+                                      <div className="flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setConflictChoices(prev => ({
+                                              ...prev,
+                                              [conf.id]: {
+                                                chosenValue: conf.valueA,
+                                                chosenPriceCents: conf.priceACents || 0
+                                              }
+                                            }))
+                                          }
+                                          className={`px-2 py-1 rounded text-[11px] border cursor-pointer ${
+                                            conflictChoices[conf.id]?.chosenValue === conf.valueA
+                                              ? 'border-white bg-zinc-800 text-white'
+                                              : 'border-zinc-800 text-zinc-400'
+                                          }`}
+                                        >
+                                          {conf.sourceA}: {conf.valueA}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setConflictChoices(prev => ({
+                                              ...prev,
+                                              [conf.id]: {
+                                                chosenValue: conf.valueB,
+                                                chosenPriceCents: conf.priceBCents || 0
+                                              }
+                                            }))
+                                          }
+                                          className={`px-2 py-1 rounded text-[11px] border cursor-pointer ${
+                                            conflictChoices[conf.id]?.chosenValue === conf.valueB
+                                              ? 'border-white bg-zinc-800 text-white'
+                                              : 'border-zinc-800 text-zinc-400'
+                                          }`}
+                                        >
+                                          {conf.sourceB}: {conf.valueB}
+                                        </button>
+                                      </div>
                                     </div>
-                                    <p className="text-[11px] text-zinc-400 mt-1">{step.summary}</p>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleRunAgent({
+                                        isTest: run.isTestRun,
+                                        existingRunToUpdate: run
+                                      })
+                                    }
+                                    className="px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs cursor-pointer"
+                                  >
+                                    Recalcular com valor escolhido
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Documento gerado expansível */}
+                              {run.draftContent && (
+                                <div className="border-t border-zinc-800/80 pt-2.5">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedDraftRunIds(prev => ({
+                                        ...prev,
+                                        [run.id]: !isDraftExpanded
+                                      }))
+                                    }
+                                    className="flex items-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 mb-2 cursor-pointer"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span>
+                                      {isDraftExpanded
+                                        ? 'Ocultar prévia do documento'
+                                        : 'Ver documento completo'}
+                                    </span>
+                                  </button>
+
+                                  {isDraftExpanded && (
+                                    <div className="max-h-80 overflow-y-auto rounded-xl bg-[#121215] border border-zinc-800/80 p-3.5">
+                                      <MarkdownRenderer
+                                        content={run.draftContent}
+                                        onNavigate={title => {
+                                          const found = notes.find(
+                                            n => n.title.toLowerCase() === title.toLowerCase()
+                                          )
+                                          if (found) onOpenNote(found.id)
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Ações de entrega discretas */}
+                              {runOp && (
+                                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-800/70">
+                                  <span className="text-[11px] text-zinc-400">
+                                    Destino:{' '}
+                                    <strong className="text-zinc-200">
+                                      {runOp.targetFolder}/{runOp.targetTitle}
+                                    </strong>
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    {runCommitted && runOp.commitReceipt?.noteId ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => onOpenNote(runOp.commitReceipt!.noteId!)}
+                                        className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 text-[11px] font-medium hover:bg-emerald-500/25 cursor-pointer"
+                                      >
+                                        Abrir nota no cofre
+                                      </button>
+                                    ) : (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCommitDeliverable(run, false)}
+                                          className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] cursor-pointer"
+                                        >
+                                          Salvar rascunho
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={!canApprove}
+                                          onClick={() => handleCommitDeliverable(run, true)}
+                                          className="px-3 py-1 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-[11px] disabled:opacity-40 cursor-pointer"
+                                        >
+                                          Aprovar e salvar no cofre
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Barra inferior de ícones da mensagem (Idêntica ao Print 01!) */}
+                            <div className="flex items-center gap-3 px-1 text-zinc-500 text-[10px]">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  navigator.clipboard?.writeText(
+                                    run.draftContent || getRunSummaryText(run)
+                                  )
+                                }
+                                className="hover:text-zinc-300 cursor-pointer"
+                                title="Copiar resposta"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedStepsRunIds(prev => ({
+                                    ...prev,
+                                    [run.id]: !prev[run.id]
+                                  }))
+                                }
+                                className="hover:text-zinc-300 cursor-pointer"
+                                title="Ver etapas e fontes consultadas"
+                              >
+                                <GitBranch className="w-3 h-3" />
+                              </button>
+                              <span>{formatTimeShort(run.updatedAt || run.startedAt)}</span>
+                            </div>
+
+                            {expandedStepsRunIds[run.id] && (
+                              <div className="max-w-xl bg-[#141417] border border-zinc-800/80 rounded-xl p-2.5 text-[11px] text-zinc-400 space-y-1">
+                                {run.subagentSteps.map(st => (
+                                  <div
+                                    key={st.id}
+                                    className="flex items-center justify-between gap-3"
+                                  >
+                                    <span>• {st.title}</span>
+                                    <span className="text-zinc-500 truncate max-w-[220px]">
+                                      {st.summary}
+                                    </span>
                                   </div>
                                 ))}
                               </div>
                             )}
                           </div>
-                        )}
 
-                        {activeRun.error && (
-                          <div className="p-3.5 rounded-xl border border-rose-500/40 bg-rose-500/10 text-xs text-rose-200 flex items-start gap-2.5">
-                            <XCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                            <div>{activeRun.error}</div>
+                          {/* Linha de evento centralizada quando uma entrega foi gravada (igual ao "Rotina criada · Nova Rotina 18:23" do Print 01!) */}
+                          {run.artifacts.map(art => (
+                            <div
+                              key={art.id}
+                              onClick={() => art.noteId && onOpenNote(art.noteId)}
+                              className="flex items-center justify-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 cursor-pointer py-1"
+                            >
+                              <span>Entrega criada</span>
+                              <FileText className="w-3 h-3 text-zinc-400" />
+                              <span className="text-zinc-300 font-medium">{art.title}</span>
+                              <span>{formatTimeShort(art.createdAt)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
+              </div>
+
+              {/* COMPOSER PÍLULA INFERIOR (Idêntico ao Print 01 e Print 04: "+ | Mensagem para Pessoal | mic | ↑") */}
+              <div className="px-6 pb-4 pt-1 shrink-0 relative">
+                {/* Notas anexadas a este envio */}
+                {extraNoteIds.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mb-2 px-2">
+                    {extraNoteIds.map(nid => {
+                      const n = notes.find(x => x.id === nid)
+                      if (!n) return null
+                      return (
+                        <span
+                          key={nid}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 text-[11px] text-zinc-200"
+                        >
+                          <FileText className="w-3 h-3 text-zinc-400" />
+                          <span>{n.title}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExtraNoteIds(prev => prev.filter(id => id !== nid))
+                            }
+                            className="text-zinc-400 hover:text-white cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Menu Popover do botão "+" no Composer */}
+                {isComposerPlusOpen && (
+                  <div className="absolute bottom-16 left-6 w-64 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1">
+                    <div className="px-2 py-1 text-[10px] font-semibold uppercase text-zinc-500">
+                      Anexar nota do cofre ao pedido
+                    </div>
+                    <div className="max-h-40 overflow-y-auto space-y-0.5">
+                      {notes.map(n => (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => {
+                            setExtraNoteIds(prev =>
+                              prev.includes(n.id) ? prev : [...prev, n.id]
+                            )
+                            setIsComposerPlusOpen(false)
+                          }}
+                          className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-zinc-800 text-xs text-zinc-200 flex items-center gap-2 truncate cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                          <span className="truncate">{n.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="border-t border-zinc-800 pt-1">
+                      <label className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-zinc-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={useTeamDelegation}
+                          onChange={e => setUseTeamDelegation(e.target.checked)}
+                        />
+                        <span>Coordenar com equipe</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-[#18181b] border border-zinc-800/90 rounded-full px-2.5 py-1.5 flex items-center gap-2.5 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => setIsComposerPlusOpen(v => !v)}
+                    className="w-7 h-7 rounded-full bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                    title="Anexar nota do cofre ou opções"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+
+                  <input
+                    type="text"
+                    value={promptInput}
+                    onChange={e => setPromptInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        handleRunAgent({ isTest: false })
+                      }
+                    }}
+                    placeholder={`Mensagem para ${selectedAgent?.name || 'Agente'}`}
+                    className="flex-1 bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none"
+                  />
+
+                  <button
+                    type="button"
+                    className="w-7 h-7 rounded-full text-zinc-400 hover:text-zinc-200 flex items-center justify-center shrink-0 cursor-pointer"
+                    title="Ditado de voz"
+                  >
+                    <Mic className="w-3.5 h-3.5" />
+                  </button>
+
+                  {isExecuting ? (
+                    <button
+                      type="button"
+                      onClick={handleCancelActiveExecution}
+                      className="w-7 h-7 rounded-full bg-rose-500 text-white flex items-center justify-center shrink-0 cursor-pointer"
+                      title="Parar execução"
+                    >
+                      <StopCircle className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!promptInput.trim()}
+                      onClick={() => handleRunAgent({ isTest: false })}
+                      className="w-7 h-7 rounded-full bg-zinc-100 hover:bg-white text-zinc-950 disabled:opacity-30 flex items-center justify-center shrink-0 transition-all cursor-pointer"
+                      title="Enviar mensagem"
+                    >
+                      <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ======================================================================== */}
+            {/* SIDEBAR DIREITA: CONFIGURAÇÕES DO AGENTE (Idêntica ao Print 04!)         */}
+            {/* ======================================================================== */}
+            {isAgentSettingsOpen && selectedAgent && (
+              <aside className="w-80 shrink-0 h-full bg-[#111113] border-l border-zinc-900/90 flex flex-col overflow-hidden animate-in slide-in-from-right duration-150">
+                {/* Header da Sidebar de Configurações (Print 04) */}
+                <div className="h-11 px-3.5 border-b border-zinc-900/90 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-1.5 bg-[#1b1b1f] border border-zinc-800/80 rounded-xl px-2.5 py-1 text-xs font-medium text-zinc-100">
+                    <Settings className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Configurações do agente</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-zinc-400">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewAgentDraft(
+                          generateAgentDraftFromPrompt('Novo agente especialista', notes).draft
+                        )
+                        setIsNewAgentModalOpen(true)
+                      }}
+                      className="p-1 rounded-lg hover:bg-zinc-800 hover:text-zinc-100 cursor-pointer"
+                      title="Novo agente"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsAgentSettingsOpen(false)}
+                      className="p-1 rounded-lg hover:bg-zinc-800 hover:text-zinc-100 cursor-pointer"
+                      title="Fechar configurações"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Corpo rolável idêntico ao Print 04 */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {/* Avatar centralizado com botão de lápis */}
+                  <div className="flex justify-center py-2">
+                    <div className="relative">
+                      <div
+                        className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg"
+                        style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
+                      >
+                        <span className="tracking-tighter text-2xl">••</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#1c1c20] border border-zinc-700 text-zinc-200 flex items-center justify-center shadow-md cursor-pointer"
+                        title="Editar ícone"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Nome */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs text-zinc-300 font-medium">Nome</label>
+                    <input
+                      type="text"
+                      value={selectedAgent.name}
+                      onChange={e =>
+                        onUpdateStore(
+                          updateAgentProfileWithVersion(store, {
+                            ...selectedAgent,
+                            name: e.target.value
+                          })
+                        )
+                      }
+                      className="w-full bg-[#18181b] border border-zinc-800/80 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-700"
+                    />
+                  </div>
+
+                  {/* Título */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs text-zinc-300 font-medium">Título</label>
+                    <input
+                      type="text"
+                      value={selectedAgent.workStyle.tone}
+                      onChange={e =>
+                        onUpdateStore(
+                          updateAgentProfileWithVersion(store, {
+                            ...selectedAgent,
+                            workStyle: {
+                              ...selectedAgent.workStyle,
+                              tone: e.target.value
+                            }
+                          })
+                        )
+                      }
+                      placeholder="Descreva o que seu agente faz"
+                      className="w-full bg-[#18181b] border border-zinc-800/80 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                    />
+                  </div>
+
+                  {/* Descrição */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs text-zinc-300 font-medium">Descrição</label>
+                    <textarea
+                      value={selectedAgent.roleDescription}
+                      onChange={e =>
+                        onUpdateStore(
+                          updateAgentProfileWithVersion(store, {
+                            ...selectedAgent,
+                            roleDescription: e.target.value
+                          })
+                        )
+                      }
+                      placeholder="Atividades rotineiras e dúvidas pontuais"
+                      className="w-full h-20 bg-[#18181b] border border-zinc-800/80 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 resize-none focus:outline-none focus:border-zinc-700"
+                    />
+                  </div>
+
+                  {/* Seção Cérebro (Modelo, Raciocínio, Modelos de reserva) */}
+                  <div className="space-y-2 pt-1">
+                    <div className="text-[11px] text-zinc-400 font-medium">Cérebro</div>
+                    <div className="bg-[#18181b] border border-zinc-800/80 rounded-2xl divide-y divide-zinc-800/70">
+                      <div className="px-3 py-2.5 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 text-zinc-200 font-medium">
+                          <Cpu className="w-3.5 h-3.5 text-zinc-400" />
+                          <span>Modelo</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-zinc-300">
+                          <Globe className="w-3 h-3 text-zinc-400" />
+                          <span>GPT-6.1 Terra</span>
+                          <ChevronDown className="w-3 h-3 text-zinc-500" />
+                        </div>
+                      </div>
+
+                      <div className="px-3 py-2.5 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 text-zinc-200 font-medium">
+                          <Brain className="w-3.5 h-3.5 text-zinc-400" />
+                          <span>Raciocínio</span>
+                        </div>
+                        <select
+                          value={reasoningEffort}
+                          onChange={e =>
+                            setReasoningEffort(e.target.value as 'Baixo' | 'Médio' | 'Alto')
+                          }
+                          className="bg-transparent text-xs text-zinc-300 focus:outline-none cursor-pointer"
+                        >
+                          <option value="Baixo" className="bg-[#18181b]">
+                            Baixo
+                          </option>
+                          <option value="Médio" className="bg-[#18181b]">
+                            Médio
+                          </option>
+                          <option value="Alto" className="bg-[#18181b]">
+                            Alto
+                          </option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="bg-[#18181b] border border-zinc-800/80 rounded-2xl px-3 py-2.5 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 text-zinc-200 font-medium">
+                        <RefreshCw className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Modelos de reserva</span>
+                      </div>
+                      <span className="text-zinc-400 flex items-center gap-1">
+                        Perguntar antes <ChevronRight className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Seção Sabe (Instruções, Memórias, Habilidades, Arquivos — Print 04!) */}
+                  <div className="space-y-2 pt-1">
+                    <div className="text-[11px] text-zinc-400 font-medium">Sabe</div>
+                    <div className="bg-[#18181b] border border-zinc-800/80 rounded-2xl divide-y divide-zinc-800/70">
+                      {/* 1. Instruções */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedSettingsSection(s =>
+                              s === 'instructions' ? null : 'instructions'
+                            )
+                          }
+                          className="w-full px-3 py-2.5 flex items-center justify-between text-xs hover:bg-zinc-800/40 cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2 text-zinc-200 font-medium">
+                            <FileText className="w-3.5 h-3.5 text-zinc-400" />
+                            <span>Instruções</span>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                        </button>
+                        {expandedSettingsSection === 'instructions' && (
+                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-2.5 text-xs">
+                            <div>
+                              <label className="block text-[11px] text-zinc-400 mb-1">
+                                Regras de trabalho (1 por linha)
+                              </label>
+                              <textarea
+                                value={selectedAgent.workStyle.rules.join('\n')}
+                                onChange={e =>
+                                  onUpdateStore(
+                                    updateAgentProfileWithVersion(store, {
+                                      ...selectedAgent,
+                                      workStyle: {
+                                        ...selectedAgent.workStyle,
+                                        rules: e.target.value
+                                          .split('\n')
+                                          .map(s => s.trim())
+                                          .filter(Boolean)
+                                      }
+                                    })
+                                  )
+                                }
+                                className="w-full h-24 bg-[#18181b] border border-zinc-800 rounded-xl p-2 text-xs text-zinc-200 resize-none focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] text-zinc-400 mb-1">
+                                Pasta padrão de entrega
+                              </label>
+                              <select
+                                value={selectedAgent.deliverables.targetFolder}
+                                onChange={e =>
+                                  onUpdateStore(
+                                    updateAgentProfileWithVersion(store, {
+                                      ...selectedAgent,
+                                      deliverables: {
+                                        ...selectedAgent.deliverables,
+                                        targetFolder: e.target.value
+                                      }
+                                    })
+                                  )
+                                }
+                                className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-200"
+                              >
+                                {Array.from(
+                                  new Set(['Propostas', 'Escopos', 'Tarefas', ...folders])
+                                ).map(f => (
+                                  <option key={f} value={f} className="bg-[#18181b]">
+                                    {f}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         )}
+                      </div>
 
-                        {/* OpenBot QuestionPromptBubble Inline: Conflitos de Preços */}
-                        {activeRun.calculation && activeRun.calculation.conflicts.length > 0 && (
-                          <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-3">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-amber-200">
-                              <ShieldAlert className="w-4 h-4 text-amber-400" />
-                              <span>Divergência de preços nas fontes — escolha qual valor adotar:</span>
-                            </div>
-                            {activeRun.calculation.conflicts.map(c => (
-                              <div
-                                key={c.id}
-                                className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs"
+                      {/* 2. Memórias (Clientes/Projetos) */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedSettingsSection(s =>
+                              s === 'memories' ? null : 'memories'
+                            )
+                          }
+                          className="w-full px-3 py-2.5 flex items-center justify-between text-xs hover:bg-zinc-800/40 cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2 text-zinc-200 font-medium">
+                            <Brain className="w-3.5 h-3.5 text-zinc-400" />
+                            <span>Memórias</span>
+                          </div>
+                          <span className="text-zinc-400 flex items-center gap-1">
+                            {store.projects.length} salva <ChevronRight className="w-3.5 h-3.5" />
+                          </span>
+                        </button>
+                        {expandedSettingsSection === 'memories' && (
+                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-2 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-zinc-400">Clientes e Projetos</span>
+                              <button
+                                type="button"
+                                onClick={() => setIsProjectsModalOpen(true)}
+                                className="text-[11px] text-zinc-200 hover:underline cursor-pointer"
                               >
-                                <span className="font-semibold text-zinc-100">{c.field}</span>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setConflictChoices(prev => ({
-                                        ...prev,
-                                        [c.id]: { chosenValue: c.valueA, chosenPriceCents: c.priceACents }
-                                      }))
-                                    }
-                                    className={`px-3 py-1.5 rounded-lg border cursor-pointer ${
-                                      conflictChoices[c.id]?.chosenPriceCents === c.priceACents ||
-                                      c.chosenPriceCents === c.priceACents
-                                        ? 'border-[#c59b27] bg-[#c59b27]/20 text-white font-semibold'
-                                        : 'border-zinc-700 bg-zinc-800 text-zinc-300'
-                                    }`}
-                                  >
-                                    {c.sourceA}: {c.valueA}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setConflictChoices(prev => ({
-                                        ...prev,
-                                        [c.id]: { chosenValue: c.valueB, chosenPriceCents: c.priceBCents }
-                                      }))
-                                    }
-                                    className={`px-3 py-1.5 rounded-lg border cursor-pointer ${
-                                      conflictChoices[c.id]?.chosenPriceCents === c.priceBCents ||
-                                      c.chosenPriceCents === c.priceBCents
-                                        ? 'border-[#c59b27] bg-[#c59b27]/20 text-white font-semibold'
-                                        : 'border-zinc-700 bg-zinc-800 text-zinc-300'
-                                    }`}
-                                  >
-                                    {c.sourceB}: {c.valueB}
-                                  </button>
-                                </div>
+                                Gerenciar
+                              </button>
+                            </div>
+                            {store.projects.map(p => (
+                              <div
+                                key={p.id}
+                                className="px-2.5 py-1.5 rounded-lg bg-[#18181b] text-zinc-300 text-[11px] flex items-center justify-between"
+                              >
+                                <span className="truncate">{p.clientName}</span>
+                                <span className="text-zinc-500">{p.briefingNoteIds.length} notas</span>
                               </div>
                             ))}
                           </div>
                         )}
+                      </div>
 
-                        {/* OpenBot QuestionPromptBubble Inline: Perguntas Essenciais */}
-                        {activeRun.clarifyingQuestions.length > 0 && (
-                          <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-3">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-amber-200">
-                              <AlertTriangle className="w-4 h-4 text-amber-400" />
-                              <span>Responda na conversa para concluir a versão final:</span>
-                            </div>
-                            <ul className="text-xs text-amber-100/90 space-y-1 pl-4 list-disc">
-                              {activeRun.clarifyingQuestions.map((q, idx) => (
-                                <li key={idx}>{q}</li>
-                              ))}
-                            </ul>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                              <input
-                                type="text"
-                                placeholder="Cliente (se pendente)..."
-                                value={answerInputs.cliente || ''}
-                                onChange={e =>
-                                  setAnswerInputs(prev => ({ ...prev, cliente: e.target.value }))
-                                }
-                                className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-100"
-                              />
-                              <input
-                                type="text"
-                                placeholder="Prazo estimado (ex: 4 semanas)..."
-                                value={answerInputs.prazo || ''}
-                                onChange={e =>
-                                  setAnswerInputs(prev => ({ ...prev, prazo: e.target.value }))
-                                }
-                                className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-100"
-                              />
-                            </div>
-                            <div className="flex justify-end">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleRunAgent({
-                                    isTest: activeRun.isTestRun,
-                                    existingRunToUpdate: activeRun
-                                  })
-                                }
-                                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer"
+                      {/* 3. Habilidades (Permissões) */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedSettingsSection(s => (s === 'skills' ? null : 'skills'))
+                          }
+                          className="w-full px-3 py-2.5 flex items-center justify-between text-xs hover:bg-zinc-800/40 cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2 text-zinc-200 font-medium">
+                            <Wrench className="w-3.5 h-3.5 text-zinc-400" />
+                            <span>Habilidades</span>
+                          </div>
+                          <span className="text-zinc-400 flex items-center gap-1">
+                            {selectedAgent.allowedActions.length} atribuída{' '}
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </span>
+                        </button>
+                        {expandedSettingsSection === 'skills' && (
+                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-1.5 text-xs">
+                            {(Object.keys(ACTION_PERMISSION_LABELS) as AgentActionPermission[]).map(
+                              perm => {
+                                const checked = selectedAgent.allowedActions.includes(perm)
+                                return (
+                                  <label
+                                    key={perm}
+                                    className="flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer py-0.5"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={e => {
+                                        const nextPerms = e.target.checked
+                                          ? [...selectedAgent.allowedActions, perm]
+                                          : selectedAgent.allowedActions.filter(p => p !== perm)
+                                        onUpdateStore(
+                                          updateAgentProfileWithVersion(store, {
+                                            ...selectedAgent,
+                                            allowedActions: nextPerms
+                                          })
+                                        )
+                                      }}
+                                    />
+                                    <span>{ACTION_PERMISSION_LABELS[perm]}</span>
+                                  </label>
+                                )
+                              }
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 4. Arquivos (Fontes vinculadas do Cofre!) */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedSettingsSection(s => (s === 'files' ? null : 'files'))
+                          }
+                          className="w-full px-3 py-2.5 flex items-center justify-between text-xs hover:bg-zinc-800/40 cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2 text-zinc-200 font-medium">
+                            <FolderOpen className="w-3.5 h-3.5 text-zinc-400" />
+                            <span>Arquivos</span>
+                          </div>
+                          <span className="text-zinc-400 flex items-center gap-1">
+                            {selectedAgent.knowledgeBindings.length} vinculadas{' '}
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </span>
+                        </button>
+                        {expandedSettingsSection === 'files' && (
+                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-2.5 text-xs">
+                            {selectedAgent.knowledgeBindings.map(b => (
+                              <div
+                                key={b.id}
+                                className="p-2 rounded-xl bg-[#18181b] border border-zinc-800/80 flex items-center justify-between gap-2"
                               >
-                                <RefreshCw className="w-3.5 h-3.5" />
-                                <span>Enviar Respostas para {selectedAgent.name}</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                                <div className="min-w-0">
+                                  <div className="text-[11px] font-medium text-zinc-200 truncate">
+                                    {b.noteTitle || b.folderPath}
+                                  </div>
+                                  <div className="text-[10px] text-zinc-500">
+                                    {ROLE_LABELS[b.role].label}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onUpdateStore(
+                                      updateAgentProfileWithVersion(store, {
+                                        ...selectedAgent,
+                                        knowledgeBindings: selectedAgent.knowledgeBindings.filter(
+                                          x => x.id !== b.id
+                                        )
+                                      })
+                                    )
+                                  }
+                                  className="text-zinc-500 hover:text-rose-400 p-1 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ))}
 
-                        {/* Resumo Financeiro Determinístico em Centavos */}
-                        {activeRun.calculation && activeRun.calculation.items.length > 0 && (
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-                            <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800">
-                              <div className="text-[11px] text-zinc-400">Subtotal Bruto</div>
-                              <div className="text-sm font-bold text-zinc-100 mt-0.5">
-                                {formatCentsBRL(activeRun.calculation.grossTotalCents)}
-                              </div>
-                            </div>
-                            <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800">
-                              <div className="text-[11px] text-zinc-400">Descontos Autorizados</div>
-                              <div className="text-sm font-bold text-emerald-400 mt-0.5">
-                                - {formatCentsBRL(activeRun.calculation.totalDiscountCents)}
-                              </div>
-                            </div>
-                            <div className="p-3 rounded-xl bg-zinc-900/80 border border-[#c59b27]/40">
-                              <div className="text-[11px] text-zinc-400">Valor Líquido Final</div>
-                              <div className="text-sm font-bold text-[#c59b27] mt-0.5">
-                                {formatCentsBRL(activeRun.calculation.netTotalCents)}
-                              </div>
-                            </div>
-                            <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800">
-                              <div className="text-[11px] text-zinc-400">Entrada & Parcelas</div>
-                              <div className="text-xs font-semibold text-zinc-200 mt-0.5">
-                                {activeRun.calculation.downPaymentCents > 0 &&
-                                activeRun.calculation.installments > 1
-                                  ? `Entrada ${formatCentsBRL(activeRun.calculation.downPaymentCents)} + ${
-                                      activeRun.calculation.installments
-                                    }x ${formatCentsBRL(activeRun.calculation.installmentValueCents)}`
-                                  : `${activeRun.calculation.installments}x de ${formatCentsBRL(
-                                      activeRun.calculation.installmentValueCents
-                                    )}`}
+                            <div className="space-y-1.5 pt-1 border-t border-zinc-800">
+                              <select
+                                value={bindNoteId}
+                                onChange={e => setBindNoteId(e.target.value)}
+                                className="w-full bg-[#18181b] border border-zinc-800 rounded-lg px-2 py-1.5 text-[11px] text-zinc-200"
+                              >
+                                <option value="" className="bg-[#18181b]">
+                                  Vincular nota do cofre...
+                                </option>
+                                {notes.map(n => (
+                                  <option key={n.id} value={n.id} className="bg-[#18181b]">
+                                    {n.title}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  value={bindRole}
+                                  onChange={e => setBindRole(e.target.value as ContextRole)}
+                                  className="flex-1 bg-[#18181b] border border-zinc-800 rounded-lg px-2 py-1 text-[11px] text-zinc-200"
+                                >
+                                  <option value="template" className="bg-[#18181b]">
+                                    Modelo
+                                  </option>
+                                  <option value="permanent_ref" className="bg-[#18181b]">
+                                    Catálogo / Regra
+                                  </option>
+                                  <option value="project_context" className="bg-[#18181b]">
+                                    Contexto Cliente
+                                  </option>
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={handleAddKnowledgeBinding}
+                                  className="px-2.5 py-1 rounded-lg bg-zinc-100 text-zinc-950 font-semibold text-[11px] cursor-pointer"
+                                >
+                                  Vincular
+                                </button>
                               </div>
                             </div>
                           </div>
                         )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            )}
+          </div>
+        )}
 
-                        {/* Prévia do Documento na Conversa */}
-                        {activeRun.draftContent && (
-                          <div className="rounded-xl border border-zinc-800 bg-[#0e1017] p-5">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 mb-3">
-                              Entrega Preparada por {activeRun.agentName}
-                            </div>
-                            <div className="prose prose-invert max-w-none text-sm leading-relaxed">
-                              <MarkdownRenderer
-                                content={activeRun.draftContent}
-                                onNavigate={(title: string) => {
-                                  const found = notes.find(
-                                    n => n.title.toLowerCase().trim() === title.toLowerCase().trim()
-                                  )
-                                  if (found) onOpenNote(found.id)
-                                }}
-                              />
-                            </div>
+        {/* ========================================================================== */}
+        {/* TELA 03: TAREFAS DELEGADAS ("Delegue o trabalho. Volte para uma resposta.")*/}
+        {/* ========================================================================== */}
+        {activeSection === 'tasks' && (
+          <div
+            onClick={() => setIsTaskAgentMenuOpen(false)}
+            className="flex-1 flex flex-col bg-[#111113] overflow-y-auto"
+          >
+            {/* Barra superior limpa */}
+            <header className="h-11 px-4 border-b border-zinc-900/90 flex items-center gap-3 shrink-0">
+              <div className="flex items-center gap-1 text-zinc-500">
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <ArrowRight className="w-3.5 h-3.5" />
+              </div>
+              <div className="flex items-center gap-2 text-xs font-medium text-zinc-200">
+                <PanelLeft className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Tarefas</span>
+              </div>
+            </header>
+
+            {/* Coluna Central Idêntica ao Print 03 */}
+            <div className="max-w-xl w-full mx-auto pt-16 pb-12 px-4 flex flex-col">
+              {/* Hero Title */}
+              <div className="text-center space-y-1">
+                <div className="text-2xl font-semibold text-zinc-400 tracking-tight">
+                  Delegue o trabalho.
+                </div>
+                <div className="text-3xl font-bold text-zinc-100 tracking-tight">
+                  Volte para uma{' '}
+                  <span className="italic font-serif font-normal text-[#3b82f6]">resposta</span>.
+                </div>
+                <p className="text-xs text-zinc-500 pt-2 leading-relaxed">
+                  Seus agentes trabalham em tarefas em paralelo.
+                  <br />
+                  Cada resposta espera você aqui.
+                </p>
+              </div>
+
+              {/* Card de Prompt Centralizado (Idêntico ao Print 03) */}
+              <div
+                onClick={e => e.stopPropagation()}
+                className="mt-7 bg-[#18181b] border border-zinc-800/90 rounded-2xl p-3.5 shadow-2xl"
+              >
+                <textarea
+                  value={taskPromptInput}
+                  onChange={e => setTaskPromptInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      if (taskPromptInput.trim()) {
+                        handleRunAgent({ isTest: false, overridePrompt: taskPromptInput })
+                      }
+                    }
+                  }}
+                  placeholder="O que você quer que seja feito?"
+                  className="w-full h-14 bg-transparent text-xs text-zinc-100 placeholder-zinc-500 resize-none focus:outline-none leading-relaxed"
+                />
+
+                <div className="flex items-center justify-between pt-2">
+                  {/* Seletor de Agente com Menu Dropdown (Idêntico ao Print 03!) */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsTaskAgentMenuOpen(v => !v)}
+                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#202024] hover:bg-zinc-800 text-xs font-medium text-zinc-100 transition-colors cursor-pointer"
+                    >
+                      <span
+                        className="w-4 h-4 rounded-md flex items-center justify-center text-[9px] text-white font-bold"
+                        style={{ backgroundColor: getAgentColor(selectedAgent?.id) }}
+                      >
+                        ••
+                      </span>
+                      <span>{selectedAgent?.name || 'Selecionar Agente'}</span>
+                      <ChevronUp className="w-3.5 h-3.5 text-zinc-400" />
+                    </button>
+
+                    {isTaskAgentMenuOpen && (
+                      <div className="absolute left-0 top-full mt-1.5 w-52 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-40 space-y-0.5">
+                        {store.agents.map(ag => {
+                          const isSelected = ag.id === selectedAgent?.id
+                          return (
+                            <button
+                              key={ag.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedAgentId(ag.id)
+                                setIsTaskAgentMenuOpen(false)
+                              }}
+                              className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-zinc-800/80 flex items-center justify-between text-xs text-zinc-100 cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className="w-4 h-4 rounded-md flex items-center justify-center text-[9px] text-white font-bold shrink-0"
+                                  style={{ backgroundColor: getAgentColor(ag.id) }}
+                                >
+                                  ••
+                                </span>
+                                <span className="truncate font-medium">{ag.name}</span>
+                              </div>
+                              {isSelected && <Check className="w-3.5 h-3.5 text-zinc-200 shrink-0" />}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Direita: Microfone + Botão Circular ↑ */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="w-7 h-7 rounded-full bg-zinc-800/80 text-zinc-400 hover:text-zinc-200 flex items-center justify-center cursor-pointer"
+                      title="Ditado"
+                    >
+                      <Mic className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!taskPromptInput.trim() || isExecuting}
+                      onClick={() =>
+                        handleRunAgent({ isTest: false, overridePrompt: taskPromptInput })
+                      }
+                      className="w-7 h-7 rounded-full bg-zinc-700 hover:bg-zinc-100 hover:text-zinc-950 text-zinc-200 disabled:opacity-40 flex items-center justify-center transition-colors cursor-pointer"
+                      title="Delegar tarefa"
+                    >
+                      <ArrowUp className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lista de Tarefas Delegadas abaixo do Composer (Idêntica ao Print 03!) */}
+              <div className="mt-8 space-y-5">
+                {store.runs.length > 0 ? (
+                  <>
+                    {/* Respondidas */}
+                    {answeredRuns.slice(0, 4).map(run => (
+                      <button
+                        key={run.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAgentId(run.agentId)
+                          setSelectedRunId(run.id)
+                          setActiveSection('agents')
+                        }}
+                        className="w-full text-left px-2 py-1.5 rounded-xl hover:bg-zinc-900/80 flex items-center justify-between gap-3 text-xs transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <CheckCircle2 className="w-4 h-4 text-zinc-500 shrink-0" />
+                          <span className="text-zinc-300 truncate">{run.prompt}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[11px] text-blue-400 font-medium">Respondida</span>
+                          <span
+                            className="w-4 h-4 rounded-md flex items-center justify-center text-[8px] text-white font-bold"
+                            style={{ backgroundColor: getAgentColor(run.agentId) }}
+                          >
+                            ••
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+
+                    {/* Trabalhando */}
+                    <div className="space-y-2">
+                      <div className="text-[11px] text-zinc-500 font-medium px-2">
+                        Trabalhando <span className="text-zinc-600">{workingRuns.length}</span>
+                      </div>
+                      {workingRuns.map(run => (
+                        <button
+                          key={run.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedAgentId(run.agentId)
+                            setSelectedRunId(run.id)
+                            setActiveSection('agents')
+                          }}
+                          className="w-full text-left px-2 py-1.5 rounded-xl hover:bg-zinc-900/80 flex items-center justify-between gap-3 text-xs cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <RefreshCw className="w-3.5 h-3.5 text-zinc-400 animate-spin shrink-0" />
+                            <span className="text-zinc-300 truncate">{run.prompt}</span>
                           </div>
-                        )}
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[11px] text-zinc-400">Processando...</span>
+                            <span
+                              className="w-4 h-4 rounded-md flex items-center justify-center text-[8px] text-white font-bold"
+                              style={{ backgroundColor: getAgentColor(run.agentId) }}
+                            >
+                              ••
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Em espera */}
+                    <div className="space-y-2">
+                      <div className="text-[11px] text-zinc-500 font-medium px-2">
+                        Em espera <span className="text-zinc-600">{waitingRuns.length}</span>
+                      </div>
+                      {waitingRuns.map(run => (
+                        <button
+                          key={run.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedAgentId(run.agentId)
+                            setSelectedRunId(run.id)
+                            setActiveSection('agents')
+                          }}
+                          className="w-full text-left px-2 py-1.5 rounded-xl hover:bg-zinc-900/80 flex items-center justify-between gap-3 text-xs cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="text-zinc-300 truncate">{run.prompt}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[11px] text-zinc-500">Em espera</span>
+                            <span
+                              className="w-4 h-4 rounded-md flex items-center justify-center text-[8px] text-white font-bold"
+                              style={{ backgroundColor: getAgentColor(run.agentId) }}
+                            >
+                              ••
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  /* Decorative OpenBot TasksEmptyBoard (Idêntico ao Print 03 quando ainda não há tarefas!) */
+                  <div className="space-y-5 opacity-75">
+                    <div className="px-2 py-1.5 flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <CheckCircle2 className="w-4 h-4 text-zinc-600 shrink-0" />
+                        <span className="text-zinc-400 truncate">
+                          Elabore proposta comercial padronizada com base no catálogo
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] text-blue-400">Respondida</span>
+                        <span className="w-4 h-4 rounded-md bg-blue-600 flex items-center justify-center text-[8px] text-white font-bold">
+                          ••
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[11px] text-zinc-500 font-medium px-2">
+                        Trabalhando <span className="text-zinc-600">1</span>
+                      </div>
+                      <div className="px-2 py-1.5 flex items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <RefreshCw className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                          <span className="text-zinc-400 truncate">
+                            Resuma o escopo técnico e monte o cronograma de entregas...
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[11px] text-zinc-400">
+                            Lendo Modelo de Proposta.md
+                          </span>
+                          <span className="w-4 h-4 rounded-md bg-emerald-500 flex items-center justify-center text-[8px] text-white font-bold">
+                            ••
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[11px] text-zinc-500 font-medium px-2">
+                        Em espera <span className="text-zinc-600">1</span>
+                      </div>
+                      <div className="px-2 py-1.5 flex items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Clock className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+                          <span className="text-zinc-500 truncate">
+                            Verifique pendências de aprovação de orçamento na pasta Propostas
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[11px] text-zinc-500">Em espera</span>
+                          <span className="w-4 h-4 rounded-md bg-blue-600 flex items-center justify-center text-[8px] text-white font-bold">
+                            ••
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
                 )}
               </div>
-
-              {/* COMPOSER INFERIOR ESTILO OPENBOT (Sempre acessível na base da conversa!) */}
-              <div className="px-6 py-3.5 border-t border-zinc-800/80 bg-[#11131a] shrink-0">
-                <div className="max-w-4xl mx-auto space-y-2.5">
-                  {/* Notas anexadas apenas a este pedido + Seletor rápido de anexo */}
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <select
-                        value={attachNoteSelectId}
-                        onChange={e => {
-                          const id = e.target.value
-                          if (id && !extraNoteIds.includes(id)) {
-                            setExtraNoteIds(prev => [...prev, id])
-                          }
-                          setAttachNoteSelectId('')
-                        }}
-                        className="bg-[#181b24] border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-300"
-                      >
-                        <option value="">+ Anexar nota a este pedido...</option>
-                        {notes.map(n => (
-                          <option key={n.id} value={n.id}>
-                            {n.title} ({n.folder})
-                          </option>
-                        ))}
-                      </select>
-
-                      {extraNoteIds.map(id => {
-                        const n = notes.find(item => item.id === id)
-                        if (!n) return null
-                        return (
-                          <span
-                            key={id}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-[11px] text-cyan-200"
-                          >
-                            <span>{n.title}</span>
-                            <button
-                              type="button"
-                              onClick={() => setExtraNoteIds(prev => prev.filter(x => x !== id))}
-                              className="hover:text-white cursor-pointer"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        )
-                      })}
-                    </div>
-
-                    {selectedAgent.limits.allowDelegation &&
-                      selectedAgent.allowedActions.includes('delegate_team') && (
-                        <label className="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={useTeamDelegation}
-                            onChange={e => setUseTeamDelegation(e.target.checked)}
-                            className="accent-[#c59b27]"
-                          />
-                          <span>Coordenar especialistas da equipe</span>
-                        </label>
-                      )}
-                  </div>
-
-                  {/* Caixa de Mensagem + Botões Simular / Enviar / Parar */}
-                  <div className="flex items-end gap-2.5">
-                    <textarea
-                      rows={2}
-                      value={promptInput}
-                      onChange={e => setPromptInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault()
-                          handleRunAgent({ isTest: false })
-                        }
-                      }}
-                      placeholder={`Conversar com ${selectedAgent.name} (${
-                        selectedProject ? `Cliente: ${selectedProject.clientName}` : 'Digite seu pedido...'
-                      }) — Enter envia, Shift+Enter quebra linha`}
-                      className="flex-1 bg-[#181b24] border border-zinc-700/80 rounded-2xl px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#c59b27] resize-none leading-relaxed"
-                    />
-
-                    {isExecuting ? (
-                      <button
-                        type="button"
-                        onClick={handleCancelActiveExecution}
-                        className="flex items-center gap-1.5 px-4 py-3 rounded-2xl border border-rose-500/50 bg-rose-500/15 text-rose-200 text-xs font-semibold cursor-pointer"
-                      >
-                        <StopCircle className="w-4 h-4" />
-                        <span>Parar</span>
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleRunAgent({ isTest: true })}
-                          className="flex items-center gap-1.5 px-3.5 py-3 rounded-2xl border border-zinc-700 bg-[#181b24] hover:bg-zinc-800 text-xs font-medium text-zinc-200 cursor-pointer"
-                          title="Simular sem gravar no cofre"
-                        >
-                          <FlaskConical className="w-4 h-4 text-amber-400" />
-                          <span>Simular</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRunAgent({ isTest: false })}
-                          className="flex items-center gap-1.5 px-5 py-3 rounded-2xl bg-[#c59b27] hover:bg-[#d4a930] text-black font-semibold text-xs cursor-pointer shadow-md"
-                        >
-                          <Play className="w-4 h-4 fill-current" />
-                          <span>Enviar</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
             </div>
-
-            {/* Gaveta Direita 1: Conhecimento Vinculado */}
-            {isKnowledgeDrawerOpen && (
-              <div className="w-96 border-l border-zinc-800/80 bg-[#14141b] p-5 overflow-y-auto space-y-5 shrink-0">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-zinc-100">
-                    Conhecimento de {selectedAgent.name}
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setIsKnowledgeDrawerOpen(false)}
-                    className="text-zinc-400 hover:text-white cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="space-y-2.5">
-                  {selectedAgent.knowledgeBindings.map(bind => (
-                    <div
-                      key={bind.id}
-                      className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/70 space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-zinc-100 truncate">
-                          {bind.noteTitle}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const updated: AgentProfileVersion = {
-                              ...selectedAgent,
-                              knowledgeBindings: selectedAgent.knowledgeBindings.filter(
-                                b => b.id !== bind.id
-                              )
-                            }
-                            await onUpdateStore(updateAgentProfileWithVersion(store, updated))
-                          }}
-                          className="text-zinc-500 hover:text-rose-400 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-zinc-400">
-                        <span
-                          className="px-2 py-0.5 rounded font-medium"
-                          style={{
-                            backgroundColor: `${ROLE_LABELS[bind.role].badgeColor}22`,
-                            color: ROLE_LABELS[bind.role].badgeColor
-                          }}
-                        >
-                          {ROLE_LABELS[bind.role].label}
-                        </span>
-                        <span>
-                          •{' '}
-                          {bind.updatePolicy === 'pin_revision'
-                            ? 'Revisão fixada'
-                            : 'Acompanha nota atual'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Adicionar nova nota de referência */}
-                <div className="pt-4 border-t border-zinc-800 space-y-3">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                    Vincular Nota do Cofre
-                  </div>
-                  <select
-                    value={bindNoteId}
-                    onChange={e => setBindNoteId(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100"
-                  >
-                    <option value="">Selecione uma nota...</option>
-                    {notes.map(n => (
-                      <option key={n.id} value={n.id}>
-                        {n.title} ({n.folder})
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={bindRole}
-                    onChange={e => setBindRole(e.target.value as ContextRole)}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100"
-                  >
-                    {(['template', 'permanent_ref', 'project_context'] as ContextRole[]).map(r => (
-                      <option key={r} value={r}>
-                        {ROLE_LABELS[r].label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={bindPolicy}
-                    onChange={e => setBindPolicy(e.target.value as 'follow_latest' | 'pin_revision')}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100"
-                  >
-                    <option value="follow_latest">Acompanhar versão mais recente da nota</option>
-                    <option value="pin_revision">Fixar revisão atual (Snapshot imutável)</option>
-                  </select>
-
-                  <button
-                    type="button"
-                    disabled={!bindNoteId}
-                    onClick={handleAddKnowledgeBinding}
-                    className="w-full py-2 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer disabled:opacity-40"
-                  >
-                    Vincular Conhecimento
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Gaveta Direita 2: Configurações e Permissões do Agente */}
-            {isConfigDrawerOpen && (
-              <div className="w-96 border-l border-zinc-800/80 bg-[#14141b] p-5 overflow-y-auto space-y-5 shrink-0">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-zinc-100">
-                    Configurações de {selectedAgent.name}
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setIsConfigDrawerOpen(false)}
-                    className="text-zinc-400 hover:text-white cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Pasta de Entrega Autorizada</label>
-                  <select
-                    value={selectedAgent.deliverables.targetFolder}
-                    onChange={async e => {
-                      const updated: AgentProfileVersion = {
-                        ...selectedAgent,
-                        deliverables: {
-                          ...selectedAgent.deliverables,
-                          targetFolder: e.target.value
-                        }
-                      }
-                      await onUpdateStore(updateAgentProfileWithVersion(store, updated))
-                    }}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100"
-                  >
-                    {folders.map(f => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                    Permissões Autorizadas
-                  </div>
-                  {(Object.keys(ACTION_PERMISSION_LABELS) as AgentActionPermission[]).map(perm => {
-                    const checked = selectedAgent.allowedActions.includes(perm)
-                    return (
-                      <label
-                        key={perm}
-                        className="flex items-center gap-2.5 p-2 rounded-lg border border-zinc-800 bg-zinc-900/60 text-xs text-zinc-200 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={async () => {
-                            const nextPerms = checked
-                              ? selectedAgent.allowedActions.filter(p => p !== perm)
-                              : [...selectedAgent.allowedActions, perm]
-                            const updated: AgentProfileVersion = {
-                              ...selectedAgent,
-                              allowedActions: nextPerms
-                            }
-                            await onUpdateStore(updateAgentProfileWithVersion(store, updated))
-                          }}
-                          className="accent-[#c59b27]"
-                        />
-                        <span>{ACTION_PERMISSION_LABELS[perm]}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* SEÇÃO 2: EQUIPES (Canvas 1) */}
-        {activeSection === 'teams' && (
-          <TeamCanvasEditor
-            teams={teams}
-            agents={store.agents}
-            notes={notes}
-            selectedTeamId={selectedTeamId}
-            onSelectTeam={setSelectedTeamId}
-            onCreateAgentInline={async newAgent => {
-              const nextStore = updateAgentProfileWithVersion(storeRef.current, newAgent)
-              await onUpdateStore(nextStore)
-            }}
-            onOpenAgentChat={agentId => {
-              setSelectedAgentId(agentId)
-              const latestForAgent = store.runs.find(r => r.agentId === agentId)
-              setSelectedRunId(latestForAgent?.id || null)
-              setActiveSection('agents')
-            }}
-            onSaveTeam={async updatedTeam => {
-              const current = storeRef.current
-              const currTeams = current.teams?.length ? current.teams : INITIAL_TEAMS
-              const exists = currTeams.some(t => t.id === updatedTeam.id)
-              const nextTeams = exists
-                ? currTeams.map(t => (t.id === updatedTeam.id ? updatedTeam : t))
-                : [...currTeams, updatedTeam]
-              await onUpdateStore({ ...current, teams: nextTeams })
-            }}
-            onDeleteTeam={async teamId => {
-              const nextTeams = teams.filter(t => t.id !== teamId)
-              await onUpdateStore({ ...store, teams: nextTeams })
-              if (nextTeams[0]) setSelectedTeamId(nextTeams[0].id)
-            }}
-            onRunTeam={async (team, isTest, prompt) => {
-              const coord =
-                store.agents.find(a => a.id === team.coordinatorAgentId) || store.agents[0]
-              if (!coord) return
-              setIsExecuting(true)
-              try {
-                const run = await executeAgentRun({
-                  agent: coord,
-                  allAgents: store.agents,
-                  allNotes: notes,
-                  allProjects: store.projects,
-                  prompt,
-                  isTestRun: isTest,
-                  projectContext: selectedProject,
-                  explicitClientName: selectedProject?.clientName,
-                  useTeamDelegation: true,
-                  teamDefinition: team
-                })
-                await onUpdateStore({
-                  ...store,
-                  runs: [run, ...store.runs]
-                })
-                setSelectedRunId(run.id)
-                setSelectedAgentId(coord.id)
-                setActiveSection('agents')
-              } finally {
-                setIsExecuting(false)
-              }
-            }}
-            isExecuting={isExecuting}
-          />
-        )}
-
-        {/* SEÇÃO 3: FLUXOS (Canvas 2) */}
+        {/* ========================================================================== */}
+        {/* TELA 02: FLUXO DE TRABALHO (Canvas OpenBot tela cheia — Print 02!)          */}
+        {/* ========================================================================== */}
         {activeSection === 'workflows' && (
           <WorkflowCanvasEditor
             workflows={workflows}
@@ -1787,11 +2237,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             selectedWorkflowId={selectedWorkflowId}
             latestNodeStates={activeRun?.workflowNodeStates}
             onSelectWorkflow={setSelectedWorkflowId}
-            onSaveWorkflow={async updatedWf => {
-              const exists = workflows.some(w => w.id === updatedWf.id)
+            onSaveWorkflow={async wf => {
+              const exists = workflows.some(w => w.id === wf.id)
               const nextWfs = exists
-                ? workflows.map(w => (w.id === updatedWf.id ? updatedWf : w))
-                : [...workflows, updatedWf]
+                ? workflows.map(w => (w.id === wf.id ? wf : w))
+                : [...workflows, wf]
               await onUpdateStore({ ...store, workflows: nextWfs })
             }}
             onDeleteWorkflow={async wfId => {
@@ -1802,25 +2252,24 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             onRunWorkflow={async (wf, isTest, prompt) => {
               setIsExecuting(true)
               try {
-                const run = await executeWorkflowRun({
+                const proj = store.projects.find(p => p.id === selectedProjectId)
+                const wfRun = await executeWorkflowRun({
                   workflow: wf,
                   allAgents: store.agents,
                   allNotes: notes,
                   allProjects: store.projects,
                   prompt,
-                  projectContext: selectedProject,
-                  explicitClientName: selectedProject?.clientName,
+                  projectContext: proj,
+                  explicitClientName: proj?.clientName,
                   isTestRun: isTest
                 })
                 await onUpdateStore({
                   ...store,
-                  runs: [run, ...store.runs]
+                  runs: [wfRun, ...store.runs]
                 })
-                setSelectedRunId(run.id)
-                setStatusBanner({
-                  type: 'success',
-                  text: `Fluxo "${wf.name}" executado. Veja o status de cada bloco no Canvas ou abra em Agentes para aprovar.`
-                })
+                setSelectedRunId(wfRun.id)
+                setSelectedAgentId(wfRun.agentId)
+                setActiveSection('agents')
               } finally {
                 setIsExecuting(false)
               }
@@ -1829,7 +2278,46 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
           />
         )}
 
-        {/* SEÇÃO 4: ROTINAS (Canvas 3: Modo Simples + Modo Visual Sincronizados) */}
+        {/* ========================================================================== */}
+        {/* EQUIPES: CANVAS VISUAL DE EQUIPE                                           */}
+        {/* ========================================================================== */}
+        {activeSection === 'teams' && (
+          <TeamCanvasEditor
+            teams={teams}
+            agents={store.agents}
+            notes={notes}
+            selectedTeamId={selectedTeamId}
+            onSelectTeam={setSelectedTeamId}
+            onSaveTeam={async updatedTeam => {
+              const exists = teams.some(t => t.id === updatedTeam.id)
+              const nextTeams = exists
+                ? teams.map(t => (t.id === updatedTeam.id ? updatedTeam : t))
+                : [...teams, updatedTeam]
+              await onUpdateStore({ ...store, teams: nextTeams })
+            }}
+            onDeleteTeam={async teamId => {
+              const nextTeams = teams.filter(t => t.id !== teamId)
+              await onUpdateStore({ ...store, teams: nextTeams })
+              if (nextTeams[0]) setSelectedTeamId(nextTeams[0].id)
+            }}
+            onOpenAgentChat={agentId => {
+              setSelectedAgentId(agentId)
+              setActiveSection('agents')
+            }}
+            onRunTeam={(team, isTest, prompt) => {
+              const leadId = team.coordinatorAgentId || team.nodes[0]?.agentId || store.agents[0]?.id || ''
+              setSelectedAgentId(leadId)
+              setUseTeamDelegation(true)
+              setActiveSection('agents')
+              handleRunAgent({ isTest, overridePrompt: prompt })
+            }}
+            isExecuting={isExecuting}
+          />
+        )}
+
+        {/* ========================================================================== */}
+        {/* ROTINAS: CANVAS VISUAL DE ROTINAS                                          */}
+        {/* ========================================================================== */}
         {activeSection === 'routines' && (
           <RoutineCanvasEditor
             automations={store.automations}
@@ -1840,15 +2328,15 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             folders={folders}
             selectedRoutineId={selectedRoutineId}
             onSelectRoutine={setSelectedRoutineId}
-            onSaveRoutine={async updatedAuto => {
-              const exists = store.automations.some(a => a.id === updatedAuto.id)
+            onSaveRoutine={async routine => {
+              const exists = store.automations.some(a => a.id === routine.id)
               const nextAutos = exists
-                ? store.automations.map(a => (a.id === updatedAuto.id ? updatedAuto : a))
-                : [...store.automations, updatedAuto]
+                ? store.automations.map(a => (a.id === routine.id ? routine : a))
+                : [...store.automations, routine]
               await onUpdateStore({ ...store, automations: nextAutos })
             }}
-            onDeleteRoutine={async autoId => {
-              const nextAutos = store.automations.filter(a => a.id !== autoId)
+            onDeleteRoutine={async routineId => {
+              const nextAutos = store.automations.filter(a => a.id !== routineId)
               await onUpdateStore({ ...store, automations: nextAutos })
               if (nextAutos[0]) setSelectedRoutineId(nextAutos[0].id)
             }}
@@ -1857,97 +2345,334 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
           />
         )}
 
-        {/* SEÇÃO 5: ATIVIDADE & HISTÓRICO */}
+        {/* ========================================================================== */}
+        {/* ATIVIDADE: HISTÓRICO AUDITÁVEL LIMPO                                       */}
+        {/* ========================================================================== */}
         {activeSection === 'activity' && (
-          <div className="flex-1 overflow-y-auto p-6 max-w-5xl mx-auto w-full space-y-6">
-            <div>
-              <h2 className="text-lg font-bold text-zinc-100">Atividade e Entregas</h2>
-              <p className="text-sm text-zinc-400">
-                Histórico de execuções, fontes consultadas e documentos gerados pela sua equipe.
-              </p>
+          <div className="flex-1 overflow-y-auto p-6 bg-[#111113]">
+            <div className="max-w-4xl mx-auto space-y-4">
+              <h2 className="text-sm font-semibold text-zinc-100">Atividade dos Agentes</h2>
+              {store.runs.length === 0 ? (
+                <div className="text-xs text-zinc-500 py-8 text-center">
+                  Nenhuma execução registrada ainda.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {store.runs.map(r => (
+                    <div
+                      key={r.id}
+                      onClick={() => {
+                        setSelectedAgentId(r.agentId)
+                        setSelectedRunId(r.id)
+                        setActiveSection('agents')
+                      }}
+                      className="p-3.5 rounded-2xl bg-[#18181b] border border-zinc-800/80 hover:border-zinc-700 flex items-center justify-between gap-4 cursor-pointer transition-colors"
+                    >
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-4 h-4 rounded-md flex items-center justify-center text-[8px] text-white font-bold"
+                            style={{ backgroundColor: getAgentColor(r.agentId) }}
+                          >
+                            ••
+                          </span>
+                          <span className="text-xs font-semibold text-zinc-100">
+                            {r.agentName}
+                          </span>
+                          <span className="text-[11px] text-zinc-500">
+                            {new Date(r.startedAt).toLocaleString('pt-BR')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-zinc-400 truncate">{r.prompt}</p>
+                      </div>
+                      <span className="text-[11px] text-zinc-300 shrink-0">
+                        {r.calculation ? formatCentsBRL(r.calculation.netTotalCents) : r.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ============================================================================ */}
+      {/* MODAL: CRIAR NOVO AGENTE                                                     */}
+      {/* ============================================================================ */}
+      {isNewAgentModalOpen && newAgentDraft && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#141416] border border-zinc-800 rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <span className="text-sm font-semibold text-zinc-100">Novo Agente</span>
+              <button
+                type="button"
+                onClick={() => setIsNewAgentModalOpen(false)}
+                className="text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {store.runs.length === 0 ? (
-              <div className="p-8 rounded-2xl border border-zinc-800 bg-[#14141b] text-center text-sm text-zinc-400">
-                Nenhuma atividade registrada neste cofre ainda.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {store.runs.map(run => (
-                  <div
-                    key={run.id}
-                    className="p-4 rounded-xl border border-zinc-800 bg-[#14141b] flex flex-wrap items-center justify-between gap-4"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-zinc-100">{run.agentName}</span>
-                        {run.clientName && (
-                          <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
-                            {run.clientName}
-                          </span>
-                        )}
-                        <span className="text-xs text-zinc-500">
-                          {new Date(run.startedAt).toLocaleString('pt-BR')}
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-400">{run.prompt}</p>
-                      <div className="text-xs text-zinc-500">
-                        Fontes usadas: {run.sourceSnapshots.filter(s => s.available).map(s => s.title).join(', ') || 'Nenhuma'}
-                      </div>
-                    </div>
+            <div className="flex gap-1.5 bg-[#1c1c1f] p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setNewAgentTab('guided')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
+                  newAgentTab === 'guided' ? 'bg-zinc-800 text-white' : 'text-zinc-400'
+                }`}
+              >
+                Configuração Direta
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewAgentTab('conversation')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
+                  newAgentTab === 'conversation' ? 'bg-zinc-800 text-white' : 'text-zinc-400'
+                }`}
+              >
+                Gerar por Descrição
+              </button>
+            </div>
 
+            {newAgentTab === 'conversation' && (
+              <div className="space-y-2">
+                <textarea
+                  value={convDescription}
+                  onChange={e => setConvDescription(e.target.value)}
+                  placeholder="Ex.: Preciso de um agente que monte propostas comerciais e verifique preços..."
+                  className="w-full h-20 bg-[#1c1c1f] border border-zinc-800 rounded-xl p-2.5 text-xs text-zinc-100"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!convDescription.trim()) return
+                    setNewAgentDraft(generateAgentDraftFromPrompt(convDescription, notes).draft)
+                    setNewAgentTab('guided')
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-zinc-100 text-zinc-950 text-xs font-semibold cursor-pointer"
+                >
+                  Preencher perfil
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-zinc-400 mb-1">Nome</label>
+                <input
+                  type="text"
+                  value={newAgentDraft.name}
+                  onChange={e => setNewAgentDraft({ ...newAgentDraft, name: e.target.value })}
+                  className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100"
+                />
+              </div>
+              <div>
+                <label className="block text-zinc-400 mb-1">Título</label>
+                <input
+                  type="text"
+                  value={newAgentDraft.workStyle.tone}
+                  onChange={e =>
+                    setNewAgentDraft({
+                      ...newAgentDraft,
+                      workStyle: { ...newAgentDraft.workStyle, tone: e.target.value }
+                    })
+                  }
+                  className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100"
+                />
+              </div>
+              <div>
+                <label className="block text-zinc-400 mb-1">Descrição</label>
+                <textarea
+                  value={newAgentDraft.roleDescription}
+                  onChange={e =>
+                    setNewAgentDraft({ ...newAgentDraft, roleDescription: e.target.value })
+                  }
+                  className="w-full h-16 bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setIsNewAgentModalOpen(false)}
+                className="px-3 py-1.5 rounded-xl bg-zinc-800 text-zinc-300 text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const created: AgentProfileVersion = {
+                    ...newAgentDraft,
+                    id: `agent_custom_${Date.now()}`,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                  }
+                  await onUpdateStore(updateAgentProfileWithVersion(store, created))
+                  setSelectedAgentId(created.id)
+                  setIsNewAgentModalOpen(false)
+                }}
+                className="px-4 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs cursor-pointer"
+              >
+                Criar Agente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================ */}
+      {/* MODAL: CLIENTES E PROJETOS                                                   */}
+      {/* ============================================================================ */}
+      {isProjectsModalOpen && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#141416] border border-zinc-800 rounded-2xl max-w-xl w-full p-5 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <span className="text-sm font-semibold text-zinc-100">Clientes e Projetos</span>
+              <button
+                type="button"
+                onClick={() => setIsProjectsModalOpen(false)}
+                className="text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {store.projects.map(p => (
+                <div
+                  key={p.id}
+                  className="p-3 rounded-xl bg-[#1c1c1f] border border-zinc-800 flex items-center justify-between gap-2 text-xs"
+                >
+                  <div>
+                    <div className="font-semibold text-zinc-100">{p.clientName}</div>
+                    <div className="text-zinc-400">{p.name}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedRunId(run.id)
-                        setSelectedAgentId(run.agentId)
-                        setActiveSection('agents')
+                        setEditingProject(p)
+                        setProjClient(p.clientName)
+                        setProjName(p.name)
+                        setProjDesc(p.description || '')
+                        setProjBriefingIds(p.briefingNoteIds)
                       }}
-                      className="px-3.5 py-1.5 rounded-lg border border-zinc-700 hover:border-[#c59b27] text-xs font-medium text-zinc-200 cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 cursor-pointer"
                     >
-                      Ver Detalhes
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await onUpdateStore({
+                          ...store,
+                          projects: store.projects.filter(x => x.id !== p.id)
+                        })
+                      }}
+                      className="text-rose-400 hover:underline px-2 cursor-pointer"
+                    >
+                      Excluir
                     </button>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </main>
-
-      {/* Modal 1: Escolher Agente ao clicar em "Usar com um agente" no Editor (Achado 10) */}
-      {pendingNoteBindModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-[#15151d] p-6 space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-zinc-100">Usar nota com qual agente?</h3>
-            <p className="text-xs text-zinc-400">
-              Papel selecionado: <strong>{ROLE_LABELS[pendingNoteBindModal.role].label}</strong>
-            </p>
-            <select
-              value={pendingNoteBindModal.targetAgentId}
-              onChange={e =>
-                setPendingNoteBindModal({ ...pendingNoteBindModal, targetAgentId: e.target.value })
-              }
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100"
-            >
-              {store.agents.map(a => (
-                <option key={a.id} value={a.id}>
-                  {a.icon} {a.name}
-                </option>
+                </div>
               ))}
-            </select>
-            <div className="flex justify-end gap-2 pt-2">
+            </div>
+
+            <div className="border-t border-zinc-800 pt-3 space-y-2.5 text-xs">
+              <div className="font-semibold text-zinc-200">
+                {editingProject ? 'Editar Cliente' : 'Adicionar Cliente'}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={projClient}
+                  onChange={e => setProjClient(e.target.value)}
+                  placeholder="Nome do Cliente"
+                  className="bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100"
+                />
+                <input
+                  type="text"
+                  value={projName}
+                  onChange={e => setProjName(e.target.value)}
+                  placeholder="Projeto"
+                  className="bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100"
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSaveProject}
+                  className="px-4 py-1.5 rounded-xl bg-zinc-100 text-zinc-950 font-semibold cursor-pointer"
+                >
+                  Salvar Cliente
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================ */}
+      {/* MODAL: VINCULAR NOTA VINDA DO EDITOR                                         */}
+      {/* ============================================================================ */}
+      {pendingNoteBindModal && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#141416] border border-zinc-800 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="text-sm font-semibold text-zinc-100">Usar Nota com um Agente</div>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-zinc-400 mb-1">Agente</label>
+                <select
+                  value={pendingNoteBindModal.targetAgentId}
+                  onChange={e =>
+                    setPendingNoteBindModal({
+                      ...pendingNoteBindModal,
+                      targetAgentId: e.target.value
+                    })
+                  }
+                  className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100"
+                >
+                  {store.agents.map(a => (
+                    <option key={a.id} value={a.id} className="bg-[#1c1c1f]">
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-zinc-400 mb-1">Papel da nota</label>
+                <select
+                  value={pendingNoteBindModal.role}
+                  onChange={e =>
+                    setPendingNoteBindModal({
+                      ...pendingNoteBindModal,
+                      role: e.target.value as ContextRole
+                    })
+                  }
+                  className="w-full bg-[#1c1c1f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100"
+                >
+                  <option value="request_context">Usar apenas neste pedido</option>
+                  <option value="template">Modelo de estrutura</option>
+                  <option value="permanent_ref">Catálogo / Referência fixa</option>
+                  <option value="project_context">Contexto do cliente</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setPendingNoteBindModal(null)}
-                className="px-4 py-2 rounded-lg border border-zinc-700 text-xs text-zinc-300 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-zinc-800 text-zinc-300 text-xs cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleConfirmNoteFromEditor}
-                className="px-4 py-2 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer"
+                className="px-4 py-1.5 rounded-xl bg-zinc-100 text-zinc-950 font-semibold text-xs cursor-pointer"
               >
                 Confirmar
               </button>
@@ -1956,22 +2681,25 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         </div>
       )}
 
-      {/* Modal 2: Proteção contra Sobrescrita de Entrega Existente (Achado 2) */}
+      {/* ============================================================================ */}
+      {/* MODAL: PROTEÇÃO CONTRA SOBRESCRITA DE ARQUIVO EXISTENTE                      */}
+      {/* ============================================================================ */}
       {overwritePrompt && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-amber-500/40 bg-[#15151d] p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center gap-2 text-amber-300 font-bold text-base">
-              <AlertTriangle className="w-5 h-5" />
-              <span>Documento já existe na pasta "{overwritePrompt.folder}"</span>
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#141416] border border-zinc-800 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-2 text-amber-400 text-sm font-semibold">
+              <AlertTriangle className="w-4 h-4" />
+              <span>Nota já existente na pasta "{overwritePrompt.folder}"</span>
             </div>
-            <p className="text-sm text-zinc-300 leading-relaxed">
-              Já existe uma entrega chamada <strong>"{overwritePrompt.existingTitle}"</strong>. Para proteger seus documentos anteriores, escolha como deseja salvar:
+            <p className="text-xs text-zinc-300">
+              Já existe <strong>"{overwritePrompt.existingTitle}"</strong>. Deseja salvar como nova
+              revisão ou sobrescrever?
             </p>
-            <div className="flex flex-wrap justify-end gap-2.5 pt-2">
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setOverwritePrompt(null)}
-                className="px-3.5 py-2 rounded-lg border border-zinc-700 text-xs text-zinc-300 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-zinc-800 text-zinc-300 text-xs cursor-pointer"
               >
                 Cancelar
               </button>
@@ -1984,9 +2712,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     'overwrite'
                   )
                 }
-                className="px-3.5 py-2 rounded-lg border border-amber-500/50 bg-amber-500/10 text-xs font-medium text-amber-200 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 text-xs cursor-pointer"
               >
-                Substituir Arquivo Existente
+                Sobrescrever
               </button>
               <button
                 type="button"
@@ -1997,246 +2725,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     'new_revision'
                   )
                 }
-                className="px-4 py-2 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-zinc-100 text-zinc-950 font-semibold text-xs cursor-pointer"
               >
-                Salvar como Nova Revisão (Recomendado)
+                Criar Nova Revisão
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 3: Gerenciar Clientes / Projetos (CRUD Completo - Achado 10) */}
-      {isProjectsModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-zinc-800 bg-[#15151d] p-6 space-y-5 shadow-2xl max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Briefcase className="w-5 h-5 text-[#c59b27]" />
-                <h3 className="text-base font-bold text-zinc-100">Clientes e Projetos</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsProjectsModalOpen(false)}
-                className="text-zinc-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input
-                type="text"
-                placeholder="Nome do Cliente (ex: Construtora Horizonte)"
-                value={projClient}
-                onChange={e => setProjClient(e.target.value)}
-                className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
-              />
-              <input
-                type="text"
-                placeholder="Nome do Projeto (ex: Site Institucional)"
-                value={projName}
-                onChange={e => setProjName(e.target.value)}
-                className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs text-zinc-400 mb-1.5">
-                Notas de Briefing deste Cliente (Isolamento estrito)
-              </label>
-              <div className="max-h-36 overflow-y-auto space-y-1 p-2 rounded-lg border border-zinc-800 bg-zinc-900/60">
-                {notes.map(n => {
-                  const checked = projBriefingIds.includes(n.id)
-                  return (
-                    <label key={n.id} className="flex items-center gap-2 text-xs text-zinc-200 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() =>
-                          setProjBriefingIds(prev =>
-                            checked ? prev.filter(x => x !== n.id) : [...prev, n.id]
-                          )
-                        }
-                        className="accent-[#c59b27]"
-                      />
-                      <span>
-                        {n.title} ({n.folder})
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={handleSaveProject}
-                className="px-4 py-2 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer"
-              >
-                {editingProject ? 'Atualizar Cliente/Projeto' : 'Adicionar Cliente/Projeto'}
-              </button>
-            </div>
-
-            <div className="space-y-2 pt-3 border-t border-zinc-800">
-              {store.projects.map(p => (
-                <div
-                  key={p.id}
-                  className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/60 flex items-center justify-between text-xs"
-                >
-                  <div>
-                    <div className="font-semibold text-zinc-100">{p.clientName}</div>
-                    <div className="text-zinc-400">
-                      {p.name} • {p.briefingNoteIds.length} nota(s) vinculada(s)
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingProject(p)
-                        setProjClient(p.clientName)
-                        setProjName(p.name)
-                        setProjDesc(p.description || '')
-                        setProjBriefingIds(p.briefingNoteIds)
-                      }}
-                      className="px-2.5 py-1 rounded border border-zinc-700 text-zinc-200 cursor-pointer"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const next = store.projects.filter(item => item.id !== p.id)
-                        await onUpdateStore({ ...store, projects: next })
-                        if (selectedProjectId === p.id) setSelectedProjectId('')
-                      }}
-                      className="text-rose-400 hover:underline cursor-pointer"
-                    >
-                      Remover
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 4: Novo Agente (Guiado ou Por Conversa dentro de um único modal limpo) */}
-      {isNewAgentModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="w-full max-w-xl rounded-2xl border border-zinc-800 bg-[#15151d] p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-zinc-100">Criar Novo Agente</h3>
-              <button
-                type="button"
-                onClick={() => setIsNewAgentModalOpen(false)}
-                className="text-zinc-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
-              <button
-                type="button"
-                onClick={() => setNewAgentTab('conversation')}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
-                  newAgentTab === 'conversation' ? 'bg-zinc-800 text-white' : 'text-zinc-400'
-                }`}
-              >
-                Criar por Conversa
-              </button>
-              <button
-                type="button"
-                onClick={() => setNewAgentTab('guided')}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
-                  newAgentTab === 'guided' ? 'bg-zinc-800 text-white' : 'text-zinc-400'
-                }`}
-              >
-                Configuração Guiada
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <label className="block text-xs text-zinc-400">
-                Descreva o que este agente deve fazer e quais entregas ele deve produzir:
-              </label>
-              <textarea
-                rows={3}
-                value={convDescription}
-                onChange={e => setConvDescription(e.target.value)}
-                placeholder="Ex: Preciso de um especialista que leia meu modelo comercial e tabela de preços e monte propostas sem alterar o modelo original..."
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-sm text-zinc-100"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if (!convDescription.trim()) return
-                  const generated = generateAgentDraftFromPrompt(convDescription, notes)
-                  setNewAgentDraft(generated.draft)
-                }}
-                className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-100 cursor-pointer"
-              >
-                Gerar Proposta de Configuração Segura
-              </button>
-            </div>
-
-            {newAgentDraft && (
-              <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/70 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-zinc-400 mb-1">Nome do Agente</label>
-                    <input
-                      type="text"
-                      value={newAgentDraft.name}
-                      onChange={e =>
-                        setNewAgentDraft({ ...newAgentDraft, name: e.target.value })
-                      }
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-zinc-400 mb-1">Pasta de Entrega</label>
-                    <select
-                      value={newAgentDraft.deliverables.targetFolder}
-                      onChange={e =>
-                        setNewAgentDraft({
-                          ...newAgentDraft,
-                          deliverables: {
-                            ...newAgentDraft.deliverables,
-                            targetFolder: e.target.value
-                          }
-                        })
-                      }
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-100"
-                    >
-                      {folders.map(f => (
-                        <option key={f} value={f}>
-                          {f}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const nextStore = updateAgentProfileWithVersion(store, newAgentDraft)
-                      await onUpdateStore(nextStore)
-                      setSelectedAgentId(newAgentDraft.id)
-                      setIsNewAgentModalOpen(false)
-                    }}
-                    className="px-5 py-2 rounded-lg bg-[#c59b27] text-black font-semibold text-xs cursor-pointer"
-                  >
-                    Salvar e Ativar Agente
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}

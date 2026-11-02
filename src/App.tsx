@@ -1449,7 +1449,7 @@ export const App: React.FC = () => {
           onRenameTaskBoard={handleRenameTaskBoard}
           onChangeTaskBoardIcon={handleChangeTaskBoardIcon}
           onDeleteTaskBoard={handleDeleteTaskBoard}
-          isOpen={isLeftSidebarOpen}
+          isOpen={isLeftSidebarOpen && currentView !== 'agents'}
         />
 
         {/* AI Agent Panel - Opens beside main sidebar, to the left of the content (like reference image) */}
@@ -1524,12 +1524,12 @@ export const App: React.FC = () => {
 
         {/* Central View Area with Workspace Tab Header */}
         <main
-          className={`app-main-pane flex-1 my-2 overflow-hidden relative flex flex-col ${
-            currentView === 'graph'
-              ? 'bg-[#010103] rounded-tl-2xl rounded-bl-none border-t border-l border-b-0 shadow-none'
-              : 'bg-[#0f0f12] rounded-l-2xl border-y border-l shadow-lg'
-          } border-zinc-800/80 ${
-            isAiOpen ? '' : 'ml-1.5'
+          className={`app-main-pane flex-1 overflow-hidden relative flex flex-col ${
+            currentView === 'agents'
+              ? 'bg-[#09090b] border-0 shadow-none my-0 ml-0 rounded-none'
+              : currentView === 'graph'
+              ? 'my-2 bg-[#010103] rounded-tl-2xl rounded-bl-none border-t border-l border-b-0 shadow-none border-zinc-800/80 ' + (isAiOpen ? '' : 'ml-1.5')
+              : 'my-2 bg-[#0f0f12] rounded-l-2xl border-y border-l shadow-lg border-zinc-800/80 ' + (isAiOpen ? '' : 'ml-1.5')
           }`}
         >
           {/* Obsidian Tab Header - Stays across full top of central section */}
