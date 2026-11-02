@@ -1665,7 +1665,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 : 'text-zinc-500'
             }`}
           >
-            <span>Documentos {dragOverTarget === '' && '· Raiz do cofre'}</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleStartCreateFolder()
+                }}
+                className="inline-flex items-center gap-0.5 p-1 -ml-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition-colors cursor-pointer"
+                title="Criar nova pasta na raiz do cofre"
+              >
+                <Plus className="w-3 h-3 text-[var(--accent)]" />
+                <Folder className="w-3.5 h-3.5 text-[var(--accent)]" />
+              </button>
+              <span>Documentos {dragOverTarget === '' && '· Raiz do cofre'}</span>
+            </div>
             {dragOverTarget === '' ? (
               <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold text-zinc-950 uppercase tracking-normal" style={{ backgroundColor: 'var(--accent)' }}>
                 Mover para raiz
@@ -1674,6 +1688,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="text-[9.5px] font-mono text-zinc-600">{notes.length}</span>
             )}
           </div>
+
+          {/* Form to create folder when triggered at root */}
+          {isCreatingFolder && !parentForNewFolder && (
+            <form onSubmit={handleCreateFolderSubmit} className="mx-1 my-1 px-2.5 py-1.5 flex items-center gap-1.5 bg-[#16161d] border border-zinc-700/80 rounded-lg shadow-sm">
+              <Folder className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+              <input
+                type="text"
+                autoFocus
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder="Nome da pasta na raiz..."
+                className="flex-1 bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none"
+              />
+              <button type="submit" className="px-1.5 py-0.5 hover:bg-zinc-800 text-[var(--accent)] rounded text-xs font-semibold cursor-pointer">✓</button>
+              <button type="button" onClick={() => setIsCreatingFolder(false)} className="px-1.5 py-0.5 hover:bg-zinc-800 text-zinc-400 rounded text-xs cursor-pointer">✕</button>
+            </form>
+          )}
 
           {/* Root Drop Banner when dragging non-root item */}
           {canDropInto(activeDragItem || draggedItemRef.current || draggedItem, '') && (

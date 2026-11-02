@@ -156,14 +156,17 @@ export const TeamCanvasEditor: React.FC<TeamCanvasEditorProps> = ({
     })
   }
 
-  // Centralização automática ao abrir ou alternar de equipe
+  // Centralização automática ao abrir ou alternar de equipe (apenas ao trocar de equipe ou montar tela)
+  const lastCenteredTeamIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (!activeTeam) return
+    if (lastCenteredTeamIdRef.current === selectedTeamId) return
+    lastCenteredTeamIdRef.current = selectedTeamId
     const timer = setTimeout(() => {
       handleFitView()
     }, 60)
     return () => clearTimeout(timer)
-  }, [selectedTeamId, activeTeam])
+  }, [selectedTeamId])
 
   if (!activeTeam) return null
 

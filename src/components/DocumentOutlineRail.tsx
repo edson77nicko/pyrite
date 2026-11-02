@@ -33,18 +33,23 @@ export const DocumentOutlineRail: React.FC<DocumentOutlineRailProps> = ({
       text: noteTitle || 'Início da nota'
     })
 
-    // Parse Markdown Headings
-    const lines = content.split('\n')
+    // Parse Markdown & HTML Headings (H1 to H6)
+    const lines = (content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
     let headingCount = 0
 
     lines.forEach((line, lIdx) => {
-      const match = line.match(/^(#{1,6})\s+(.*)$/)
-      if (match) {
-        const level = match[1].length
-        // Strip out wikilinks, bold, markdown tags from display text
-        const cleanText = match[2]
+      const trimmed = line.trim()
+      const mdMatch = trimmed.match(/^(#{1,6})\s+(.*)$/)
+      const htmlMatch = !mdMatch ? trimmed.match(/^<h([1-6])[^>]*>(.*?)<\/h\1>/i) : null
+
+      if (mdMatch || htmlMatch) {
+        const level = mdMatch ? mdMatch[1].length : parseInt(htmlMatch![1], 10)
+        const rawText = mdMatch ? mdMatch[2] : htmlMatch![2]
+        // Strip out wikilinks, bold, markdown tags, and HTML tags from display text
+        const cleanText = rawText
+          .replace(/<[^>]+>/g, '')
           .replace(/\[\[(.*?)\]\]/g, '$1')
-          .replace(/[\*_~`#]/g, '')
+          .replace(/[*_~`#]/g, '')
           .trim()
 
         if (cleanText) {

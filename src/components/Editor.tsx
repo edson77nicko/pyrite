@@ -43,6 +43,8 @@ export const Editor: React.FC<EditorProps> = ({
 }) => {
   const [content, setContent] = useState(note.content)
   const [title, setTitle] = useState(note.title)
+  const isTitleFocusedRef = useRef(false)
+  const titleDebounceRef = useRef<any>(null)
   const [isAgentRoleMenuOpen, setIsAgentRoleMenuOpen] = useState(false)
   const liveEditorRef = useRef<LivePreviewEditorHandle>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -50,12 +52,28 @@ export const Editor: React.FC<EditorProps> = ({
   // Keep internal state in sync when note changes
   useEffect(() => {
     setContent(note.content)
-    setTitle(note.title)
+    if (!isTitleFocusedRef.current) {
+      setTitle(note.title)
+    }
   }, [note.id, note.content, note.title])
+
+  const commitTitleChange = (newTitle: string) => {
+    if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current)
+    const trimmed = newTitle.trim()
+    if (!trimmed || trimmed === note.title) {
+      setTitle(note.title)
+      return
+    }
+    setTitle(trimmed)
+    onUpdateNote({ ...note, title: trimmed, updatedAt: Date.now() })
+  }
 
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle)
-    onUpdateNote({ ...note, title: newTitle, updatedAt: Date.now() })
+    if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current)
+    titleDebounceRef.current = setTimeout(() => {
+      commitTitleChange(newTitle)
+    }, 600)
   }
 
   // Handle typing inside editor
@@ -210,6 +228,19 @@ export const Editor: React.FC<EditorProps> = ({
               <input
                 type="text"
                 value={title}
+                onFocus={() => { isTitleFocusedRef.current = true }}
+                onBlur={() => {
+                  isTitleFocusedRef.current = false
+                  commitTitleChange(title)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    isTitleFocusedRef.current = false
+                    commitTitleChange(title)
+                    liveEditorRef.current?.focus?.()
+                  }
+                }}
                 onChange={(e) => handleTitleChange(e.target.value)}
                 placeholder="Título da Nota..."
                 className="w-full text-3xl font-serif font-bold bg-transparent text-zinc-100 placeholder-zinc-700 focus:outline-none tracking-tight"

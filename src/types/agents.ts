@@ -328,6 +328,8 @@ export type WorkflowNodeKind =
   | 'approval'     // Solicitar Aprovação
   | 'deliverable'  // Saída / Criar Entrega
   | 'finish'       // Finalizar
+  | 'sticky_note'  // Nota visual no canvas
+  | 'text_block'   // Tarja de texto / título de seção
 
 export interface WorkflowNode {
   id: string
@@ -349,7 +351,7 @@ export interface WorkflowNode {
     scheduleFrequency?: 'daily' | 'weekly' | 'weekdays' | 'monthly'
     scheduleTime?: string
     scheduleDays?: string[]
-    conditionType?: 'no_missing_fields' | 'no_price_conflicts' | 'net_total_above' | 'always'
+    conditionType?: 'no_missing_fields' | 'no_price_conflicts' | 'net_total_above' | 'always' | 'contains' | 'not_contains' | 'status_equals' | 'has_approval' | 'custom'
     conditionThreshold?: number
     targetFolder?: string
     outputType?: 'note' | 'tasks' | 'mindmap' | 'draw'
@@ -357,6 +359,12 @@ export interface WorkflowNode {
     approvalMessage?: string
     systemPrompt?: string
     rule?: string
+    trueLabel?: string
+    falseLabel?: string
+    boardId?: string
+    eventType?: string
+    content?: string
+    description?: string
     branchTaken?: 'yes' | 'no' | 'true' | 'false'
     lastOutput?: string
     nextRunAt?: string

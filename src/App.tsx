@@ -881,6 +881,7 @@ export const App: React.FC = () => {
       }).then(res => {
         if (res.success && res.filePath) {
           newNote.filePath = res.filePath
+          setNotes(prev => prev.map(n => n.id === newNote.id ? { ...n, filePath: res.filePath } : n))
         }
       })
     }
@@ -1041,10 +1042,50 @@ export const App: React.FC = () => {
     }
   }
 
-  const handleUpdateNote = (updatedNote: Note) => {
+  const handleUpdateNote = async (updatedNote: Note) => {
+    const prevNote = notes.find(n => n.id === updatedNote.id)
+    const titleChanged = prevNote && prevNote.title !== updatedNote.title
+
     const extracted = extractTags(updatedNote.content)
     const combinedTags = Array.from(new Set([...updatedNote.tags, ...extracted]))
-    const finalNote = { ...updatedNote, tags: combinedTags }
+    let finalNote: Note = { ...updatedNote, tags: combinedTags }
+
+    // If title changed on Electron, move/rename the file on disk first
+    if (titleChanged && window.electronAPI?.isElectron && vaultPath) {
+      const api = window.electronAPI
+      const validTitle = finalNote.title.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Sem título'
+      finalNote.title = validTitle
+
+      if (prevNote.filePath) {
+        const originalExt = prevNote.filePath.endsWith('.draw.json') ? '.draw.json'
+          : prevNote.filePath.endsWith('.draw.md') ? '.draw.md'
+          : prevNote.filePath.endsWith('.mindmap.json') ? '.mindmap.json'
+          : prevNote.filePath.endsWith('.mindmap.md') ? '.mindmap.md'
+          : prevNote.filePath.endsWith('.html') ? '.html'
+          : prevNote.filePath.endsWith('.htm') ? '.htm'
+          : '.md'
+
+        const folder = finalNote.folder || 'Início'
+        const destDir = folder && folder !== 'Início' ? folder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') + '/' : ''
+        const newDestination = vaultPath.replace(/[\\/]$/, '') + '/' + destDir + validTitle + originalExt
+
+        if (prevNote.filePath !== newDestination) {
+          try {
+            const moveRes = await api.managePath({
+              vaultPath,
+              source: prevNote.filePath,
+              destination: newDestination,
+              action: 'move'
+            })
+            if (moveRes.success) {
+              finalNote.filePath = newDestination
+            }
+          } catch (err) {
+            console.error('Failed to rename note file on disk:', err)
+          }
+        }
+      }
+    }
 
     const updated = notes.map(n => n.id === finalNote.id ? finalNote : n)
     setNotes(updated)
@@ -1062,6 +1103,7 @@ export const App: React.FC = () => {
       }).then(res => {
         if (res.success && res.filePath) {
           finalNote.filePath = res.filePath
+          setNotes(prev => prev.map(n => n.id === finalNote.id ? { ...n, filePath: res.filePath } : n))
         }
       })
     }

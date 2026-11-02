@@ -3659,7 +3659,13 @@ async function traverseWorkflowGraph(params: {
       const rule = (node.config.rule || '').toLowerCase().trim()
       const prevText = (latestRun?.draftContent || '').toLowerCase()
 
-      if (rule) {
+      if (cType === 'contains' && rule) {
+        conditionPassed = prevText.includes(rule)
+      } else if (cType === 'not_contains' && rule) {
+        conditionPassed = !prevText.includes(rule)
+      } else if (cType === 'has_approval') {
+        conditionPassed = prevText.includes('aprovado') || (node.config.branchTaken === 'yes')
+      } else if (rule) {
         // Validação por regra textual customizada estilo OpenBot
         conditionPassed = prevText.includes(rule) || rule.includes('sempre') || rule.includes('sim')
       } else if (cType === 'no_missing_fields') {
@@ -3677,15 +3683,17 @@ async function traverseWorkflowGraph(params: {
         conditionPassed = true
       }
 
+      const trueText = node.config.trueLabel || 'Sim'
+      const falseText = node.config.falseLabel || 'Não'
       node.config.branchTaken = conditionPassed ? 'yes' : 'no'
       node.config.lastOutput = conditionPassed
-        ? 'Ramo selecionado: Sim (Condição atendida)'
-        : 'Ramo selecionado: Não (Condição não atendida)'
+        ? `Ramo selecionado: ${trueText} (Condição atendida)`
+        : `Ramo selecionado: ${falseText} (Condição não atendida)`
 
       setNodeState(
         node.id,
         'completed',
-        conditionPassed ? 'Condição atendida (Sim)' : 'Condição não atendida (Não)'
+        conditionPassed ? `Condição atendida (${trueText})` : `Condição não atendida (${falseText})`
       )
 
       const outgoing = workflow.edges.filter(e => e.sourceNodeId === node.id)
@@ -3950,12 +3958,30 @@ export async function executeWorkflowSingleNode(params: {
   }
 
   if (node.kind === 'condition') {
+    const cType = node.config.conditionType || 'contains'
     const rule = (node.config.rule || '').toLowerCase().trim()
-    const passed = rule ? (rule.includes('sim') || rule.includes('verdadeiro') || !rule.includes('nao')) : true
+    const trueLabel = node.config.trueLabel || 'Sim (Verdadeiro)'
+    const falseLabel = node.config.falseLabel || 'Não (Falso)'
+    let passed = true
+    if (cType === 'not_contains' && rule) {
+      passed = !prompt.toLowerCase().includes(rule)
+    } else if (cType === 'contains' && rule) {
+      passed = prompt.toLowerCase().includes(rule)
+    } else if (rule) {
+      passed = prompt.toLowerCase().includes(rule) || rule.includes('sim') || !rule.includes('nao')
+    }
     return {
-      output: passed ? 'Condição validada: Sim (Verdadeiro)' : 'Condição validada: Não (Falso)',
+      output: passed ? `Condição validada: ${trueLabel}` : `Condição validada: ${falseLabel}`,
       branchTaken: passed ? 'yes' : 'no'
     }
+  }
+
+  if (node.kind === 'sticky_note') {
+    return { output: node.config.content || 'Nota visual do fluxo registrada.' }
+  }
+
+  if (node.kind === 'text_block') {
+    return { output: node.label || 'Título de seção do fluxo.' }
   }
 
   if (node.kind === 'approval') {

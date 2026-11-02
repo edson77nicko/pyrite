@@ -41,15 +41,20 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     return { title: linkText, note: target }
   })
 
-  // 3. Document Outline (Markdown Headings)
-  const headings = currentNote.content
+  // 3. Document Outline (Markdown & HTML Headings H1 to H6)
+  const headings = (currentNote.content || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
     .split('\n')
     .map(line => {
-      const match = line.match(/^(#{1,6})\s+(.*)$/)
-      if (match) {
+      const trimmed = line.trim()
+      const mdMatch = trimmed.match(/^(#{1,6})\s+(.*)$/)
+      const htmlMatch = !mdMatch ? trimmed.match(/^<h([1-6])[^>]*>(.*?)<\/h\1>/i) : null
+      if (mdMatch || htmlMatch) {
+        const rawText = mdMatch ? mdMatch[2] : htmlMatch![2]
         return {
-          level: match[1].length,
-          text: match[2].trim()
+          level: mdMatch ? mdMatch[1].length : parseInt(htmlMatch![1], 10),
+          text: rawText.replace(/<[^>]+>/g, '').replace(/\[\[(.*?)\]\]/g, '$1').replace(/[*_~`#]/g, '').trim()
         }
       }
       return null

@@ -82,7 +82,8 @@ import {
   Tag,
   Users,
   Maximize2,
-  ExternalLink
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react'
 import { CustomSelect } from './CustomSelect'
 
@@ -227,6 +228,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
   // Modais pontuais
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false)
+  const [isApprovalDrawerOpen, setIsApprovalDrawerOpen] = useState(false)
   const [isNewAgentModalOpen, setIsNewAgentModalOpen] = useState(false)
   const [newAgentTab, setNewAgentTab] = useState<'guided' | 'conversation'>('guided')
 
@@ -511,6 +513,80 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       }
     })
   }, [allUnifiedItems])
+
+  // Execuções em pausa aguardando aprovação humana em fluxo
+  const pendingApprovalRuns = useMemo(() => {
+    return store.runs.filter(r => r.status === 'waiting_approval' || (r.workflowId && r.pausedAtWorkflowNodeId))
+  }, [store.runs])
+
+  const handleDirectApproveWorkflowRun = async (pausedRun: AgentRun) => {
+    setIsExecuting(true)
+    try {
+      const wf = workflows.find(w => w.id === pausedRun.workflowId) || workflows[0]
+      if (pausedRun.pausedAtWorkflowNodeId) {
+        const updatedWf = {
+          ...wf,
+          nodes: wf.nodes.map(n =>
+            n.id === pausedRun.pausedAtWorkflowNodeId
+              ? { ...n, config: { ...n.config, branchTaken: 'yes' as const, lastOutput: 'Aprovado pelo usuário.' } }
+              : n
+          ),
+          updatedAt: Date.now()
+        }
+        await onUpdateStore({
+          ...store,
+          workflows: (store.workflows || []).map(w => (w.id === updatedWf.id ? updatedWf : w))
+        })
+      }
+      const resumed = await resumeWorkflowRun({
+        pausedRun,
+        workflow: wf,
+        allAgents: store.agents,
+        allNotes: notes,
+        allProjects: allUnifiedAsProjects
+      })
+      await onUpdateStore({
+        ...store,
+        runs: store.runs.map(r => (r.id === resumed.id ? resumed : r))
+      })
+      setStatusBanner({ type: 'success', text: 'Etapa aprovada com sucesso! Fluxo de trabalho continuado.' })
+      setIsApprovalDrawerOpen(false)
+    } catch (err: any) {
+      setStatusBanner({ type: 'error', text: `Erro ao aprovar etapa: ${err?.message || 'Falha ao processar'}` })
+    } finally {
+      setIsExecuting(false)
+    }
+  }
+
+  const handleDirectRejectWorkflowRun = async (pausedRun: AgentRun) => {
+    try {
+      const wf = workflows.find(w => w.id === pausedRun.workflowId) || workflows[0]
+      if (pausedRun.pausedAtWorkflowNodeId) {
+        const updatedWf = {
+          ...wf,
+          nodes: wf.nodes.map(n =>
+            n.id === pausedRun.pausedAtWorkflowNodeId
+              ? { ...n, config: { ...n.config, branchTaken: 'no' as const, lastOutput: 'Rejeitado pelo usuário.' } }
+              : n
+          ),
+          updatedAt: Date.now()
+        }
+        await onUpdateStore({
+          ...store,
+          workflows: (store.workflows || []).map(w => (w.id === updatedWf.id ? updatedWf : w)),
+          runs: store.runs.map(r =>
+            r.id === pausedRun.id
+              ? { ...r, status: 'failed', errorMessage: 'Execução rejeitada pelo usuário na etapa de aprovação.' }
+              : r
+          )
+        })
+      }
+      setStatusBanner({ type: 'warning', text: 'Fluxo rejeitado e finalizado.' })
+      setIsApprovalDrawerOpen(false)
+    } catch (err: any) {
+      setStatusBanner({ type: 'error', text: `Erro ao rejeitar: ${err?.message || 'Falha ao processar'}` })
+    }
+  }
 
   const resolveActiveContext = (id: string | null | undefined): UnifiedContextItem | undefined => {
     if (!id) return undefined
@@ -1268,6 +1344,111 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         </button>
       </aside>
 
+
+      {/* Botão Pill Fixo no Topo: Notificação de Aprovações Pendentes em Segundo Plano */}
+      {pendingApprovalRuns.length > 0 && (
+        <div className="fixed top-3 right-6 z-50 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsApprovalDrawerOpen(v => !v)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141416]/95 backdrop-blur-xl border border-amber-500/50 text-amber-300 hover:bg-zinc-850 hover:border-amber-400 transition-all shadow-2xl cursor-pointer"
+          >
+            <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-xs font-semibold">
+              {pendingApprovalRuns.length} Aprovação{pendingApprovalRuns.length > 1 ? 'ões' : ''} Pendente{pendingApprovalRuns.length > 1 ? 's' : ''}
+            </span>
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+          </button>
+        </div>
+      )}
+
+      {/* Popover / Drawer Lateral Fixo de Aprovações Pendentes (Não invasivo) */}
+      {isApprovalDrawerOpen && pendingApprovalRuns.length > 0 && (
+        <aside
+          onMouseDown={e => e.stopPropagation()}
+          className="fixed top-12 right-6 w-96 max-h-[85vh] bg-[#141416]/98 backdrop-blur-2xl border border-amber-500/30 rounded-2xl shadow-2xl p-4 z-50 overflow-y-auto space-y-4 custom-chat-scrollbar animate-in fade-in slide-in-from-right-4 duration-200"
+        >
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
+            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-100">
+              <span className="w-6 h-6 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center">
+                <ShieldCheck className="w-3.5 h-3.5" />
+              </span>
+              <span>Aprovações de Fluxo Pendentes</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsApprovalDrawerOpen(false)}
+              className="text-zinc-500 hover:text-zinc-200 p-1 rounded-lg hover:bg-zinc-800/60 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {pendingApprovalRuns.map(pr => {
+              const runWf = workflows.find(w => w.id === pr.workflowId)
+              const approvalNode = runWf?.nodes.find(n => n.id === pr.pausedAtWorkflowNodeId)
+              return (
+                <div key={pr.id} className="p-3 bg-[#18181b] border border-zinc-800/80 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-zinc-200 truncate">{runWf?.name || 'Fluxo de Trabalho'}</span>
+                    <span className="text-[10px] text-amber-400 font-mono bg-amber-950/40 px-1.5 py-0.5 rounded">
+                      {approvalNode?.label || 'Aprovação'}
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-zinc-300 bg-[#121214] p-2 rounded-lg border border-zinc-800/60">
+                    <div className="text-[10px] text-zinc-500 font-medium mb-1">Instrução:</div>
+                    <p className="leading-relaxed">{approvalNode?.config?.approvalMessage || 'Confirmação solicitada antes de prosseguir com as entregas.'}</p>
+                  </div>
+
+                  {pr.draftContent && (
+                    <div className="text-[11px] text-zinc-400 bg-[#121214] p-2 rounded-lg border border-zinc-800/40 max-h-24 overflow-y-auto custom-chat-scrollbar">
+                      <div className="text-[10px] text-zinc-500 font-medium mb-0.5">Prévia da saída da etapa anterior:</div>
+                      <p className="whitespace-pre-wrap">{pr.draftContent.slice(0, 240)}...</p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={isExecuting}
+                      onClick={() => handleDirectApproveWorkflowRun(pr)}
+                      className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Aprovar e Continuar</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isExecuting}
+                      onClick={() => handleDirectRejectWorkflowRun(pr)}
+                      className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-rose-300 font-medium text-xs flex items-center justify-center gap-1 transition-colors cursor-pointer border border-zinc-700"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Rejeitar</span>
+                    </button>
+                  </div>
+
+                  <div className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedWorkflowId(pr.workflowId || workflows[0].id)
+                        setActiveSection('workflows')
+                        setIsApprovalDrawerOpen(false)
+                      }}
+                      className="text-[10.5px] text-zinc-400 hover:text-zinc-200 hover:underline cursor-pointer"
+                    >
+                      Ver no Fluxo de Trabalho →
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </aside>
+      )}
       {/* ============================================================================ */}
       {/* ÁREA DE CONTEÚDO PRINCIPAL                                                   */}
       {/* ============================================================================ */}
@@ -3356,6 +3537,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             latestNodeStates={activeRun?.workflowNodeStates}
             activeRun={activeRun}
             allProjects={allUnifiedAsProjects}
+            taskBoards={taskBoards}
             onSelectWorkflow={setSelectedWorkflowId}
             onSaveWorkflow={async wf => {
               const exists = workflows.some(w => w.id === wf.id)

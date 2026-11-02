@@ -10,6 +10,7 @@ import type {
   WorkflowNodeKind
 } from '../types/agents'
 import type { Note } from '../types'
+import type { TaskBoard } from '../types/tasks'
 import {
   validateWorkflowDefinition,
   computeWorkflowNextRunISO,
@@ -18,13 +19,14 @@ import {
 } from '../utils/multiAgentEngine'
 import {
   snapDiagramCoord,
-  diagramInputPort,
-  diagramOutputPort,
   diagramEdgePath,
   diagramEdgeMidpoint,
   diagramEdgeArrow,
   diagramBounds,
-  diagramConnectionProblem
+  diagramConnectionProblem,
+  getNodeCardDimensions,
+  getNodeInputPort,
+  getNodeOutputPort
 } from '../utils/openbotDiagramUtils'
 import {
   GitBranch,
@@ -48,12 +50,9 @@ import {
   MousePointer,
   Hand,
   StickyNote,
-  Shapes,
   Type,
   Search,
-  Image as ImageIcon,
   FileText,
-  Globe,
   Sliders,
   Check,
   CheckCircle2,
@@ -61,7 +60,8 @@ import {
   Copy,
   Clock,
   Power,
-  Folder
+  Folder,
+  ListTodo
 } from 'lucide-react'
 import { CustomSelect } from './CustomSelect'
 import { CustomTimePicker } from './CustomTimePicker'
@@ -76,6 +76,7 @@ interface WorkflowCanvasEditorProps {
   latestNodeStates?: WorkflowNodeExecution[]
   activeRun?: AgentRun
   allProjects?: ProjectContext[]
+  taskBoards?: TaskBoard[]
   onSelectWorkflow: (workflowId: string) => void
   onSaveWorkflow: (workflow: WorkflowDefinition) => void
   onDeleteWorkflow: (workflowId: string) => void
@@ -150,6 +151,16 @@ const NODE_META: Record<
     group: 'Entradas',
     color: '#3b82f6'
   },
+  sticky_note: {
+    label: 'Nota Adesiva',
+    group: 'Entradas',
+    color: '#eab308'
+  },
+  text_block: {
+    label: 'Tarja de Título',
+    group: 'Entradas',
+    color: '#94a3b8'
+  },
   llm: {
     label: 'LLM',
     group: 'Etapas',
@@ -193,6 +204,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   latestNodeStates,
   activeRun,
   allProjects = [],
+  taskBoards = [],
   onSelectWorkflow,
   onSaveWorkflow,
   onDeleteWorkflow,
@@ -298,14 +310,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     })
   }
 
-  // Centralização automática ao abrir ou trocar de fluxo
+  // Centralização automática ao abrir ou trocar de fluxo (apenas uma vez ao mudar selectedWorkflowId)
+  const lastCenteredWfIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (!activeWorkflow) return
+    if (lastCenteredWfIdRef.current === selectedWorkflowId) return
+    lastCenteredWfIdRef.current = selectedWorkflowId
     const timer = setTimeout(() => {
       handleFitView()
     }, 60)
     return () => clearTimeout(timer)
-  }, [selectedWorkflowId, activeWorkflow])
+  }, [selectedWorkflowId])
 
   if (!activeWorkflow) return null
 
@@ -378,19 +393,23 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       label: meta.label,
       position: pos,
       config:
-        kind === 'run_agent'
+        kind === 'sticky_note'
+          ? { content: 'Nova nota de apoio para o fluxo de trabalho...' }
+          : kind === 'text_block'
+          ? {}
+          : kind === 'run_agent'
           ? { agentId: agents[0]?.id }
           : kind === 'llm'
           ? { model: 'gpt-4o', reasoning: 'low', promptTemplate: '' }
           : kind === 'read_note'
           ? { noteId: notes[0]?.id, noteTitle: notes[0]?.title, contextRole: 'permanent_ref' }
           : kind === 'condition'
-          ? { conditionType: 'no_missing_fields' }
+          ? { conditionType: 'contains', rule: '', trueLabel: 'Sim (Verdadeiro)', falseLabel: 'Não (Falso)' }
           : kind === 'approval'
           ? { approvalMessage: 'Revisar entregável gerado antes de salvar no cofre.' }
           : kind === 'deliverable'
           ? { targetFolder: 'Propostas', outputType: 'note' }
-          : { triggerType: 'schedule', scheduleFrequency: 'daily', scheduleTime: '09:00' }
+          : { triggerType: 'manual' }
     }
     onSaveWorkflow({
       ...activeWorkflow,
@@ -449,7 +468,11 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       targetNodeId: toId,
       branch,
       label:
-        branch === 'true' ? 'Verdadeiro' : branch === 'approved' ? 'Aprovado' : undefined
+        branch === 'true'
+          ? sourceNode?.config?.trueLabel || 'Sim'
+          : branch === 'approved'
+          ? 'Aprovado'
+          : undefined
     }
     onSaveWorkflow({
       ...activeWorkflow,
@@ -464,8 +487,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       const world = screenToWorld(e.clientX, e.clientY)
       let hoveredTargetId: string | null = null
       for (const n of activeWorkflow.nodes) {
-        if (n.id === wireDraft.fromNodeId || n.kind === 'input') continue
-        const inPort = diagramInputPort(n.position)
+        if (n.id === wireDraft.fromNodeId || n.kind === 'input' || n.kind === 'sticky_note' || n.kind === 'text_block') continue
+        const inPort = getNodeInputPort(n)
         if (Math.hypot(world.x - inPort.x, world.y - inPort.y) < 42) {
           hoveredTargetId = n.id
           break
@@ -474,7 +497,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       setWireDraft({
         ...wireDraft,
         toWorld: hoveredTargetId
-          ? diagramInputPort(activeWorkflow.nodes.find(n => n.id === hoveredTargetId)!.position)
+          ? getNodeInputPort(activeWorkflow.nodes.find(n => n.id === hoveredTargetId)!)
           : world,
         hoveredTargetId
       })
@@ -587,10 +610,12 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
   const addMenuGroups = [
     {
-      title: 'Entradas',
+      title: 'Entradas & Apoio',
       items: [
         { kind: 'input' as WorkflowNodeKind, label: 'Gatilho', icon: Zap, color: '#f59e0b' },
-        { kind: 'read_note' as WorkflowNodeKind, label: 'Prompt', icon: MessageSquare, color: '#3b82f6' }
+        { kind: 'read_note' as WorkflowNodeKind, label: 'Prompt', icon: MessageSquare, color: '#3b82f6' },
+        { kind: 'sticky_note' as WorkflowNodeKind, label: 'Nota Adesiva', icon: StickyNote, color: '#eab308' },
+        { kind: 'text_block' as WorkflowNodeKind, label: 'Tarja de Título', icon: Type, color: '#94a3b8' }
       ]
     },
     {
@@ -780,12 +805,16 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           onPointerDown={e => {
             if (e.button === 2) return
             const target = e.target as HTMLElement
-            const isInteractive = target?.closest?.('button, input, textarea, select, [data-node-id], [data-no-pan="true"]')
-            if (!isInteractive) {
-              setSelectedNodeId(null)
-              setSelectedEdgeId(null)
-              setIsWorkflowMenuOpen(false)
-              setIsAddMenuOpen(false)
+            const isInput = target?.closest?.('button, input, textarea, select, [data-no-pan="true"]')
+            const isNode = target?.closest?.('[data-node-id]')
+
+            if (toolMode === 'hand' || e.button === 1 || (!isInput && !isNode)) {
+              if (!isNode) {
+                setSelectedNodeId(null)
+                setSelectedEdgeId(null)
+                setIsWorkflowMenuOpen(false)
+                setIsAddMenuOpen(false)
+              }
               setIsPanning(true)
               panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
             }
@@ -816,8 +845,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 const src = activeWorkflow.nodes.find(n => n.id === edge.sourceNodeId)
                 const dst = activeWorkflow.nodes.find(n => n.id === edge.targetNodeId)
                 if (!src || !dst) return null
-                const fromPt = diagramOutputPort(src.position)
-                const toPt = diagramInputPort(dst.position)
+                const fromPt = getNodeOutputPort(src)
+                const toPt = getNodeInputPort(dst)
                 const pathD = diagramEdgePath(fromPt, toPt)
                 const mid = diagramEdgeMidpoint(fromPt, toPt)
                 const arrowPts = diagramEdgeArrow(toPt)
@@ -872,7 +901,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               {wireDraft && (() => {
                 const src = activeWorkflow.nodes.find(n => n.id === wireDraft.fromNodeId)
                 if (!src) return null
-                const fromPt = diagramOutputPort(src.position)
+                const fromPt = getNodeOutputPort(src)
                 const pathD = diagramEdgePath(fromPt, wireDraft.toWorld)
                 return (
                   <g>
@@ -901,11 +930,11 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               const isSelected = selectedNodeId === node.id
               const isDropTarget = wireDraft?.hoveredTargetId === node.id
               const isExecutingThisNode = executingNodeId === node.id || latestNodeStates?.find(s => s.nodeId === node.id)?.status === 'running'
-              const nodeAgent =
-                node.kind === 'run_agent'
-                  ? agents.find(a => a.id === node.config.agentId) || agents[0]
-                  : undefined
+
               const execState = latestNodeStates?.find(s => s.nodeId === node.id)
+              const cardDim = getNodeCardDimensions(node.kind)
+              const incomingEdges = activeWorkflow.edges.filter(e => e.targetNodeId === node.id)
+              const incomingNodes = incomingEdges.map(e => activeWorkflow.nodes.find(n => n.id === e.sourceNodeId)).filter(Boolean)
 
               return (
                 <div
@@ -913,9 +942,13 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                   style={{
                     left: node.position.x,
                     top: node.position.y,
-                    width: node.kind === 'run_agent' || node.kind === 'llm' ? 284 : 264
+                    width: cardDim.width
                   }}
                   onPointerDown={e => {
+                    const target = e.target as HTMLElement
+                    if (target?.closest?.('input, textarea, select, button, [data-no-pan="true"]')) {
+                      return
+                    }
                     e.stopPropagation()
                     setSelectedNodeId(node.id)
                     setSelectedEdgeId(null)
@@ -936,6 +969,10 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         <Zap className="w-3 h-3 text-amber-400" />
                       ) : node.kind === 'read_note' ? (
                         <MessageSquare className="w-3 h-3 text-blue-400" />
+                      ) : node.kind === 'sticky_note' ? (
+                        <StickyNote className="w-3 h-3 text-amber-400" />
+                      ) : node.kind === 'text_block' ? (
+                        <Type className="w-3 h-3 text-zinc-400" />
                       ) : node.kind === 'llm' ? (
                         <Sparkles className="w-3 h-3 text-purple-400" />
                       ) : node.kind === 'run_agent' ? (
@@ -947,7 +984,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       ) : (
                         <Send className="w-3 h-3 text-blue-400" />
                       )}
-                      <span>{node.label || NODE_META[node.kind].label}</span>
+                      <span>{node.label || NODE_META[node.kind]?.label || 'Etapa'}</span>
                       {execState && (
                         <span className={`text-[9px] px-1 py-0.5 rounded font-mono ${execState.status === 'completed' ? 'text-emerald-400 bg-emerald-950/40' : execState.status === 'failed' ? 'text-rose-400 bg-rose-950/40' : 'text-amber-400 bg-amber-950/40'}`}>
                           {execState.status}
@@ -984,55 +1021,37 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     </div>
                   </div>
 
-                  {/* PORTAS CIRCULARES À ESQUERDA (T, Imagem, Arquivo — como no Print 02!) */}
-                  {node.kind !== 'input' && (
-                    <div className="absolute -left-9 top-8 flex flex-col gap-1.5 z-20">
-                      <div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-serif transition-all ${
-                          isDropTarget
-                            ? 'bg-white text-black scale-125 shadow-lg'
-                            : 'bg-[#1a1a1e] border border-zinc-700/80 text-zinc-300'
-                        }`}
-                        title="Entrada de Texto / Contexto"
-                      >
-                        T
-                      </div>
-                      {(node.kind === 'run_agent' || node.kind === 'llm') && (
-                        <>
-                          <div
-                            className="w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-800 text-zinc-500 flex items-center justify-center"
-                            title="Entrada de Imagem"
-                          >
-                            <ImageIcon className="w-3 h-3" />
-                          </div>
-                          <div
-                            className="w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-800 text-zinc-500 flex items-center justify-center"
-                            title="Entrada de Arquivo / Nota"
-                          >
-                            <FileText className="w-3 h-3" />
-                          </div>
-                        </>
-                      )}
+                  {/* PORTA DE ENTRADA CENTRALIZADA À ESQUERDA (Handler elegante no meio vertical) */}
+                  {node.kind !== 'input' && node.kind !== 'sticky_note' && node.kind !== 'text_block' && (
+                    <div
+                      className={`absolute -left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center transition-all z-20 ${
+                        isDropTarget
+                          ? 'bg-emerald-500 ring-4 ring-emerald-500/40 scale-125 border-white'
+                          : 'bg-[#141416] border border-zinc-700 hover:border-emerald-400 group-hover:scale-110 shadow-md'
+                      }`}
+                      title="Entrada da etapa (Conecte o fluxo anterior aqui)"
+                    >
+                      <div className={`w-2 h-2 rounded-full ${isDropTarget ? 'bg-white' : 'bg-zinc-400 group-hover:bg-emerald-400'} transition-colors`} />
                     </div>
                   )}
 
-                  {/* PORTA CIRCULAR À DIREITA (Arraste para conectar ao próximo nó!) */}
-                  {node.kind !== 'finish' && (
+                  {/* PORTA DE SAÍDA CENTRALIZADA À DIREITA (Handler elegante no meio vertical) */}
+                  {node.kind !== 'finish' && node.kind !== 'text_block' && (
                     <button
                       type="button"
                       onPointerDown={e => {
                         e.stopPropagation()
-                        const outPort = diagramOutputPort(node.position, node.kind === 'run_agent' || node.kind === 'llm' ? 284 : 264)
+                        const outPort = getNodeOutputPort(node)
                         setWireDraft({
                           fromNodeId: node.id,
                           toWorld: outPort,
                           hoveredTargetId: null
                         })
                       }}
-                      className="absolute -right-9 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#1a1a1e] border border-zinc-700/80 hover:border-white hover:bg-zinc-800 text-zinc-300 text-[11px] font-serif flex items-center justify-center cursor-crosshair z-20 transition-transform hover:scale-110"
+                      className="absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#141416] border border-zinc-700 hover:border-emerald-400 hover:bg-zinc-850 text-zinc-300 flex items-center justify-center cursor-crosshair z-20 transition-all hover:scale-125 shadow-md hover:ring-2 hover:ring-emerald-500/30"
                       title="Arraste para conectar ao próximo nó"
                     >
-                      T
+                      <div className="w-2 h-2 rounded-full bg-zinc-300 group-hover:bg-emerald-400 transition-colors" />
                     </button>
                   )}
 
@@ -1046,31 +1065,41 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         : 'border-zinc-800/90 hover:border-zinc-700/80'
                     }`}
                   >
-                    {/* CARD 1: GATILHO / AGENDAMENTO (Idêntico ao Print 02!) */}
+                    {/* CARD 1: GATILHO INDEPENDENTE (Manual, Agendamento, Tarefa, Nota) */}
                     {node.kind === 'input' && (
                       <div className="space-y-3" onPointerDown={e => e.stopPropagation()}>
                         <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-1">
                           <CustomSelect
-                            value={node.config.triggerType || 'schedule'}
+                            value={node.config.triggerType || 'manual'}
                             onChange={newType => {
-                              const nextIso = computeWorkflowNextRunISO(
-                                node.config.scheduleFrequency || 'daily',
-                                node.config.scheduleTime || '09:00',
-                                node.config.scheduleDays
-                              )
+                              const nextIso = newType === 'schedule'
+                                ? computeWorkflowNextRunISO(
+                                    node.config.scheduleFrequency || 'daily',
+                                    node.config.scheduleTime || '09:00',
+                                    node.config.scheduleDays
+                                  )
+                                : undefined
                               handleUpdateNodeById(node.id, {
                                 config: { ...node.config, triggerType: newType as any, nextRunAt: nextIso }
                               })
                             }}
                             options={[
-                              { value: 'schedule', label: 'Agendamento' },
                               { value: 'manual', label: 'Manual (Ao Executar)' },
-                              { value: 'task_event', label: 'Ao Criar Tarefa' },
+                              { value: 'schedule', label: 'Agendamento Programado' },
+                              { value: 'task_event', label: 'Ao Criar/Alterar Tarefa' },
                               { value: 'note_event', label: 'Ao Alterar Nota' },
                             ]}
                             icon={
                               <span className="w-5 h-5 rounded-md bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
-                                <Calendar className="w-3.5 h-3.5" />
+                                {node.config.triggerType === 'schedule' ? (
+                                  <Calendar className="w-3.5 h-3.5" />
+                                ) : node.config.triggerType === 'task_event' ? (
+                                  <ListTodo className="w-3.5 h-3.5" />
+                                ) : node.config.triggerType === 'note_event' ? (
+                                  <FileText className="w-3.5 h-3.5" />
+                                ) : (
+                                  <Play className="w-3.5 h-3.5" />
+                                )}
                               </span>
                             }
                             className="w-full"
@@ -1078,89 +1107,171 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           />
                         </div>
 
-                        {node.config.triggerType !== 'manual' && (
-                          <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 flex-wrap">
-                            <CustomSelect
-                              value={node.config.scheduleFrequency || 'daily'}
-                              onChange={newFreq => {
-                                const nextIso = computeWorkflowNextRunISO(
-                                  newFreq as any,
-                                  node.config.scheduleTime || '09:00',
-                                  node.config.scheduleDays
-                                )
-                                handleUpdateNodeById(node.id, {
-                                  config: { ...node.config, scheduleFrequency: newFreq as any, nextRunAt: nextIso }
-                                })
-                              }}
-                              options={[
-                                { value: 'daily', label: 'Diariamente' },
-                                { value: 'weekdays', label: 'Dias úteis' },
-                                { value: 'weekly', label: 'Semanalmente' },
-                                { value: 'monthly', label: 'Mensalmente' },
-                              ]}
-                              size="xs"
-                            />
-                            <span>em</span>
-                            <span className="px-2 py-1 rounded-lg bg-[#1c1c1f] text-zinc-200 font-medium text-[11px]">
-                              {node.config.scheduleFrequency === 'weekdays' ? 'Dias úteis' : 'Todo dia'}
-                            </span>
-                            <span>às</span>
-                            <CustomTimePicker
-                              value={node.config.scheduleTime || '09:00'}
-                              onChange={newTime => {
-                                const nextIso = computeWorkflowNextRunISO(
-                                  node.config.scheduleFrequency || 'daily',
-                                  newTime,
-                                  node.config.scheduleDays
-                                )
-                                handleUpdateNodeById(node.id, {
-                                  config: { ...node.config, scheduleTime: newTime, nextRunAt: nextIso }
-                                })
-                              }}
-                            />
+                        {/* Gatilho Manual */}
+                        {(node.config.triggerType === 'manual' || !node.config.triggerType) && (
+                          <div className="text-[11px] text-zinc-400 bg-[#1c1c1f]/80 p-2 rounded-xl flex items-center gap-2 border border-zinc-800/50">
+                            <Play className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span>Executado sob demanda pelo botão 'Executar agora' ou no topo do fluxo.</span>
                           </div>
                         )}
 
-                        <div className="flex items-center justify-between pt-2 border-t border-zinc-800/70 text-[11px]">
-                          <div className="flex flex-col">
-                            <span className="text-zinc-400 leading-tight">
-                              Próxima
-                              <br />
-                              execução
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const nextActive = activeWorkflow.active === false ? true : false
-                                onSaveWorkflow({
-                                  ...activeWorkflow,
-                                  active: nextActive,
-                                  version: activeWorkflow.version + 1,
-                                  updatedAt: Date.now()
-                                })
-                              }}
-                              className={`mt-1 text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 cursor-pointer w-fit ${
-                                activeWorkflow.active !== false
-                                  ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40'
-                                  : 'bg-zinc-800 text-zinc-400'
-                              }`}
-                              title="Ativar/pausar execução automática em segundo plano"
-                            >
-                              <Power className="w-2.5 h-2.5" />
-                              <span>{activeWorkflow.active !== false ? 'Agendado' : 'Pausado'}</span>
-                            </button>
-                          </div>
-                          <span className="text-zinc-100 font-medium text-right">
-                            {formatWorkflowNextRun(
-                              node.config.nextRunAt ||
-                              computeWorkflowNextRunISO(
-                                node.config.scheduleFrequency || 'daily',
-                                node.config.scheduleTime || '09:00',
-                                node.config.scheduleDays
-                              )
+                        {/* Gatilho Agendamento */}
+                        {node.config.triggerType === 'schedule' && (
+                          <>
+                            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 flex-wrap">
+                              <CustomSelect
+                                value={node.config.scheduleFrequency || 'daily'}
+                                onChange={newFreq => {
+                                  const nextIso = computeWorkflowNextRunISO(
+                                    newFreq as any,
+                                    node.config.scheduleTime || '09:00',
+                                    node.config.scheduleDays
+                                  )
+                                  handleUpdateNodeById(node.id, {
+                                    config: { ...node.config, scheduleFrequency: newFreq as any, nextRunAt: nextIso }
+                                  })
+                                }}
+                                options={[
+                                  { value: 'daily', label: 'Diariamente' },
+                                  { value: 'weekdays', label: 'Dias úteis' },
+                                  { value: 'weekly', label: 'Semanalmente' },
+                                  { value: 'monthly', label: 'Mensalmente' },
+                                ]}
+                                size="xs"
+                              />
+                              <span>em</span>
+                              <span className="px-2 py-1 rounded-lg bg-[#1c1c1f] text-zinc-200 font-medium text-[11px]">
+                                {node.config.scheduleFrequency === 'weekdays' ? 'Dias úteis' : 'Todo dia'}
+                              </span>
+                              <span>às</span>
+                              <CustomTimePicker
+                                value={node.config.scheduleTime || '09:00'}
+                                onChange={newTime => {
+                                  const nextIso = computeWorkflowNextRunISO(
+                                    node.config.scheduleFrequency || 'daily',
+                                    newTime,
+                                    node.config.scheduleDays
+                                  )
+                                  handleUpdateNodeById(node.id, {
+                                    config: { ...node.config, scheduleTime: newTime, nextRunAt: nextIso }
+                                  })
+                                }}
+                              />
+                            </div>
+
+                            <div className="flex items-center justify-between pt-2 border-t border-zinc-800/70 text-[11px]">
+                              <div className="flex flex-col">
+                                <span className="text-zinc-400 leading-tight">
+                                  Próxima
+                                  <br />
+                                  execução
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nextActive = activeWorkflow.active === false ? true : false
+                                    onSaveWorkflow({
+                                      ...activeWorkflow,
+                                      active: nextActive,
+                                      version: activeWorkflow.version + 1,
+                                      updatedAt: Date.now()
+                                    })
+                                  }}
+                                  className={`mt-1 text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 cursor-pointer w-fit ${
+                                    activeWorkflow.active !== false
+                                      ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40'
+                                      : 'bg-zinc-800 text-zinc-400'
+                                  }`}
+                                  title="Ativar/pausar execução automática em segundo plano"
+                                >
+                                  <Power className="w-2.5 h-2.5" />
+                                  <span>{activeWorkflow.active !== false ? 'Agendado' : 'Pausado'}</span>
+                                </button>
+                              </div>
+                              <span className="text-zinc-100 font-medium text-right text-[11px]">
+                                {formatWorkflowNextRun(
+                                  node.config.nextRunAt ||
+                                  computeWorkflowNextRunISO(
+                                    node.config.scheduleFrequency || 'daily',
+                                    node.config.scheduleTime || '09:00',
+                                    node.config.scheduleDays
+                                  )
+                                )}
+                              </span>
+                            </div>
+                          </>
+                        )}
+
+                        {/* Gatilho Evento de Tarefa */}
+                        {node.config.triggerType === 'task_event' && (
+                          <div className="space-y-2">
+                            <div>
+                              <label className="text-[10px] text-zinc-500 font-medium mb-1 block">Evento Disparador</label>
+                              <CustomSelect
+                                value={node.config.eventType || 'task_created'}
+                                onChange={ev => handleUpdateNodeById(node.id, { config: { ...node.config, eventType: ev } })}
+                                options={[
+                                  { value: 'task_created', label: 'Ao Criar Nova Tarefa' },
+                                  { value: 'task_completed', label: 'Ao Concluir Tarefa' },
+                                  { value: 'status_changed', label: 'Ao Mover de Status/Coluna' },
+                                ]}
+                                size="xs"
+                              />
+                            </div>
+                            {taskBoards && taskBoards.length > 0 && (
+                              <div>
+                                <label className="text-[10px] text-zinc-500 font-medium mb-1 block">Quadro / Grupo Específico</label>
+                                <CustomSelect
+                                  value={node.config.boardId || ''}
+                                  onChange={bId => handleUpdateNodeById(node.id, { config: { ...node.config, boardId: bId } })}
+                                  options={[
+                                    { value: '', label: 'Todos os Quadros e Grupos' },
+                                    ...taskBoards.map(b => ({ value: b.id, label: b.name }))
+                                  ]}
+                                  size="xs"
+                                />
+                              </div>
                             )}
-                          </span>
-                        </div>
+                            <div className="text-[10.5px] text-amber-400/90 bg-amber-950/20 border border-amber-800/30 p-2 rounded-xl flex items-center gap-2">
+                              <Zap className="w-3 h-3 text-amber-400 shrink-0" />
+                              <span>Monitorando tarefas do cofre em tempo real.</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Gatilho Evento de Nota */}
+                        {node.config.triggerType === 'note_event' && (
+                          <div className="space-y-2">
+                            <div>
+                              <label className="text-[10px] text-zinc-500 font-medium mb-1 block">Evento Disparador</label>
+                              <CustomSelect
+                                value={node.config.eventType || 'note_created'}
+                                onChange={ev => handleUpdateNodeById(node.id, { config: { ...node.config, eventType: ev } })}
+                                options={[
+                                  { value: 'note_created', label: 'Ao Criar Nova Nota' },
+                                  { value: 'note_modified', label: 'Ao Editar / Salvar Nota' },
+                                ]}
+                                size="xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-zinc-500 font-medium mb-1 block">Pasta Monitorada</label>
+                              <CustomSelect
+                                value={node.config.targetFolder || ''}
+                                onChange={f => handleUpdateNodeById(node.id, { config: { ...node.config, targetFolder: f } })}
+                                options={[
+                                  { value: '', label: 'Todo o Cofre' },
+                                  ...folders.map(f => ({ value: f, label: f }))
+                                ]}
+                                size="xs"
+                              />
+                            </div>
+                            <div className="text-[10.5px] text-blue-400/90 bg-blue-950/20 border border-blue-800/30 p-2 rounded-xl flex items-center gap-2">
+                              <FileText className="w-3 h-3 text-blue-400 shrink-0" />
+                              <span>Monitorando arquivos do cofre em tempo real.</span>
+                            </div>
+                          </div>
+                        )}
 
                         <button
                           type="button"
@@ -1176,63 +1287,74 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       </div>
                     )}
 
-                    {/* CARD 2: AGENTE (Idêntico ao Print 02!) */}
+                    {/* CARD 2: AGENTE (Sem modelo LLM duplicado + Detecção de nó anterior + Importar do cofre) */}
                     {node.kind === 'run_agent' && (
                       <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
                         <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 space-y-2">
+                          {/* Badge de Entrada Conectada */}
+                          {incomingNodes.length > 0 ? (
+                            <div className="flex items-center gap-1.5 text-[10.5px] text-emerald-400 bg-emerald-950/40 border border-emerald-800/30 px-2 py-1 rounded-lg">
+                              <Zap className="w-3 h-3 shrink-0" />
+                              <span className="truncate">
+                                Entrada vinculada: {incomingNodes.map(n => n?.label || NODE_META[n!.kind]?.label).join(', ')}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-zinc-500">
+                              Sem nós conectados como entrada. Você pode vincular um Prompt ou importar uma nota abaixo:
+                            </div>
+                          )}
+
                           <textarea
-                            value={node.config.approvalMessage || ''}
+                            value={node.config.approvalMessage || node.config.promptTemplate || ''}
                             onChange={e =>
                               handleUpdateNodeById(node.id, {
-                                config: { ...node.config, approvalMessage: e.target.value }
+                                config: { ...node.config, approvalMessage: e.target.value, promptTemplate: e.target.value }
                               })
                             }
-                            placeholder="Diga ao agente o que fazer"
+                            placeholder="Diga ao agente o que fazer ou complemente as instruções..."
                             className="w-full h-16 bg-transparent text-xs text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none leading-relaxed"
                           />
 
-                          <div className="flex items-center justify-between gap-1 pt-1">
-                            {/* Seletor de Agente inline */}
-                            <div className="flex-1 min-w-0">
-                              <CustomSelect
-                                value={node.config.agentId || agents[0]?.id || ''}
-                                onChange={chosenId => {
-                                  const chosen = agents.find(a => a.id === chosenId)
-                                  handleUpdateNodeById(node.id, {
-                                    label: chosen?.name || 'Agente',
-                                    config: { ...node.config, agentId: chosenId }
-                                  })
-                                }}
-                                options={agents.map((ag, idx) => ({
-                                  value: ag.id,
-                                  label: ag.name,
-                                  color: AGENT_COLORS[idx % AGENT_COLORS.length]
-                                }))}
-                                size="xs"
-                                className="w-full"
-                              />
-                            </div>
+                          {/* Seletor de Agente Responsável */}
+                          <div className="pt-1">
+                            <label className="text-[10px] text-zinc-500 font-medium mb-1 block">Agente Executor</label>
+                            <CustomSelect
+                              value={node.config.agentId || agents[0]?.id || ''}
+                              onChange={chosenId => {
+                                const chosen = agents.find(a => a.id === chosenId)
+                                handleUpdateNodeById(node.id, {
+                                  label: chosen?.name || 'Agente',
+                                  config: { ...node.config, agentId: chosenId }
+                                })
+                              }}
+                              options={agents.map((ag, idx) => ({
+                                value: ag.id,
+                                label: ag.name,
+                                color: AGENT_COLORS[idx % AGENT_COLORS.length]
+                              }))}
+                              size="xs"
+                              className="w-full"
+                            />
+                          </div>
 
-                            {/* Indicador / Seletor de Modelo inline */}
-                            <div className="shrink-0 max-w-[125px]">
-                              <CustomSelect
-                                value={node.config.model || nodeAgent?.aiConfig?.model || 'google/gemini-2.5-flash'}
-                                onChange={chosenModel =>
-                                  handleUpdateNodeById(node.id, {
-                                    config: { ...node.config, model: chosenModel }
-                                  })
-                                }
-                                options={[
-                                  { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5' },
-                                  { value: 'google/gemini-2.5-pro', label: 'Gemini Pro' },
-                                  { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5' },
-                                  { value: 'openai/gpt-4o', label: 'GPT-4o' },
-                                  { value: 'deepseek/deepseek-chat', label: 'DeepSeek' }
-                                ]}
-                                size="xs"
-                                icon={<Globe className="w-3 h-3 text-zinc-400" />}
-                              />
-                            </div>
+                          {/* Importar Nota do Cofre (se necessário) */}
+                          <div className="pt-1 border-t border-zinc-800/60">
+                            <label className="text-[10px] text-zinc-500 font-medium mb-1 block">Contexto de Nota do Cofre (opcional)</label>
+                            <CustomNotePicker
+                              notes={notes}
+                              selectedNoteId={node.config.noteId}
+                              onSelect={nt => {
+                                handleUpdateNodeById(node.id, {
+                                  config: {
+                                    ...node.config,
+                                    noteId: nt?.id,
+                                    noteTitle: nt?.title
+                                  }
+                                })
+                              }}
+                              placeholder="Importar nota do cofre..."
+                            />
                           </div>
                         </div>
 
@@ -1390,50 +1512,79 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       </div>
                     )}
 
-                    {/* CARD 5: CONDIÇÃO (Com branches Sim e Não visuais!) */}
+                    {/* CARD 5: CONDIÇÃO (Com regras avançadas e rótulos de saídas em uma linha) */}
                     {node.kind === 'condition' && (
                       <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
                         <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-2">
-                          <div className="space-y-1">
-                            <label className="text-[10.5px] text-zinc-400 font-medium">Regra de Validação:</label>
-                            <input
-                              type="text"
-                              value={node.config.rule || ''}
-                              onChange={e =>
+                          <div>
+                            <label className="text-[10.5px] text-zinc-400 font-medium block mb-1">Tipo de Regra:</label>
+                            <CustomSelect
+                              value={node.config.conditionType || 'contains'}
+                              onChange={cType =>
                                 handleUpdateNodeById(node.id, {
-                                  config: { ...node.config, rule: e.target.value }
+                                  config: { ...node.config, conditionType: cType as any }
                                 })
                               }
-                              placeholder="Ex: se contiver 'aprovado' ou valor > 1000..."
-                              className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
+                              options={[
+                                { value: 'contains', label: 'Contém palavra-chave' },
+                                { value: 'not_contains', label: 'Não contém palavra-chave' },
+                                { value: 'has_approval', label: 'Aprovado na etapa anterior' },
+                                { value: 'status_equals', label: 'Status da tarefa é igual a...' },
+                                { value: 'no_missing_fields', label: 'Sem campos pendentes' },
+                                { value: 'custom', label: 'Regra personalizada' },
+                              ]}
+                              size="xs"
                             />
                           </div>
 
-                          <div className="flex items-center gap-1.5 pt-1">
-                            <div
-                              className={`flex-1 py-1.5 px-2 rounded-lg border flex items-center justify-between text-[11px] whitespace-nowrap min-w-0 transition-colors ${
-                                node.config.branchTaken === 'yes'
-                                  ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300 font-medium'
-                                  : node.config.branchTaken === 'no'
-                                  ? 'bg-zinc-900/40 border-zinc-800 text-zinc-500 opacity-50'
-                                  : 'bg-[#141416] border-zinc-800 text-zinc-300'
-                              }`}
-                            >
-                              <span className="truncate">Sim (Verdadeiro)</span>
-                              {node.config.branchTaken === 'yes' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 ml-1" />}
+                          {(node.config.conditionType === 'contains' || node.config.conditionType === 'not_contains' || node.config.conditionType === 'status_equals' || node.config.conditionType === 'custom' || !node.config.conditionType) && (
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-zinc-400 font-medium">Palavra ou Valor Esperado:</label>
+                              <input
+                                type="text"
+                                value={node.config.rule || ''}
+                                onChange={e =>
+                                  handleUpdateNodeById(node.id, {
+                                    config: { ...node.config, rule: e.target.value }
+                                  })
+                                }
+                                placeholder="Ex: aprovado, urgente, concluído..."
+                                className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 focus:outline-none"
+                              />
                             </div>
+                          )}
 
-                            <div
-                              className={`flex-1 py-1.5 px-2 rounded-lg border flex items-center justify-between text-[11px] whitespace-nowrap min-w-0 transition-colors ${
-                                node.config.branchTaken === 'no'
-                                  ? 'bg-rose-950/40 border-rose-500/50 text-rose-300 font-medium'
-                                  : node.config.branchTaken === 'yes'
-                                  ? 'bg-zinc-900/40 border-zinc-800 text-zinc-500 opacity-50'
-                                  : 'bg-[#141416] border-zinc-800 text-zinc-300'
-                              }`}
-                            >
-                              <span className="truncate">Não (Falso)</span>
-                              {node.config.branchTaken === 'no' && <CheckCircle2 className="w-3.5 h-3.5 text-rose-400 shrink-0 ml-1" />}
+                          {/* Rótulos das Saídas customizados e em uma linha */}
+                          <div className="pt-1 space-y-1.5">
+                            <div className="flex items-center justify-between text-[10px] text-zinc-500 font-medium">
+                              <span>Ramos de Decisão</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <div
+                                className={`flex-1 py-1.5 px-2 rounded-lg border flex items-center justify-between text-[11px] whitespace-nowrap min-w-0 transition-colors ${
+                                  node.config.branchTaken === 'yes'
+                                    ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300 font-medium'
+                                    : node.config.branchTaken === 'no'
+                                    ? 'bg-zinc-900/40 border-zinc-800 text-zinc-500 opacity-60'
+                                    : 'bg-[#141416] border-zinc-800 text-zinc-300'
+                                }`}
+                              >
+                                <span className="truncate">{node.config.trueLabel || 'Sim (Verdadeiro)'}</span>
+                                {node.config.branchTaken === 'yes' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 ml-1" />}
+                              </div>
+
+                              <div
+                                className={`flex-1 py-1.5 px-2 rounded-lg border flex items-center justify-between text-[11px] whitespace-nowrap min-w-0 transition-colors ${
+                                  node.config.branchTaken === 'no'
+                                    ? 'bg-rose-950/40 border-rose-500/50 text-rose-300 font-medium'
+                                    : node.config.branchTaken === 'yes'
+                                    ? 'bg-zinc-900/40 border-zinc-800 text-zinc-500 opacity-60'
+                                    : 'bg-[#141416] border-zinc-800 text-zinc-300'
+                                }`}
+                              >
+                                <span className="truncate">{node.config.falseLabel || 'Não (Falso)'}</span>
+                                {node.config.branchTaken === 'no' && <CheckCircle2 className="w-3.5 h-3.5 text-rose-400 shrink-0 ml-1" />}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1452,7 +1603,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       </div>
                     )}
 
-                    {/* CARD 6: APROVAÇÃO HUMANA (Com botões Aprovar e Rejeitar interativos!) */}
+                    {/* CARD 6: APROVAÇÃO HUMANA */}
                     {node.kind === 'approval' && (() => {
                       const isWaitingApproval =
                         execState?.status === 'waiting_approval' ||
@@ -1559,14 +1710,42 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} />
                       </div>
                     )}
+
+                    {/* CARD 8: NOTA VISUAL / ADESIVA (sticky_note) */}
+                    {node.kind === 'sticky_note' && (
+                      <div className="space-y-2" onPointerDown={e => e.stopPropagation()}>
+                        <div className="bg-[#211e15] border border-amber-500/30 rounded-xl p-2.5 shadow-lg">
+                          <textarea
+                            value={node.config.content || ''}
+                            onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, content: e.target.value } })}
+                            placeholder="Escreva anotações de apoio, observações ou orientações sobre este fluxo..."
+                            className="w-full h-24 bg-transparent text-xs text-amber-100 placeholder-amber-500/50 resize-none focus:outline-none leading-relaxed"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CARD 9: TARJA DE TÍTULO / SEÇÃO (text_block) */}
+                    {node.kind === 'text_block' && (
+                      <div className="space-y-1" onPointerDown={e => e.stopPropagation()}>
+                        <div className="bg-[#18181b]/90 border border-zinc-700/80 rounded-xl px-2.5 py-1.5 flex items-center gap-2 shadow-md">
+                          <Type className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                          <input
+                            type="text"
+                            value={node.label || ''}
+                            onChange={e => handleUpdateNodeById(node.id, { label: e.target.value })}
+                            placeholder="Título da Seção..."
+                            className="w-full bg-transparent text-xs font-semibold text-zinc-100 placeholder-zinc-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )
             })}
           </div>
-
-          {/* ======================================================================== */}
-          {/* 3. POPOVER CENTRAL "BUSCAR NÓS" (Idêntico ao Print 02!)                  */}
+{/* 3. POPOVER CENTRAL "BUSCAR NÓS" (Idêntico ao Print 02!)                  */}
           {/* ======================================================================== */}
           {isAddMenuOpen && (
             <div
@@ -1666,8 +1845,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           </div>
 
           {/* ======================================================================== */}
-          {/* 5. DOCK FLUTUANTE INFERIOR CENTRAL (Idêntico ao Print 02!)                */}
-          {/* ======================================================================== */}
+          {/* 5. DOCK FLUTUANTE INFERIOR CENTRAL (Customizado)                */}
           <div
             onPointerDown={e => e.stopPropagation()}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#141416]/95 backdrop-blur-xl border border-zinc-800/90 rounded-2xl p-1.5 shadow-2xl z-30"
@@ -1701,39 +1879,22 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
             <button
               type="button"
-              onClick={() => handleAddNodeAt('read_note')}
+              onClick={() => handleAddNodeAt('sticky_note')}
               className="p-2 rounded-xl text-amber-400 hover:bg-zinc-800/60 transition-colors cursor-pointer"
-              title="Adicionar nó Prompt / Nota"
+              title="Adicionar Nota Adesiva Visual"
             >
               <StickyNote className="w-4 h-4" />
             </button>
             <button
               type="button"
-              onClick={() => handleAddNodeAt('run_agent')}
+              onClick={() => handleAddNodeAt('text_block')}
               className="p-2 rounded-xl text-zinc-300 hover:bg-zinc-800/60 transition-colors cursor-pointer"
-              title="Adicionar nó Agente"
-            >
-              <Shapes className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAddNodeAt('llm')}
-              className="p-2 rounded-xl text-zinc-300 hover:bg-zinc-800/60 transition-colors cursor-pointer"
-              title="Adicionar nó LLM"
+              title="Adicionar Tarja de Título / Seção"
             >
               <Type className="w-4 h-4" />
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAddMenuPos(null)
-                setIsAddMenuOpen(v => !v)
-              }}
-              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors cursor-pointer"
-              title="Buscar nós"
-            >
-              <Search className="w-4 h-4" />
-            </button>
+
+            <div className="w-px h-5 bg-zinc-800 mx-0.5" />
 
             <button
               type="button"
@@ -1741,21 +1902,20 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 setAddMenuPos(null)
                 setIsAddMenuOpen(v => !v)
               }}
-              className="ml-1 px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Adicionar nó</span>
             </button>
           </div>
         </div>
-
-        {/* ======================================================================== */}
-        {/* 6. INSPETOR LATERAL COMPLETO                                             */}
-        {/* ======================================================================== */}
+{/* 6. INSPETOR LATERAL DEDICADO DO NÓ OU FLUXO */}
         {inspectorOpen && (
           <aside className="w-80 bg-[#111113] border-l border-zinc-800/80 p-4 overflow-y-auto space-y-4 shrink-0 z-30 custom-chat-scrollbar">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
-              <span className="text-xs font-semibold text-zinc-200">Configurações do Fluxo</span>
+              <span className="text-xs font-semibold text-zinc-200">
+                {selectedNode ? `Configurações da Etapa: ${NODE_META[selectedNode.kind]?.label || 'Nó'}` : 'Configurações do Fluxo'}
+              </span>
               <button
                 type="button"
                 onClick={() => setInspectorOpen(false)}
@@ -1765,76 +1925,279 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               </button>
             </div>
 
-            <div className="space-y-2">
-              <label className="block text-[11px] text-zinc-400 font-medium">Nome do fluxo</label>
-              <input
-                type="text"
-                value={activeWorkflow.name}
-                onChange={e =>
-                  onSaveWorkflow({ ...activeWorkflow, name: e.target.value, updatedAt: Date.now() })
-                }
-                className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-[11px] text-zinc-400 font-medium">Descrição</label>
-              <textarea
-                value={activeWorkflow.description || ''}
-                onChange={e =>
-                  onSaveWorkflow({ ...activeWorkflow, description: e.target.value, updatedAt: Date.now() })
-                }
-                rows={3}
-                className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none resize-none leading-relaxed"
-                placeholder="Objetivo deste fluxo de trabalho..."
-              />
-            </div>
-
-            {selectedNode && (
-              <div className="space-y-3 pt-3 border-t border-zinc-800">
+            {selectedNode ? (
+              <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-zinc-200">
-                    Nó Selecionado: {selectedNode.label}
-                  </span>
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-300">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: NODE_META[selectedNode.kind]?.color || '#a1a1aa' }} />
+                    <span>Tipo: {NODE_META[selectedNode.kind]?.label}</span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => handleRemoveNode(selectedNode.id)}
-                    className="text-[11px] text-rose-400 hover:underline cursor-pointer"
+                    className="text-[11px] text-rose-400 hover:underline cursor-pointer flex items-center gap-1"
                   >
-                    Excluir nó
+                    <Trash2 className="w-3 h-3" />
+                    <span>Excluir nó</span>
                   </button>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Rótulo no canvas</label>
+                  <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Nome / Rótulo da Etapa</label>
                   <input
                     type="text"
                     value={selectedNode.label}
                     onChange={e => handleUpdateSelectedNode({ label: e.target.value })}
-                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-100"
+                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-100 focus:outline-none"
                   />
                 </div>
 
-                {selectedNode.kind === 'deliverable' && (
-                  <div>
-                    <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Pasta de Destino</label>
-                    <CustomSelect
-                      value={selectedNode.config.targetFolder || 'Propostas'}
-                      onChange={folder =>
-                        handleUpdateSelectedNode({
-                          config: { ...selectedNode.config, targetFolder: folder }
-                        })
-                      }
-                      options={Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => ({
-                        value: f,
-                        label: f,
-                        icon: <Folder className="w-3 h-3 text-zinc-400" />
-                      }))}
-                      size="sm"
-                      className="w-full"
-                    />
+                {/* Campos Específicos: Gatilho */}
+                {selectedNode.kind === 'input' && (
+                  <div className="space-y-3 pt-2 border-t border-zinc-800/70">
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Tipo de Gatilho</label>
+                      <CustomSelect
+                        value={selectedNode.config.triggerType || 'manual'}
+                        onChange={newType => handleUpdateSelectedNode({ config: { ...selectedNode.config, triggerType: newType as any } })}
+                        options={[
+                          { value: 'manual', label: 'Manual (Ao Executar)' },
+                          { value: 'schedule', label: 'Agendamento Programado' },
+                          { value: 'task_event', label: 'Ao Criar/Alterar Tarefa' },
+                          { value: 'note_event', label: 'Ao Alterar Nota' },
+                        ]}
+                        size="sm"
+                      />
+                    </div>
+
+                    {selectedNode.config.triggerType === 'schedule' && (
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Frequência</label>
+                          <CustomSelect
+                            value={selectedNode.config.scheduleFrequency || 'daily'}
+                            onChange={newFreq => handleUpdateSelectedNode({ config: { ...selectedNode.config, scheduleFrequency: newFreq as any } })}
+                            options={[
+                              { value: 'daily', label: 'Diariamente' },
+                              { value: 'weekdays', label: 'Dias úteis' },
+                              { value: 'weekly', label: 'Semanalmente' },
+                              { value: 'monthly', label: 'Mensalmente' },
+                            ]}
+                            size="sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Horário de Execução</label>
+                          <CustomTimePicker
+                            value={selectedNode.config.scheduleTime || '09:00'}
+                            onChange={newTime => handleUpdateSelectedNode({ config: { ...selectedNode.config, scheduleTime: newTime } })}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* Campos Específicos: Agente */}
+                {selectedNode.kind === 'run_agent' && (
+                  <div className="space-y-3 pt-2 border-t border-zinc-800/70">
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Agente Atribuído</label>
+                      <CustomSelect
+                        value={selectedNode.config.agentId || agents[0]?.id || ''}
+                        onChange={chosenId => {
+                          const chosen = agents.find(a => a.id === chosenId)
+                          handleUpdateSelectedNode({
+                            label: chosen?.name || 'Agente',
+                            config: { ...selectedNode.config, agentId: chosenId }
+                          })
+                        }}
+                        options={agents.map(ag => ({ value: ag.id, label: ag.name }))}
+                        size="sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Instruções / Diretrizes</label>
+                      <textarea
+                        value={selectedNode.config.approvalMessage || selectedNode.config.promptTemplate || ''}
+                        onChange={e => handleUpdateSelectedNode({ config: { ...selectedNode.config, approvalMessage: e.target.value, promptTemplate: e.target.value } })}
+                        rows={3}
+                        className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none resize-none leading-relaxed"
+                        placeholder="Diretrizes específicas..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Nota Vinculada do Cofre</label>
+                      <CustomNotePicker
+                        notes={notes}
+                        selectedNoteId={selectedNode.config.noteId}
+                        onSelect={nt => handleUpdateSelectedNode({ config: { ...selectedNode.config, noteId: nt?.id, noteTitle: nt?.title } })}
+                        placeholder="Importar nota do cofre..."
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Campos Específicos: Condição */}
+                {selectedNode.kind === 'condition' && (
+                  <div className="space-y-3 pt-2 border-t border-zinc-800/70">
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Tipo de Regra</label>
+                      <CustomSelect
+                        value={selectedNode.config.conditionType || 'contains'}
+                        onChange={cType => handleUpdateSelectedNode({ config: { ...selectedNode.config, conditionType: cType as any } })}
+                        options={[
+                          { value: 'contains', label: 'Contém palavra-chave' },
+                          { value: 'not_contains', label: 'Não contém palavra-chave' },
+                          { value: 'has_approval', label: 'Aprovado na etapa anterior' },
+                          { value: 'status_equals', label: 'Status da tarefa é igual a...' },
+                          { value: 'no_missing_fields', label: 'Sem campos pendentes' },
+                          { value: 'custom', label: 'Regra personalizada' },
+                        ]}
+                        size="sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Valor / Palavra Esperada</label>
+                      <input
+                        type="text"
+                        value={selectedNode.config.rule || ''}
+                        onChange={e => handleUpdateSelectedNode({ config: { ...selectedNode.config, rule: e.target.value } })}
+                        placeholder="Ex: aprovado, urgente..."
+                        className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-100"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-1 font-medium">Rótulo Saída Sim</label>
+                        <input
+                          type="text"
+                          value={selectedNode.config.trueLabel || 'Sim'}
+                          onChange={e => handleUpdateSelectedNode({ config: { ...selectedNode.config, trueLabel: e.target.value } })}
+                          className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1 text-xs text-zinc-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-1 font-medium">Rótulo Saída Não</label>
+                        <input
+                          type="text"
+                          value={selectedNode.config.falseLabel || 'Não'}
+                          onChange={e => handleUpdateSelectedNode({ config: { ...selectedNode.config, falseLabel: e.target.value } })}
+                          className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-2.5 py-1 text-xs text-zinc-100"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Campos Específicos: Aprovação */}
+                {selectedNode.kind === 'approval' && (
+                  <div className="space-y-3 pt-2 border-t border-zinc-800/70">
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Mensagem de Solicitação</label>
+                      <textarea
+                        value={selectedNode.config.approvalMessage || ''}
+                        onChange={e => handleUpdateSelectedNode({ config: { ...selectedNode.config, approvalMessage: e.target.value } })}
+                        rows={3}
+                        className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none resize-none leading-relaxed"
+                        placeholder="Mensagem exibida ao usuário..."
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Campos Específicos: Saída */}
+                {(selectedNode.kind === 'deliverable' || selectedNode.kind === 'finish') && (
+                  <div className="space-y-3 pt-2 border-t border-zinc-800/70">
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Pasta de Destino no Cofre</label>
+                      <CustomSelect
+                        value={selectedNode.config.targetFolder || 'Propostas'}
+                        onChange={folder => handleUpdateSelectedNode({ config: { ...selectedNode.config, targetFolder: folder } })}
+                        options={Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => ({
+                          value: f,
+                          label: f,
+                          icon: <Folder className="w-3 h-3 text-zinc-400" />
+                        }))}
+                        size="sm"
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Campos Específicos: Nota Adesiva */}
+                {selectedNode.kind === 'sticky_note' && (
+                  <div className="space-y-3 pt-2 border-t border-zinc-800/70">
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Conteúdo da Anotação</label>
+                      <textarea
+                        value={selectedNode.config.content || ''}
+                        onChange={e => handleUpdateSelectedNode({ config: { ...selectedNode.config, content: e.target.value } })}
+                        rows={4}
+                        className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none resize-none leading-relaxed"
+                        placeholder="Notas e orientações..."
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Botão de Testar Etapa */}
+                <div className="pt-2 border-t border-zinc-800/70">
+                  <button
+                    type="button"
+                    disabled={isExecuting || executingNodeId === selectedNode.id}
+                    onClick={() => handleExecuteSingleNode(selectedNode)}
+                    className="w-full py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    <span>{executingNodeId === selectedNode.id ? 'Testando...' : 'Testar esta etapa'}</span>
+                  </button>
+                  <ResultField output={selectedNode.config.lastOutput} isRunning={executingNodeId === selectedNode.id} />
+                </div>
+              </div>
+            ) : (
+              /* Configurações Globais do Fluxo */
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="block text-[11px] text-zinc-400 font-medium">Nome do fluxo</label>
+                  <input
+                    type="text"
+                    value={activeWorkflow.name}
+                    onChange={e =>
+                      onSaveWorkflow({ ...activeWorkflow, name: e.target.value, updatedAt: Date.now() })
+                    }
+                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-[11px] text-zinc-400 font-medium">Descrição</label>
+                  <textarea
+                    value={activeWorkflow.description || ''}
+                    onChange={e =>
+                      onSaveWorkflow({ ...activeWorkflow, description: e.target.value, updatedAt: Date.now() })
+                    }
+                    rows={3}
+                    className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none resize-none leading-relaxed"
+                    placeholder="Objetivo deste fluxo de trabalho..."
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-zinc-800 space-y-2 text-xs text-zinc-400">
+                  <div className="flex items-center justify-between">
+                    <span>Total de etapas (nós):</span>
+                    <span className="font-mono text-zinc-200">{activeWorkflow.nodes.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Conexões ativas:</span>
+                    <span className="font-mono text-zinc-200">{activeWorkflow.edges.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Versão:</span>
+                    <span className="font-mono text-zinc-200">v{activeWorkflow.version}</span>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1856,3 +2219,4 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     </div>
   )
 }
+

@@ -3,24 +3,51 @@
  */
 
 export const DIAGRAM_NODE_WIDTH = 264
-export const DIAGRAM_PORT_OFFSET_Y = 26
+export const DIAGRAM_PORT_OFFSET_Y = 74
 export const DIAGRAM_SNAP = 16
 
 export function snapDiagramCoord(value: number): number {
   return Math.round(value / DIAGRAM_SNAP) * DIAGRAM_SNAP
 }
 
-export function diagramInputPort(position: { x: number; y: number }): { x: number; y: number } {
+export function getNodeCardDimensions(kind?: string): { width: number; height: number; offsetY: number } {
+  if (kind === 'sticky_note') return { width: 220, height: 180, offsetY: 90 }
+  if (kind === 'text_block') return { width: 320, height: 52, offsetY: 26 }
+  if (kind === 'run_agent') return { width: 284, height: 170, offsetY: 88 }
+  if (kind === 'llm') return { width: 284, height: 170, offsetY: 88 }
+  if (kind === 'input') return { width: 264, height: 150, offsetY: 78 }
+  if (kind === 'condition') return { width: 264, height: 150, offsetY: 78 }
+  if (kind === 'approval') return { width: 264, height: 150, offsetY: 78 }
+  return { width: 264, height: 140, offsetY: 74 }
+}
+
+export function diagramInputPort(position: { x: number; y: number }, offsetY = DIAGRAM_PORT_OFFSET_Y): { x: number; y: number } {
   return {
     x: position.x,
-    y: position.y + DIAGRAM_PORT_OFFSET_Y
+    y: position.y + offsetY
   }
 }
 
-export function diagramOutputPort(position: { x: number; y: number }, width = DIAGRAM_NODE_WIDTH): { x: number; y: number } {
+export function diagramOutputPort(position: { x: number; y: number }, width = DIAGRAM_NODE_WIDTH, offsetY = DIAGRAM_PORT_OFFSET_Y): { x: number; y: number } {
   return {
     x: position.x + width,
-    y: position.y + DIAGRAM_PORT_OFFSET_Y
+    y: position.y + offsetY
+  }
+}
+
+export function getNodeInputPort(node: { position: { x: number; y: number }; kind?: string }): { x: number; y: number } {
+  const dim = getNodeCardDimensions(node.kind)
+  return {
+    x: node.position.x,
+    y: node.position.y + dim.offsetY
+  }
+}
+
+export function getNodeOutputPort(node: { position: { x: number; y: number }; kind?: string }): { x: number; y: number } {
+  const dim = getNodeCardDimensions(node.kind)
+  return {
+    x: node.position.x + dim.width,
+    y: node.position.y + dim.offsetY
   }
 }
 

@@ -151,14 +151,17 @@ export const RoutineCanvasEditor: React.FC<RoutineCanvasEditorProps> = ({
     })
   }
 
-  // Centralização automática ao abrir ou alternar de rotina
+  // Centralização automática ao abrir ou alternar de rotina (apenas ao trocar de rotina ou montar)
+  const lastCenteredRoutineIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (!activeRoutine) return
+    if (lastCenteredRoutineIdRef.current === selectedRoutineId) return
+    lastCenteredRoutineIdRef.current = selectedRoutineId
     const timer = setTimeout(() => {
       handleFitView()
     }, 60)
     return () => clearTimeout(timer)
-  }, [selectedRoutineId, activeRoutine])
+  }, [selectedRoutineId])
 
   if (!activeRoutine) return null
 

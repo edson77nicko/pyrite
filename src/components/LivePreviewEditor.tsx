@@ -32,7 +32,8 @@ import {
   Highlighter,
   Strikethrough,
   Info,
-  AlertTriangle
+  AlertTriangle,
+  MessageSquareText
 } from 'lucide-react'
 import type { LiveBlock } from '../utils/markdownBlocks'
 import { renderArtifactHtml } from '../utils/artifactParser'
@@ -45,6 +46,7 @@ export interface LivePreviewEditorHandle {
   insertCodeBlock: () => void
   insertCallout: (type: string) => void
   insertTable: () => void
+  focus?: () => void
 }
 
 export interface LivePreviewEditorProps {
@@ -614,6 +616,14 @@ function domToMarkdown(root: HTMLElement): string {
       lines.push(`#### ${Array.from(el.childNodes).map(serializeInline).join('').trim()}`)
       continue
     }
+    if (tag === 'h5') {
+      lines.push(`##### ${Array.from(el.childNodes).map(serializeInline).join('').trim()}`)
+      continue
+    }
+    if (tag === 'h6') {
+      lines.push(`###### ${Array.from(el.childNodes).map(serializeInline).join('').trim()}`)
+      continue
+    }
 
     // 6. Lists
     if (tag === 'ul') {
@@ -687,6 +697,90 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   const currentNoteIdRef = useRef<string | null>(null)
   const lastSyncedMdRef = useRef<string>(note.content)
 
+  // Custom History Manager for Undo & Redo (Ctrl+Z / Ctrl+Y)
+  interface HistoryEntry {
+    html: string
+  }
+  const undoStackRef = useRef<HistoryEntry[]>([])
+  const redoStackRef = useRef<HistoryEntry[]>([])
+  const isUndoRedoActionRef = useRef(false)
+  const lastSnapshotHtmlRef = useRef<string>('')
+  const typingSnapshotTimerRef = useRef<any>(null)
+
+  const captureCurrentHtml = useCallback((): string => {
+    if (!containerRef.current) return ''
+    containerRef.current.querySelectorAll('.task-checkbox').forEach(cb => {
+      const input = cb as HTMLInputElement
+      if (input.checked) input.setAttribute('checked', 'checked')
+      else input.removeAttribute('checked')
+    })
+    return containerRef.current.innerHTML
+  }, [])
+
+  const pushHistorySnapshot = useCallback((force = false) => {
+    if (!containerRef.current || isUndoRedoActionRef.current) return
+    const currentHtml = captureCurrentHtml()
+    if (!currentHtml) return
+    if (!force && currentHtml === lastSnapshotHtmlRef.current) return
+
+    if (undoStackRef.current.length === 0 && lastSnapshotHtmlRef.current) {
+      undoStackRef.current.push({ html: lastSnapshotHtmlRef.current })
+    }
+
+    undoStackRef.current.push({ html: currentHtml })
+    if (undoStackRef.current.length > 80) {
+      undoStackRef.current.shift()
+    }
+    lastSnapshotHtmlRef.current = currentHtml
+    redoStackRef.current = []
+  }, [captureCurrentHtml])
+
+  const persistContent = useCallback(() => {
+    if (!containerRef.current) return
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+    const markdown = domToMarkdown(containerRef.current)
+    lastSyncedMdRef.current = markdown
+    onUpdateContent(markdown)
+  }, [onUpdateContent])
+
+  const handleUndo = useCallback(() => {
+    if (!containerRef.current || undoStackRef.current.length === 0) return
+    const currentHtml = captureCurrentHtml()
+
+    let target = undoStackRef.current.pop()
+    if (target && target.html === currentHtml && undoStackRef.current.length > 0) {
+      redoStackRef.current.push({ html: currentHtml })
+      target = undoStackRef.current.pop()
+    } else if (target) {
+      redoStackRef.current.push({ html: currentHtml })
+    }
+
+    if (!target) return
+
+    isUndoRedoActionRef.current = true
+    containerRef.current.innerHTML = target.html
+    lastSnapshotHtmlRef.current = target.html
+    refreshBlocks()
+    persistContent()
+    setTimeout(() => { isUndoRedoActionRef.current = false }, 50)
+  }, [captureCurrentHtml, refreshBlocks, persistContent])
+
+  const handleRedo = useCallback(() => {
+    if (!containerRef.current || redoStackRef.current.length === 0) return
+    const target = redoStackRef.current.pop()
+    if (!target) return
+
+    const currentHtml = captureCurrentHtml()
+    undoStackRef.current.push({ html: currentHtml })
+
+    isUndoRedoActionRef.current = true
+    containerRef.current.innerHTML = target.html
+    lastSnapshotHtmlRef.current = target.html
+    refreshBlocks()
+    persistContent()
+    setTimeout(() => { isUndoRedoActionRef.current = false }, 50)
+  }, [captureCurrentHtml, refreshBlocks, persistContent])
+
   // Floating Slash Command (/) Menu state
   const [slashMenu, setSlashMenu] = useState<{
     query: string
@@ -731,15 +825,10 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     }, 250)
   }, [onUpdateContent])
 
-  const persistContent = () => {
-    if (!containerRef.current) return
+  useEffect(() => () => {
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
-    const markdown = domToMarkdown(containerRef.current)
-    lastSyncedMdRef.current = markdown
-    onUpdateContent(markdown)
-  }
-
-  useEffect(() => () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current) }, [])
+    if (typingSnapshotTimerRef.current) clearTimeout(typingSnapshotTimerRef.current)
+  }, [])
 
   // Synchronize initial HTML when note changes or on external update
   useEffect(() => {
@@ -749,7 +838,11 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     if (currentNoteIdRef.current !== note.id) {
       currentNoteIdRef.current = note.id
       lastSyncedMdRef.current = note.content
-      containerRef.current.innerHTML = markdownToHtml(note.content, allNotes, note.title)
+      const initialHtml = markdownToHtml(note.content, allNotes, note.title)
+      containerRef.current.innerHTML = initialHtml
+      lastSnapshotHtmlRef.current = initialHtml
+      undoStackRef.current = [{ html: initialHtml }]
+      redoStackRef.current = []
       refreshBlocks()
       setSlashMenu(null)
       setWikiSuggest(null)
@@ -760,19 +853,96 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     ) {
       // Only sync if content was updated externally and user is not focused on editor
       lastSyncedMdRef.current = note.content
-      containerRef.current.innerHTML = markdownToHtml(note.content, allNotes, note.title)
+      const newHtml = markdownToHtml(note.content, allNotes, note.title)
+      containerRef.current.innerHTML = newHtml
+      lastSnapshotHtmlRef.current = newHtml
       refreshBlocks()
     }
   }, [note.id, note.content, note.title, allNotes, refreshBlocks])
 
   const insertBlock = (html: string) => {
     if (!containerRef.current) return null
+    pushHistorySnapshot(true)
     const block = insertEditorBlock(containerRef.current, html)
     refreshBlocks()
     setSelectionToolbar(null)
     persistContent()
     return block
   }
+
+  // Convert selected paragraphs/lines to task checkboxes, or toggle existing paragraph
+  const applyTaskList = useCallback(() => {
+    pushHistorySnapshot(true)
+    const sel = window.getSelection()
+    const selectedText = sel?.toString() || ''
+
+    if (sel && !sel.isCollapsed && selectedText.trim()) {
+      const rawLines = selectedText.split(/\r?\n/)
+      const tasksHtml = rawLines
+        .map(line => {
+          const clean = line.replace(/^(\s*[-*]\s*(\[[ xX]\])?|\s*\d+\.\s*)/, '').trim()
+          if (!clean) return ''
+          return `
+            <div class="task-item flex items-start gap-2.5 my-1.5 group" data-type="task">
+              <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
+              <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">${escapeHtml(clean)}</span>
+            </div>
+          `
+        })
+        .filter(Boolean)
+        .join('')
+
+      if (tasksHtml) {
+        document.execCommand('insertHTML', false, tasksHtml)
+        setSelectionToolbar(null)
+        refreshBlocks()
+        handleSync()
+        return
+      }
+    }
+
+    // If no text was selected, check if cursor is inside a paragraph/block with text
+    const range = sel?.rangeCount ? sel.getRangeAt(0) : null
+    const currentBlock = range?.startContainer instanceof HTMLElement
+      ? range.startContainer.closest('p, div, li, h1, h2, h3, h4, h5, h6')
+      : range?.startContainer.parentElement?.closest('p, div, li, h1, h2, h3, h4, h5, h6')
+
+    if (currentBlock && containerRef.current?.contains(currentBlock) && !currentBlock.matches('[data-type="task"]')) {
+      const text = currentBlock.textContent?.trim() || ''
+      if (text) {
+        const clean = text.replace(/^(\s*[-*]\s*(\[[ xX]\])?|\s*\d+\.\s*)/, '').trim()
+        const taskEl = document.createElement('div')
+        taskEl.className = 'task-item flex items-start gap-2.5 my-1.5 group'
+        taskEl.setAttribute('data-type', 'task')
+        taskEl.innerHTML = `
+          <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
+          <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">${escapeHtml(clean)}</span>
+        `
+        currentBlock.replaceWith(taskEl)
+        refreshBlocks()
+        handleSync()
+        return
+      }
+    }
+
+    // Default: insert blank task item
+    const taskHtml = `
+      <div class="task-item flex items-start gap-2.5 my-1.5 group" data-type="task">
+        <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
+        <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed"><br></span>
+      </div>
+    `
+    const block = insertBlock(taskHtml)
+    const textSpan = block?.querySelector('.task-text') as HTMLElement | null
+    if (textSpan) {
+      const s = window.getSelection()
+      const r = document.createRange()
+      r.selectNodeContents(textSpan)
+      r.collapse(true)
+      s?.removeAllRanges()
+      s?.addRange(r)
+    }
+  }, [pushHistorySnapshot, refreshBlocks, handleSync])
   const insertTableBlock = () => insertBlock(tableShell(DEFAULT_TABLE))
 
   const formatBlockSafe = (tag: string) => {
@@ -797,9 +967,20 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     }
   }
 
+  const insertWikiLinkHtml = (targetTitle: string) => {
+    const exists = allNotes.some(n => n.title.toLowerCase().trim() === targetTitle.toLowerCase().trim())
+    const pillClass = exists
+      ? 'text-amber-300 hover:text-amber-100 bg-amber-950/30 hover:bg-amber-900/50 border border-amber-800/40'
+      : 'text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
+
+    const linkHtml = `<span class="wiki-link inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(targetTitle)}" title="${exists ? `Abrir nota: &quot;${targetTitle}&quot;` : `Criar nota: &quot;${targetTitle}&quot;`}"><span class="underline decoration-amber-500/40 hover:decoration-amber-300 underline-offset-2">${escapeHtml(targetTitle)}</span></span>&nbsp;`
+    document.execCommand('insertHTML', false, linkHtml)
+  }
+
   // Expose formatting commands to top toolbar via ref
   useImperativeHandle(editorRef, () => ({
     setBlockType: (type: LiveBlock['type']) => {
+      pushHistorySnapshot(true)
       containerRef.current?.focus()
       if (type === 'h1') formatBlockSafe('h1')
       else if (type === 'h2') formatBlockSafe('h2')
@@ -814,55 +995,45 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       }
       else if (type === 'quote') formatBlockSafe('blockquote')
       else if (type === 'task') {
-        const taskHtml = `
-          <div class="task-item flex items-start gap-2.5 my-1.5 group" data-type="task">
-            <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
-            <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed"><br></span>
-          </div>
-        `
-        const block = insertBlock(taskHtml)
-        const textSpan = block?.querySelector('.task-text') as HTMLElement | null
-        if (textSpan) {
-          const sel = window.getSelection()
-          const range = document.createRange()
-          range.selectNodeContents(textSpan)
-          range.collapse(true)
-          sel?.removeAllRanges()
-          sel?.addRange(range)
-        }
+        applyTaskList()
       } else {
         formatBlockSafe('p')
       }
       handleSync()
     },
     toggleBold: () => {
+      pushHistorySnapshot(true)
       document.execCommand('bold')
       handleSync()
     },
     toggleItalic: () => {
+      pushHistorySnapshot(true)
       document.execCommand('italic')
       handleSync()
     },
     insertWikiLink: (target: string) => {
+      pushHistorySnapshot(true)
       insertWikiLinkHtml(target)
       handleSync()
     },
-    insertCodeBlock: () => insertBlock(codeShell({ title: '', language: '', content: '' })),
-    insertCallout: (type: string) => insertBlock(calloutShell({ type: type.toUpperCase() || 'NOTE', title: '', content: '' })),
-    insertTable: insertTableBlock
+    insertCodeBlock: () => {
+      pushHistorySnapshot(true)
+      insertBlock(codeShell({ title: '', language: '', content: '' }))
+    },
+    insertCallout: (type: string) => {
+      pushHistorySnapshot(true)
+      insertBlock(calloutShell({ type: type.toUpperCase() || 'NOTE', title: '', content: '' }))
+    },
+    insertTable: () => {
+      pushHistorySnapshot(true)
+      insertTableBlock()
+    },
+    focus: () => {
+      containerRef.current?.focus()
+    }
   }))
 
-  const insertWikiLinkHtml = (targetTitle: string) => {
-    const exists = allNotes.some(n => n.title.toLowerCase().trim() === targetTitle.toLowerCase().trim())
-    const pillClass = exists
-      ? 'text-amber-300 hover:text-amber-100 bg-amber-950/30 hover:bg-amber-900/50 border border-amber-800/40'
-      : 'text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
-
-    const linkHtml = `<span class="wiki-link inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(targetTitle)}" title="${exists ? `Abrir nota: &quot;${targetTitle}&quot;` : `Criar nota: &quot;${targetTitle}&quot;`}"><span class="underline decoration-amber-500/40 hover:decoration-amber-300 underline-offset-2">${escapeHtml(targetTitle)}</span></span>&nbsp;`
-    document.execCommand('insertHTML', false, linkHtml)
-  }
-
-  // Handle image and rich media pasting directly into the document
+  // Handle image, markdown and rich media pasting directly into the document
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     const items = e.clipboardData?.items
     if (!items) return
@@ -891,6 +1062,18 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         return
       }
     }
+
+    // Handle plain text or markdown pasting
+    const text = e.clipboardData?.getData('text/plain')
+    if (text && (/#{1,6}\s+/.test(text) || /\r?\n/.test(text))) {
+      e.preventDefault()
+      pushHistorySnapshot(true)
+      const convertedHtml = markdownToHtml(text, allNotes, note.title)
+      document.execCommand('insertHTML', false, convertedHtml)
+      refreshBlocks()
+      handleSync()
+      return
+    }
   }
 
   // Handle typing inside unified contentEditable
@@ -898,6 +1081,12 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     isTypingRef.current = true
     refreshBlocks()
     handleSync()
+
+    // Debounce typing snapshot (save state 600ms after user pauses typing)
+    if (typingSnapshotTimerRef.current) clearTimeout(typingSnapshotTimerRef.current)
+    typingSnapshotTimerRef.current = setTimeout(() => {
+      pushHistorySnapshot()
+    }, 600)
 
     const sel = window.getSelection()
     if (!sel || !sel.rangeCount) {
@@ -952,6 +1141,25 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   // Handle smart keyboard shortcuts & live markdown transformation
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (!isEditable || e.nativeEvent.isComposing) return
+
+    // 0. Custom Undo & Redo (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y)
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.shiftKey) {
+        handleRedo()
+      } else {
+        handleUndo()
+      }
+      return
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+      e.preventDefault()
+      e.stopPropagation()
+      handleRedo()
+      return
+    }
+
     // If slash menu active, handle keys
     if (slashMenu && filteredSlashCommands.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -1396,9 +1604,10 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   }, [])
 
   // Floating Toolbar Formatting Actions
-  const handleToolbarWrap = (type: 'bold' | 'italic' | 'strike' | 'highlight' | 'code' | 'link') => {
+  const handleToolbarWrap = (type: 'bold' | 'italic' | 'strike' | 'highlight' | 'code' | 'link' | 'h1' | 'h2' | 'h3' | 'task' | 'bullet' | 'callout') => {
     const sel = window.getSelection()
     if (!sel || sel.isCollapsed) return
+    pushHistorySnapshot(true)
 
     if (type === 'bold') {
       document.execCommand('bold')
@@ -1415,9 +1624,23 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     } else if (type === 'link') {
       const selectedText = sel.toString().trim()
       insertWikiLinkHtml(selectedText)
+    } else if (type === 'h1') {
+      formatBlockSafe('h1')
+    } else if (type === 'h2') {
+      formatBlockSafe('h2')
+    } else if (type === 'h3') {
+      formatBlockSafe('h3')
+    } else if (type === 'bullet') {
+      document.execCommand('insertUnorderedList')
+    } else if (type === 'task') {
+      applyTaskList()
+    } else if (type === 'callout') {
+      const selectedText = sel.toString().trim() || 'Texto de destaque'
+      insertBlock(calloutShell({ type: 'NOTE', title: '', content: selectedText }))
     }
 
     setSelectionToolbar(null)
+    refreshBlocks()
     handleSync()
   }
 
@@ -1442,6 +1665,12 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     // 2. Task Checkbox Toggle Click
     const checkbox = (e.target as HTMLElement).closest('.task-checkbox') as HTMLInputElement | null
     if (checkbox) {
+      pushHistorySnapshot(true)
+      if (checkbox.checked) {
+        checkbox.setAttribute('checked', 'checked')
+      } else {
+        checkbox.removeAttribute('checked')
+      }
       const taskItem = checkbox.closest('.task-item')
       const textSpan = taskItem?.querySelector('.task-text')
       if (textSpan) {
@@ -1561,19 +1790,97 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             zIndex: 9999
           }}
           onMouseDown={e => e.preventDefault()}
-          className="editor-selection-toolbar flex items-center gap-0.5 px-1.5 py-1 bg-[#141418]/95 border border-amber-500/40 rounded-xl shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
+          className="editor-selection-toolbar flex items-center gap-0.5 px-2 py-1.5 bg-[#141418]/95 border border-zinc-800 rounded-xl shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80 text-xs"
         >
-          {/* Wikilink [[...]] Button */}
+          {/* Conectar com Nota / Wikilink [[...]] Button */}
           <button
             type="button"
             onMouseDown={e => {
               e.preventDefault()
               handleToolbarWrap('link')
             }}
-            className="p-1.5 rounded-lg text-amber-300 hover:text-zinc-950 bg-amber-500/15 hover:bg-amber-400 border border-amber-500/40 transition-all shadow-sm cursor-pointer flex items-center justify-center"
+            className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 bg-transparent hover:bg-amber-500/10 border border-amber-500/50 transition-all shadow-sm cursor-pointer flex items-center justify-center"
             title="Conectar com Nota / Link Bidirecional [[...]]"
           >
             <Link2 className="w-3.5 h-3.5" />
+          </button>
+
+          <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
+
+          {/* Tamanhos de títulos (H1, H2, H3) */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleToolbarWrap('h1')
+            }}
+            className="px-1.5 py-1 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer font-bold text-[11px]"
+            title="Título H1"
+          >
+            H1
+          </button>
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleToolbarWrap('h2')
+            }}
+            className="px-1.5 py-1 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer font-bold text-[11px]"
+            title="Título H2"
+          >
+            H2
+          </button>
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleToolbarWrap('h3')
+            }}
+            className="px-1.5 py-1 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer font-bold text-[11px]"
+            title="Título H3"
+          >
+            H3
+          </button>
+
+          <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
+
+          {/* Lista de tarefas */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleToolbarWrap('task')
+            }}
+            className="p-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer flex items-center justify-center"
+            title="Lista de Tarefas"
+          >
+            <ListTodo className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Lista de marcadores */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleToolbarWrap('bullet')
+            }}
+            className="p-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer flex items-center justify-center"
+            title="Lista com Marcadores"
+          >
+            <List className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Callout */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleToolbarWrap('callout')
+            }}
+            className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-950/40 transition-colors cursor-pointer flex items-center justify-center"
+            title="Inserir Callout / Caixa de Destaque"
+          >
+            <MessageSquareText className="w-3.5 h-3.5" />
           </button>
 
           <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
