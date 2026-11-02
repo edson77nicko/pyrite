@@ -60,8 +60,12 @@ import {
   XCircle,
   Copy,
   Clock,
-  Power
+  Power,
+  Folder
 } from 'lucide-react'
+import { CustomSelect } from './CustomSelect'
+import { CustomTimePicker } from './CustomTimePicker'
+import { CustomNotePicker } from './CustomNotePicker'
 
 interface WorkflowCanvasEditorProps {
   workflows: WorkflowDefinition[]
@@ -306,6 +310,14 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       y: Math.round(rect.height / 2 - centerY * nextZoom)
     })
   }
+
+  // Centralização automática ao abrir ou trocar de fluxo
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleFitView()
+    }, 60)
+    return () => clearTimeout(timer)
+  }, [selectedWorkflowId])
 
   const handleCreateWorkflow = () => {
     const firstAgent = agents[0]
@@ -765,7 +777,9 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           }}
           onPointerDown={e => {
             if (e.button === 2) return
-            if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.canvasBg === 'true') {
+            const target = e.target as HTMLElement
+            const isInteractive = target?.closest?.('button, input, textarea, select, [data-node-id], [data-no-pan="true"]')
+            if (!isInteractive) {
               setSelectedNodeId(null)
               setSelectedEdgeId(null)
               setIsWorkflowMenuOpen(false)
@@ -795,7 +809,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             className="absolute inset-0 pointer-events-none"
           >
             {/* Arestas Bezier Suaves */}
-            <svg className="overflow-visible w-full h-full pointer-events-auto">
+            <svg className="overflow-visible w-full h-full pointer-events-none">
               {activeWorkflow.edges.map(edge => {
                 const src = activeWorkflow.nodes.find(n => n.id === edge.sourceNodeId)
                 const dst = activeWorkflow.nodes.find(n => n.id === edge.targetNodeId)
@@ -816,7 +830,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       setSelectedEdgeId(edge.id)
                       setSelectedNodeId(null)
                     }}
-                    className="cursor-pointer group"
+                    className="cursor-pointer group pointer-events-auto"
                   >
                     <path d={pathD} fill="none" stroke="transparent" strokeWidth={16} />
                     <path
@@ -912,6 +926,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       y: e.clientY - (node.position.y * zoom + pan.y)
                     }
                   }}
+                  data-node-id={node.id}
                   className="absolute pointer-events-auto select-none group"
                 >
                   {/* RÓTULO FLUTUANTE ACIMA DO CARD (ex: ⚡ Gatilho, 🤖 Agente, 🔮 LLM) */}
@@ -1034,67 +1049,65 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     {/* CARD 1: GATILHO / AGENDAMENTO (Idêntico ao Print 02!) */}
                     {node.kind === 'input' && (
                       <div className="space-y-3" onPointerDown={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-between bg-[#1c1c1f] border border-zinc-800/80 rounded-xl px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-md bg-amber-500/15 text-amber-400 flex items-center justify-center">
-                              <Calendar className="w-3.5 h-3.5" />
-                            </span>
-                            <select
-                              value={node.config.triggerType || 'schedule'}
-                              onChange={e => {
-                                const newType = e.target.value as any
-                                const nextIso = computeWorkflowNextRunISO(
-                                  node.config.scheduleFrequency || 'daily',
-                                  node.config.scheduleTime || '09:00',
-                                  node.config.scheduleDays
-                                )
-                                handleUpdateNodeById(node.id, {
-                                  config: { ...node.config, triggerType: newType, nextRunAt: nextIso }
-                                })
-                              }}
-                              className="bg-transparent text-xs font-semibold text-zinc-100 outline-none cursor-pointer"
-                            >
-                              <option value="schedule" className="bg-[#18181b]">Agendamento</option>
-                              <option value="manual" className="bg-[#18181b]">Manual (Ao Executar)</option>
-                              <option value="task_event" className="bg-[#18181b]">Ao Criar Tarefa</option>
-                              <option value="note_event" className="bg-[#18181b]">Ao Alterar Nota</option>
-                            </select>
-                          </div>
-                          <ChevronDown className="w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-1">
+                          <CustomSelect
+                            value={node.config.triggerType || 'schedule'}
+                            onChange={newType => {
+                              const nextIso = computeWorkflowNextRunISO(
+                                node.config.scheduleFrequency || 'daily',
+                                node.config.scheduleTime || '09:00',
+                                node.config.scheduleDays
+                              )
+                              handleUpdateNodeById(node.id, {
+                                config: { ...node.config, triggerType: newType as any, nextRunAt: nextIso }
+                              })
+                            }}
+                            options={[
+                              { value: 'schedule', label: 'Agendamento' },
+                              { value: 'manual', label: 'Manual (Ao Executar)' },
+                              { value: 'task_event', label: 'Ao Criar Tarefa' },
+                              { value: 'note_event', label: 'Ao Alterar Nota' },
+                            ]}
+                            icon={
+                              <span className="w-5 h-5 rounded-md bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+                                <Calendar className="w-3.5 h-3.5" />
+                              </span>
+                            }
+                            className="w-full"
+                            buttonClassName="bg-transparent border-0 hover:bg-zinc-800/40 text-xs font-semibold py-1.5"
+                          />
                         </div>
 
                         {node.config.triggerType !== 'manual' && (
                           <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 flex-wrap">
-                            <select
+                            <CustomSelect
                               value={node.config.scheduleFrequency || 'daily'}
-                              onChange={e => {
-                                const newFreq = e.target.value as any
+                              onChange={newFreq => {
                                 const nextIso = computeWorkflowNextRunISO(
-                                  newFreq,
+                                  newFreq as any,
                                   node.config.scheduleTime || '09:00',
                                   node.config.scheduleDays
                                 )
                                 handleUpdateNodeById(node.id, {
-                                  config: { ...node.config, scheduleFrequency: newFreq, nextRunAt: nextIso }
+                                  config: { ...node.config, scheduleFrequency: newFreq as any, nextRunAt: nextIso }
                                 })
                               }}
-                              className="px-2 py-1 rounded-lg bg-[#1c1c1f] border border-zinc-800/80 text-zinc-200 font-medium outline-none cursor-pointer"
-                            >
-                              <option value="daily" className="bg-[#18181b]">Diariamente</option>
-                              <option value="weekdays" className="bg-[#18181b]">Dias úteis</option>
-                              <option value="weekly" className="bg-[#18181b]">Semanalmente</option>
-                              <option value="monthly" className="bg-[#18181b]">Mensalmente</option>
-                            </select>
+                              options={[
+                                { value: 'daily', label: 'Diariamente' },
+                                { value: 'weekdays', label: 'Dias úteis' },
+                                { value: 'weekly', label: 'Semanalmente' },
+                                { value: 'monthly', label: 'Mensalmente' },
+                              ]}
+                              size="xs"
+                            />
                             <span>em</span>
-                            <span className="px-2 py-1 rounded-lg bg-[#1c1c1f] text-zinc-200 font-medium">
+                            <span className="px-2 py-1 rounded-lg bg-[#1c1c1f] text-zinc-200 font-medium text-[11px]">
                               {node.config.scheduleFrequency === 'weekdays' ? 'Dias úteis' : 'Todo dia'}
                             </span>
                             <span>às</span>
-                            <input
-                              type="time"
+                            <CustomTimePicker
                               value={node.config.scheduleTime || '09:00'}
-                              onChange={e => {
-                                const newTime = e.target.value
+                              onChange={newTime => {
                                 const nextIso = computeWorkflowNextRunISO(
                                   node.config.scheduleFrequency || 'daily',
                                   newTime,
@@ -1104,7 +1117,6 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                                   config: { ...node.config, scheduleTime: newTime, nextRunAt: nextIso }
                                 })
                               }}
-                              className="px-1.5 py-0.5 rounded-lg bg-[#1c1c1f] border border-zinc-800/80 text-zinc-200 font-medium outline-none text-[11px] cursor-pointer"
                             />
                           </div>
                         )}
@@ -1181,49 +1193,45 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
                           <div className="flex items-center justify-between gap-1 pt-1">
                             {/* Seletor de Agente inline */}
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span
-                                className="w-4 h-4 rounded-md flex items-center justify-center text-[9px] text-white shrink-0 font-bold"
-                                style={{ backgroundColor: agentColor }}
-                              >
-                                ••
-                              </span>
-                              <select
+                            <div className="flex-1 min-w-0">
+                              <CustomSelect
                                 value={node.config.agentId || agents[0]?.id || ''}
-                                onChange={e => {
-                                  const chosen = agents.find(a => a.id === e.target.value)
+                                onChange={chosenId => {
+                                  const chosen = agents.find(a => a.id === chosenId)
                                   handleUpdateNodeById(node.id, {
                                     label: chosen?.name || 'Agente',
-                                    config: { ...node.config, agentId: e.target.value }
+                                    config: { ...node.config, agentId: chosenId }
                                   })
                                 }}
-                                className="bg-transparent text-[11px] font-medium text-zinc-200 focus:outline-none truncate cursor-pointer max-w-[100px]"
-                              >
-                                {agents.map(ag => (
-                                  <option key={ag.id} value={ag.id} className="bg-[#18181b]">
-                                    {ag.name}
-                                  </option>
-                                ))}
-                              </select>
+                                options={agents.map((ag, idx) => ({
+                                  value: ag.id,
+                                  label: ag.name,
+                                  color: AGENT_COLORS[idx % AGENT_COLORS.length]
+                                }))}
+                                size="xs"
+                                className="w-full"
+                              />
                             </div>
 
                             {/* Indicador / Seletor de Modelo inline */}
-                            <div className="flex items-center gap-1 text-[11px] text-zinc-300 shrink-0">
-                              <Globe className="w-3 h-3 text-zinc-400" />
-                              <select
-                                value={node.config.model || nodeAgent?.aiConfig?.model || 'GPT-6.1 Terra'}
-                                onChange={e =>
+                            <div className="shrink-0 max-w-[125px]">
+                              <CustomSelect
+                                value={node.config.model || nodeAgent?.aiConfig?.model || 'google/gemini-2.5-flash'}
+                                onChange={chosenModel =>
                                   handleUpdateNodeById(node.id, {
-                                    config: { ...node.config, model: e.target.value }
+                                    config: { ...node.config, model: chosenModel }
                                   })
                                 }
-                                className="bg-transparent text-[11px] text-zinc-300 focus:outline-none cursor-pointer max-w-[100px] truncate"
-                              >
-                                <option value="GPT-6.1 Terra" className="bg-[#18181b]">GPT-6.1 Terra</option>
-                                <option value="google/gemini-2.5-flash" className="bg-[#18181b]">Gemini 2.5</option>
-                                <option value="anthropic/claude-3.5-sonnet" className="bg-[#18181b]">Claude 3.5</option>
-                                <option value="deepseek/deepseek-chat" className="bg-[#18181b]">DeepSeek V3</option>
-                              </select>
+                                options={[
+                                  { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5' },
+                                  { value: 'google/gemini-2.5-pro', label: 'Gemini Pro' },
+                                  { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5' },
+                                  { value: 'openai/gpt-4o', label: 'GPT-4o' },
+                                  { value: 'deepseek/deepseek-chat', label: 'DeepSeek' }
+                                ]}
+                                size="xs"
+                                icon={<Globe className="w-3 h-3 text-zinc-400" />}
+                              />
                             </div>
                           </div>
                         </div>
@@ -1258,39 +1266,42 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           />
 
                           <div className="flex items-center justify-between gap-1 pt-1">
-                            <div className="flex items-center gap-1 text-[11px] text-purple-400 min-w-0">
-                              <Sparkles className="w-3 h-3 shrink-0" />
-                              <select
-                                value={node.config.model || 'gpt-4o'}
-                                onChange={e =>
+                            <div className="flex-1 min-w-0">
+                              <CustomSelect
+                                value={node.config.model || 'openai/gpt-4o'}
+                                onChange={chosenModel =>
                                   handleUpdateNodeById(node.id, {
-                                    config: { ...node.config, model: e.target.value }
+                                    config: { ...node.config, model: chosenModel }
                                   })
                                 }
-                                className="bg-transparent text-[11px] font-medium text-zinc-200 focus:outline-none truncate cursor-pointer max-w-[100px]"
-                              >
-                                <option value="gpt-4o" className="bg-[#18181b]">GPT-4o</option>
-                                <option value="google/gemini-2.5-flash" className="bg-[#18181b]">Gemini 2.5</option>
-                                <option value="anthropic/claude-3.5-sonnet" className="bg-[#18181b]">Claude 3.5</option>
-                                <option value="deepseek/deepseek-chat" className="bg-[#18181b]">DeepSeek V3</option>
-                              </select>
+                                options={[
+                                  { value: 'openai/gpt-4o', label: 'GPT-4o' },
+                                  { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5' },
+                                  { value: 'google/gemini-2.5-pro', label: 'Gemini Pro' },
+                                  { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5' },
+                                  { value: 'deepseek/deepseek-chat', label: 'DeepSeek V3' }
+                                ]}
+                                size="xs"
+                                icon={<Sparkles className="w-3 h-3 text-purple-400" />}
+                              />
                             </div>
 
-                            <div className="flex items-center gap-1 text-[10.5px] text-zinc-400 shrink-0">
-                              <Sliders className="w-3 h-3 text-zinc-500" />
-                              <select
+                            <div className="shrink-0 max-w-[130px]">
+                              <CustomSelect
                                 value={node.config.reasoning || 'low'}
-                                onChange={e =>
+                                onChange={r =>
                                   handleUpdateNodeById(node.id, {
-                                    config: { ...node.config, reasoning: e.target.value as any }
+                                    config: { ...node.config, reasoning: r as any }
                                   })
                                 }
-                                className="bg-transparent text-[10.5px] text-zinc-300 focus:outline-none cursor-pointer"
-                              >
-                                <option value="low" className="bg-[#18181b]">Raciocínio Baixo</option>
-                                <option value="medium" className="bg-[#18181b]">Raciocínio Médio</option>
-                                <option value="high" className="bg-[#18181b]">Raciocínio Alto</option>
-                              </select>
+                                options={[
+                                  { value: 'low', label: 'Raciocínio Baixo' },
+                                  { value: 'medium', label: 'Raciocínio Médio' },
+                                  { value: 'high', label: 'Raciocínio Alto' }
+                                ]}
+                                size="xs"
+                                icon={<Sliders className="w-3 h-3 text-zinc-500" />}
+                              />
                             </div>
                           </div>
                         </div>
@@ -1346,28 +1357,21 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                               className="w-full h-16 bg-transparent text-xs text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none leading-relaxed"
                             />
                           ) : (
-                            <div className="py-1">
-                              <select
-                                value={node.config.noteId || ''}
-                                onChange={e => {
-                                  const nt = notes.find(n => n.id === e.target.value)
+                            <div className="py-0.5">
+                              <CustomNotePicker
+                                notes={notes}
+                                selectedNoteId={node.config.noteId}
+                                onSelect={nt => {
                                   handleUpdateNodeById(node.id, {
                                     config: {
                                       ...node.config,
-                                      noteId: e.target.value,
+                                      noteId: nt?.id,
                                       noteTitle: nt?.title
                                     }
                                   })
                                 }}
-                                className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none"
-                              >
-                                <option value="">Selecione uma nota...</option>
-                                {notes.map(n => (
-                                  <option key={n.id} value={n.id} className="bg-[#18181b]">
-                                    {n.title}
-                                  </option>
-                                ))}
-                              </select>
+                                placeholder="Selecionar nota do cofre..."
+                              />
                             </div>
                           )}
                         </div>
@@ -1407,7 +1411,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
                           <div className="flex items-center gap-1.5 pt-1">
                             <div
-                              className={`flex-1 py-1.5 px-2 rounded-lg border flex items-center justify-between text-xs transition-colors ${
+                              className={`flex-1 py-1.5 px-2 rounded-lg border flex items-center justify-between text-[11px] whitespace-nowrap min-w-0 transition-colors ${
                                 node.config.branchTaken === 'yes'
                                   ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300 font-medium'
                                   : node.config.branchTaken === 'no'
@@ -1415,12 +1419,12 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                                   : 'bg-[#141416] border-zinc-800 text-zinc-300'
                               }`}
                             >
-                              <span>Sim (Verdadeiro)</span>
-                              {node.config.branchTaken === 'yes' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                              <span className="truncate">Sim (Verdadeiro)</span>
+                              {node.config.branchTaken === 'yes' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 ml-1" />}
                             </div>
 
                             <div
-                              className={`flex-1 py-1.5 px-2 rounded-lg border flex items-center justify-between text-xs transition-colors ${
+                              className={`flex-1 py-1.5 px-2 rounded-lg border flex items-center justify-between text-[11px] whitespace-nowrap min-w-0 transition-colors ${
                                 node.config.branchTaken === 'no'
                                   ? 'bg-rose-950/40 border-rose-500/50 text-rose-300 font-medium'
                                   : node.config.branchTaken === 'yes'
@@ -1428,8 +1432,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                                   : 'bg-[#141416] border-zinc-800 text-zinc-300'
                               }`}
                             >
-                              <span>Não (Falso)</span>
-                              {node.config.branchTaken === 'no' && <CheckCircle2 className="w-3.5 h-3.5 text-rose-400" />}
+                              <span className="truncate">Não (Falso)</span>
+                              {node.config.branchTaken === 'no' && <CheckCircle2 className="w-3.5 h-3.5 text-rose-400 shrink-0 ml-1" />}
                             </div>
                           </div>
                         </div>

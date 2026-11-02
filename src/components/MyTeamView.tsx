@@ -35,7 +35,7 @@ import { RoutineCanvasEditor } from './RoutineCanvasEditor'
 import { AiSettingsModal, type CustomAgentSkill } from './AiSettingsModal'
 import { AgentIcon, AgentIconPicker } from './AgentIcon'
 import {
-  isAgentIconVariant,
+  resolveAgentIconVariant,
   type AgentIconState,
   type AgentIconVariant
 } from './agentIconRegistry'
@@ -557,11 +557,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     if (ag?.color) return ag.color
     const idx = store.agents.findIndex(a => a.id === agentId)
     return AGENT_AVATAR_COLORS[Math.max(0, idx) % AGENT_AVATAR_COLORS.length]
-  }
-
-  const getAgentIcon = (agentId?: string) => {
-    const ag = store.agents.find(a => a.id === agentId)
-    return ag?.icon || '••'
   }
 
   const formatTimeShort = (ts?: number) => {
@@ -1212,7 +1207,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5">
                   {filteredAgents.map(ag => {
                     const isSelected = selectedAgent?.id === ag.id
-                    const color = getAgentColor(ag.id)
                     const lastRun = store.runs.find(r => r.agentId === ag.id)
                     const previewText = lastRun
                       ? getRunSummaryText(lastRun)
@@ -1236,22 +1230,13 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             : 'hover:bg-[#151518] text-zinc-300'
                         }`}
                       >
-                        {/* Avatar com ícone animado em SVG ou glifo customizado */}
-                        {isAgentIconVariant(ag.icon) ? (
-                          <AgentIcon
-                            variant={ag.icon}
-                            state={ag.state === 'working' ? 'executing' : ag.state === 'waiting_user' ? 'attention' : 'waiting'}
-                            size={36}
-                            className="shrink-0 rounded-xl shadow-sm"
-                          />
-                        ) : (
-                          <div
-                            className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm"
-                            style={{ backgroundColor: color }}
-                          >
-                            <span className="tracking-tighter text-sm">{getAgentIcon(ag.id)}</span>
-                          </div>
-                        )}
+                        {/* Avatar do agente com micro-animação discreta */}
+                        <AgentIcon
+                          variant={ag.icon}
+                          state={ag.state === 'working' ? 'executing' : ag.state === 'waiting_user' ? 'attention' : 'waiting'}
+                          size={36}
+                          className="shrink-0 rounded-xl shadow-sm"
+                        />
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
@@ -1294,21 +1279,12 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
                   {selectedAgent && (
                     <div className="flex items-center gap-1.5 bg-[#1b1b1f] border border-zinc-800/80 rounded-xl px-2 py-1">
-                      {isAgentIconVariant(selectedAgent.icon) ? (
-                        <AgentIcon
-                          variant={selectedAgent.icon}
-                          state={selectedAgent.state === 'working' ? 'executing' : selectedAgent.state === 'waiting_user' ? 'attention' : 'waiting'}
-                          size={18}
-                          className="shrink-0 rounded-md"
-                        />
-                      ) : (
-                        <span
-                          className="w-4 h-4 rounded-md flex items-center justify-center text-[9px] text-white font-bold"
-                          style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
-                        >
-                          {getAgentIcon(selectedAgent.id)}
-                        </span>
-                      )}
+                      <AgentIcon
+                        variant={selectedAgent.icon}
+                        state={selectedAgent.state === 'working' ? 'executing' : selectedAgent.state === 'waiting_user' ? 'attention' : 'waiting'}
+                        size={18}
+                        className="shrink-0 rounded-md"
+                      />
                       <span className="text-xs font-medium text-zinc-100 truncate max-w-[160px]">
                         {selectedAgent.name}
                       </span>
@@ -2277,27 +2253,18 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   {/* Avatar centralizado com botão de lápis */}
                   <div className="flex justify-center py-2">
                     <div className="relative">
-                      {isAgentIconVariant(selectedAgent.icon) ? (
-                        <div
-                          className="cursor-pointer transition-transform hover:scale-105"
-                          onClick={() => setIsAvatarPickerOpen(true)}
-                          title="Clique para personalizar avatar"
-                        >
-                          <AgentIcon
-                            variant={selectedAgent.icon}
-                            state={selectedAgent.state === 'working' ? 'executing' : selectedAgent.state === 'waiting_user' ? 'attention' : 'waiting'}
-                            size={64}
-                            className="rounded-2xl shadow-lg ring-2 ring-white/10"
-                          />
-                        </div>
-                      ) : (
-                        <div
-                          className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg transition-transform hover:scale-105"
-                          style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
-                        >
-                          <span className="text-2xl">{getAgentIcon(selectedAgent.id)}</span>
-                        </div>
-                      )}
+                      <div
+                        className="cursor-pointer transition-transform hover:scale-105"
+                        onClick={() => setIsAvatarPickerOpen(true)}
+                        title="Clique para personalizar avatar"
+                      >
+                        <AgentIcon
+                          variant={selectedAgent.icon}
+                          state={selectedAgent.state === 'working' ? 'executing' : selectedAgent.state === 'waiting_user' ? 'attention' : 'waiting'}
+                          size={64}
+                          className="rounded-2xl shadow-lg ring-2 ring-white/10"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => setIsAvatarPickerOpen(true)}
@@ -4035,7 +4002,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         </div>
       )}
       {/* ============================================================================ */}
-      {/* MODAL: PERSONALIZAR ÍCONE E COR DO AGENTE                                    */}
+      {/* MODAL: PERSONALIZAR AVATAR DO AGENTE                                         */}
       {/* ============================================================================ */}
       {isAvatarPickerOpen && selectedAgent && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -4046,7 +4013,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   Personalizar Avatar do Agente
                 </h3>
                 <p className="text-[11px] text-zinc-400 mt-0.5">
-                  Escolha entre os 10 ícones vetoriais com micro-animações em SVG + CSS
+                  Selecione o avatar que melhor representa este agente
                 </p>
               </div>
               <button
@@ -4060,21 +4027,12 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
             {/* Pré-visualização ao vivo */}
             <div className="flex flex-col items-center justify-center py-2 gap-2 bg-[#0e0e10] rounded-xl border border-zinc-850 p-3">
-              {isAgentIconVariant(selectedAgent.icon) ? (
-                <AgentIcon
-                  variant={selectedAgent.icon}
-                  state={avatarPreviewState}
-                  size={72}
-                  className="rounded-2xl shadow-xl"
-                />
-              ) : (
-                <div
-                  className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-xl transition-all"
-                  style={{ backgroundColor: getAgentColor(selectedAgent.id) }}
-                >
-                  <span>{getAgentIcon(selectedAgent.id)}</span>
-                </div>
-              )}
+              <AgentIcon
+                variant={selectedAgent.icon}
+                state={avatarPreviewState}
+                size={72}
+                className="rounded-2xl shadow-xl"
+              />
 
               {/* Seletor de estado para testar animações ao vivo */}
               <div className="flex items-center gap-1 bg-[#16161a] p-1 rounded-lg border border-zinc-800/80 text-[10px] mt-1">
@@ -4104,95 +4062,26 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               </div>
             </div>
 
-            {/* Seletor dos 10 Ícones Animados */}
+            {/* Seletor de Avatares */}
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="block text-[11px] text-zinc-300 font-semibold">
-                  Ícones Vetoriais dos Agentes (10 Opções)
-                </label>
-                <span className="text-[10px] text-zinc-500 font-mono">SVG + CSS</span>
-              </div>
+              <label className="block text-[11px] text-zinc-300 font-semibold">
+                Avatar do Agente
+              </label>
               <AgentIconPicker
                 selectedVariant={selectedAgent.icon}
                 state={avatarPreviewState}
                 size={38}
-                onSelect={(variantId: AgentIconVariant) =>
+                onSelect={(variantId: AgentIconVariant) => {
+                  const def = resolveAgentIconVariant(variantId)
                   onUpdateStore(
                     updateAgentProfileWithVersion(store, {
                       ...selectedAgent,
-                      icon: String(variantId)
+                      icon: def.id,
+                      color: def.bg
                     })
                   )
-                }
+                }}
               />
-            </div>
-
-            {/* Símbolo Clássico ou Emoji */}
-            <div className="space-y-1.5 pt-1 border-t border-zinc-800/70">
-              <label className="block text-[11px] text-zinc-400 font-medium">
-                Ou Símbolo Clássico / Emoji
-              </label>
-              <div className="grid grid-cols-8 gap-1 bg-[#121214] p-1.5 rounded-xl border border-zinc-800/70">
-                {['••', '🤖', '💼', '⚡', '🧠', '🎯', '🛡️', '📊', '📝', '🔍', '🚀', '💡', '⚙️', '💬', '✨', '👑'].map(glyph => {
-                  const isSel = getAgentIcon(selectedAgent.id) === glyph
-                  return (
-                    <button
-                      key={glyph}
-                      type="button"
-                      onClick={() =>
-                        onUpdateStore(
-                          updateAgentProfileWithVersion(store, {
-                            ...selectedAgent,
-                            icon: glyph
-                          })
-                        )
-                      }
-                      className={`h-7 rounded-lg flex items-center justify-center text-xs transition-colors cursor-pointer ${
-                        isSel ? 'bg-zinc-700 text-white font-bold' : 'hover:bg-zinc-800 text-zinc-400'
-                      }`}
-                    >
-                      {glyph}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Paleta de Cores (apenas quando usando emoji ou fundo customizado) */}
-            <div className="space-y-1.5">
-              <label className="block text-[11px] text-zinc-400 font-medium">Cor de Destaque / Fundo de Emoji</label>
-              <div className="flex items-center justify-between gap-1.5">
-                {[
-                  '#10b981', // Emerald
-                  '#2563eb', // Blue
-                  '#8b5cf6', // Violet
-                  '#f59e0b', // Amber
-                  '#f43f5e', // Rose
-                  '#06b6d4', // Cyan
-                  '#6366f1', // Indigo
-                  '#14b8a6'  // Teal
-                ].map(c => {
-                  const isSel = getAgentColor(selectedAgent.id) === c
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() =>
-                        onUpdateStore(
-                          updateAgentProfileWithVersion(store, {
-                            ...selectedAgent,
-                            color: c
-                          })
-                        )
-                      }
-                      className={`w-7 h-7 rounded-xl transition-transform cursor-pointer ${
-                        isSel ? 'ring-2 ring-white scale-110' : 'hover:scale-105 opacity-80 hover:opacity-100'
-                      }`}
-                      style={{ backgroundColor: c }}
-                    />
-                  )
-                })}
-              </div>
             </div>
 
             <div className="flex justify-end pt-2 border-t border-zinc-800/80">

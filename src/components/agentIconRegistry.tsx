@@ -1,8 +1,8 @@
 import React from 'react'
 
 /**
- * Identificadores das 10 variantes de ícones vetoriais de agentes.
- * Suporta identificadores canônicos, apelidos e índices numéricos (1 a 10).
+ * Identificadores das 15 variantes de ícones de agentes.
+ * Suporta identificadores canônicos, apelidos e índices numéricos (1 a 15).
  */
 export type AgentIconVariant =
   | 'split'
@@ -36,8 +36,23 @@ export type AgentIconVariant =
   | 'badge'
   | 'square'
   | 'nested'
-  | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
-  | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10'
+  | 'peak'
+  | 'mountain'
+  | 'triangle'
+  | 'crescent'
+  | 'moon'
+  | 'eclipse'
+  | 'beam'
+  | 'stripe'
+  | 'slash'
+  | 'valley'
+  | 'bowl'
+  | 'nest'
+  | 'orbit'
+  | 'ring'
+  | 'donut'
+  | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
+  | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15'
   | (string & {})
 
 /**
@@ -74,8 +89,8 @@ export interface AgentIconDefinition {
 }
 
 /**
- * Registro oficial das 10 variantes de ícones para agentes,
- * com geometria vetorizada, cores extraídas da referência e posições de olhos.
+ * Registro oficial das 15 variantes de ícones para agentes,
+ * com geometria vetorizada, cores harmônicas e posições de olhos expressivas.
  */
 export const AGENT_ICON_VARIANTS: AgentIconDefinition[] = [
   {
@@ -229,11 +244,85 @@ export const AGENT_ICON_VARIANTS: AgentIconDefinition[] = [
     renderShape: () => (
       <rect x="19" y="20" width="62" height="62" rx="18" fill="#8A84E1" />
     )
+  },
+  {
+    id: 'peak',
+    index: 11,
+    name: 'Peak',
+    description: 'Pico piramidal suave terracota sobre pêssego acolhedor',
+    aliases: ['peak', 'mountain', 'triangle', '11'],
+    bg: '#FED7AA',
+    shape: '#E05D38',
+    eyeCx: 50.0,
+    eyeCy: 28.0,
+    renderShape: () => (
+      <path d="M 12 100 L 44 42 Q 50 32 56 42 L 88 100 Z" fill="#E05D38" />
+    )
+  },
+  {
+    id: 'crescent',
+    index: 12,
+    name: 'Crescent',
+    description: 'Arco crescente azul safira sobre azul glacial suave',
+    aliases: ['crescent', 'moon', 'eclipse', '12'],
+    bg: '#BAE6FD',
+    shape: '#2563EB',
+    eyeCx: 38.0,
+    eyeCy: 50.0,
+    renderShape: () => (
+      <path d="M 68 0 A 50 50 0 0 1 68 100 L 100 100 L 100 0 Z" fill="#2563EB" />
+    )
+  },
+  {
+    id: 'beam',
+    index: 13,
+    name: 'Beam',
+    description: 'Faixa diagonal dinâmica magenta sobre creme amanteigado',
+    aliases: ['beam', 'stripe', 'slash', '13'],
+    bg: '#FEF3C7',
+    shape: '#D92672',
+    eyeCx: 40.0,
+    eyeCy: 35.0,
+    renderShape: () => (
+      <path d="M -20 85 L 65 0 L 98 0 L 13 85 L -20 118 Z" fill="#D92672" />
+    )
+  },
+  {
+    id: 'valley',
+    index: 14,
+    name: 'Valley',
+    description: 'Vale acolhedor verde floresta sobre limão suave',
+    aliases: ['valley', 'bowl', 'nest', '14'],
+    bg: '#D9F99D',
+    shape: '#166534',
+    eyeCx: 50.0,
+    eyeCy: 38.0,
+    renderShape: () => (
+      <path d="M 0 52 Q 50 88 100 52 L 100 100 L 0 100 Z" fill="#166534" />
+    )
+  },
+  {
+    id: 'orbit',
+    index: 15,
+    name: 'Orbit',
+    description: 'Anel concêntrico ameixa profundo sobre melão suave',
+    aliases: ['orbit', 'ring', 'donut', 'core', '15'],
+    bg: '#FECDD3',
+    shape: '#581C87',
+    eyeCx: 50.0,
+    eyeCy: 50.0,
+    renderShape: () => (
+      <path
+        d="M 50 14 A 36 36 0 1 1 49.9 14 Z M 50 32 A 18 18 0 1 0 50.1 32 Z"
+        fillRule="evenodd"
+        fill="#581C87"
+      />
+    )
   }
 ]
 
 /**
- * Resolve o identificador ou apelido para uma das 10 variantes.
+ * Resolve o identificador ou apelido para uma das variantes.
  */
 export function resolveAgentIconVariant(variant?: AgentIconVariant): AgentIconDefinition {
   if (typeof variant === 'number') {
@@ -292,11 +381,11 @@ export function normalizeAgentIconState(state?: AgentIconState): string {
 }
 
 /**
- * Verifica se um valor arbitrário corresponde a uma das 10 variantes de ícone.
+ * Verifica se um valor arbitrário corresponde a uma das variantes de ícone.
  */
 export function isAgentIconVariant(val?: string | number): boolean {
   if (!val) return false
-  if (typeof val === 'number') return val >= 1 && val <= 10
+  if (typeof val === 'number') return val >= 1 && val <= AGENT_ICON_VARIANTS.length
   const k = String(val).toLowerCase().trim()
   return AGENT_ICON_VARIANTS.some(v => v.id === k || v.aliases.includes(k))
 }
