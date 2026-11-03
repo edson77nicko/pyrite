@@ -19,6 +19,7 @@ import {
   computeHashSync,
   executeAgentRun,
   executeWorkflowRun,
+  type WorkflowCommitNoteFn,
   resumeWorkflowRun,
   executeAutomationRun,
   formatCentsBRL,
@@ -519,37 +520,54 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     return store.runs.filter(r => r.status === 'waiting_approval' || (r.workflowId && r.pausedAtWorkflowNodeId))
   }, [store.runs])
 
+  // Grava de verdade a nota de entrega do fluxo no cofre (mesmo caminho usado pelas entregas dos agentes)
+  const workflowCommitNote: WorkflowCommitNoteFn = async ({ folder, title, content }) => {
+    const res = await onCreateCommittedNote({ folder, title, content, type: 'note', exclusive: true })
+    return {
+      success: res.success,
+      note: res.note,
+      filePath: res.filePath,
+      revisionHash: res.revisionHash,
+      alreadyExists: res.alreadyExists,
+      error: res.error
+    }
+  }
+
+  // Salva a execução do fluxo na store e registra as entregas gravadas
+  const persistWorkflowRun = async (run: AgentRun, mode: 'prepend' | 'replace') => {
+    const knownArtifactIds = new Set(store.artifacts.map(a => a.id))
+    const newArtifacts = run.artifacts.filter(a => !knownArtifactIds.has(a.id))
+    await onUpdateStore({
+      ...store,
+      runs:
+        mode === 'prepend'
+          ? [run, ...store.runs]
+          : store.runs.map(r => (r.id === run.id ? run : r)),
+      artifacts: [...newArtifacts, ...store.artifacts]
+    })
+  }
+
   const handleDirectApproveWorkflowRun = async (pausedRun: AgentRun) => {
     setIsExecuting(true)
     try {
       const wf = workflows.find(w => w.id === pausedRun.workflowId) || workflows[0]
-      if (pausedRun.pausedAtWorkflowNodeId) {
-        const updatedWf = {
-          ...wf,
-          nodes: wf.nodes.map(n =>
-            n.id === pausedRun.pausedAtWorkflowNodeId
-              ? { ...n, config: { ...n.config, branchTaken: 'yes' as const, lastOutput: 'Aprovado pelo usuário.' } }
-              : n
-          ),
-          updatedAt: Date.now()
-        }
-        await onUpdateStore({
-          ...store,
-          workflows: (store.workflows || []).map(w => (w.id === updatedWf.id ? updatedWf : w))
-        })
-      }
       const resumed = await resumeWorkflowRun({
         pausedRun,
         workflow: wf,
         allAgents: store.agents,
         allNotes: notes,
-        allProjects: allUnifiedAsProjects
+        allProjects: allUnifiedAsProjects,
+        commitNote: workflowCommitNote
       })
-      await onUpdateStore({
-        ...store,
-        runs: store.runs.map(r => (r.id === resumed.id ? resumed : r))
+      await persistWorkflowRun(resumed, 'replace')
+      setSelectedRunId(resumed.id)
+      setStatusBanner({
+        type: resumed.status === 'failed' ? 'error' : 'success',
+        text:
+          resumed.status === 'failed'
+            ? `Fluxo falhou após a aprovação: ${resumed.error || 'erro desconhecido'}`
+            : 'Etapa aprovada! O fluxo de trabalho continuou.'
       })
-      setStatusBanner({ type: 'success', text: 'Etapa aprovada com sucesso! Fluxo de trabalho continuado.' })
       setIsApprovalDrawerOpen(false)
     } catch (err: any) {
       setStatusBanner({ type: 'error', text: `Erro ao aprovar etapa: ${err?.message || 'Falha ao processar'}` })
@@ -560,27 +578,20 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
   const handleDirectRejectWorkflowRun = async (pausedRun: AgentRun) => {
     try {
-      const wf = workflows.find(w => w.id === pausedRun.workflowId) || workflows[0]
-      if (pausedRun.pausedAtWorkflowNodeId) {
-        const updatedWf = {
-          ...wf,
-          nodes: wf.nodes.map(n =>
-            n.id === pausedRun.pausedAtWorkflowNodeId
-              ? { ...n, config: { ...n.config, branchTaken: 'no' as const, lastOutput: 'Rejeitado pelo usuário.' } }
-              : n
-          ),
-          updatedAt: Date.now()
-        }
-        await onUpdateStore({
-          ...store,
-          workflows: (store.workflows || []).map(w => (w.id === updatedWf.id ? updatedWf : w)),
-          runs: store.runs.map(r =>
-            r.id === pausedRun.id
-              ? { ...r, status: 'failed', errorMessage: 'Execução rejeitada pelo usuário na etapa de aprovação.' }
-              : r
-          )
-        })
-      }
+      await onUpdateStore({
+        ...store,
+        runs: store.runs.map(r =>
+          r.id === pausedRun.id
+            ? {
+                ...r,
+                status: 'failed' as const,
+                pausedAtWorkflowNodeId: undefined,
+                error: 'Execução rejeitada pelo usuário na etapa de aprovação.',
+                updatedAt: Date.now()
+              }
+            : r
+        )
+      })
       setStatusBanner({ type: 'warning', text: 'Fluxo rejeitado e finalizado.' })
       setIsApprovalDrawerOpen(false)
     } catch (err: any) {
@@ -981,7 +992,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
           workflow: wf,
           allAgents: store.agents,
           allNotes: notes,
-          allProjects: allUnifiedAsProjects
+          allProjects: allUnifiedAsProjects,
+          commitNote: workflowCommitNote
         })
       } finally {
         setIsExecuting(false)
@@ -3576,44 +3588,34 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   prompt,
                   projectContext: proj,
                   explicitClientName: proj?.clientName,
-                  isTestRun: isTest
+                  isTestRun: isTest,
+                  commitNote: workflowCommitNote
                 })
-                await onUpdateStore({
-                  ...store,
-                  runs: [wfRun, ...store.runs]
-                })
+                await persistWorkflowRun(wfRun, 'prepend')
                 setSelectedRunId(wfRun.id)
-                if (wfRun.agentId) setSelectedAgentId(wfRun.agentId)
                 setStatusBanner({
-                  type: wfRun.status === 'completed' ? 'success' : wfRun.status === 'waiting_approval' ? 'warning' : 'warning',
-                  text: wfRun.status === 'completed'
-                    ? `Fluxo "${wf.name}" executado com sucesso!`
-                    : wfRun.status === 'waiting_approval'
-                    ? `Fluxo "${wf.name}" pausado aguardando aprovação humana.`
-                    : `Fluxo "${wf.name}" finalizado (${wfRun.status})`
+                  type: wfRun.status === 'completed' ? 'success' : wfRun.status === 'failed' ? 'error' : 'warning',
+                  text:
+                    wfRun.status === 'completed'
+                      ? isTest
+                        ? `Teste do fluxo "${wf.name}" concluído (nada foi gravado no cofre).`
+                        : `Fluxo "${wf.name}" executado com sucesso!`
+                      : wfRun.status === 'waiting_approval'
+                      ? `Fluxo "${wf.name}" pausado aguardando aprovação humana.`
+                      : `Fluxo "${wf.name}" falhou: ${wfRun.error || wfRun.status}`
+                })
+              } catch (err: any) {
+                setStatusBanner({
+                  type: 'error',
+                  text: `Erro ao executar o fluxo: ${err?.message || 'falha inesperada'}`
                 })
               } finally {
                 setIsExecuting(false)
               }
             }}
-            onResumeWorkflowRun={async (pausedRun) => {
-              setIsExecuting(true)
-              try {
-                const wf = workflows.find(w => w.id === pausedRun.workflowId) || workflows[0]
-                const resumed = await resumeWorkflowRun({
-                  pausedRun,
-                  workflow: wf,
-                  allAgents: store.agents,
-                  allNotes: notes,
-                  allProjects: allUnifiedAsProjects
-                })
-                await onUpdateStore({
-                  ...store,
-                  runs: store.runs.map(r => (r.id === resumed.id ? resumed : r))
-                })
-              } finally {
-                setIsExecuting(false)
-              }
+            onOpenNote={onOpenNote}
+            onResumeWorkflowRun={async pausedRun => {
+              await handleDirectApproveWorkflowRun(pausedRun)
             }}
             isExecuting={isExecuting}
           />

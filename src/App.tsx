@@ -13,7 +13,7 @@ import {
 import { createEmptyDrawDocument, isDrawContent, serializeDrawDocument } from './utils/drawUtils'
 import { createEmptyMindMapDocument, isMindMapContent, parseMindMapDocument, serializeMindMapDocument } from './utils/mindMapUtils'
 import { loadTasks, saveTasks, loadTaskSettings, saveTaskSettings, DEFAULT_BOARDS, DEFAULT_TASK_SETTINGS } from './utils/taskStorage'
-import { loadMultiAgentStoreSync, saveMultiAgentStore, evaluateAutomationsBackground } from './utils/multiAgentEngine'
+import { loadMultiAgentStoreSync, saveMultiAgentStore, evaluateAutomationsBackground, registerWorkflowCommitNote, registerWorkflowCommitTasks, resumeWorkflowRun } from './utils/multiAgentEngine'
 import { Ribbon } from './components/Ribbon'
 import { TabHeader } from './components/TabHeader'
 import { Sidebar } from './components/Sidebar'
@@ -1444,6 +1444,276 @@ export const App: React.FC = () => {
     }
   }
 
+  // Gravador de notas do cofre compartilhado por Agentes e Fluxos de Trabalho (inclusive execuções em segundo plano)
+  const handleCreateCommittedNote = async ({
+    folder,
+    title,
+    content,
+    type = 'note',
+    exclusive = true,
+    overwriteExistingNoteId,
+    expectedRevisionHash
+  }: {
+    folder: string
+    title: string
+    content: string
+    type?: NoteType
+    exclusive?: boolean
+    overwriteExistingNoteId?: string
+    expectedRevisionHash?: string
+  }): Promise<{
+    success: boolean
+    note?: Note
+    filePath?: string
+    revisionHash?: string
+    alreadyExists?: boolean
+    conflict?: boolean
+    error?: string
+  }> => {
+                    const targetFolder = folder || 'Propostas'
+                    const isMind = type === 'mindmap' || isMindMapContent(content)
+                    const finalContent = isMind
+                      ? serializeMindMapDocument(parseMindMapDocument(content, title))
+                      : content
+
+                    let filePath: string | undefined
+                    let revisionHash: string | undefined
+
+                    if (window.electronAPI?.isElectron && vaultPath) {
+                      const res = await window.electronAPI.saveFile({
+                        vaultPath,
+                        folder: targetFolder,
+                        title,
+                        content: finalContent,
+                        exclusive,
+                        expectedRevisionHash,
+                        type: isMind ? 'mindmap' : type
+                      })
+                      if (!res.success) {
+                        return {
+                          success: false,
+                          alreadyExists: res.alreadyExists,
+                          conflict: res.conflict,
+                          error: res.error || 'Falha ao gravar arquivo no cofre.'
+                        }
+                      }
+                      filePath = res.filePath
+                      revisionHash = res.revisionHash
+                    }
+
+                    if (overwriteExistingNoteId) {
+                      let updatedNoteObj: Note | undefined
+                      setNotes(prev => {
+                        const next = prev.map(n => {
+                          if (n.id === overwriteExistingNoteId) {
+                            updatedNoteObj = {
+                              ...n,
+                              title,
+                              folder: targetFolder,
+                              content: finalContent,
+                              filePath: filePath || n.filePath,
+                              updatedAt: Date.now()
+                            }
+                            return updatedNoteObj
+                          }
+                          return n
+                        })
+                        saveNotes(next)
+                        return next
+                      })
+                      return {
+                        success: true,
+                        note: updatedNoteObj || {
+                          id: overwriteExistingNoteId,
+                          title,
+                          content: finalContent,
+                          folder: targetFolder,
+                          filePath,
+                          tags: ['proposta', 'comercial'],
+                          type: isMind ? 'mindmap' : type,
+                          createdAt: Date.now(),
+                          updatedAt: Date.now()
+                        },
+                        filePath,
+                        revisionHash
+                      }
+                    }
+
+                    const newNote: Note = {
+                      id: computeDeterministicNoteId(targetFolder, title),
+                      title,
+                      content: finalContent,
+                      folder: targetFolder,
+                      filePath,
+                      tags: isMind ? ['mindmap', 'escopo'] : ['proposta', 'comercial'],
+                      type: isMind ? 'mindmap' : type,
+                      createdAt: Date.now(),
+                      updatedAt: Date.now()
+                    }
+
+                    setNotes(prev => {
+                      const withoutSameId = prev.filter(n => n.id !== newNote.id)
+                      const next = [newNote, ...withoutSameId]
+                      saveNotes(next)
+                      return next
+                    })
+                    setFolders(prev => {
+                      if (prev.includes(targetFolder)) return prev
+                      const next = [...prev, targetFolder]
+                      saveFolders(next)
+                      return next
+                    })
+
+                    return { success: true, note: newNote, filePath, revisionHash }
+  }
+
+  const handleWorkflowCommitTasks = async (param: {
+    boardId?: string
+    tasks: Array<{
+      title: string
+      description?: string
+      priority?: string
+      statusId?: string
+      customValues?: Record<string, any>
+    }>
+    propertiesToEnsure?: Array<{
+      name: string
+      type: string
+    }>
+  }) => {
+    const targetBoardId = param.boardId || activeBoardId || 'default'
+    const now = Date.now()
+    const createdTasks: TaskItem[] = param.tasks.map((t, idx) => ({
+      id: `task_wf_${now}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
+      boardId: targetBoardId,
+      title: t.title,
+      description: t.description || '',
+      completed: false,
+      statusId: t.statusId || 'todo',
+      priority: (t.priority || 'normal') as any,
+      tags: ['fluxo-ia'],
+      customValues: t.customValues,
+      createdAt: now,
+      updatedAt: now
+    }))
+
+    setTasks(prev => {
+      const next = [...createdTasks, ...prev]
+      saveTasks(next, vaultPath || 'default')
+      return next
+    })
+
+    // Assegurar propriedades no quadro
+    if (param.propertiesToEnsure && param.propertiesToEnsure.length > 0) {
+      setTaskSettings(prev => {
+        const existingNames = new Set((prev.properties || []).map(p => p.name.toLowerCase()))
+        const newProps: any[] = []
+
+        for (const prop of param.propertiesToEnsure!) {
+          if (!existingNames.has(prop.name.toLowerCase())) {
+            newProps.push({
+              id: `prop_${now}_${Math.random().toString(36).slice(2, 6)}`,
+              name: prop.name,
+              type: prop.type || 'text'
+            })
+            existingNames.add(prop.name.toLowerCase())
+          }
+        }
+
+        if (newProps.length > 0) {
+          const updatedSettings: TaskSettings = {
+            ...prev,
+            properties: [...(prev.properties || []), ...newProps]
+          }
+          saveTaskSettings(updatedSettings, vaultPath || 'default')
+          return updatedSettings
+        }
+        return prev
+      })
+    }
+
+    return {
+      success: true,
+      createdCount: createdTasks.length,
+      taskIds: createdTasks.map(t => t.id)
+    }
+  }
+
+  const commitNoteRef = useRef(handleCreateCommittedNote)
+  commitNoteRef.current = handleCreateCommittedNote
+
+  const commitTasksRef = useRef(handleWorkflowCommitTasks)
+  commitTasksRef.current = handleWorkflowCommitTasks
+
+  useEffect(() => {
+    registerWorkflowCommitNote(p => commitNoteRef.current({ ...p, type: 'note', exclusive: true }))
+    registerWorkflowCommitTasks(p => commitTasksRef.current(p))
+    return () => {
+      registerWorkflowCommitNote(null)
+      registerWorkflowCommitTasks(null)
+    }
+  }, [])
+
+  // Pending workflow approvals for the global TabHeader badge
+  const pendingApprovalBadges = React.useMemo(() => {
+    return agentStore.runs
+      .filter(r => r.status === 'waiting_approval' || (r.workflowId && r.pausedAtWorkflowNodeId))
+      .map(r => {
+        const wf = agentStore.workflows?.find(w => w.id === r.workflowId)
+        const pausedNode = wf?.nodes?.find(n => n.id === r.pausedAtWorkflowNodeId)
+        return {
+          runId: r.id,
+          workflowName: wf?.name || r.agentName || 'Fluxo de Trabalho',
+          approvalMessage: pausedNode?.config?.approvalMessage || 'Revisar entregável antes de continuar o fluxo.'
+        }
+      })
+  }, [agentStore.runs, agentStore.workflows])
+
+  const handleAppApproveWorkflow = async (runId: string) => {
+    const pausedRun = agentStore.runs.find(r => r.id === runId)
+    if (!pausedRun) return
+    const wf = agentStore.workflows?.find(w => w.id === pausedRun.workflowId) || agentStore.workflows?.[0]
+    if (!wf) return
+
+    try {
+      const resumed = await resumeWorkflowRun({
+        pausedRun,
+        workflow: wf,
+        allAgents: agentStore.agents,
+        allNotes: notesRef.current,
+        allProjects: [],
+        commitNote: p => commitNoteRef.current({ ...p, type: 'note', exclusive: true })
+      })
+
+      const knownArtifactIds = new Set(agentStore.artifacts.map(a => a.id))
+      const newArtifacts = resumed.artifacts.filter(a => !knownArtifactIds.has(a.id))
+      await handleUpdateAgentStore({
+        ...agentStore,
+        runs: agentStore.runs.map(r => (r.id === resumed.id ? resumed : r)),
+        artifacts: [...newArtifacts, ...agentStore.artifacts]
+      })
+    } catch (err) {
+      console.error('Erro ao aprovar fluxo pelo Header:', err)
+    }
+  }
+
+  const handleAppRejectWorkflow = async (runId: string) => {
+    await handleUpdateAgentStore({
+      ...agentStore,
+      runs: agentStore.runs.map(r =>
+        r.id === runId
+          ? {
+              ...r,
+              status: 'failed' as const,
+              pausedAtWorkflowNodeId: undefined,
+              error: 'Execução rejeitada pelo usuário na barra superior.',
+              updatedAt: Date.now()
+            }
+          : r
+      )
+    })
+  }
+
   return (
     <div className={`app-outer-shell flex flex-col w-screen h-screen ${settings.themeMode === 'light' ? 'light' : ''} bg-[#0f0f12] text-zinc-100 overflow-hidden font-sans relative`}>
       {/* Global Tactile Noise Texture Layer (Present by default in both Dark and Light modes) */}
@@ -1600,6 +1870,9 @@ export const App: React.FC = () => {
             onOpenSettings={() => setIsSettingsOpen(true)}
             onExportVault={handleExportVault}
             onReorderTabs={handleReorderTabs}
+            pendingApprovals={pendingApprovalBadges}
+            onApproveWorkflowRun={handleAppApproveWorkflow}
+            onRejectWorkflowRun={handleAppRejectWorkflow}
           />
 
           {/* Page area below Header: Contains Editor/Graph/Canvas and the RightSidebar (Sumário) */}
@@ -1726,111 +1999,7 @@ export const App: React.FC = () => {
                   folders={folders}
                   vaultPath={vaultPath}
                   onOpenNote={(noteId: string) => handleSelectNote(noteId)}
-                  onCreateCommittedNote={async ({
-                    folder,
-                    title,
-                    content,
-                    type = 'note',
-                    exclusive = true,
-                    overwriteExistingNoteId,
-                    expectedRevisionHash
-                  }) => {
-                    const targetFolder = folder || 'Propostas'
-                    const isMind = type === 'mindmap' || isMindMapContent(content)
-                    const finalContent = isMind
-                      ? serializeMindMapDocument(parseMindMapDocument(content, title))
-                      : content
-
-                    let filePath: string | undefined
-                    let revisionHash: string | undefined
-
-                    if (window.electronAPI?.isElectron && vaultPath) {
-                      const res = await window.electronAPI.saveFile({
-                        vaultPath,
-                        folder: targetFolder,
-                        title,
-                        content: finalContent,
-                        exclusive,
-                        expectedRevisionHash,
-                        type: isMind ? 'mindmap' : type
-                      })
-                      if (!res.success) {
-                        return {
-                          success: false,
-                          alreadyExists: res.alreadyExists,
-                          conflict: res.conflict,
-                          error: res.error || 'Falha ao gravar arquivo no cofre.'
-                        }
-                      }
-                      filePath = res.filePath
-                      revisionHash = res.revisionHash
-                    }
-
-                    if (overwriteExistingNoteId) {
-                      let updatedNoteObj: Note | undefined
-                      setNotes(prev => {
-                        const next = prev.map(n => {
-                          if (n.id === overwriteExistingNoteId) {
-                            updatedNoteObj = {
-                              ...n,
-                              title,
-                              folder: targetFolder,
-                              content: finalContent,
-                              filePath: filePath || n.filePath,
-                              updatedAt: Date.now()
-                            }
-                            return updatedNoteObj
-                          }
-                          return n
-                        })
-                        saveNotes(next)
-                        return next
-                      })
-                      return {
-                        success: true,
-                        note: updatedNoteObj || {
-                          id: overwriteExistingNoteId,
-                          title,
-                          content: finalContent,
-                          folder: targetFolder,
-                          filePath,
-                          tags: ['proposta', 'comercial'],
-                          type: isMind ? 'mindmap' : type,
-                          createdAt: Date.now(),
-                          updatedAt: Date.now()
-                        },
-                        filePath,
-                        revisionHash
-                      }
-                    }
-
-                    const newNote: Note = {
-                      id: computeDeterministicNoteId(targetFolder, title),
-                      title,
-                      content: finalContent,
-                      folder: targetFolder,
-                      filePath,
-                      tags: isMind ? ['mindmap', 'escopo'] : ['proposta', 'comercial'],
-                      type: isMind ? 'mindmap' : type,
-                      createdAt: Date.now(),
-                      updatedAt: Date.now()
-                    }
-
-                    setNotes(prev => {
-                      const withoutSameId = prev.filter(n => n.id !== newNote.id)
-                      const next = [newNote, ...withoutSameId]
-                      saveNotes(next)
-                      return next
-                    })
-                    setFolders(prev => {
-                      if (prev.includes(targetFolder)) return prev
-                      const next = [...prev, targetFolder]
-                      saveFolders(next)
-                      return next
-                    })
-
-                    return { success: true, note: newNote, filePath, revisionHash }
-                  }}
+                  onCreateCommittedNote={handleCreateCommittedNote}
                   onCreateTask={handleCreateTask}
                   taskBoards={taskBoards}
                   tasks={tasks}

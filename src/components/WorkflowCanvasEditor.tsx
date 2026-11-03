@@ -62,6 +62,7 @@ import {
   Folder,
   ListTodo,
   Loader2,
+  FlaskConical,
   AlertTriangle
 } from 'lucide-react'
 import { CustomSelect } from './CustomSelect'
@@ -83,6 +84,7 @@ interface WorkflowCanvasEditorProps {
   onDeleteWorkflow: (workflowId: string) => void
   onRunWorkflow: (workflow: WorkflowDefinition, isTest: boolean, prompt: string) => void
   onResumeWorkflowRun?: (run: AgentRun) => Promise<void> | void
+  onOpenNote?: (noteId: string) => void
   isExecuting: boolean
 }
 
@@ -195,6 +197,16 @@ const NODE_META: Record<
     group: 'Fluxo',
     color: '#f97316'
   },
+  create_task: {
+    label: 'Gerar Tarefas',
+    group: 'Etapas',
+    color: '#06b6d4'
+  },
+  manage_properties: {
+    label: 'Propriedades (IA)',
+    group: 'Etapas',
+    color: '#ec4899'
+  },
   deliverable: {
     label: 'Saída',
     group: 'Fluxo',
@@ -215,7 +227,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   notes,
   folders,
   selectedWorkflowId,
-  latestNodeStates,
+  latestNodeStates: _latestNodeStates,
   activeRun,
   allProjects = [],
   taskBoards = [],
@@ -224,9 +236,16 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   onDeleteWorkflow,
   onRunWorkflow,
   onResumeWorkflowRun,
+  onOpenNote,
   isExecuting
 }) => {
   const activeWorkflow = workflows.find(w => w.id === selectedWorkflowId) || workflows[0]
+  // Só mostramos o estado de execução quando a execução pertence ao fluxo aberto
+  const runForThisWorkflow =
+    activeRun && activeWorkflow && activeRun.workflowId === activeWorkflow.id ? activeRun : undefined
+  const runStates = runForThisWorkflow?.workflowNodeStates
+  const [dismissedRunId, setDismissedRunId] = useState<string | null>(null)
+  const [expandedRunSteps, setExpandedRunSteps] = useState<Record<string, boolean>>({})
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 80, y: 60 })
   const [toolMode, setToolMode] = useState<'pointer' | 'hand'>('pointer')
@@ -633,6 +652,27 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     })
   }
 
+  const handleStartRun = (isTest: boolean) => {
+    if (!validation.valid) {
+      alert(`Para executar o fluxo:\n\n• ${validation.errors.join('\n• ')}`)
+      return
+    }
+    // Limpa os resultados de testes de etapa anteriores: a partir daqui só vale o resultado desta execução
+    const cleaned: WorkflowDefinition = {
+      ...activeWorkflow,
+      nodes: activeWorkflow.nodes.map(n =>
+        n.config.lastOutput || n.config.lastExecutedAt
+          ? { ...n, config: { ...n.config, lastOutput: undefined, lastExecutedAt: undefined } }
+          : n
+      ),
+      updatedAt: Date.now()
+    }
+    onSaveWorkflow(cleaned)
+    setDismissedRunId(null)
+    setExpandedRunSteps({})
+    onRunWorkflow(cleaned, isTest, 'Executar fluxo completo')
+  }
+
   const addMenuGroups = [
     {
       title: 'Entradas & Apoio',
@@ -647,7 +687,9 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       title: 'Etapas',
       items: [
         { kind: 'llm' as WorkflowNodeKind, label: 'LLM', icon: Sparkles, color: '#a855f7' },
-        { kind: 'run_agent' as WorkflowNodeKind, label: 'Agente', icon: Bot, color: '#10b981' }
+        { kind: 'run_agent' as WorkflowNodeKind, label: 'Agente', icon: Bot, color: '#10b981' },
+        { kind: 'create_task' as WorkflowNodeKind, label: 'Gerar Tarefas', icon: ListTodo, color: '#06b6d4' },
+        { kind: 'manage_properties' as WorkflowNodeKind, label: 'Propriedades (IA)', icon: Sliders, color: '#ec4899' }
       ]
     },
     {
@@ -806,13 +848,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           <button
             type="button"
             disabled={isExecuting}
-            onClick={() => {
-              if (!validation.valid) {
-                alert(`Para executar o fluxo:\n\n• ${validation.errors.join('\n• ')}`)
-                return
-              }
-              onRunWorkflow(activeWorkflow, false, 'Executar fluxo completo')
-            }}
+            onClick={() => handleStartRun(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white font-medium text-xs transition-all cursor-pointer disabled:opacity-50"
+            title="Percorre todo o fluxo sem gravar nada no cofre"
+          >
+            <FlaskConical className="w-3 h-3" />
+            <span>Testar</span>
+          </button>
+          <button
+            type="button"
+            disabled={isExecuting}
+            onClick={() => handleStartRun(false)}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-semibold text-xs transition-all shadow-sm cursor-pointer ${
               validation.valid
                 ? 'bg-zinc-100 hover:bg-white text-zinc-950 active:scale-95'
@@ -830,6 +876,130 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       {/* 2. ÁREA DO CANVAS INFINITO COM DOT-GRID ESCURO (#09090b)                      */}
       {/* ============================================================================ */}
       <div className="flex-1 flex overflow-hidden relative">
+        {/* PAINEL DA ÚLTIMA EXECUÇÃO — mostra de forma clara o que aconteceu (teste x produção) e onde ficou o resultado */}
+        {runForThisWorkflow && dismissedRunId !== runForThisWorkflow.id && (() => {
+          const run = runForThisWorkflow
+          const states = (run.workflowNodeStates || []).filter(
+            s => s.kind !== 'sticky_note' && s.kind !== 'text_block' && s.status !== 'pending'
+          )
+          const isRunActive = run.status === 'running' || isExecuting
+          const statusMeta =
+            isRunActive
+              ? { label: 'Executando...', cls: 'text-amber-300 bg-amber-950/50 border-amber-800/50' }
+              : run.status === 'completed'
+              ? { label: 'Concluído', cls: 'text-emerald-300 bg-emerald-950/50 border-emerald-800/50' }
+              : run.status === 'failed'
+              ? { label: 'Falhou', cls: 'text-rose-300 bg-rose-950/50 border-rose-800/50' }
+              : run.status === 'waiting_approval'
+              ? { label: 'Aguardando aprovação', cls: 'text-amber-300 bg-amber-950/50 border-amber-800/50' }
+              : { label: 'Em andamento', cls: 'text-zinc-300 bg-zinc-900 border-zinc-800' }
+          return (
+            <div
+              data-no-pan="true"
+              onPointerDown={e => e.stopPropagation()}
+              className="absolute left-4 bottom-4 z-30 w-[340px] max-h-[60%] flex flex-col rounded-2xl bg-[#141416] border border-zinc-800 shadow-2xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-zinc-800/80">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    className={`text-[9.5px] font-semibold px-1.5 py-0.5 rounded-md border ${
+                      run.isTestRun
+                        ? 'text-sky-300 bg-sky-950/50 border-sky-800/50'
+                        : 'text-emerald-300 bg-emerald-950/50 border-emerald-800/50'
+                    }`}
+                    title={run.isTestRun ? 'Execução de teste: nada foi gravado no cofre' : 'Execução real: as entregas foram gravadas no cofre'}
+                  >
+                    {run.isTestRun ? 'TESTE' : 'PRODUÇÃO'}
+                  </span>
+                  <span className={`text-[9.5px] font-semibold px-1.5 py-0.5 rounded-md border ${statusMeta.cls} ${isRunActive ? 'animate-pulse' : ''}`}>
+                    {isRunActive && <Loader2 className="w-2.5 h-2.5 animate-spin inline mr-1" />}
+                    {statusMeta.label}
+                  </span>
+                  <span className="text-[10px] text-zinc-500 font-mono truncate">
+                    {new Date(run.startedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDismissedRunId(run.id)}
+                  className="text-zinc-500 hover:text-zinc-200 p-0.5 cursor-pointer"
+                  title="Fechar painel"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto custom-chat-scrollbar p-2 space-y-1.5">
+                {run.error && (
+                  <div className="text-[11px] text-rose-300 bg-rose-950/30 border border-rose-900/50 rounded-lg p-2 leading-relaxed">
+                    {run.error}
+                  </div>
+                )}
+
+                {run.artifacts.map(art => (
+                  <button
+                    key={art.id}
+                    type="button"
+                    onClick={() => art.noteId && onOpenNote?.(art.noteId)}
+                    className="w-full text-left flex items-center gap-2 text-[11px] text-emerald-200 bg-emerald-950/30 border border-emerald-900/50 hover:bg-emerald-950/50 rounded-lg p-2 cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                    <span className="truncate">
+                      Nota gravada: <b>{art.folder}/{art.title}</b>
+                    </span>
+                    <span className="ml-auto text-[10px] text-emerald-400/80 shrink-0">Abrir</span>
+                  </button>
+                ))}
+
+                {run.isTestRun && run.status === 'completed' && (
+                  <div className="text-[10.5px] text-sky-300/90 bg-sky-950/20 border border-sky-900/40 rounded-lg p-2">
+                    Execução de teste: o fluxo foi percorrido, mas nenhuma nota foi criada. Use “Executar fluxo de trabalho” para gravar de verdade.
+                  </div>
+                )}
+
+                {states.length === 0 && (
+                  <div className="text-[11px] text-zinc-500 p-2">Nenhuma etapa foi executada.</div>
+                )}
+
+                {states.map(s => {
+                  const open = expandedRunSteps[s.nodeId]
+                  return (
+                    <div key={s.nodeId} className="rounded-lg bg-[#101012] border border-zinc-800/80">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRunSteps(prev => ({ ...prev, [s.nodeId]: !prev[s.nodeId] }))}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-left cursor-pointer"
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            s.status === 'completed'
+                              ? 'bg-emerald-500'
+                              : s.status === 'failed'
+                              ? 'bg-rose-500'
+                              : s.status === 'skipped'
+                              ? 'bg-zinc-600'
+                              : 'bg-amber-400'
+                          }`}
+                        />
+                        <span className="text-[11px] text-zinc-200 font-medium truncate">{s.label}</span>
+                        <span className="text-[10px] text-zinc-500 truncate flex-1">
+                          {!open && (s.outputSummary || '')}
+                        </span>
+                        <ChevronDown className={`w-3 h-3 text-zinc-500 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+                      </button>
+                      {open && (
+                        <div className="px-2 pb-2 text-[11px] text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto custom-chat-scrollbar select-text">
+                          {s.output || s.outputSummary || 'Sem saída registrada.'}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+
         <div
           ref={viewportRef}
           onWheel={e => {
@@ -974,9 +1144,9 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             {activeWorkflow.nodes.map(node => {
               const isSelected = selectedNodeId === node.id
               const isDropTarget = wireDraft?.hoveredTargetId === node.id
-              const isExecutingThisNode = executingNodeId === node.id || latestNodeStates?.find(s => s.nodeId === node.id)?.status === 'running'
+              const isExecutingThisNode = executingNodeId === node.id || runStates?.find(s => s.nodeId === node.id)?.status === 'running'
 
-              const execState = latestNodeStates?.find(s => s.nodeId === node.id)
+              const execState = runStates?.find(s => s.nodeId === node.id)
               const cardDim = getNodeCardDimensions(node.kind)
               const incomingEdges = activeWorkflow.edges.filter(e => e.targetNodeId === node.id)
               const incomingNodes = incomingEdges.map(e => activeWorkflow.nodes.find(n => n.id === e.sourceNodeId)).filter(Boolean)
@@ -1159,13 +1329,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         <ShieldCheck className="w-3 h-3 text-orange-400" />
                       ) : node.kind === 'condition' ? (
                         <GitBranch className="w-3 h-3 text-purple-400" />
+                      ) : node.kind === 'create_task' ? (
+                        <ListTodo className="w-3 h-3 text-cyan-400" />
+                      ) : node.kind === 'manage_properties' ? (
+                        <Sliders className="w-3 h-3 text-pink-400" />
                       ) : (
                         <Send className="w-3 h-3 text-blue-400" />
                       )}
                       <span>{node.label || NODE_META[node.kind]?.label || 'Etapa'}</span>
                       {execState && (
-                        <span className={`text-[9px] px-1 py-0.5 rounded font-mono ${execState.status === 'completed' ? 'text-emerald-400 bg-emerald-950/40' : execState.status === 'failed' ? 'text-rose-400 bg-rose-950/40' : 'text-amber-400 bg-amber-950/40'}`}>
-                          {execState.status}
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-medium ${execState.status === 'completed' ? 'text-emerald-400 bg-emerald-950/40' : execState.status === 'failed' ? 'text-rose-400 bg-rose-950/40' : execState.status === 'skipped' || execState.status === 'pending' ? 'text-zinc-500 bg-zinc-900' : 'text-amber-400 bg-amber-950/40'}`}>
+                          {({ completed: 'Concluído', failed: 'Falhou', running: 'Executando', pending: 'Não executado', skipped: 'Ignorado', waiting_approval: 'Aguardando aprovação' } as Record<string, string>)[execState.status] || execState.status}
                         </span>
                       )}
                     </div>
@@ -1447,7 +1621,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           disabled={isExecuting || isExecutingThisNode}
                           onClick={() => {
                             if (node.config.triggerType === 'manual' || !node.config.triggerType) {
-                              onRunWorkflow(activeWorkflow, false, 'Execução manual via gatilho')
+                              handleStartRun(false)
                             } else {
                               handleExecuteSingleNode(node)
                             }
@@ -1711,6 +1885,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                                 })
                               }
                               options={[
+                                { value: 'ai_rule', label: 'Regra avaliada por IA' },
                                 { value: 'contains', label: 'Contém palavra-chave' },
                                 { value: 'not_contains', label: 'Não contém palavra-chave' },
                                 { value: 'has_approval', label: 'Aprovado na etapa anterior' },
@@ -1857,28 +2032,70 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       )
                     })()}
 
-                    {/* CARD 7: SAÍDA / ENTREGA */}
-                    {(node.kind === 'deliverable' || node.kind === 'finish') && (
+                    {/* CARD: GERAR TAREFAS / ITENS NO PROJETO */}
+                    {node.kind === 'create_task' && (
                       <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
-                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-1.5">
-                          <label className="text-[10.5px] text-zinc-400 font-medium">Pasta de Destino no Cofre:</label>
-                          <CustomSelect
-                            value={node.config.targetFolder || 'Propostas'}
-                            onChange={folder =>
-                              handleUpdateNodeById(node.id, {
-                                config: { ...node.config, targetFolder: folder }
-                              })
-                            }
-                            options={Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => ({
-                              value: f,
-                              label: f,
-                              icon: <Folder className="w-3 h-3 text-zinc-400" />
-                            }))}
-                            size="sm"
-                            className="w-full"
-                          />
-                          <div className="text-[10px] text-blue-400/90 pt-0.5">
-                            Grava a entrega diretamente no cofre local.
+                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-2">
+                          <div>
+                            <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Quadro ou Projeto de Destino:</label>
+                            <CustomSelect
+                              value={node.config.targetBoardId || node.config.boardId || 'default'}
+                              onChange={chosenBoard => handleUpdateNodeById(node.id, { config: { ...node.config, targetBoardId: chosenBoard, boardId: chosenBoard } })}
+                              options={taskBoards.map(b => ({
+                                value: b.id,
+                                label: b.category === 'project' ? `📁 Projeto: ${b.name}` : `📋 Quadro: ${b.name}`
+                              }))}
+                              size="xs"
+                              className="w-full"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Modo de Geração:</label>
+                            <CustomSelect
+                              value={node.config.taskMode || 'auto_ai'}
+                              onChange={mode => handleUpdateNodeById(node.id, { config: { ...node.config, taskMode: mode as any } })}
+                              options={[
+                                { value: 'auto_ai', label: 'Extrair tarefas/checklist com IA' },
+                                { value: 'single', label: 'Criar uma única tarefa' }
+                              ]}
+                              size="xs"
+                              className="w-full"
+                            />
+                          </div>
+
+                          {node.config.taskMode === 'single' ? (
+                            <div>
+                              <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Título da Tarefa:</label>
+                              <input
+                                type="text"
+                                value={node.config.taskTitleTemplate || ''}
+                                onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, taskTitleTemplate: e.target.value } })}
+                                placeholder="Ex: Revisar proposta com o cliente..."
+                                className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
+                              />
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-cyan-400/90 bg-cyan-950/20 border border-cyan-800/30 p-2 rounded-xl flex items-center gap-2">
+                              <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                              <span>A IA analisará o texto da etapa anterior e criará tarefas automaticamente.</span>
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Prioridade Padrão:</label>
+                            <CustomSelect
+                              value={node.config.taskPriority || 'normal'}
+                              onChange={p => handleUpdateNodeById(node.id, { config: { ...node.config, taskPriority: p } })}
+                              options={[
+                                { value: 'urgent', label: '🔴 Urgente' },
+                                { value: 'high', label: '🟠 Alta' },
+                                { value: 'normal', label: '🟡 Normal' },
+                                { value: 'low', label: '🔵 Baixa' }
+                              ]}
+                              size="xs"
+                              className="w-full"
+                            />
                           </div>
                         </div>
 
@@ -1886,15 +2103,173 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           type="button"
                           disabled={isExecuting || isExecutingThisNode}
                           onClick={() => handleExecuteSingleNode(node)}
-                          className="w-full py-2 rounded-xl bg-blue-900/40 hover:bg-blue-900/60 text-blue-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-blue-800/40"
+                          className="w-full py-2 rounded-xl bg-cyan-950/40 hover:bg-cyan-950/60 text-cyan-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-cyan-800/40"
                         >
-                          <span>{isExecutingThisNode ? 'Salvando...' : 'Testar gravação no cofre'}</span>
                           <Play className="w-3 h-3" />
+                          <span>{isExecutingThisNode ? 'Extraindo tarefas...' : 'Testar geração de tarefas'}</span>
                         </button>
 
                         <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
                       </div>
                     )}
+
+                    {/* CARD: GERENCIAR PROPRIEDADES (IA) */}
+                    {node.kind === 'manage_properties' && (
+                      <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
+                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-2">
+                          <div>
+                            <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Nome da Propriedade:</label>
+                            <input
+                              type="text"
+                              value={node.config.propertyName || ''}
+                              onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, propertyName: e.target.value } })}
+                              placeholder="Ex: Prazo, Valor Estimado, Responsável..."
+                              className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Tipo de Dado:</label>
+                              <CustomSelect
+                                value={node.config.propertyType || 'text'}
+                                onChange={t => handleUpdateNodeById(node.id, { config: { ...node.config, propertyType: t } })}
+                                options={[
+                                  { value: 'text', label: 'Texto' },
+                                  { value: 'number', label: 'Número / Moeda' },
+                                  { value: 'date', label: 'Data' },
+                                  { value: 'select', label: 'Seleção' }
+                                ]}
+                                size="xs"
+                                className="w-full"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Quadro / Projeto:</label>
+                              <CustomSelect
+                                value={node.config.targetBoardId || node.config.boardId || 'default'}
+                                onChange={b => handleUpdateNodeById(node.id, { config: { ...node.config, targetBoardId: b, boardId: b } })}
+                                options={taskBoards.map(b => ({
+                                  value: b.id,
+                                  label: b.category === 'project' ? `📁 ${b.name}` : `📋 ${b.name}`
+                                }))}
+                                size="xs"
+                                className="w-full"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Instrução para a IA extrair do documento:</label>
+                            <textarea
+                              value={node.config.propertyPrompt || ''}
+                              onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, propertyPrompt: e.target.value } })}
+                              placeholder="Ex: Encontre o valor total do contrato em reais ou a data final de entrega..."
+                              className="w-full h-14 bg-[#141416] border border-zinc-800 rounded-lg p-2 text-xs text-zinc-200 resize-none focus:outline-none placeholder-zinc-500 leading-relaxed"
+                            />
+                          </div>
+
+                          <label className="flex items-center gap-2 cursor-pointer pt-0.5 select-none text-[11px] text-zinc-300">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(node.config.autoCreateProperty ?? true)}
+                              onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, autoCreateProperty: e.target.checked } })}
+                              className="rounded border-zinc-700 bg-zinc-800 text-pink-500 focus:ring-0 cursor-pointer"
+                            />
+                            <span>Criar propriedade no quadro se ainda não existir</span>
+                          </label>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isExecuting || isExecutingThisNode}
+                          onClick={() => handleExecuteSingleNode(node)}
+                          className="w-full py-2 rounded-xl bg-pink-950/40 hover:bg-pink-950/60 text-pink-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-pink-800/40"
+                        >
+                          <Play className="w-3 h-3" />
+                          <span>{isExecutingThisNode ? 'Extraindo metadados...' : 'Testar extração de propriedade'}</span>
+                        </button>
+
+                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
+                      </div>
+                    )}
+
+                    {/* CARD 7: SAÍDA / ENTREGA */}
+                    {(node.kind === 'deliverable' || node.kind === 'finish') && (() => {
+                      // Verifica se o run atual gravou notas no cofre
+                      const deliverableArtifacts = runForThisWorkflow?.artifacts || []
+                      const lastDeliveredArt = deliverableArtifacts[0]
+                      const isTestDelivery = runForThisWorkflow?.isTestRun && execState?.status === 'completed'
+
+                      return (
+                        <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
+                          <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-1.5">
+                            <label className="text-[10.5px] text-zinc-400 font-medium">Pasta de Destino no Cofre:</label>
+                            <CustomSelect
+                              value={node.config.targetFolder || 'Propostas'}
+                              onChange={folder =>
+                                handleUpdateNodeById(node.id, {
+                                  config: { ...node.config, targetFolder: folder }
+                                })
+                              }
+                              options={Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => ({
+                                value: f,
+                                label: f,
+                                icon: <Folder className="w-3 h-3 text-zinc-400" />
+                              }))}
+                              size="sm"
+                              className="w-full"
+                            />
+                          </div>
+
+                          {/* Confirmação visual de nota gravada */}
+                          {lastDeliveredArt && !isTestDelivery && (
+                            <button
+                              type="button"
+                              onClick={() => lastDeliveredArt.noteId && onOpenNote?.(lastDeliveredArt.noteId)}
+                              className="w-full flex items-center gap-2 text-[11px] text-emerald-200 bg-emerald-950/30 border border-emerald-900/50 hover:bg-emerald-950/50 rounded-xl p-2.5 cursor-pointer transition-colors"
+                            >
+                              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                              <span className="truncate text-left">
+                                <span className="block font-semibold">Nota gravada no cofre</span>
+                                <span className="text-emerald-300/70 text-[10px]">{lastDeliveredArt.folder}/{lastDeliveredArt.title}</span>
+                              </span>
+                              {lastDeliveredArt.noteId && (
+                                <span className="ml-auto shrink-0 text-[10px] text-emerald-400/80 font-medium">Abrir</span>
+                              )}
+                            </button>
+                          )}
+
+                          {/* Modo teste: aviso sem link */}
+                          {isTestDelivery && (
+                            <div className="text-[10.5px] text-sky-300/90 bg-sky-950/20 border border-sky-900/40 rounded-xl p-2.5 flex items-center gap-2">
+                              <FlaskConical className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+                              <span>Modo teste — nenhuma nota foi criada. Destino: <b>{node.config.targetFolder || 'Propostas'}</b></span>
+                            </div>
+                          )}
+
+                          {execState?.status === 'failed' && (
+                            <div className="text-[10.5px] text-rose-300/90 bg-rose-950/20 border border-rose-900/40 rounded-xl p-2.5 flex items-center gap-2">
+                              <XCircle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                              <span>{execState.outputSummary || 'Erro ao gravar nota no cofre.'}</span>
+                            </div>
+                          )}
+
+                          {isExecutingThisNode && (
+                            <div className="text-[10.5px] text-blue-300/90 bg-blue-950/20 border border-blue-900/40 rounded-xl p-2.5 flex items-center gap-2">
+                              <Loader2 className="w-3.5 h-3.5 shrink-0 text-blue-400 animate-spin" />
+                              <span>Gravando no cofre...</span>
+                            </div>
+                          )}
+
+                          {!lastDeliveredArt && !isTestDelivery && !isExecutingThisNode && execState?.status !== 'failed' && (
+                            <div className="text-[10px] text-zinc-500 pt-0.5">
+                              Grava a entrega gerada pelo fluxo diretamente no cofre local.
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
 
 
                   </div>
@@ -2204,6 +2579,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         value={selectedNode.config.conditionType || 'contains'}
                         onChange={cType => handleUpdateSelectedNode({ config: { ...selectedNode.config, conditionType: cType as any } })}
                         options={[
+                          { value: 'ai_rule', label: 'Regra avaliada por IA' },
                           { value: 'contains', label: 'Contém palavra-chave' },
                           { value: 'not_contains', label: 'Não contém palavra-chave' },
                           { value: 'has_approval', label: 'Aprovado na etapa anterior' },

@@ -326,6 +326,8 @@ export type WorkflowNodeKind =
   | 'llm'          // Chamada Direta LLM
   | 'condition'    // Verificar Condição
   | 'approval'     // Solicitar Aprovação
+  | 'create_task'  // Gerar Tarefa(s) no Quadro / Projeto
+  | 'manage_properties' // Gerenciar / Extrair Propriedades (IA)
   | 'deliverable'  // Saída / Criar Entrega
   | 'finish'       // Finalizar
   | 'sticky_note'  // Nota visual no canvas
@@ -351,7 +353,7 @@ export interface WorkflowNode {
     scheduleFrequency?: 'daily' | 'weekly' | 'weekdays' | 'monthly'
     scheduleTime?: string
     scheduleDays?: string[]
-    conditionType?: 'no_missing_fields' | 'no_price_conflicts' | 'net_total_above' | 'always' | 'contains' | 'not_contains' | 'status_equals' | 'has_approval' | 'custom'
+    conditionType?: 'no_missing_fields' | 'no_price_conflicts' | 'net_total_above' | 'always' | 'contains' | 'not_contains' | 'status_equals' | 'has_approval' | 'custom' | 'ai_rule'
     conditionThreshold?: number
     targetFolder?: string
     outputType?: 'note' | 'tasks' | 'mindmap' | 'draw'
@@ -362,6 +364,16 @@ export interface WorkflowNode {
     trueLabel?: string
     falseLabel?: string
     boardId?: string
+    targetBoardId?: string
+    taskMode?: 'single' | 'extract_checklist' | 'auto_ai'
+    taskPriority?: string
+    taskStatusId?: string
+    taskTitleTemplate?: string
+    propertyScope?: 'board' | 'task' | 'note'
+    propertyName?: string
+    propertyType?: string
+    propertyPrompt?: string
+    autoCreateProperty?: boolean
     eventType?: string
     content?: string
     description?: string
@@ -403,6 +415,8 @@ export interface WorkflowNodeExecution {
   kind: WorkflowNodeKind
   status: 'pending' | 'running' | 'waiting_approval' | 'completed' | 'skipped' | 'failed'
   outputSummary?: string
+  /** Saída completa produzida por esta etapa na execução (texto do LLM/Agente, nota lida, caminho gravado, erro...) */
+  output?: string
   startedAt?: number
   endedAt?: number
 }

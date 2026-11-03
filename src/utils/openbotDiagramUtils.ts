@@ -18,6 +18,8 @@ export function getNodeCardDimensions(kind?: string): { width: number; height: n
   if (kind === 'input') return { width: 350, height: 160, offsetY: 106 }
   if (kind === 'condition') return { width: 290, height: 180, offsetY: 116 }
   if (kind === 'approval') return { width: 290, height: 160, offsetY: 106 }
+  if (kind === 'create_task') return { width: 310, height: 210, offsetY: 131 }
+  if (kind === 'manage_properties') return { width: 310, height: 210, offsetY: 131 }
   return { width: 280, height: 160, offsetY: 106 }
 }
 

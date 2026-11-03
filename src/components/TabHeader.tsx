@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import type { TabItem, EditorDisplayMode, ViewMode } from '../types'
 import type { UpdaterStatusData } from '../types/electron'
 import {
@@ -21,7 +21,9 @@ import {
   Pin,
   Brain,
   Users,
-  CodeXml
+  CodeXml,
+  ShieldCheck,
+  Check
 } from 'lucide-react'
 
 interface TabHeaderProps {
@@ -38,6 +40,13 @@ interface TabHeaderProps {
   onOpenSettings: () => void
   onExportVault: () => void
   onReorderTabs?: (sourceTabId: string, targetTabId: string) => void
+  pendingApprovals?: Array<{
+    runId: string
+    workflowName: string
+    approvalMessage: string
+  }>
+  onApproveWorkflowRun?: (runId: string) => void
+  onRejectWorkflowRun?: (runId: string) => void
 }
 
 export const TabHeader: React.FC<TabHeaderProps> = ({
@@ -53,7 +62,10 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
   onOpenCommandPalette,
   onOpenSettings,
   onExportVault,
-  onReorderTabs
+  onReorderTabs,
+  pendingApprovals,
+  onApproveWorkflowRun,
+  onRejectWorkflowRun
 }) => {
   const isElectron =
     typeof window !== 'undefined' &&
@@ -68,6 +80,8 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
     y: number
     tab: TabItem
   } | null>(null)
+  const [approvalDropdownOpen, setApprovalDropdownOpen] = useState(false)
+  const approvalRef = useRef<HTMLDivElement>(null)
 
   // Close context menu on outside click or Escape
   useEffect(() => {
@@ -83,6 +97,18 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [contextMenu])
+
+  // Close approval dropdown on outside click
+  useEffect(() => {
+    if (!approvalDropdownOpen) return
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (approvalRef.current && !approvalRef.current.contains(e.target as Node)) {
+        setApprovalDropdownOpen(false)
+      }
+    }
+    window.addEventListener('mousedown', handleOutsideClick)
+    return () => window.removeEventListener('mousedown', handleOutsideClick)
+  }, [approvalDropdownOpen])
 
   useEffect(() => {
     if (!isElectron || !window.electronAPI) return
@@ -278,6 +304,75 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
         >
           <Download className="w-3.5 h-3.5" />
         </button>
+
+        {/* Badge Global de Aprovação Pendente de Fluxo */}
+        {pendingApprovals && pendingApprovals.length > 0 && (
+          <div ref={approvalRef} className="relative mr-1 app-no-drag">
+            <button
+              type="button"
+              onClick={() => setApprovalDropdownOpen(o => !o)}
+              className="flex items-center gap-1.5 h-6 px-2 rounded-md bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/40 text-[11px] font-semibold transition-all shadow-md shadow-black/40 cursor-pointer animate-pulse"
+              title={`${pendingApprovals.length} fluxo(s) aguardando sua aprovação`}
+            >
+              <ShieldCheck className="w-3 h-3 text-orange-400" />
+              <span>Aprovação pendente</span>
+              {pendingApprovals.length > 1 && (
+                <span className="w-4 h-4 rounded-full bg-orange-500 text-white text-[9px] font-bold flex items-center justify-center">
+                  {pendingApprovals.length}
+                </span>
+              )}
+            </button>
+
+            {approvalDropdownOpen && (
+              <div
+                className="absolute right-0 top-8 z-[200] w-80 bg-[#141418] border border-zinc-700/80 rounded-2xl shadow-2xl p-0 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+                onMouseDown={e => e.stopPropagation()}
+              >
+                <div className="px-3 pt-3 pb-2 border-b border-zinc-800/80">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-orange-300">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Fluxos aguardando aprovação</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">Você pode aprovar ou rejeitar sem sair desta página.</p>
+                </div>
+                <div className="max-h-64 overflow-y-auto custom-chat-scrollbar">
+                  {pendingApprovals.map(pa => (
+                    <div key={pa.runId} className="px-3 py-2.5 border-b border-zinc-800/60 last:border-0">
+                      <div className="text-[11px] font-semibold text-zinc-200 mb-0.5 truncate">{pa.workflowName}</div>
+                      {pa.approvalMessage && (
+                        <div className="text-[10px] text-zinc-400 mb-2 leading-relaxed line-clamp-2">{pa.approvalMessage}</div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onApproveWorkflowRun?.(pa.runId)
+                            if (pendingApprovals.length <= 1) setApprovalDropdownOpen(false)
+                          }}
+                          className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Aprovar</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onRejectWorkflowRun?.(pa.runId)
+                            if (pendingApprovals.length <= 1) setApprovalDropdownOpen(false)
+                          }}
+                          className="flex-1 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-rose-300 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-zinc-700"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Rejeitar</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Auto Update Notification Button - Only rendered if an update is ready or downloading */}
         {updaterStatus?.status === 'downloaded' && (
