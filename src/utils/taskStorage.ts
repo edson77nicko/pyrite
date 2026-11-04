@@ -29,8 +29,8 @@ export const DEFAULT_TASK_SETTINGS: TaskSettings = {
     { id: 'prop_status', name: 'Status', type: 'status' },
     { id: 'prop_priority', name: 'Prioridade', type: 'priority' },
     { id: 'prop_deadline', name: 'Prazo', type: 'date' },
-    { id: 'prop_context', name: 'Contexto', type: 'context' },
-    { id: 'prop_tags', name: 'Tags', type: 'text' }
+    { id: 'prop_context', name: 'Nota', type: 'context' },
+    { id: 'prop_tags', name: 'Rótulos', type: 'text' }
   ],
   boards: DEFAULT_BOARDS
 }
@@ -135,14 +135,36 @@ export function loadTaskSettings(vaultKey = 'default'): TaskSettings {
     if (saved) {
       const parsed = JSON.parse(saved)
       if (parsed) {
+        const sanitizeProps = (props: any[]) =>
+          props.map(p => {
+            if (p.id === 'prop_context' && (p.name === 'Contexto' || p.name === 'Contexto (Nota)')) {
+              return { ...p, name: 'Nota' }
+            }
+            if (p.id === 'prop_tags' && (p.name === 'Tags' || p.name === 'Tag')) {
+              return { ...p, name: 'Rótulos' }
+            }
+            return p
+          })
+
+        const rawProps = Array.isArray(parsed.properties) && parsed.properties.length > 0 ? parsed.properties : DEFAULT_TASK_SETTINGS.properties
+        const sanitizedProperties = sanitizeProps(rawProps)
+
+        const sanitizedBoards = (Array.isArray(parsed.boards) && parsed.boards.length > 0 ? parsed.boards : DEFAULT_TASK_SETTINGS.boards).map(
+          (b: TaskBoard) => ({
+            ...b,
+            properties: b.properties ? sanitizeProps(b.properties) : undefined
+          })
+        )
+
         return {
           statuses: Array.isArray(parsed.statuses) && parsed.statuses.length > 0 ? parsed.statuses : DEFAULT_TASK_SETTINGS.statuses,
           priorities: Array.isArray(parsed.priorities) && parsed.priorities.length > 0 ? parsed.priorities : DEFAULT_TASK_SETTINGS.priorities,
-          properties: Array.isArray(parsed.properties) && parsed.properties.length > 0 ? parsed.properties : DEFAULT_TASK_SETTINGS.properties,
-          boards: Array.isArray(parsed.boards) && parsed.boards.length > 0 ? parsed.boards : DEFAULT_TASK_SETTINGS.boards,
+          properties: sanitizedProperties,
+          boards: sanitizedBoards,
           boardProperties: parsed.boardProperties && typeof parsed.boardProperties === 'object' ? parsed.boardProperties : undefined,
           statusIndicatorStyle: parsed.statusIndicatorStyle,
-          titleColumnName: parsed.titleColumnName
+          titleColumnName: parsed.titleColumnName,
+          savedLabels: Array.isArray(parsed.savedLabels) ? parsed.savedLabels : undefined
         }
       }
     }

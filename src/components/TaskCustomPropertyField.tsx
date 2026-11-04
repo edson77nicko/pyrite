@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { ChevronDown, Check, X } from 'lucide-react'
-import type { TaskPropertyConfig, TaskItem } from '../types/tasks'
-import { STATUS_GROUPS, type PropertyItem } from '../utils/taskProperties'
+import { ChevronDown, Check, X, FolderKanban, Box, ExternalLink } from 'lucide-react'
+import type { TaskPropertyConfig, TaskItem, TaskBoard } from '../types/tasks'
+import { STATUS_GROUPS, CURRENCY_OPTIONS, type PropertyItem } from '../utils/taskProperties'
 import { StatusBadge, computeStatusProgress, type StatusIndicatorStyle } from './StatusIndicator'
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   task: TaskItem
   items: PropertyItem[]
   indicatorStyle?: StatusIndicatorStyle
+  boards?: TaskBoard[]
+  onSelectBoard?: (boardId: string) => void
   onChange: (value: any) => void
 }
 
@@ -34,7 +36,15 @@ export const Pill: React.FC<{
   )
 }
 
-export const TaskCustomPropertyField: React.FC<Props> = ({ prop, task, items, indicatorStyle, onChange }) => {
+export const TaskCustomPropertyField: React.FC<Props> = ({
+  prop,
+  task,
+  items,
+  indicatorStyle,
+  boards = [],
+  onSelectBoard,
+  onChange
+}) => {
   const value = task.customValues?.[prop.id]
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -63,6 +73,104 @@ export const TaskCustomPropertyField: React.FC<Props> = ({ prop, task, items, in
           placeholder="0"
         />
       )
+    case 'currency': {
+      const currencyCfg = CURRENCY_OPTIONS.find(c => c.code === (prop.currencyCode || 'BRL')) || CURRENCY_OPTIONS[0]
+      return (
+        <div className="relative flex items-center">
+          <span className="absolute left-2.5 text-zinc-500 font-mono text-xs select-none">
+            {currencyCfg.symbol}
+          </span>
+          <input
+            type="number"
+            step="0.01"
+            className={`${inputCls} pl-9 font-mono`}
+            value={value ?? ''}
+            onChange={e => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
+            placeholder="0,00"
+          />
+        </div>
+      )
+    }
+    case 'board': {
+      const linkedBoard = boards.find(b => b.id === value)
+      return (
+        <div ref={ref} className="relative flex items-center gap-1.5 w-full">
+          <button
+            type="button"
+            onClick={() => setOpen(o => !o)}
+            className="flex-1 flex items-center justify-between bg-[#1b1b20] hover:bg-[#222228] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors cursor-pointer min-w-0"
+          >
+            {linkedBoard ? (
+              <span className="inline-flex items-center gap-1.5 truncate text-[11px] font-medium text-amber-400">
+                {linkedBoard.category === 'item' ? (
+                  <Box className="w-3 h-3 text-amber-400 shrink-0" />
+                ) : (
+                  <FolderKanban className="w-3 h-3 text-amber-400 shrink-0" />
+                )}
+                <span className="truncate">{linkedBoard.name}</span>
+              </span>
+            ) : (
+              <span className="text-zinc-600">Vincular projeto/item...</span>
+            )}
+            <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0 ml-1" />
+          </button>
+
+          {linkedBoard && onSelectBoard && (
+            <button
+              type="button"
+              onClick={() => onSelectBoard(linkedBoard.id)}
+              className="p-1.5 rounded-lg bg-[#1b1b20] hover:bg-[#222228] text-amber-400/80 hover:text-amber-300 transition-colors shrink-0 cursor-pointer"
+              title={`Ir direto para ${linkedBoard.name}`}
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {open && (
+            <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#1a1a1f] border border-zinc-700/60 rounded-xl shadow-md p-1 space-y-0.5 max-h-56 overflow-y-auto custom-chat-scrollbar">
+              {value && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(undefined)
+                    setOpen(false)
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] text-zinc-500 hover:bg-zinc-800/40 cursor-pointer"
+                >
+                  <X className="w-3 h-3" /> Desvincular
+                </button>
+              )}
+              {boards.map(b => (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(b.id)
+                    setOpen(false)
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer ${
+                    b.id === value ? 'bg-zinc-800/80 text-amber-300 font-medium' : 'text-zinc-300 hover:bg-zinc-800/40'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    {b.category === 'item' ? (
+                      <Box className="w-3 h-3 text-amber-400/80 shrink-0" />
+                    ) : (
+                      <FolderKanban className="w-3 h-3 text-amber-400/80 shrink-0" />
+                    )}
+                    <span className="truncate">{b.name}</span>
+                  </span>
+                  {b.id === value && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                </button>
+              ))}
+              {boards.length === 0 && (
+                <div className="px-2.5 py-1.5 text-[11px] text-zinc-600">Nenhum projeto disponível</div>
+              )}
+            </div>
+          )}
+        </div>
+      )
+    }
     case 'date':
       return <input type="date" className={`${inputCls} [color-scheme:dark]`} value={value || ''} onChange={e => onChange(e.target.value || undefined)} />
     case 'checkbox':

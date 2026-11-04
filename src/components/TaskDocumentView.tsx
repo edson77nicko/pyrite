@@ -6,7 +6,9 @@ import { TaskContextPicker } from './TaskContextPicker'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import { TaskCustomPropertyField } from './TaskCustomPropertyField'
 import { StatusBadge, computeStatusProgress } from './StatusIndicator'
-import { getBoardProperties } from '../utils/taskProperties'
+import { getBoardProperties, formatDateBR, getSavedLabels, saveLabelToPool, removeLabelFromPool } from '../utils/taskProperties'
+import { TaskLabelBadge } from './TaskLabelBadge'
+import { TaskLabelPicker } from './TaskLabelPicker'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -19,7 +21,8 @@ import {
   Plus,
   PanelLeftClose,
   ChevronDown,
-  Minimize2
+  Minimize2,
+  Tag
 } from 'lucide-react'
 
 interface TaskDocumentViewProps {
@@ -52,7 +55,39 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
   const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false)
   const [isEndDatePickerOpen, setIsEndDatePickerOpen] = useState(false)
   const [isAddingTag, setIsAddingTag] = useState(false)
-  const [newTagInput, setNewTagInput] = useState('')
+
+  const allSavedLabels = useMemo(() => {
+    return getSavedLabels(settings)
+  }, [settings])
+
+  const handleCreateLabel = (labelName: string) => {
+    const clean = labelName.trim().replace(/^#/, '')
+    if (!clean) return
+    saveLabelToPool(clean, settings)
+    if (!task.tags.some(t => t.toLowerCase() === clean.toLowerCase())) {
+      onUpdateTask({
+        ...task,
+        tags: [...task.tags, clean],
+        updatedAt: Date.now()
+      })
+    }
+  }
+
+  const handleToggleLabel = (labelName: string) => {
+    const exists = task.tags.some(t => t.toLowerCase() === labelName.toLowerCase())
+    const nextTags = exists
+      ? task.tags.filter(t => t.toLowerCase() !== labelName.toLowerCase())
+      : [...task.tags, labelName]
+    onUpdateTask({
+      ...task,
+      tags: nextTags,
+      updatedAt: Date.now()
+    })
+  }
+
+  const handleDeleteSavedLabel = (labelName: string) => {
+    removeLabelFromPool(labelName)
+  }
 
   // Subtask local states
   const [isAddingSubtask, setIsAddingSubtask] = useState(false)
@@ -175,21 +210,6 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
       contextNoteTitle: note ? note.title : undefined,
       updatedAt: Date.now()
     })
-  }
-
-  const handleAddTag = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newTagInput.trim()) return
-    const tag = newTagInput.trim().toLowerCase().replace(/^#/, '')
-    if (!task.tags.includes(tag)) {
-      onUpdateTask({
-        ...task,
-        tags: [...task.tags, tag],
-        updatedAt: Date.now()
-      })
-    }
-    setNewTagInput('')
-    setIsAddingTag(false)
   }
 
   const handleRemoveTag = (tagToRemove: string) => {
@@ -557,7 +577,7 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
                         }}
                         className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer font-mono text-zinc-300"
                       >
-                        <span>{task.startDate || task.date || 'Definir início...'}</span>
+                        <span>{(task.startDate || task.date) ? formatDateBR(task.startDate || task.date) : 'Definir início...'}</span>
                         {(task.startDate || task.date) && (task.startDate || task.date)!.slice(0, 10) === todayStr && (
                           <span
                             className="text-[9.5px] px-1.5 py-0.2 rounded font-medium font-sans"
@@ -600,7 +620,7 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
                         }}
                         className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-[#1c1c20] transition-colors cursor-pointer font-mono text-zinc-300"
                       >
-                        <span>{task.endDate || task.deadline || 'Definir término...'}</span>
+                        <span>{(task.endDate || task.deadline) ? formatDateBR(task.endDate || task.deadline) : 'Definir término...'}</span>
                         {(task.endDate || task.deadline) && (task.endDate || task.deadline)!.slice(0, 10) === todayStr && (
                           <span
                             className="text-[9.5px] px-1.5 py-0.2 rounded font-medium font-sans"
@@ -635,7 +655,7 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
                 <div className="grid grid-cols-[120px_1fr] items-center gap-2">
                   <span className="text-zinc-500 flex items-center gap-1.5">
                     <Compass className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>Contexto</span>
+                    <span>Nota</span>
                   </span>
                   <div className="relative inline-block">
                     <button
@@ -665,52 +685,45 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
                 </div>
               )}
 
-              {/* Tags Row */}
+              {/* Rótulos Row */}
               {isPropActive('prop_tags') && (
                 <div className="grid grid-cols-[120px_1fr] items-center gap-2">
                   <span className="text-zinc-500 flex items-center gap-1.5">
-                    <span>#</span>
-                    <span>Tags</span>
+                    <Tag className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>Rótulos</span>
                   </span>
-                  <div className="flex items-center flex-wrap gap-1.5">
+                  <div className="relative flex items-center flex-wrap gap-1.5">
                     {task.tags.map(t => (
-                      <span
+                      <TaskLabelBadge
                         key={t}
-                        className="group flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-800 text-[11px] text-zinc-300 font-mono"
-                      >
-                        #{t}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTag(t)}
-                          className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-rose-400 cursor-pointer"
-                        >
-                          ×
-                        </button>
-                      </span>
+                        label={t}
+                        size="sm"
+                        onRemove={() => handleRemoveTag(t)}
+                      />
                     ))}
 
-                    {isAddingTag ? (
-                      <form onSubmit={handleAddTag} className="inline-flex">
-                        <input
-                          type="text"
-                          autoFocus
-                          value={newTagInput}
-                          onChange={e => setNewTagInput(e.target.value)}
-                          onBlur={() => setIsAddingTag(false)}
-                          placeholder="tag..."
-                          className="w-20 px-1.5 py-0.5 bg-[#18181b] border rounded text-[11px] text-zinc-200 outline-none"
-                          style={{ borderColor: 'var(--accent, #c59b27)' }}
-                        />
-                      </form>
-                    ) : (
+                    <div className="relative inline-block">
                       <button
                         type="button"
-                        onClick={() => setIsAddingTag(true)}
-                        className="text-[11px] text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded hover:bg-[#1c1c20] transition-colors cursor-pointer"
+                        onClick={() => setIsAddingTag(o => !o)}
+                        className="text-[11px] text-zinc-500 hover:text-zinc-200 px-2 py-0.5 rounded-full border border-dashed border-zinc-750 hover:border-zinc-500 hover:bg-[#1c1c20] transition-colors cursor-pointer"
+                        title="Adicionar ou selecionar rótulos"
                       >
-                        + Tag
+                        + Rótulo
                       </button>
-                    )}
+
+                      {isAddingTag && (
+                        <TaskLabelPicker
+                          selectedLabels={task.tags}
+                          allSavedLabels={allSavedLabels}
+                          onToggleLabel={handleToggleLabel}
+                          onCreateLabel={handleCreateLabel}
+                          onDeleteSavedLabel={handleDeleteSavedLabel}
+                          onClose={() => setIsAddingTag(false)}
+                          align="left"
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

@@ -27,11 +27,6 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ]
 
-const MONTH_NAMES_SHORT = [
-  'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
-  'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
-]
-
 const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
 
 function pad(n: number) {
@@ -378,22 +373,22 @@ export const CustomDatePickerPopover: React.FC<CustomDatePickerPopoverProps> = (
     onClose()
   }
 
-  // Header display string
+  // Header display string in Brazilian format
   const headerLabel = useMemo(() => {
     if (displayStart && displayEnd && displayStart !== displayEnd) {
-      const [, sm, sd] = displayStart.split('-')
-      const [, em, ed] = displayEnd.split('-')
-      const sMonthName = MONTH_NAMES_SHORT[Number(sm) - 1] || sm
-      const eMonthName = MONTH_NAMES_SHORT[Number(em) - 1] || em
-      return `${Number(sd)} ${sMonthName} → ${Number(ed)} ${eMonthName}`
+      const [sy, sm, sd] = displayStart.split('-')
+      const [ey, em, ed] = displayEnd.split('-')
+      if (sy === ey) {
+        return `${sd}/${sm} → ${ed}/${em}/${ey}`
+      }
+      return `${sd}/${sm}/${sy} → ${ed}/${em}/${ey}`
     }
     if (displayStart) {
       const [sy, sm, sd] = displayStart.split('-')
-      const sMonthName = MONTH_NAMES_SHORT[Number(sm) - 1] || sm
       if (isSelectingEnd) {
-        return `${Number(sd)} ${sMonthName}, ${sy} → selecione o término`
+        return `${sd}/${sm}/${sy} → selecione o término`
       }
-      return `${Number(sd)} ${sMonthName}, ${sy}`
+      return `${sd}/${sm}/${sy}`
     }
     return 'Selecionar período'
   }, [displayStart, displayEnd, isSelectingEnd])

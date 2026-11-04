@@ -14,6 +14,8 @@ export interface TaskBoard {
   createdAt: number
   category?: 'project' | 'item'
   titleColumnName?: string
+  statusIndicatorStyle?: StatusIndicatorStyle
+  priorityIndicatorStyle?: 'badge' | 'stars'
   properties?: TaskPropertyConfig[]
 }
 
@@ -30,7 +32,19 @@ export interface TaskStatusOption {
   progress?: number
 }
 
-export type TaskPropertyType = 'text' | 'select' | 'date' | 'number' | 'context' | 'priority' | 'status' | 'multiselect' | 'checkbox' | 'url'
+export type TaskPropertyType =
+  | 'text'
+  | 'select'
+  | 'date'
+  | 'number'
+  | 'currency'
+  | 'board'
+  | 'context'
+  | 'priority'
+  | 'status'
+  | 'multiselect'
+  | 'checkbox'
+  | 'url'
 
 export interface TaskPropertyOption {
   id: string
@@ -47,6 +61,8 @@ export interface TaskPropertyConfig {
   type: TaskPropertyType
   options?: TaskPropertyOption[]
   hidden?: boolean
+  currencyCode?: string
+  priorityIndicatorStyle?: 'badge' | 'stars'
 }
 
 export interface SubTask {
@@ -85,4 +101,5 @@ export interface TaskSettings {
   boardProperties?: Record<string, TaskPropertyConfig[]>
   statusIndicatorStyle?: StatusIndicatorStyle
   titleColumnName?: string
+  savedLabels?: string[]
 }

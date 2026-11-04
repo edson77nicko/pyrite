@@ -3,6 +3,7 @@ import type { TaskItem, TaskSettings } from '../types/tasks'
 import type { Note } from '../types'
 import { StatusProgressCircle, computeStatusProgress } from './StatusIndicator'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
+import { formatDateBR } from '../utils/taskProperties'
 import {
   Calendar,
   ChevronLeft,
@@ -455,9 +456,9 @@ export const TaskGanttView: React.FC<TaskGanttViewProps> = ({
                     className="flex items-center gap-1 text-[10px] font-mono text-zinc-500 hover:text-zinc-200 shrink-0 px-1 py-0.5 rounded hover:bg-zinc-800/50 transition-colors"
                     title="Clique para alterar as datas da tarefa"
                   >
-                    <span>{startStr ? startStr.slice(5) : '--'}</span>
+                    <span>{startStr ? formatDateBR(startStr).slice(0, 5) : '--'}</span>
                     <span className="text-zinc-600">→</span>
-                    <span>{endStr ? endStr.slice(5) : '--'}</span>
+                    <span>{endStr ? formatDateBR(endStr).slice(0, 5) : '--'}</span>
                   </div>
                 </div>
               )
@@ -619,7 +620,7 @@ export const TaskGanttView: React.FC<TaskGanttViewProps> = ({
                             ? 'opacity-65 ring-1 ring-emerald-500/50'
                             : 'hover:brightness-110 shadow-xs'
                         }`}
-                        title={`${task.title}\nInício: ${toLocalDateStr(taskStartDate!)}\nTérmino: ${toLocalDateStr(taskEndDate!)}\nStatus: ${statusInfo?.name || 'Padrão'}`}
+                        title={`${task.title}\nInício: ${formatDateBR(toLocalDateStr(taskStartDate!))}\nTérmino: ${formatDateBR(toLocalDateStr(taskEndDate!))}\nStatus: ${statusInfo?.name || 'Padrão'}`}
                       >
                         {/* Fundo da barra com a cor do status */}
                         <div

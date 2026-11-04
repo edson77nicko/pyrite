@@ -1,13 +1,25 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
-import type { TaskItem, TaskSettings, TaskPriority, SubTask } from '../types/tasks'
+import type { TaskItem, TaskSettings, TaskPriority, SubTask, TaskBoard } from '../types/tasks'
 import type { Note } from '../types'
 import { DEFAULT_PRIORITIES } from '../utils/taskStorage'
-import { getPropertyItems, isBuiltinProperty, getBoardProperties } from '../utils/taskProperties'
+import {
+  getPropertyItems,
+  isBuiltinProperty,
+  getBoardProperties,
+  formatDateBR,
+  PRIORITY_STAR_MAP,
+  STAR_TO_PRIORITY,
+  getSavedLabels,
+  saveLabelToPool,
+  removeLabelFromPool
+} from '../utils/taskProperties'
 import { TaskCustomPropertyField } from './TaskCustomPropertyField'
 import { TaskContextPicker } from './TaskContextPicker'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import { StatusBadge, computeStatusProgress } from './StatusIndicator'
 import { LivePreviewEditor } from './LivePreviewEditor'
+import { TaskLabelBadge } from './TaskLabelBadge'
+import { TaskLabelPicker } from './TaskLabelPicker'
 import {
   CheckCircle2,
   X,
@@ -26,24 +38,32 @@ import {
   List,
   Loader,
   Link2,
-  Maximize2
+  Maximize2,
+  Columns2,
+  DollarSign,
+  FolderKanban
 } from 'lucide-react'
 
 const CUSTOM_PROP_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   text: Type,
   number: Hash,
+  currency: DollarSign,
   select: ChevronDownCircle,
   multiselect: List,
   status: Loader,
   date: Calendar,
   checkbox: CheckSquare,
-  url: Link2
+  url: Link2,
+  board: FolderKanban
 }
 
 interface TaskDetailSidebarProps {
   task: TaskItem
   allNotes: Note[]
   settings: TaskSettings
+  taskBoards?: TaskBoard[]
+  activeBoard?: TaskBoard
+  onSelectTaskBoard?: (boardId: string) => void
   onUpdateTask: (updatedTask: TaskItem) => void
   onDeleteTask: (taskId: string) => void
   onOpenNote: (noteId: string) => void
@@ -55,12 +75,63 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   task,
   allNotes,
   settings,
+  taskBoards = [],
+  activeBoard,
+  onSelectTaskBoard,
   onUpdateTask,
   onDeleteTask,
   onOpenNote,
   onClose,
   onToggleFullView
 }) => {
+  // Resizable width state with localStorage persistence
+  const [drawerWidth, setDrawerWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('pyrite_task_drawer_width')
+      return saved ? Math.min(820, Math.max(360, Number(saved))) : 440
+    } catch {
+      return 440
+    }
+  })
+  const [isDraggingWidth, setIsDraggingWidth] = useState(false)
+
+  // Drag handler to resize drawer width
+  const handleMouseDownResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDraggingWidth(true)
+    const startX = e.clientX
+    const startWidth = drawerWidth
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      // Dragging left handle: moving cursor left (startX - clientX) increases width
+      const deltaX = startX - moveEvent.clientX
+      const newWidth = Math.min(850, Math.max(360, startWidth + deltaX))
+      setDrawerWidth(newWidth)
+    }
+
+    const handleMouseUp = (upEvent: MouseEvent) => {
+      setIsDraggingWidth(false)
+      const deltaX = startX - upEvent.clientX
+      const finalWidth = Math.min(850, Math.max(360, startWidth + deltaX))
+      try {
+        localStorage.setItem('pyrite_task_drawer_width', String(finalWidth))
+      } catch {}
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }
+
+  const toggleExpandWidth = () => {
+    const nextWidth = drawerWidth > 550 ? 440 : 680
+    setDrawerWidth(nextWidth)
+    try {
+      localStorage.setItem('pyrite_task_drawer_width', String(nextWidth))
+    } catch {}
+  }
+
   const [isContextPickerOpen, setIsContextPickerOpen] = useState(false)
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [isDeadlinePickerOpen, setIsDeadlinePickerOpen] = useState(false)
@@ -126,7 +197,6 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
     }
   }, [onClose])
 
-  const [newTagInput, setNewTagInput] = useState('')
   const [isAddingTag, setIsAddingTag] = useState(false)
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
   const [isAddingSubtask, setIsAddingSubtask] = useState(false)
@@ -145,6 +215,9 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
     label: 'Nenhuma',
     color: '#71717a'
   }
+
+  const currentBoard = activeBoard || (taskBoards || []).find(b => b.id === (task.boardId || 'default'))
+  const priorityStyle: 'badge' | 'stars' = currentBoard?.priorityIndicatorStyle || 'badge'
 
   const boardProps = useMemo(
     () => getBoardProperties(settings, task.boardId),
@@ -254,19 +327,37 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
     })
   }
 
-  const handleAddTag = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newTagInput.trim()) return
-    const tag = newTagInput.trim().toLowerCase().replace(/^#/, '')
-    if (!task.tags.includes(tag)) {
+  const allSavedLabels = useMemo(() => {
+    return getSavedLabels(settings)
+  }, [settings])
+
+  const handleCreateLabel = (labelName: string) => {
+    const clean = labelName.trim().replace(/^#/, '')
+    if (!clean) return
+    saveLabelToPool(clean, settings)
+    if (!task.tags.some(t => t.toLowerCase() === clean.toLowerCase())) {
       onUpdateTask({
         ...task,
-        tags: [...task.tags, tag],
+        tags: [...task.tags, clean],
         updatedAt: Date.now()
       })
     }
-    setNewTagInput('')
-    setIsAddingTag(false)
+  }
+
+  const handleToggleLabel = (labelName: string) => {
+    const exists = task.tags.some(t => t.toLowerCase() === labelName.toLowerCase())
+    const nextTags = exists
+      ? task.tags.filter(t => t.toLowerCase() !== labelName.toLowerCase())
+      : [...task.tags, labelName]
+    onUpdateTask({
+      ...task,
+      tags: nextTags,
+      updatedAt: Date.now()
+    })
+  }
+
+  const handleDeleteSavedLabel = (labelName: string) => {
+    removeLabelFromPool(labelName)
   }
 
   const handleRemoveTag = (tagToRemove: string) => {
@@ -339,8 +430,26 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   return (
     <aside
       ref={sidebarRef}
-      className="task-detail-sidebar w-[420px] max-w-[460px] my-2 mr-2 ml-1.5 bg-[#121215] border border-zinc-800/80 rounded-2xl flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl shadow-black/50 overflow-hidden animate-in slide-in-from-right-4 duration-150"
+      style={{ width: `${drawerWidth}px` }}
+      className="task-detail-sidebar relative my-2 mr-2 ml-1.5 bg-[#121215] border border-zinc-800/80 rounded-2xl flex flex-col select-none shrink-0 text-xs text-zinc-200 z-20 shadow-2xl shadow-black/50 overflow-hidden animate-in slide-in-from-right-4 duration-150"
     >
+      {/* Draggable Left Resize Handle */}
+      <div
+        onMouseDown={handleMouseDownResize}
+        onDoubleClick={() => {
+          setDrawerWidth(440)
+          try {
+            localStorage.setItem('pyrite_task_drawer_width', '440')
+          } catch {}
+        }}
+        className={`absolute top-0 left-0 w-2 h-full cursor-col-resize select-none z-30 transition-colors ${
+          isDraggingWidth ? 'bg-[var(--accent)]/80' : 'hover:bg-[var(--accent)]/40'
+        }`}
+        title="Arraste para redimensionar a largura do painel (duplo clique para restaurar 440px)"
+      >
+        {isDraggingWidth && <div className="w-[1px] h-full bg-[var(--accent)] mx-auto" />}
+      </div>
+
       {/* 1. Header Toolbar - Sober without harsh white divider */}
       <div className="h-10 px-4 bg-[#151519] border-b border-zinc-800/50 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
@@ -357,6 +466,14 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={toggleExpandWidth}
+            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-[#1b1b20] rounded-md transition-colors cursor-pointer"
+            title={drawerWidth > 550 ? 'Restaurar largura padrão' : 'Ampliar largura do painel'}
+          >
+            <Columns2 className="w-3.5 h-3.5" />
+          </button>
           {onToggleFullView && (
             <button
               type="button"
@@ -438,45 +555,40 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
           </div>
         </div>
 
-        {/* Tags */}
+        {/* Rótulos */}
         {isPropActive('prop_tags') && (
-          <div className="flex items-center flex-wrap gap-1.5 pl-9">
+          <div className="relative flex items-center flex-wrap gap-1.5 pl-9">
             {task.tags.map(t => (
-              <span
+              <TaskLabelBadge
                 key={t}
-                className="group flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#16161a] border border-zinc-800/60 text-[11px] text-zinc-300 font-mono"
-              >
-                #{t}
-                <button
-                  onClick={() => handleRemoveTag(t)}
-                  className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-rose-400 cursor-pointer"
-                >
-                  ×
-                </button>
-              </span>
+                label={t}
+                size="sm"
+                onRemove={() => handleRemoveTag(t)}
+              />
             ))}
 
-            {isAddingTag ? (
-              <form onSubmit={handleAddTag} className="inline-flex">
-                <input
-                  type="text"
-                  autoFocus
-                  value={newTagInput}
-                  onChange={e => setNewTagInput(e.target.value)}
-                  onBlur={() => setIsAddingTag(false)}
-                  placeholder="tag..."
-                  className="w-20 px-1.5 py-0.5 bg-[#16161a] border rounded text-[11px] text-zinc-200 outline-none"
-                  style={{ borderColor: 'var(--accent, #c59b27)' }}
-                />
-              </form>
-            ) : (
+            <div className="relative inline-block">
               <button
-                onClick={() => setIsAddingTag(true)}
-                className="text-[11px] text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded hover:bg-[#16161a] transition-colors cursor-pointer"
+                type="button"
+                onClick={() => setIsAddingTag(o => !o)}
+                className="text-[11px] text-zinc-500 hover:text-zinc-200 px-2 py-0.5 rounded-full border border-dashed border-zinc-750 hover:border-zinc-500 hover:bg-[#1b1b20] transition-colors cursor-pointer"
+                title="Adicionar ou selecionar rótulos"
               >
-                + Tag
+                + Rótulo
               </button>
-            )}
+
+              {isAddingTag && (
+                <TaskLabelPicker
+                  selectedLabels={task.tags}
+                  allSavedLabels={allSavedLabels}
+                  onToggleLabel={handleToggleLabel}
+                  onCreateLabel={handleCreateLabel}
+                  onDeleteSavedLabel={handleDeleteSavedLabel}
+                  onClose={() => setIsAddingTag(false)}
+                  align="left"
+                />
+              )}
+            </div>
           </div>
         )}
 
@@ -559,7 +671,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                     }}
                     className="w-full flex items-center justify-between bg-[#1b1b20] hover:bg-[#222228] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
                   >
-                    <span>{task.startDate || task.date || 'Definir início...'}</span>
+                    <span>{(task.startDate || task.date) ? formatDateBR(task.startDate || task.date) : 'Definir início...'}</span>
                     <Calendar className="w-3.5 h-3.5 text-zinc-500" />
                   </button>
                   {isDatePickerOpen && (
@@ -592,7 +704,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                     }}
                     className="flex-1 flex items-center justify-between bg-[#1b1b20] hover:bg-[#222228] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors text-left cursor-pointer"
                   >
-                    <span>{task.endDate || task.deadline || 'Definir término...'}</span>
+                    <span>{(task.endDate || task.deadline) ? formatDateBR(task.endDate || task.deadline) : 'Definir término...'}</span>
                     <Calendar className="w-3.5 h-3.5 text-zinc-500" />
                   </button>
                   {(task.endDate || task.deadline) && (task.endDate || task.deadline)!.slice(0, 10) === new Date().toISOString().slice(0, 10) && (
@@ -622,7 +734,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
             </>
           )}
 
-          {/* Priority Custom Dropdown */}
+          {/* Priority */}
           {isPropActive('prop_priority') && (
             <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-xs relative">
               <div className="flex items-center gap-1.5 text-zinc-400">
@@ -630,54 +742,81 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                 <span>Prioridade</span>
               </div>
               <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsPriorityDropdownOpen(o => !o)
-                    setIsStatusDropdownOpen(false)
-                  }}
-                  className="w-full flex items-center justify-between bg-[#1b1b20] hover:bg-[#222228] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <Flag className="w-3 h-3" style={{ color: activePriority.color }} />
-                    <span>{activePriority.label}</span>
-                  </div>
-                  <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                </button>
-
-                {isPriorityDropdownOpen && (
-                  <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#1a1a1f] border border-zinc-700/60 rounded-xl shadow-md p-1 space-y-0.5 animate-in fade-in duration-100">
-                    {safePriorities.map(opt => {
-                      const isSelected = opt.id === activePriority.id
+                {priorityStyle === 'stars' ? (
+                  <div className="flex items-center gap-1 py-1 px-1 bg-[#1b1b20] rounded-lg">
+                    {[1, 2, 3, 4, 5].map(starNum => {
+                      const starCount = PRIORITY_STAR_MAP[task.priority] ?? 0
+                      const isActive = starNum <= (starCount === 4 && starNum === 5 ? 4 : starCount)
                       return (
                         <button
+                          key={starNum}
                           type="button"
-                          key={opt.id}
-                          onClick={() => handlePriorityChange(opt.id as TaskPriority)}
-                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                            isSelected ? 'bg-zinc-800/80 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800/40'
+                          onClick={() => {
+                            const nextPri = starCount === starNum ? 'none' : (STAR_TO_PRIORITY[Math.min(4, starNum)] || 'none')
+                            handlePriorityChange(nextPri as TaskPriority)
+                          }}
+                          className={`p-1 text-sm transition-transform hover:scale-125 cursor-pointer ${
+                            isActive ? 'text-amber-400' : 'text-zinc-700 hover:text-amber-300/60'
                           }`}
+                          title={`${starNum} estrela${starNum > 1 ? 's' : ''}`}
                         >
-                          <div className="flex items-center gap-2">
-                            <Flag className="w-3 h-3" style={{ color: opt.color }} />
-                            <span>{opt.label}</span>
-                          </div>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-zinc-400" />}
+                          ★
                         </button>
                       )
                     })}
                   </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPriorityDropdownOpen(o => !o)
+                        setIsStatusDropdownOpen(false)
+                      }}
+                      className="w-full flex items-center justify-between bg-[#1b1b20] hover:bg-[#222228] rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Flag className="w-3 h-3" style={{ color: activePriority.color }} />
+                        <span>{activePriority.label}</span>
+                      </div>
+                      <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                    </button>
+
+                    {isPriorityDropdownOpen && (
+                      <div className="absolute z-50 top-full left-0 mt-1 w-full bg-[#1a1a1f] border border-zinc-700/60 rounded-xl shadow-md p-1 space-y-0.5 animate-in fade-in duration-100">
+                        {safePriorities.map(opt => {
+                          const isSelected = opt.id === activePriority.id
+                          return (
+                            <button
+                              type="button"
+                              key={opt.id}
+                              onClick={() => handlePriorityChange(opt.id as TaskPriority)}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                                isSelected ? 'bg-zinc-800/80 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800/40'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Flag className="w-3 h-3" style={{ color: opt.color }} />
+                                <span>{opt.label}</span>
+                              </div>
+                              {isSelected && <Check className="w-3.5 h-3.5 text-zinc-400" />}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
           )}
 
-          {/* Context Note Picker */}
+          {/* Context Note Picker (Nota) */}
           {isPropActive('prop_context') && (
             <div className="grid grid-cols-[80px_1fr] items-start gap-2 text-xs relative">
               <div className="flex items-center gap-1.5 text-zinc-400 pt-1.5">
                 <Compass className="w-3.5 h-3.5 text-zinc-500" />
-                <span>Contexto</span>
+                <span>Nota</span>
               </div>
 
               <div className="relative">
@@ -690,7 +829,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                       title="Alterar nota vinculada"
                     >
                       <Compass className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
-                      <span className="truncate">{task.contextNoteTitle || 'Nota vinculada'}</span>
+                      <span className="truncate">{task.contextNoteTitle || 'Nota'}</span>
                     </button>
 
                     <div className="flex items-center gap-1 shrink-0">
@@ -746,6 +885,8 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                   prop={prop}
                   task={task}
                   items={getPropertyItems(settings, prop)}
+                  boards={taskBoards}
+                  onSelectBoard={onSelectTaskBoard}
                   onChange={val => handleCustomValueChange(prop.id, val)}
                 />
               </div>

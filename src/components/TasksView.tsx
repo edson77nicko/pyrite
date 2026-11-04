@@ -1,14 +1,31 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import type { TaskItem, TaskSettings, TaskPriority, SubTask, TaskBoard, TaskPropertyConfig } from '../types/tasks'
 import type { Note } from '../types'
 import { DEFAULT_TASK_SETTINGS, DEFAULT_PRIORITIES } from '../utils/taskStorage'
-import { getPropertyItems, isBuiltinProperty, isOptionProperty, getBoardProperties, type PropertyItem } from '../utils/taskProperties'
+import {
+  getPropertyItems,
+  isBuiltinProperty,
+  isOptionProperty,
+  getBoardProperties,
+  formatDateBR,
+  formatDateRangeBR,
+  formatCurrencyValue,
+  PRIORITY_STAR_MAP,
+  STAR_TO_PRIORITY,
+  getSavedLabels,
+  saveLabelToPool,
+  removeLabelFromPool,
+  type PropertyItem
+} from '../utils/taskProperties'
 import { Pill } from './TaskCustomPropertyField'
 import { TaskSettingsModal } from './TaskSettingsModal'
 import { TaskDocumentView } from './TaskDocumentView'
 import { TaskDetailSidebar } from './TaskDetailSidebar'
 import { TaskGanttView } from './TaskGanttView'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
+import { TaskContextPicker } from './TaskContextPicker'
+import { TaskLabelBadge } from './TaskLabelBadge'
+import { TaskLabelPicker } from './TaskLabelPicker'
 import {
   StatusBadge,
   StatusProgressCircle,
@@ -34,7 +51,12 @@ import {
   Check,
   CheckSquare,
   CornerDownRight,
-  Pencil
+  Pencil,
+  PanelRightOpen,
+  FolderKanban,
+  Box,
+  ExternalLink,
+  X
 } from 'lucide-react'
 
 interface TasksViewProps {
@@ -80,12 +102,12 @@ const MIN_COLUMN_WIDTHS: Record<string, number> = {
 
 export const TasksView: React.FC<TasksViewProps> = ({
   tasks,
-  allNotes: _allNotes,
+  allNotes,
   settings,
   selectedTaskId,
   activeBoardId = 'default',
   taskBoards = [],
-  onSelectTaskBoard: _onSelectTaskBoard,
+  onSelectTaskBoard,
   onSelectTask,
   onCreateTask,
   onUpdateTask,
@@ -93,15 +115,79 @@ export const TasksView: React.FC<TasksViewProps> = ({
   onUpdateSettings,
   onOpenNote
 }) => {
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    try {
+      const saved = localStorage.getItem('pyrite_tasks_view_mode')
+      if (saved === 'list' || saved === 'kanban' || saved === 'gantt') {
+        return saved
+      }
+    } catch {}
+    return 'list'
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pyrite_tasks_view_mode', viewMode)
+    } catch {}
+  }, [viewMode])
+
   const [kanbanGroupBy, setKanbanGroupBy] = useState<KanbanGroupBy>('prop_status')
   const [isGroupingMenuOpen, setIsGroupingMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
+  // Labels pool
+  const allSavedLabels = useMemo(() => {
+    return getSavedLabels(settings, tasks)
+  }, [settings, tasks])
+
+  const handleCreateLabelForTask = (labelName: string, task: TaskItem) => {
+    const clean = labelName.trim().replace(/^#/, '')
+    if (!clean) return
+    saveLabelToPool(clean, settings, tasks)
+    const exists = task.tags.some(t => t.toLowerCase() === clean.toLowerCase())
+    if (!exists) {
+      onUpdateTask({ ...task, tags: [...task.tags, clean], updatedAt: Date.now() })
+    }
+    if (onUpdateSettings && (!settings.savedLabels || !settings.savedLabels.some(l => l.toLowerCase() === clean.toLowerCase()))) {
+      onUpdateSettings({
+        ...settings,
+        savedLabels: [...(settings.savedLabels || []), clean]
+      })
+    }
+  }
+
+  const handleToggleLabelForTask = (labelName: string, task: TaskItem) => {
+    const exists = task.tags.some(t => t.toLowerCase() === labelName.toLowerCase())
+    const nextTags = exists
+      ? task.tags.filter(t => t.toLowerCase() !== labelName.toLowerCase())
+      : [...task.tags, labelName]
+    onUpdateTask({ ...task, tags: nextTags, updatedAt: Date.now() })
+  }
+
+  const handleDeleteSavedLabel = (labelName: string) => {
+    removeLabelFromPool(labelName)
+    if (onUpdateSettings && settings.savedLabels) {
+      onUpdateSettings({
+        ...settings,
+        savedLabels: settings.savedLabels.filter(l => l.toLowerCase() !== labelName.toLowerCase())
+      })
+    }
+  }
+
   // Nome customizável da primeira coluna (ex: "Nome", "Tarefa", "Cliente", etc.)
   const [isEditingTitleCol, setIsEditingTitleCol] = useState(false)
   const [titleColDraft, setTitleColDraft] = useState('')
+
+  // Inline editing states
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
+  const [titleDraft, setTitleDraft] = useState('')
+  const [inlinePriorityTaskId, setInlinePriorityTaskId] = useState<string | null>(null)
+  const [inlineContextTaskId, setInlineContextTaskId] = useState<string | null>(null)
+  const [inlineTagsTaskId, setInlineTagsTaskId] = useState<string | null>(null)
+  const [inlineCustomField, setInlineCustomField] = useState<{ taskId: string; propId: string } | null>(null)
+  const [inlineBoardTaskId, setInlineBoardTaskId] = useState<string | null>(null)
+  const [inlineBoardPropId, setInlineBoardPropId] = useState<string | null>(null)
 
   // Subtasks expanded state in list view
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set())
@@ -144,11 +230,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [inlineStatusTaskId, setInlineStatusTaskId] = useState<string | null>(null)
 
   React.useEffect(() => {
-    if (!inlineStatusTaskId) return
-    const handleClickOutside = () => setInlineStatusTaskId(null)
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target?.closest('[data-inline-popover]')) return
+      setInlineStatusTaskId(null)
+      setInlinePriorityTaskId(null)
+      setInlineBoardTaskId(null)
+      setInlineBoardPropId(null)
+      setInlineCustomField(null)
+    }
     window.addEventListener('click', handleClickOutside)
     return () => window.removeEventListener('click', handleClickOutside)
-  }, [inlineStatusTaskId])
+  }, [])
 
   const handleResizeStart = (colId: string, e: React.MouseEvent) => {
     e.preventDefault()
@@ -202,22 +295,30 @@ export const TasksView: React.FC<TasksViewProps> = ({
     })
   }
 
-  const indicatorStyle: StatusIndicatorStyle = settings.statusIndicatorStyle || 'circle'
-
-  const cycleStatusIndicatorStyle = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    const order: StatusIndicatorStyle[] = ['circle', 'bar', 'dot']
-    const nextIdx = (order.indexOf(indicatorStyle) + 1) % order.length
-    onUpdateSettings({ ...settings, statusIndicatorStyle: order[nextIdx] })
-  }
-
-  const todayStr = new Date().toISOString().slice(0, 10)
-
   // Board filtering
   const currentBoardId = activeBoardId || 'default'
   const currentBoard = useMemo(() => {
     return taskBoards.find(b => b.id === currentBoardId)
   }, [taskBoards, currentBoardId])
+
+  const indicatorStyle: StatusIndicatorStyle = currentBoard?.statusIndicatorStyle || settings.statusIndicatorStyle || 'circle'
+  const priorityStyle: 'badge' | 'stars' = currentBoard?.priorityIndicatorStyle || 'badge'
+
+  const cycleStatusIndicatorStyle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const order: StatusIndicatorStyle[] = ['circle', 'bar', 'dot']
+    const nextIdx = (order.indexOf(indicatorStyle) + 1) % order.length
+    const next = order[nextIdx]
+    if (currentBoard) {
+      const allBoards = settings.boards && settings.boards.length > 0 ? settings.boards : taskBoards
+      const updatedBoards = allBoards.map(b => (b.id === currentBoard.id ? { ...b, statusIndicatorStyle: next } : b))
+      onUpdateSettings({ ...settings, boards: updatedBoards })
+    } else {
+      onUpdateSettings({ ...settings, statusIndicatorStyle: next })
+    }
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10)
 
   const safeStatuses = Array.isArray(settings?.statuses) ? settings.statuses : DEFAULT_TASK_SETTINGS.statuses
   const safeProperties = useMemo(() => {
@@ -293,31 +394,273 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   const renderCustomCell = (task: TaskItem, prop: TaskPropertyConfig) => {
     const v = task.customValues?.[prop.id]
-    if (v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) {
-      return <span className="text-zinc-600">-</span>
-    }
     const items = getPropertyItems(settings, prop)
+
+    const updateValue = (nextVal: any) => {
+      const nextCustom = { ...(task.customValues || {}) }
+      if (nextVal === undefined || nextVal === '') delete nextCustom[prop.id]
+      else nextCustom[prop.id] = nextVal
+      onUpdateTask({ ...task, customValues: nextCustom, updatedAt: Date.now() })
+    }
+
     switch (prop.type) {
+      case 'currency': {
+        const isEditing = inlineCustomField?.taskId === task.id && inlineCustomField.propId === prop.id
+        if (isEditing) {
+          return (
+            <input
+              autoFocus
+              type="number"
+              step="0.01"
+              defaultValue={v ?? ''}
+              onClick={e => e.stopPropagation()}
+              onBlur={e => {
+                const val = e.target.value === '' ? undefined : Number(e.target.value)
+                updateValue(val)
+                setInlineCustomField(null)
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') setInlineCustomField(null)
+              }}
+              className="w-full bg-zinc-900 border border-[var(--accent,#c59b27)]/60 rounded px-1.5 py-0.5 text-xs text-zinc-100 font-mono outline-none"
+            />
+          )
+        }
+        return (
+          <span
+            onClick={e => {
+              e.stopPropagation()
+              setInlineCustomField({ taskId: task.id, propId: prop.id })
+            }}
+            className="text-[11px] font-mono text-zinc-200 hover:bg-zinc-800/40 px-1 py-0.5 rounded cursor-pointer truncate block"
+            title="Clique para editar valor"
+          >
+            {v !== undefined && v !== '' ? formatCurrencyValue(v, prop.currencyCode) : <span className="text-zinc-600">-</span>}
+          </span>
+        )
+      }
+
+      case 'board': {
+        const linkedBoard = taskBoards.find(b => b.id === v)
+        const isMenuOpen = inlineBoardTaskId === task.id && inlineBoardPropId === prop.id
+        return (
+          <div className="relative flex items-center gap-1" data-inline-popover="true">
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation()
+                if (isMenuOpen) {
+                  setInlineBoardTaskId(null)
+                  setInlineBoardPropId(null)
+                } else {
+                  setInlineBoardTaskId(task.id)
+                  setInlineBoardPropId(prop.id)
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#18181b] hover:bg-zinc-800 transition-colors text-[11px] font-medium max-w-[130px] truncate cursor-pointer text-amber-400"
+              title="Clique para vincular projeto/item"
+            >
+              {linkedBoard ? (
+                <>
+                  {linkedBoard.category === 'item' ? (
+                    <Box className="w-3 h-3 text-amber-400 shrink-0" />
+                  ) : (
+                    <FolderKanban className="w-3 h-3 text-amber-400 shrink-0" />
+                  )}
+                  <span className="truncate">{linkedBoard.name}</span>
+                </>
+              ) : (
+                <span className="text-zinc-600">-</span>
+              )}
+            </button>
+
+            {linkedBoard && onSelectTaskBoard && (
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation()
+                  onSelectTaskBoard(linkedBoard.id)
+                }}
+                className="opacity-0 group-hover:opacity-100 p-0.5 text-amber-400 hover:text-amber-300 transition-opacity cursor-pointer shrink-0"
+                title={`Ir direto para ${linkedBoard.name}`}
+              >
+                <ExternalLink className="w-3 h-3" />
+              </button>
+            )}
+
+            {isMenuOpen && (
+              <div
+                onClick={e => e.stopPropagation()}
+                className="absolute top-full left-0 mt-1 z-50 w-48 rounded-xl bg-[#18181b] shadow-2xl p-1.5 space-y-0.5 border border-zinc-700/80 animate-in fade-in-50 max-h-56 overflow-y-auto custom-chat-scrollbar"
+              >
+                {v && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateValue(undefined)
+                      setInlineBoardTaskId(null)
+                      setInlineBoardPropId(null)
+                    }}
+                    className="w-full flex items-center gap-2 px-2 py-1 rounded-md text-[11px] text-zinc-500 hover:bg-zinc-800/40 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" /> Desvincular
+                  </button>
+                )}
+                {taskBoards.map(b => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => {
+                      updateValue(b.id)
+                      setInlineBoardTaskId(null)
+                      setInlineBoardPropId(null)
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer ${
+                      b.id === v ? 'bg-zinc-800/80 text-amber-300 font-medium' : 'text-zinc-300 hover:bg-zinc-800/40'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      {b.category === 'item' ? (
+                        <Box className="w-3 h-3 text-amber-400/80 shrink-0" />
+                      ) : (
+                        <FolderKanban className="w-3 h-3 text-amber-400/80 shrink-0" />
+                      )}
+                      <span className="truncate">{b.name}</span>
+                    </span>
+                    {b.id === v && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      }
+
+      case 'checkbox':
+        return (
+          <button
+            type="button"
+            onClick={e => {
+              e.stopPropagation()
+              updateValue(!v)
+            }}
+            className={`w-4 h-4 rounded-[4px] flex items-center justify-center cursor-pointer transition-all ${
+              v ? 'bg-emerald-500 text-zinc-950' : 'border border-zinc-700 hover:border-zinc-500'
+            }`}
+          >
+            {v && <Check className="w-3 h-3 stroke-[3]" />}
+          </button>
+        )
+
       case 'select':
       case 'status': {
-        const it = items.find(i => i.id === v)
-        return it ? <Pill item={it} /> : <span className="text-zinc-600">-</span>
+        const cur = items.find(i => i.id === v)
+        const isMenuOpen = inlineCustomField?.taskId === task.id && inlineCustomField.propId === prop.id
+        return (
+          <div className="relative inline-block" data-inline-popover="true">
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation()
+                setInlineCustomField(isMenuOpen ? null : { taskId: task.id, propId: prop.id })
+              }}
+              className="cursor-pointer text-left"
+            >
+              {cur ? <Pill item={cur} /> : <span className="text-zinc-600">-</span>}
+            </button>
+            {isMenuOpen && (
+              <div
+                onClick={e => e.stopPropagation()}
+                className="absolute top-full left-0 mt-1 z-40 w-44 rounded-xl bg-[#18181b] shadow-2xl p-1.5 space-y-0.5 border border-zinc-700/80 animate-in fade-in-50 max-h-48 overflow-y-auto custom-chat-scrollbar"
+              >
+                {items.map(it => (
+                  <button
+                    key={it.id}
+                    type="button"
+                    onClick={() => {
+                      updateValue(it.id)
+                      setInlineCustomField(null)
+                    }}
+                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs cursor-pointer ${
+                      it.id === v ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800/40'
+                    }`}
+                  >
+                    <Pill item={it} />
+                    {it.id === v && <Check className="w-3 h-3 text-zinc-400 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )
       }
+
       case 'multiselect':
         return (
           <div className="flex flex-wrap gap-1">
-            {(v as string[]).map(id => {
-              const it = items.find(i => i.id === id)
-              return it ? <Pill key={id} item={it} /> : null
+            {items.map(it => {
+              const selected: string[] = Array.isArray(v) ? v : []
+              const on = selected.includes(it.id)
+              return (
+                <button
+                  key={it.id}
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation()
+                    updateValue(on ? selected.filter(s => s !== it.id) : [...selected, it.id])
+                  }}
+                  className={`cursor-pointer transition-opacity ${on ? 'opacity-100' : 'opacity-40 hover:opacity-80'}`}
+                >
+                  <Pill item={it} />
+                </button>
+              )
             })}
           </div>
         )
-      case 'checkbox':
-        return v ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <span className="text-zinc-600">-</span>
-      case 'url':
-        return <span className="text-[11px] text-sky-400 truncate block max-w-[160px]">{String(v)}</span>
+
+      case 'text':
+      case 'number':
+      case 'url': {
+        const isEditing = inlineCustomField?.taskId === task.id && inlineCustomField.propId === prop.id
+        if (isEditing) {
+          return (
+            <input
+              autoFocus
+              type={prop.type === 'number' ? 'number' : 'text'}
+              defaultValue={v ?? ''}
+              onClick={e => e.stopPropagation()}
+              onBlur={e => {
+                const val = prop.type === 'number'
+                  ? (e.target.value === '' ? undefined : Number(e.target.value))
+                  : (e.target.value || undefined)
+                updateValue(val)
+                setInlineCustomField(null)
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') setInlineCustomField(null)
+              }}
+              className="w-full bg-zinc-900 border border-[var(--accent,#c59b27)]/60 rounded px-1.5 py-0.5 text-xs text-zinc-100 outline-none"
+            />
+          )
+        }
+        return (
+          <span
+            onClick={e => {
+              e.stopPropagation()
+              setInlineCustomField({ taskId: task.id, propId: prop.id })
+            }}
+            className="text-[11px] text-zinc-300 hover:bg-zinc-800/40 px-1 py-0.5 rounded cursor-pointer truncate block max-w-[160px]"
+            title="Clique para editar"
+          >
+            {v !== undefined && v !== '' ? String(v) : <span className="text-zinc-600">-</span>}
+          </span>
+        )
+      }
+
       default:
-        return <span className="text-[11px] text-zinc-300 truncate block max-w-[160px]">{String(v)}</span>
+        return <span className="text-[11px] text-zinc-300 truncate block max-w-[160px]">{String(v || '-')}</span>
     }
   }
 
@@ -515,7 +858,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       <TaskDocumentView
         task={selectedTask}
         settings={settings}
-        allNotes={_allNotes}
+        allNotes={allNotes}
         boardName={currentBoard?.name || 'Tarefas'}
         onUpdateTask={onUpdateTask}
         onDeleteTask={onDeleteTask}
@@ -843,14 +1186,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   </th>
                 )}
 
-                {/* Context */}
+                {/* Context / Nota */}
                 {!isColumnHidden('prop_context') && (
                   <th
                     style={{ width: columnWidths.prop_context || 170 }}
                     className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#18181b] select-none text-zinc-300"
                   >
                     <div className="flex items-center justify-between gap-1">
-                      <span>Contexto (Nota)</span>
+                      <span>Nota</span>
                     </div>
                     {/* Resizer */}
                     <div
@@ -864,14 +1207,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   </th>
                 )}
 
-                {/* Tags */}
+                {/* Rótulos */}
                 {!isColumnHidden('prop_tags') && (
                   <th
                     style={{ width: columnWidths.prop_tags || 150 }}
                     className="relative px-3 py-2.5 border-r border-zinc-800/60 bg-[#18181b] select-none text-zinc-300"
                   >
                     <div className="flex items-center justify-between gap-1">
-                      <span>Tags</span>
+                      <span>Rótulos</span>
                     </div>
                     {/* Resizer */}
                     <div
@@ -990,15 +1333,42 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           </button>
                         </td>
 
-                        {/* Task Title + Subtasks expander + quick action */}
+                        {/* Task Title + Subtasks expander + quick action + hover open button */}
                         <td
                           style={{ width: columnWidths.col_title || 320 }}
-                          className={`px-3 py-2 font-medium text-zinc-100 text-[12.5px] border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                          className={`px-3 py-1.5 font-medium text-zinc-100 text-[12.5px] border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
                         >
-                          <div className="flex items-center gap-2">
-                            <span className={`truncate ${task.completed ? 'line-through text-zinc-500' : ''}`}>
-                              {task.title}
-                            </span>
+                          <div className="flex items-center gap-1.5 w-full">
+                            {/* Inline editable title input */}
+                            <input
+                              type="text"
+                              value={editingTitleId === task.id ? titleDraft : task.title}
+                              onFocus={() => {
+                                setEditingTitleId(task.id)
+                                setTitleDraft(task.title)
+                              }}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => setTitleDraft(e.target.value)}
+                              onBlur={() => {
+                                if (editingTitleId === task.id) {
+                                  if (titleDraft.trim() && titleDraft !== task.title) {
+                                    onUpdateTask({ ...task, title: titleDraft.trim(), updatedAt: Date.now() })
+                                  }
+                                  setEditingTitleId(null)
+                                }
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  e.currentTarget.blur()
+                                } else if (e.key === 'Escape') {
+                                  setEditingTitleId(null)
+                                }
+                              }}
+                              className={`flex-1 min-w-0 bg-transparent py-0.5 px-1 rounded hover:bg-zinc-800/40 focus:bg-zinc-900 focus:ring-1 focus:ring-[var(--accent,#c59b27)]/50 outline-none text-[12.5px] transition-colors ${
+                                task.completed ? 'line-through text-zinc-500' : 'text-zinc-100'
+                              }`}
+                            />
 
                             {/* Subtasks expand toggle badge if task has subtasks */}
                             {subtasksCount > 0 && (
@@ -1020,17 +1390,17 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               </button>
                             )}
 
-                            {/* Hover action to add subtask */}
+                            {/* Subtle hover icon button with box & arrow to explicitly open task drawer */}
                             <button
                               type="button"
                               onClick={e => {
                                 e.stopPropagation()
-                                toggleTaskExpand(task.id)
+                                onSelectTask(task)
                               }}
-                              className="opacity-0 group-hover:opacity-100 text-[10px] text-zinc-500 hover:text-zinc-300 transition-opacity shrink-0 cursor-pointer"
-                              title="Adicionar subtarefas"
+                              className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/80 rounded transition-all shrink-0 cursor-pointer"
+                              title="Abrir detalhes da tarefa"
                             >
-                              + subtarefa
+                              <PanelRightOpen className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </td>
@@ -1041,7 +1411,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             style={{ width: columnWidths.prop_status || 170 }}
                             className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
                           >
-                            <div className="relative inline-block">
+                            <div className="relative inline-block" data-inline-popover="true">
                               <button
                                 type="button"
                                 onClick={e => {
@@ -1104,30 +1474,99 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           </td>
                         )}
 
-                        {/* Priority Pill */}
+                        {/* Priority Pill or Stars */}
                         {!isColumnHidden('prop_priority') && (
                           <td
                             style={{ width: columnWidths.prop_priority || 130 }}
                             className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
                           >
-                            {task.priority !== 'none' ? (
-                              <span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-medium"
-                                style={{
-                                  backgroundColor: priorityInfo.bg,
-                                  color: priorityInfo.color
-                                }}
-                              >
-                                <Flag className="w-2.5 h-2.5" />
-                                <span>{priorityInfo.label}</span>
-                              </span>
+                            {priorityStyle === 'stars' ? (
+                              <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
+                                {[1, 2, 3, 4, 5].map(starNum => {
+                                  const starCount = PRIORITY_STAR_MAP[task.priority] ?? 0
+                                  const isActive = starNum <= (starCount === 4 && starNum === 5 ? 4 : starCount)
+                                  return (
+                                    <button
+                                      key={starNum}
+                                      type="button"
+                                      onClick={e => {
+                                        e.stopPropagation()
+                                        const nextPri = starCount === starNum ? 'none' : (STAR_TO_PRIORITY[Math.min(4, starNum)] || 'none')
+                                        onUpdateTask({ ...task, priority: nextPri as TaskPriority, updatedAt: Date.now() })
+                                      }}
+                                      className={`p-0.5 text-xs transition-transform hover:scale-125 cursor-pointer ${
+                                        isActive ? 'text-amber-400' : 'text-zinc-700 hover:text-amber-300/60'
+                                      }`}
+                                      title={`${starNum} estrela${starNum > 1 ? 's' : ''}`}
+                                    >
+                                      ★
+                                    </button>
+                                  )
+                                })}
+                              </div>
                             ) : (
-                              <span className="text-zinc-600">-</span>
+                              <div className="relative inline-block" data-inline-popover="true">
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    setInlinePriorityTaskId(inlinePriorityTaskId === task.id ? null : task.id)
+                                  }}
+                                  className="cursor-pointer text-left"
+                                  title="Clique para alterar prioridade"
+                                >
+                                  {task.priority !== 'none' ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-medium"
+                                      style={{
+                                        backgroundColor: priorityInfo.bg,
+                                        color: priorityInfo.color
+                                      }}
+                                    >
+                                      <Flag className="w-2.5 h-2.5" />
+                                      <span>{priorityInfo.label}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-zinc-600 hover:text-zinc-400 text-[11px]">-</span>
+                                  )}
+                                </button>
+
+                                {inlinePriorityTaskId === task.id && (
+                                  <div
+                                    onClick={e => e.stopPropagation()}
+                                    className="absolute top-full left-0 mt-1 z-40 w-40 rounded-xl bg-[#18181b] shadow-2xl p-1.5 space-y-0.5 border border-zinc-700/80 animate-in fade-in-50"
+                                  >
+                                    {safePriorities.map(p => {
+                                      const isCur = p.id === task.priority
+                                      return (
+                                        <button
+                                          key={p.id}
+                                          type="button"
+                                          onClick={e => {
+                                            e.stopPropagation()
+                                            onUpdateTask({ ...task, priority: p.id as TaskPriority, updatedAt: Date.now() })
+                                            setInlinePriorityTaskId(null)
+                                          }}
+                                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                                            isCur ? 'bg-zinc-800 text-white font-medium' : 'hover:bg-zinc-800/50 text-zinc-300'
+                                          }`}
+                                        >
+                                          <span className="flex items-center gap-1.5">
+                                            <Flag className="w-3 h-3" style={{ color: p.color }} />
+                                            <span>{p.label}</span>
+                                          </span>
+                                          {isCur && <Check className="w-3 h-3 text-zinc-400 shrink-0" />}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </td>
                         )}
 
-                        {/* Deadline Pill - Never wraps */}
+                        {/* Deadline Pill - Brazilian Date Format */}
                         {!isColumnHidden('prop_deadline') && (
                           <td
                             style={{ width: columnWidths.prop_deadline || 160 }}
@@ -1150,9 +1589,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 >
                                   <Calendar className="w-3 h-3 text-zinc-500 shrink-0" />
                                   <span className="text-[11px] font-mono shrink-0 whitespace-nowrap">
-                                    {(task.startDate || task.date) && (task.endDate || task.deadline) && (task.startDate || task.date) !== (task.endDate || task.deadline)
-                                      ? `${(task.startDate || task.date)!.slice(5)} → ${(task.endDate || task.deadline)!.slice(5)}`
-                                      : (task.endDate || task.deadline || task.startDate || task.date)}
+                                    {formatDateRangeBR(task.startDate || task.date, task.endDate || task.deadline)}
                                   </span>
                                   {(task.deadline?.slice(0, 10) === todayStr || task.endDate?.slice(0, 10) === todayStr) && (
                                     <span
@@ -1218,47 +1655,103 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           </td>
                         )}
 
-                        {/* Context (Nota vinculada) */}
+                        {/* Nota vinculada */}
                         {!isColumnHidden('prop_context') && (
                           <td
                             style={{ width: columnWidths.prop_context || 170 }}
                             className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
                           >
-                            {task.contextNoteId ? (
-                              <span
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  onOpenNote(task.contextNoteId!)
-                                }}
-                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#18181b] hover:bg-zinc-800 transition-colors text-[11px] font-medium max-w-[190px] truncate cursor-pointer"
-                                style={{ color: 'var(--accent, #c59b27)' }}
-                                title="Abrir nota vinculada no editor"
-                              >
-                                <Compass className="w-3 h-3 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
-                                <span className="truncate">{task.contextNoteTitle || 'Nota'}</span>
-                              </span>
-                            ) : (
-                              <span className="text-zinc-600">-</span>
-                            )}
+                            <div className="flex items-center gap-1.5">
+                              {task.contextNoteId ? (
+                                <span
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    setInlineContextTaskId(task.id)
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#18181b] hover:bg-zinc-800 transition-colors text-[11px] font-medium max-w-[150px] truncate cursor-pointer"
+                                  style={{ color: 'var(--accent, #c59b27)' }}
+                                  title="Clique para alterar nota vinculada"
+                                >
+                                  <Compass className="w-3 h-3 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
+                                  <span className="truncate">{task.contextNoteTitle || 'Nota'}</span>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    setInlineContextTaskId(task.id)
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity cursor-pointer"
+                                  title="Vincular nota"
+                                >
+                                  + nota
+                                </button>
+                              )}
+
+                              {task.contextNoteId && (
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    onOpenNote(task.contextNoteId!)
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-zinc-200 transition-opacity cursor-pointer"
+                                  title="Abrir nota no editor"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         )}
 
-                        {/* Tags */}
+                        {/* Rótulos */}
                         {!isColumnHidden('prop_tags') && (
                           <td
                             style={{ width: columnWidths.prop_tags || 150 }}
-                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all relative ${rowBg}`}
+                            data-inline-popover="true"
                           >
-                            <div className="flex items-center gap-1 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               {task.tags.map(tag => (
-                                <span
+                                <TaskLabelBadge
                                   key={tag}
-                                  className="px-1.5 py-0.2 rounded bg-zinc-850/80 text-[10px] text-zinc-400 font-mono"
-                                >
-                                  #{tag}
-                                </span>
+                                  label={tag}
+                                  size="xs"
+                                  onRemove={() => {
+                                    onUpdateTask({
+                                      ...task,
+                                      tags: task.tags.filter(t => t !== tag),
+                                      updatedAt: Date.now()
+                                    })
+                                  }}
+                                />
                               ))}
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setInlineTagsTaskId(inlineTagsTaskId === task.id ? null : task.id)
+                                }}
+                                className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity cursor-pointer whitespace-nowrap"
+                                title="Adicionar ou selecionar rótulo"
+                              >
+                                + rótulo
+                              </button>
                             </div>
+
+                            {inlineTagsTaskId === task.id && (
+                              <TaskLabelPicker
+                                selectedLabels={task.tags}
+                                allSavedLabels={allSavedLabels}
+                                onToggleLabel={lbl => handleToggleLabelForTask(lbl, task)}
+                                onCreateLabel={lbl => handleCreateLabelForTask(lbl, task)}
+                                onDeleteSavedLabel={handleDeleteSavedLabel}
+                                onClose={() => setInlineTagsTaskId(null)}
+                                align="left"
+                              />
+                            )}
                           </td>
                         )}
 
@@ -1430,7 +1923,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
         <TaskGanttView
           tasks={filteredTasks}
           settings={settings}
-          allNotes={_allNotes}
+          allNotes={allNotes}
           selectedTaskId={selectedTaskId || null}
           onSelectTask={onSelectTask}
           onUpdateTask={onUpdateTask}
@@ -1629,11 +2122,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 </span>
                               )}
 
-                              {/* Deadline - Never wraps */}
+                              {/* Deadline - Brazilian Date Format */}
                               {task.deadline && (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-800/80 text-zinc-300 whitespace-nowrap">
                                   <Calendar className="w-2.5 h-2.5 text-zinc-500 shrink-0" />
-                                  <span className="font-mono shrink-0 whitespace-nowrap">{task.deadline}</span>
+                                  <span className="font-mono shrink-0 whitespace-nowrap">{formatDateBR(task.deadline)}</span>
                                   {task.deadline.slice(0, 10) === todayStr && (
                                     <span
                                       className="font-medium shrink-0 whitespace-nowrap"
@@ -1661,14 +2154,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 </span>
                               )}
 
-                              {/* Tags */}
+                              {/* Rótulos */}
                               {task.tags.map(t => (
-                                <span
+                                <TaskLabelBadge
                                   key={t}
-                                  className="task-tag-badge px-1.5 py-0.5 rounded bg-zinc-850/90 text-[9.5px] text-zinc-400 font-mono"
-                                >
-                                  #{t}
-                                </span>
+                                  label={t}
+                                  size="xs"
+                                />
                               ))}
                             </div>
                           </div>
@@ -1781,12 +2273,36 @@ export const TasksView: React.FC<TasksViewProps> = ({
         <TaskDetailSidebar
           task={selectedTask}
           settings={settings}
-          allNotes={_allNotes}
+          allNotes={allNotes}
+          taskBoards={taskBoards}
+          activeBoard={currentBoard}
+          onSelectTaskBoard={onSelectTaskBoard}
           onUpdateTask={onUpdateTask}
           onDeleteTask={onDeleteTask}
           onOpenNote={onOpenNote}
           onClose={() => onSelectTask(null)}
           onToggleFullView={() => setTaskDetailMode('full')}
+        />
+      )}
+
+      {/* 5. Inline Context (Nota) Picker */}
+      {inlineContextTaskId && (
+        <TaskContextPicker
+          allNotes={allNotes}
+          selectedNoteId={tasks.find(t => t.id === inlineContextTaskId)?.contextNoteId}
+          onSelectNote={note => {
+            const task = tasks.find(t => t.id === inlineContextTaskId)
+            if (task) {
+              onUpdateTask({
+                ...task,
+                contextNoteId: note ? note.id : undefined,
+                contextNoteTitle: note ? note.title : undefined,
+                updatedAt: Date.now()
+              })
+            }
+            setInlineContextTaskId(null)
+          }}
+          onClose={() => setInlineContextTaskId(null)}
         />
       )}
     </div>

@@ -3,7 +3,8 @@ import type {
   TaskPropertyConfig,
   TaskStatusGroup,
   TaskStatusOption,
-  TaskPriorityOption
+  TaskPriorityOption,
+  TaskItem
 } from '../types/tasks'
 import { DEFAULT_TASK_SETTINGS, DEFAULT_PRIORITIES } from './taskStorage'
 
@@ -14,6 +15,94 @@ export interface PropertyItem {
   icon?: string
   group?: TaskStatusGroup
   progress?: number
+}
+
+export interface CurrencyConfig {
+  code: string
+  symbol: string
+  label: string
+  locale: string
+}
+
+export const CURRENCY_OPTIONS: CurrencyConfig[] = [
+  { code: 'BRL', symbol: 'R$', label: 'Real Brasileiro (R$)', locale: 'pt-BR' },
+  { code: 'USD', symbol: '$', label: 'Dólar Americano ($)', locale: 'en-US' },
+  { code: 'EUR', symbol: '€', label: 'Euro (€)', locale: 'de-DE' },
+  { code: 'GBP', symbol: '£', label: 'Libra Esterlina (£)', locale: 'en-GB' },
+  { code: 'JPY', symbol: '¥', label: 'Iene Japonês (¥)', locale: 'ja-JP' },
+  { code: 'CAD', symbol: 'CA$', label: 'Dólar Canadense (CA$)', locale: 'en-CA' },
+  { code: 'AUD', symbol: 'AU$', label: 'Dólar Australiano (AU$)', locale: 'en-AU' },
+  { code: 'CHF', symbol: 'CHF', label: 'Franco Suíço (CHF)', locale: 'de-CH' },
+  { code: 'CNY', symbol: 'CN¥', label: 'Yuan Chinês (CN¥)', locale: 'zh-CN' }
+]
+
+export const formatCurrencyValue = (val: number | string | undefined | null, code = 'BRL'): string => {
+  if (val === undefined || val === null || val === '') return '-'
+  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(/[^0-9.-]/g, ''))
+  if (isNaN(num)) return String(val)
+
+  const cfg = CURRENCY_OPTIONS.find(c => c.code === code) || CURRENCY_OPTIONS[0]
+  try {
+    return new Intl.NumberFormat(cfg.locale, {
+      style: 'currency',
+      currency: cfg.code
+    }).format(num)
+  } catch {
+    return `${cfg.symbol} ${num.toFixed(2)}`
+  }
+}
+
+/** Format ISO date (YYYY-MM-DD or YYYY-MM-DD HH:mm) into Brazilian format (DD/MM/AAAA or DD/MM/AAAA HH:mm) */
+export const formatDateBR = (val?: string): string => {
+  if (!val) return ''
+  const [datePart, timePart] = val.split(' ')
+  const parts = (datePart || '').split('-')
+  if (parts.length === 3) {
+    const [y, m, d] = parts
+    const brDate = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`
+    return timePart ? `${brDate} ${timePart}` : brDate
+  }
+  return val
+}
+
+/** Format a date range into Brazilian standard: DD/MM → DD/MM/AAAA or DD/MM/AAAA */
+export const formatDateRangeBR = (start?: string, end?: string): string => {
+  if (!start && !end) return ''
+  const sBR = formatDateBR(start)
+  const eBR = formatDateBR(end)
+
+  if (sBR && !eBR) return sBR
+  if (!sBR && eBR) return eBR
+  if (sBR === eBR) return sBR
+
+  // If both have same year, shorten start to DD/MM
+  const sParts = sBR.split(' ')
+  const eParts = eBR.split(' ')
+  const [sDayMonth, sYear] = [sParts[0].slice(0, 5), sParts[0].slice(6)]
+  const [, eYear] = [eParts[0].slice(0, 5), eParts[0].slice(6)]
+
+  if (sYear && eYear && sYear === eYear && !sParts[1] && !eParts[1]) {
+    return `${sDayMonth} → ${eBR}`
+  }
+
+  return `${sBR} → ${eBR}`
+}
+
+/** Star rating mapping for priorities: 1 to 5 stars */
+export const PRIORITY_STAR_MAP: Record<string, number> = {
+  urgent: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+  none: 0
+}
+
+export const STAR_TO_PRIORITY: Record<number, string> = {
+  4: 'urgent',
+  3: 'high',
+  2: 'medium',
+  1: 'low',
+  0: 'none'
 }
 
 export const STATUS_GROUPS: { id: TaskStatusGroup; label: string; color: string }[] = [
@@ -130,4 +219,111 @@ export const setBoardProperties = (
       [targetId]: properties
     }
   }
+}
+
+/** Visual styles for labels (Rótulos) */
+export interface LabelColorStyle {
+  bg: string
+  text: string
+  border: string
+  dot: string
+}
+
+export const LABEL_PALETTES: LabelColorStyle[] = [
+  { bg: 'rgba(59, 130, 246, 0.12)', text: '#93c5fd', border: 'rgba(59, 130, 246, 0.35)', dot: '#3b82f6' },  // Blue
+  { bg: 'rgba(16, 185, 129, 0.12)', text: '#6ee7b7', border: 'rgba(16, 185, 129, 0.35)', dot: '#10b981' },  // Emerald
+  { bg: 'rgba(245, 158, 11, 0.12)', text: '#fcd34d', border: 'rgba(245, 158, 11, 0.35)', dot: '#f59e0b' },  // Amber
+  { bg: 'rgba(139, 92, 246, 0.12)', text: '#c4b5fd', border: 'rgba(139, 92, 246, 0.35)', dot: '#8b5cf6' },  // Violet
+  { bg: 'rgba(236, 72, 153, 0.12)', text: '#f472b6', border: 'rgba(236, 72, 153, 0.35)', dot: '#ec4899' },  // Pink
+  { bg: 'rgba(14, 165, 233, 0.12)', text: '#7dd3fc', border: 'rgba(14, 165, 233, 0.35)', dot: '#0ea5e9' },  // Sky
+  { bg: 'rgba(249, 115, 22, 0.12)', text: '#fdba74', border: 'rgba(249, 115, 22, 0.35)', dot: '#f97316' },  // Orange
+  { bg: 'rgba(168, 85, 247, 0.12)', text: '#d8b4fe', border: 'rgba(168, 85, 247, 0.35)', dot: '#a855f7' },  // Purple
+  { bg: 'rgba(20, 184, 166, 0.12)', text: '#5eead4', border: 'rgba(20, 184, 166, 0.35)', dot: '#14b8a6' },  // Teal
+  { bg: 'rgba(244, 63, 94, 0.12)', text: '#fda4af', border: 'rgba(244, 63, 94, 0.35)', dot: '#f43f5e' }    // Rose
+]
+
+/** Get deterministic label color by string hashing */
+export const getLabelColor = (label: string): LabelColorStyle => {
+  if (!label) return LABEL_PALETTES[0]
+  let hash = 0
+  const normalized = label.trim().toLowerCase()
+  for (let i = 0; i < normalized.length; i++) {
+    hash = (hash << 5) - hash + normalized.charCodeAt(i)
+    hash |= 0
+  }
+  const index = Math.abs(hash) % LABEL_PALETTES.length
+  return LABEL_PALETTES[index]
+}
+
+export const SAVED_LABELS_STORAGE_KEY = 'pyrite_vault_saved_labels'
+
+/** Extract all saved labels from storage, settings, and existing tasks */
+export const getSavedLabels = (settings?: TaskSettings, tasks?: TaskItem[]): string[] => {
+  const set = new Set<string>()
+
+  // From localStorage
+  try {
+    const raw = localStorage.getItem(SAVED_LABELS_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        parsed.forEach(l => {
+          if (typeof l === 'string' && l.trim()) set.add(l.trim())
+        })
+      }
+    }
+  } catch {}
+
+  // From settings
+  if (settings?.savedLabels && Array.isArray(settings.savedLabels)) {
+    settings.savedLabels.forEach(l => {
+      if (typeof l === 'string' && l.trim()) set.add(l.trim())
+    })
+  }
+
+  // From existing tasks
+  if (tasks && Array.isArray(tasks)) {
+    tasks.forEach(t => {
+      if (Array.isArray(t.tags)) {
+        t.tags.forEach(l => {
+          if (typeof l === 'string' && l.trim()) set.add(l.trim())
+        })
+      }
+    })
+  }
+
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
+}
+
+/** Save a new label to the saved labels pool in localStorage */
+export const saveLabelToPool = (label: string, settings?: TaskSettings, tasks?: TaskItem[]): string[] => {
+  const clean = label.trim().replace(/^#/, '')
+  if (!clean) return getSavedLabels(settings, tasks)
+
+  const current = getSavedLabels(settings, tasks)
+  if (!current.some(l => l.toLowerCase() === clean.toLowerCase())) {
+    const updated = [...current, clean].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
+    try {
+      localStorage.setItem(SAVED_LABELS_STORAGE_KEY, JSON.stringify(updated))
+    } catch {}
+    return updated
+  }
+  return current
+}
+
+/** Remove a label from the saved pool */
+export const removeLabelFromPool = (label: string): string[] => {
+  const clean = label.trim()
+  try {
+    const raw = localStorage.getItem(SAVED_LABELS_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        const updated = parsed.filter((l: string) => l.toLowerCase() !== clean.toLowerCase())
+        localStorage.setItem(SAVED_LABELS_STORAGE_KEY, JSON.stringify(updated))
+        return updated
+      }
+    }
+  } catch {}
+  return []
 }

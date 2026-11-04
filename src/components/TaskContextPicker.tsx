@@ -39,11 +39,48 @@ export const TaskContextPicker: React.FC<TaskContextPickerProps> = ({
     }
   }, [onClose])
 
-  const filteredNotes = allNotes.filter(n =>
-    n.title.toLowerCase().includes(search.toLowerCase()) ||
-    (n.folder && n.folder.toLowerCase().includes(search.toLowerCase())) ||
-    n.tags.some(t => t.toLowerCase().includes(search.toLowerCase()))
-  )
+  const query = search.trim().toLowerCase()
+
+  const filteredNotes = React.useMemo(() => {
+    if (!query) {
+      // Quando não há busca, notas mais recentes aparecem no topo
+      return [...allNotes].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    }
+
+    const matches = allNotes.filter(n => {
+      const titleMatch = (n.title || '').toLowerCase().includes(query)
+      const folderMatch = (n.folder || '').toLowerCase().includes(query)
+      const tagMatch = Array.isArray(n.tags) && n.tags.some(t => (t || '').toLowerCase().includes(query))
+      return titleMatch || folderMatch || tagMatch
+    })
+
+    return matches.sort((a, b) => {
+      const aTitle = (a.title || '').toLowerCase()
+      const bTitle = (b.title || '').toLowerCase()
+
+      // 1. Correspondência exata de título
+      const aExact = aTitle === query
+      const bExact = bTitle === query
+      if (aExact && !bExact) return -1
+      if (bExact && !aExact) return 1
+
+      // 2. Título começa com o termo de busca
+      const aStarts = aTitle.startsWith(query)
+      const bStarts = bTitle.startsWith(query)
+      if (aStarts && !bStarts) return -1
+      if (bStarts && !aStarts) return 1
+
+      // 3. Posição do termo no título (mais no início tem maior relevância)
+      const aIdx = aTitle.indexOf(query)
+      const bIdx = bTitle.indexOf(query)
+      if (aIdx !== -1 && bIdx === -1) return -1
+      if (bIdx !== -1 && aIdx === -1) return 1
+      if (aIdx !== -1 && bIdx !== -1 && aIdx !== bIdx) return aIdx - bIdx
+
+      // 4. Se ambos empatarem no título, ordenar por data de atualização mais recente
+      return (b.updatedAt || 0) - (a.updatedAt || 0)
+    })
+  }, [allNotes, query])
 
   const getNoteIcon = (note: Note) => {
     if (note.type === 'draw') {

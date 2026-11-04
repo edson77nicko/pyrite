@@ -7,8 +7,10 @@ import {
   defaultStatusItems,
   getBoardProperties,
   setBoardProperties,
+  CURRENCY_OPTIONS,
   type PropertyItem
 } from '../utils/taskProperties'
+import { DEFAULT_TASK_SETTINGS } from '../utils/taskStorage'
 import {
   X,
   Plus,
@@ -37,7 +39,9 @@ import {
   Minus,
   AlertTriangle,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  DollarSign,
+  FolderKanban
 } from 'lucide-react'
 import { CustomColorPickerPopover } from './CustomColorPickerPopover'
 import {
@@ -99,17 +103,32 @@ class ModalErrorBoundary extends Component<{ children: ReactNode; onClose: () =>
 const TYPE_META: Record<string, { label: string; Icon: React.ComponentType<{ className?: string }> }> = {
   text: { label: 'Texto', Icon: Type },
   number: { label: 'Número', Icon: Hash },
+  currency: { label: 'Moeda', Icon: DollarSign },
   select: { label: 'Selecionar', Icon: ChevronDownCircle },
   multiselect: { label: 'Seleção múltipla', Icon: List },
   status: { label: 'Status', Icon: Loader },
   date: { label: 'Data', Icon: Calendar },
   checkbox: { label: 'Caixa de seleção', Icon: CheckSquare },
   url: { label: 'URL', Icon: Link2 },
-  context: { label: 'Nota vinculada', Icon: Compass },
-  priority: { label: 'Seleção com ícone', Icon: Flag }
+  board: { label: 'Vincular Projeto / Item', Icon: FolderKanban },
+  context: { label: 'Nota', Icon: Compass },
+  priority: { label: 'Prioridade', Icon: Flag }
 }
 
-const NEW_TYPE_ORDER: TaskPropertyType[] = ['text', 'number', 'select', 'multiselect', 'status', 'date', 'checkbox', 'url']
+const NEW_TYPE_ORDER: TaskPropertyType[] = [
+  'text',
+  'number',
+  'currency',
+  'select',
+  'multiselect',
+  'status',
+  'date',
+  'checkbox',
+  'url',
+  'board',
+  'context',
+  'priority'
+]
 
 const PRESET_COLORS = ['#71717a', '#3b82f6', '#10b981', '#f59e0b', '#f97316', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899']
 
@@ -139,7 +158,7 @@ const propIcon = (prop: TaskPropertyConfig) => {
 }
 
 const typeLabel = (prop: TaskPropertyConfig) => {
-  if (prop.id === 'prop_tags') return 'Tags'
+  if (prop.id === 'prop_tags') return 'Rótulos'
   if (prop.id === 'prop_priority') return 'Selecionar'
   return (TYPE_META[prop.type] || TYPE_META.text).label
 }
@@ -269,6 +288,8 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
       id: `prop_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
       name: meta.label,
       type,
+      currencyCode: type === 'currency' ? 'BRL' : undefined,
+      priorityIndicatorStyle: type === 'priority' ? 'badge' : undefined,
       options:
         type === 'status'
           ? defaultStatusItems()
@@ -315,6 +336,31 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
       commitItems(items.filter(i => i.id !== id))
     }
 
+    const effectiveStatusIndicator: StatusIndicatorStyle =
+      activeBoard?.statusIndicatorStyle ||
+      (settings.boards || []).find(b => b.id === effectiveBoardId)?.statusIndicatorStyle ||
+      settings.statusIndicatorStyle ||
+      'circle'
+
+    const handleSetStatusIndicator = (style: StatusIndicatorStyle) => {
+      const allBoards = settings.boards && settings.boards.length > 0 ? settings.boards : DEFAULT_TASK_SETTINGS.boards || []
+      const updatedBoards = allBoards.map((b: TaskBoard) => (b.id === effectiveBoardId ? { ...b, statusIndicatorStyle: style } : b))
+      onUpdateSettings({ ...settings, boards: updatedBoards })
+    }
+
+    const effectivePriorityIndicator: 'badge' | 'stars' =
+      activeBoard?.priorityIndicatorStyle ||
+      (settings.boards || []).find(b => b.id === effectiveBoardId)?.priorityIndicatorStyle ||
+      prop.priorityIndicatorStyle ||
+      'badge'
+
+    const handleSetPriorityIndicator = (style: 'badge' | 'stars') => {
+      const allBoards = settings.boards && settings.boards.length > 0 ? settings.boards : DEFAULT_TASK_SETTINGS.boards || []
+      const updatedBoards = allBoards.map((b: TaskBoard) => (b.id === effectiveBoardId ? { ...b, priorityIndicatorStyle: style } : b))
+      updateProp(prop.id, { priorityIndicatorStyle: style })
+      onUpdateSettings({ ...settings, boards: updatedBoards })
+    }
+
     return (
       <>
         <div className="px-4 pt-4 pb-2 flex items-center gap-2 shrink-0">
@@ -353,24 +399,87 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
             <span className="text-xs text-zinc-500">{typeLabel(prop)}</span>
           </div>
 
+          {/* Moeda: Seleção do código e símbolo da moeda */}
+          {prop.type === 'currency' && (
+            <div className="bg-[#1b1b20] p-2.5 rounded-xl space-y-2 border border-zinc-800/60">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-zinc-300">Moeda</span>
+                <span className="text-[10px] text-zinc-500 font-mono">Padrão Mundial</span>
+              </div>
+              <select
+                value={prop.currencyCode || 'BRL'}
+                onChange={e => updateProp(prop.id, { currencyCode: e.target.value })}
+                className="w-full bg-[#14151b] border border-zinc-800/80 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 outline-none cursor-pointer"
+              >
+                {CURRENCY_OPTIONS.map(c => (
+                  <option key={c.code} value={c.code}>
+                    {c.label} ({c.symbol})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Prioridade: Estilo por projeto (Badge vs Estrelas 1 a 5) */}
+          {prop.type === 'priority' && (
+            <div className="bg-[#1b1b20] p-2.5 rounded-xl space-y-2 border border-zinc-800/60">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-zinc-300">Layout da Prioridade</span>
+                <span className="text-[10px] text-zinc-500 font-mono">Exclusivo deste projeto</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 bg-[#14151b] p-1 rounded-lg border border-zinc-800/50">
+                <button
+                  type="button"
+                  onClick={() => handleSetPriorityIndicator('badge')}
+                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
+                    effectivePriorityIndicator === 'badge'
+                      ? 'bg-zinc-800 text-white shadow-xs font-semibold'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                  style={effectivePriorityIndicator === 'badge' ? { color: 'var(--accent, #c59b27)' } : undefined}
+                >
+                  <Flag className="w-3.5 h-3.5" />
+                  <span>Ícone + Texto</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetPriorityIndicator('stars')}
+                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
+                    effectivePriorityIndicator === 'stars'
+                      ? 'bg-zinc-800 text-white shadow-xs font-semibold'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                  style={effectivePriorityIndicator === 'stars' ? { color: 'var(--accent, #c59b27)' } : undefined}
+                >
+                  <div className="flex items-center gap-0.5 text-amber-400">
+                    <span className="text-xs">★</span>
+                    <span className="text-xs">★</span>
+                    <span className="text-xs">★</span>
+                  </div>
+                  <span>Estrelas (1 a 5)</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {prop.type === 'status' && (
             <div className="space-y-3">
-              {/* Indicator Style Selector */}
+              {/* Indicator Style Selector - Exclusivo do projeto */}
               <div className="bg-[#1b1b20] p-2.5 rounded-xl space-y-2 border border-zinc-800/60">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-medium text-zinc-300">Ícone de Progresso</span>
-                  <span className="text-[10px] text-zinc-500 font-mono">Modo Lista & Kanban</span>
+                  <span className="text-[10px] text-zinc-500 font-mono">Exclusivo deste projeto</span>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 bg-[#14151b] p-1 rounded-lg border border-zinc-800/50">
                   <button
                     type="button"
-                    onClick={() => onUpdateSettings({ ...settings, statusIndicatorStyle: 'circle' })}
+                    onClick={() => handleSetStatusIndicator('circle')}
                     className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
-                      (settings.statusIndicatorStyle || 'circle') === 'circle'
+                      effectiveStatusIndicator === 'circle'
                         ? 'bg-zinc-800 text-white shadow-xs font-semibold'
                         : 'text-zinc-400 hover:text-zinc-200'
                     }`}
-                    style={(settings.statusIndicatorStyle || 'circle') === 'circle' ? { color: 'var(--accent, #c59b27)' } : undefined}
+                    style={effectiveStatusIndicator === 'circle' ? { color: 'var(--accent, #c59b27)' } : undefined}
                     title="Círculo de progresso proporcional à quantidade de opções"
                   >
                     <StatusProgressCircle progress={65} color="var(--accent, #c59b27)" size={13} />
@@ -378,13 +487,13 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onUpdateSettings({ ...settings, statusIndicatorStyle: 'bar' })}
+                    onClick={() => handleSetStatusIndicator('bar')}
                     className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
-                      settings.statusIndicatorStyle === 'bar'
+                      effectiveStatusIndicator === 'bar'
                         ? 'bg-zinc-800 text-white shadow-xs font-semibold'
                         : 'text-zinc-400 hover:text-zinc-200'
                     }`}
-                    style={settings.statusIndicatorStyle === 'bar' ? { color: 'var(--accent, #c59b27)' } : undefined}
+                    style={effectiveStatusIndicator === 'bar' ? { color: 'var(--accent, #c59b27)' } : undefined}
                     title="Barra horizontal de progresso com porcentagem"
                   >
                     <StatusBarProgress progress={65} color="var(--accent, #c59b27)" showText={false} />
@@ -392,13 +501,13 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onUpdateSettings({ ...settings, statusIndicatorStyle: 'dot' })}
+                    onClick={() => handleSetStatusIndicator('dot')}
                     className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
-                      settings.statusIndicatorStyle === 'dot'
+                      effectiveStatusIndicator === 'dot'
                         ? 'bg-zinc-800 text-white shadow-xs font-semibold'
                         : 'text-zinc-400 hover:text-zinc-200'
                     }`}
-                    style={settings.statusIndicatorStyle === 'dot' ? { color: 'var(--accent, #c59b27)' } : undefined}
+                    style={effectiveStatusIndicator === 'dot' ? { color: 'var(--accent, #c59b27)' } : undefined}
                     title="Ponto circular colorido tradicional"
                   >
                     <span className="w-2 h-2 rounded-full bg-[var(--accent,#c59b27)] shrink-0" />
@@ -435,7 +544,7 @@ export const TaskSettingsModalContent: React.FC<TaskSettingsModalProps> = ({
                             key={it.id}
                             item={it}
                             statusProgress={prog}
-                            indicatorStyle={settings.statusIndicatorStyle || 'circle'}
+                            indicatorStyle={effectiveStatusIndicator}
                             onChange={patchItem}
                             onDelete={() => removeItem(it.id)}
                           />
