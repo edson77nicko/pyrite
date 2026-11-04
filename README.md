@@ -17,6 +17,19 @@ Abra no navegador em `http://localhost:5173`.
 
 ---
 
+## 🍎 Instalação no macOS
+
+Se ao abrir o **Pyrite** no macOS o sistema exibir o aviso de que o aplicativo *"está danificado e não pode ser aberto"* (comportamento padrão do Gatekeeper para aplicativos baixados pela web sem certificado pago da Apple):
+
+1. Mova o **Pyrite.app** para a pasta **Aplicativos** (`/Applications`).
+2. Abra o **Terminal** e execute:
+   ```bash
+   xattr -cr /Applications/Pyrite.app
+   ```
+3. Abra o Pyrite normalmente.
+
+---
+
 ## 🧠 Recursos Principais
 
 ### 1. 🔗 Links Bidirecionais e Auto-complete

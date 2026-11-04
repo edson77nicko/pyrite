@@ -433,15 +433,110 @@ export const INITIAL_AGENTS: AgentProfileVersion[] = [
 
 export const INITIAL_TEAMS: TeamDefinition[] = [
   {
-    id: 'team-commercial-proposal',
+    id: 'squad-web-delivery',
     version: 1,
-    name: 'Equipe Comercial & Revisão',
-    description: 'Coordena a elaboração de propostas comerciais completas com conferência independente de preços, planejamento de tarefas e mapa de escopo.',
-    coordinatorAgentId: 'agent-proposal-specialist',
+    name: 'Esquadrão Criação Web & Landing Page',
+    description: 'Criação de páginas web completas, landing pages interativas com código HTML/Tailwind, copy persuasiva e tarefas de publicação.',
+    objective: 'Desenvolver páginas e componentes web visualmente incríveis com código HTML funcional renderizado no chat, gerando notas e tarefas no quadro.',
+    color: '#3b82f6',
+    icon: 'globe',
+    coordinatorAgentId: 'agent-partner',
     maxParallelSubtasks: 4,
+    pipeline: [
+      {
+        id: 'step_web_1',
+        agentId: 'agent-partner',
+        roleInSquad: '1. Copywriter & Estrutura de Conteúdo',
+        order: 1,
+        expectedOutput: 'text'
+      },
+      {
+        id: 'step_web_2',
+        agentId: 'agent-cartographer',
+        roleInSquad: '2. UI Designer & Código HTML/Tailwind Interativo',
+        order: 2,
+        expectedOutput: 'html'
+      },
+      {
+        id: 'step_web_3',
+        agentId: 'agent-project-planner',
+        roleInSquad: '3. Gestor de Tarefas & Publicação',
+        order: 3,
+        expectedOutput: 'tasks'
+      }
+    ],
     nodes: [
       {
-        id: 'tnode-coord',
+        id: 'tnode-web-1',
+        agentId: 'agent-partner',
+        position: { x: 80, y: 160 },
+        roleInTeam: 'coordinator',
+        contextScope: ['template', 'permanent_ref', 'project_context', 'request_context'],
+        allowedOutputTypes: ['note'],
+        requireUserReview: false
+      },
+      {
+        id: 'tnode-web-2',
+        agentId: 'agent-cartographer',
+        position: { x: 420, y: 100 },
+        roleInTeam: 'specialist',
+        contextScope: ['project_context', 'request_context'],
+        allowedOutputTypes: ['note', 'mindmap'],
+        requireUserReview: false
+      },
+      {
+        id: 'tnode-web-3',
+        agentId: 'agent-project-planner',
+        position: { x: 420, y: 240 },
+        roleInTeam: 'specialist',
+        contextScope: ['project_context', 'request_context'],
+        allowedOutputTypes: ['tasks', 'note'],
+        requireUserReview: false
+      }
+    ],
+    edges: [
+      { id: 'tedge-web-1', sourceNodeId: 'tnode-web-1', targetNodeId: 'tnode-web-2', relation: 'delegates_to', label: 'Gerar interface' },
+      { id: 'tedge-web-2', sourceNodeId: 'tnode-web-1', targetNodeId: 'tnode-web-3', relation: 'delegates_to', label: 'Criar tarefas' }
+    ],
+    createdAt: Date.now() - 86400000 * 2,
+    updatedAt: Date.now()
+  },
+  {
+    id: 'squad-commercial',
+    version: 1,
+    name: 'Esquadrão Comercial & Propostas',
+    description: 'Elaboração de propostas executivas, auditoria de preços e desdobramento de tarefas de implantação.',
+    objective: 'Formular propostas de alto valor, checar consistência de regras e agendar tarefas de acompanhamento.',
+    color: '#10b981',
+    icon: 'briefcase',
+    coordinatorAgentId: 'agent-proposal-specialist',
+    maxParallelSubtasks: 4,
+    pipeline: [
+      {
+        id: 'step_com_1',
+        agentId: 'agent-proposal-specialist',
+        roleInSquad: '1. Estrategista Comercial & Proposta',
+        order: 1,
+        expectedOutput: 'note'
+      },
+      {
+        id: 'step_com_2',
+        agentId: 'agent-reviewer',
+        roleInSquad: '2. Auditor de Consistência & Riscos',
+        order: 2,
+        expectedOutput: 'text'
+      },
+      {
+        id: 'step_com_3',
+        agentId: 'agent-project-planner',
+        roleInSquad: '3. Planejador de Tarefas & Prazos',
+        order: 3,
+        expectedOutput: 'tasks'
+      }
+    ],
+    nodes: [
+      {
+        id: 'tnode-com-1',
         agentId: 'agent-proposal-specialist',
         position: { x: 80, y: 160 },
         roleInTeam: 'coordinator',
@@ -450,122 +545,102 @@ export const INITIAL_TEAMS: TeamDefinition[] = [
         requireUserReview: false
       },
       {
-        id: 'tnode-reviewer',
+        id: 'tnode-com-2',
         agentId: 'agent-reviewer',
-        position: { x: 420, y: 60 },
+        position: { x: 420, y: 80 },
         roleInTeam: 'reviewer',
         contextScope: ['template', 'permanent_ref', 'project_context'],
         allowedOutputTypes: ['note'],
         requireUserReview: true
       },
       {
-        id: 'tnode-planner',
+        id: 'tnode-com-3',
         agentId: 'agent-project-planner',
-        position: { x: 420, y: 200 },
+        position: { x: 420, y: 220 },
         roleInTeam: 'specialist',
         contextScope: ['project_context', 'request_context'],
         allowedOutputTypes: ['tasks', 'note'],
         requireUserReview: false
-      },
-      {
-        id: 'tnode-cartographer',
-        agentId: 'agent-cartographer',
-        position: { x: 420, y: 340 },
-        roleInTeam: 'specialist',
-        contextScope: ['project_context'],
-        allowedOutputTypes: ['mindmap'],
-        requireUserReview: false
       }
     ],
     edges: [
-      {
-        id: 'tedge-1',
-        sourceNodeId: 'tnode-coord',
-        targetNodeId: 'tnode-reviewer',
-        relation: 'reviews_output',
-        label: 'Auditar proposta e preços'
-      },
-      {
-        id: 'tedge-2',
-        sourceNodeId: 'tnode-coord',
-        targetNodeId: 'tnode-planner',
-        relation: 'delegates_to',
-        label: 'Desdobrar etapas do escopo'
-      },
-      {
-        id: 'tedge-3',
-        sourceNodeId: 'tnode-coord',
-        targetNodeId: 'tnode-cartographer',
-        relation: 'delegates_to',
-        label: 'Gerar mapa mental'
-      }
+      { id: 'tedge-com-1', sourceNodeId: 'tnode-com-1', targetNodeId: 'tnode-com-2', relation: 'reviews_output', label: 'Auditar regras' },
+      { id: 'tedge-com-2', sourceNodeId: 'tnode-com-1', targetNodeId: 'tnode-com-3', relation: 'delegates_to', label: 'Desdobrar cronograma' }
     ],
     createdAt: Date.now() - 86400000 * 3,
-    updatedAt: Date.now() - 3600000
-  },
-  {
-    id: 'team-project-kickoff',
-    version: 1,
-    name: 'Equipe de Estruturação de Projetos',
-    description: 'Transforma notas e reuniões em síntese executiva, cronograma de tarefas, mapa mental e diagrama de etapas.',
-    coordinatorAgentId: 'agent-team-coordinator',
-    maxParallelSubtasks: 5,
-    nodes: [
-      {
-        id: 'tnode-pk-coord',
-        agentId: 'agent-team-coordinator',
-        position: { x: 70, y: 180 },
-        roleInTeam: 'coordinator',
-        contextScope: ['permanent_ref', 'project_context', 'request_context'],
-        allowedOutputTypes: ['note'],
-        requireUserReview: false
-      },
-      {
-        id: 'tnode-pk-curator',
-        agentId: 'agent-knowledge-curator',
-        position: { x: 390, y: 60 },
-        roleInTeam: 'specialist',
-        contextScope: ['project_context', 'request_context'],
-        allowedOutputTypes: ['note']
-      },
-      {
-        id: 'tnode-pk-planner',
-        agentId: 'agent-project-planner',
-        position: { x: 390, y: 190 },
-        roleInTeam: 'specialist',
-        contextScope: ['project_context', 'request_context'],
-        allowedOutputTypes: ['tasks', 'note']
-      },
-      {
-        id: 'tnode-pk-diagram',
-        agentId: 'agent-diagram-designer',
-        position: { x: 390, y: 320 },
-        roleInTeam: 'specialist',
-        contextScope: ['project_context'],
-        allowedOutputTypes: ['draw']
-      },
-      {
-        id: 'tnode-pk-rev',
-        agentId: 'agent-reviewer',
-        position: { x: 700, y: 180 },
-        roleInTeam: 'reviewer',
-        contextScope: ['project_context'],
-        allowedOutputTypes: ['note'],
-        requireUserReview: true
-      }
-    ],
-    edges: [
-      { id: 'tedge-pk-1', sourceNodeId: 'tnode-pk-coord', targetNodeId: 'tnode-pk-curator', relation: 'delegates_to', label: 'Sintetizar notas' },
-      { id: 'tedge-pk-2', sourceNodeId: 'tnode-pk-coord', targetNodeId: 'tnode-pk-planner', relation: 'delegates_to', label: 'Criar tarefas' },
-      { id: 'tedge-pk-3', sourceNodeId: 'tnode-pk-coord', targetNodeId: 'tnode-pk-diagram', relation: 'delegates_to', label: 'Desenhar etapas' },
-      { id: 'tedge-pk-4', sourceNodeId: 'tnode-pk-planner', targetNodeId: 'tnode-pk-rev', relation: 'reviews_output', label: 'Revisar consistência' }
-    ],
-    createdAt: Date.now() - 86400000 * 2,
     updatedAt: Date.now() - 3600000
   }
 ]
 
 export const INITIAL_WORKFLOWS: WorkflowDefinition[] = [
+  {
+    id: 'wf-quick-plan',
+    version: 1,
+    publishedVersion: 1,
+    status: 'published',
+    name: 'Plano Estratégico com Tarefas e Nota',
+    description: 'Fluxo direto e 100% funcional: recebe um tema ou solicitação, gera um plano estruturado por IA, cria tarefas de ação no quadro e salva a entrega como nota no cofre.',
+    nodes: [
+      {
+        id: 'wn-qp-input',
+        kind: 'input',
+        label: 'Gatilho: Solicitação Inicial',
+        position: { x: 60, y: 160 },
+        config: {
+          content: 'Planejamento e expansão de mercado com foco nas próximas 4 semanas'
+        }
+      },
+      {
+        id: 'wn-qp-llm',
+        kind: 'llm',
+        label: 'Gerador de Estratégia & Conteúdo',
+        position: { x: 400, y: 160 },
+        config: {
+          systemPrompt: 'Você é um consultor executivo sênior. Responda em português com um documento estruturado contendo: Resumo Executivo, 3 Pilares de Ação, e Lista de Entregas Prioritárias.',
+          promptTemplate: 'Com base no tema a seguir, elabore um plano estratégico acionável e conciso:\n\n{input}'
+        }
+      },
+      {
+        id: 'wn-qp-tasks',
+        kind: 'create_task',
+        label: 'Gerenciador de Tarefas & Propriedades',
+        position: { x: 780, y: 160 },
+        config: {
+          taskMode: 'auto_ai',
+          targetBoardId: 'default',
+          taskPriority: 'high',
+          propertyName: 'Prioridade',
+          autoCreateProperty: true
+        }
+      },
+      {
+        id: 'wn-qp-deliver',
+        kind: 'deliverable',
+        label: 'Gravar Nota no Cofre',
+        position: { x: 1140, y: 160 },
+        config: {
+          targetFolder: 'Planos',
+          outputType: 'note',
+          namingPattern: 'Plano de Ação - {data}'
+        }
+      },
+      {
+        id: 'wn-qp-finish',
+        kind: 'finish',
+        label: 'Concluir Fluxo',
+        position: { x: 1440, y: 160 },
+        config: {}
+      }
+    ],
+    edges: [
+      { id: 'qe-1', sourceNodeId: 'wn-qp-input', targetNodeId: 'wn-qp-llm', branch: 'default' },
+      { id: 'qe-2', sourceNodeId: 'wn-qp-llm', targetNodeId: 'wn-qp-tasks', branch: 'default' },
+      { id: 'qe-3', sourceNodeId: 'wn-qp-tasks', targetNodeId: 'wn-qp-deliver', branch: 'default' },
+      { id: 'qe-4', sourceNodeId: 'wn-qp-deliver', targetNodeId: 'wn-qp-finish', branch: 'default' }
+    ],
+    createdAt: Date.now() - 86400000,
+    updatedAt: Date.now()
+  },
   {
     id: 'wf-commercial-proposal',
     version: 1,
@@ -589,6 +664,7 @@ export const INITIAL_WORKFLOWS: WorkflowDefinition[] = [
         config: {
           noteId: 'note-proposal-template',
           noteTitle: 'Modelo de Proposta Comercial',
+          promptTemplate: 'Estrutura padrão de proposta comercial: Introdução, Escopo detalhado, Cronograma de execução e Investimento total.',
           contextRole: 'template'
         }
       },
@@ -600,6 +676,7 @@ export const INITIAL_WORKFLOWS: WorkflowDefinition[] = [
         config: {
           noteId: 'note-commercial-rules',
           noteTitle: 'Regras Comerciais e Descontos',
+          promptTemplate: 'Regras comerciais: Desconto máximo de 10% para pagamento à vista. Condições padrão de 50% de entrada e 50% na entrega.',
           contextRole: 'permanent_ref'
         }
       },
@@ -938,8 +1015,18 @@ export function loadMultiAgentStoreSync(vaultKey = 'default'): MultiAgentStoreSt
           version: 3,
           agents: parsed.agents,
           agentHistoryVersions: parsed.agentHistoryVersions || [...parsed.agents],
-          teams: parsed.teams?.length ? parsed.teams : INITIAL_TEAMS,
-          workflows: parsed.workflows?.length ? parsed.workflows : INITIAL_WORKFLOWS,
+          teams: (() => {
+            const existing = parsed.teams || []
+            const existingIds = new Set(existing.map(t => t.id))
+            const missingDefaults = INITIAL_TEAMS.filter(t => !existingIds.has(t.id))
+            return missingDefaults.length > 0 ? [...missingDefaults, ...existing] : (existing.length ? existing : INITIAL_TEAMS)
+          })(),
+          workflows: (() => {
+            const existing = parsed.workflows || []
+            const existingIds = new Set(existing.map(w => w.id))
+            const missingDefaults = INITIAL_WORKFLOWS.filter(w => !existingIds.has(w.id))
+            return missingDefaults.length > 0 ? [...missingDefaults, ...existing] : (existing.length ? existing : INITIAL_WORKFLOWS)
+          })(),
           projects: Array.isArray(parsed.projects) ? parsed.projects : [],
           runs: parsed.runs || [],
           artifacts: parsed.artifacts || [],
@@ -2819,36 +2906,50 @@ export async function executeAgentRun(params: {
     }[] = []
 
     if (teamDefinition) {
-      const coordNodes = teamDefinition.nodes.filter(
-        n => n.agentId === agent.id || n.roleInTeam === 'coordinator'
-      )
-      const rootIds = coordNodes.length > 0 ? coordNodes.map(n => n.id) : []
-      const reachableIds = new Set<string>(rootIds)
-      const queue = [...rootIds]
-      const bfsOrder: string[] = []
+      if (teamDefinition.pipeline && teamDefinition.pipeline.length > 0) {
+        // Ordem direta da esteira do Esquadrão
+        orderedMembers = teamDefinition.pipeline
+          .slice()
+          .sort((a, b) => a.order - b.order)
+          .filter(p => p.agentId !== agent.id)
+          .map(p => ({
+            agentId: p.agentId,
+            contextScope: ['template', 'permanent_ref', 'project_context', 'request_context'] as ContextRole[],
+            allowedOutputTypes: ['note', 'tasks', 'mindmap', 'draw'] as ('note' | 'tasks' | 'mindmap' | 'draw')[],
+            requireUserReview: false
+          }))
+      } else {
+        const coordNodes = teamDefinition.nodes.filter(
+          n => n.agentId === agent.id || n.roleInTeam === 'coordinator'
+        )
+        const rootIds = coordNodes.length > 0 ? coordNodes.map(n => n.id) : []
+        const reachableIds = new Set<string>(rootIds)
+        const queue = [...rootIds]
+        const bfsOrder: string[] = []
 
-      while (queue.length > 0) {
-        const curr = queue.shift()!
-        for (const edge of teamDefinition.edges) {
-          if (edge.sourceNodeId === curr && !reachableIds.has(edge.targetNodeId)) {
-            reachableIds.add(edge.targetNodeId)
-            bfsOrder.push(edge.targetNodeId)
-            queue.push(edge.targetNodeId)
+        while (queue.length > 0) {
+          const curr = queue.shift()!
+          for (const edge of teamDefinition.edges) {
+            if (edge.sourceNodeId === curr && !reachableIds.has(edge.targetNodeId)) {
+              reachableIds.add(edge.targetNodeId)
+              bfsOrder.push(edge.targetNodeId)
+              queue.push(edge.targetNodeId)
+            }
           }
         }
-      }
 
-      // Somente nós conectados a partir do coordenador são executados; nós desconectados são ignorados!
-      orderedMembers = bfsOrder
-        .map(nodeId => teamDefinition.nodes.find(n => n.id === nodeId))
-        .filter((n): n is NonNullable<typeof n> => Boolean(n && n.agentId !== agent.id))
-        .map(n => ({
-          nodeId: n.id,
-          agentId: n.agentId,
-          contextScope: n.contextScope,
-          allowedOutputTypes: n.allowedOutputTypes,
-          requireUserReview: n.requireUserReview
-        }))
+        // Somente nós conectados a partir do coordenador são executados; nós desconectados são ignorados!
+        orderedMembers = bfsOrder
+          .map(nodeId => teamDefinition.nodes.find(n => n.id === nodeId))
+          .filter((n): n is NonNullable<typeof n> => Boolean(n && n.agentId !== agent.id))
+          .map(n => ({
+            nodeId: n.id,
+            agentId: n.agentId,
+            contextScope: n.contextScope,
+            allowedOutputTypes: n.allowedOutputTypes,
+            requireUserReview: n.requireUserReview
+          }))
+      }
     } else {
       orderedMembers = (agent.limits.specialistTeamIds || []).map(id => ({
         agentId: id,
@@ -4042,6 +4143,67 @@ Responda com o valor direto e sucinto da propriedade (por exemplo, se for data: 
       const defaultPriority = node.config.taskPriority || 'normal'
       const prevContent = flowInstruction || latestRun?.draftContent || prompt
 
+      // Gerenciamento e extração de propriedade integrada
+      const propName = node.config.propertyName?.trim()
+      const propType = node.config.propertyType || 'text'
+      const customPropPrompt = node.config.propertyPrompt?.trim()
+      let extractedPropValue = ''
+
+      if (propName) {
+        if (customPropPrompt || prevContent) {
+          const aiPropPrompt = `Você é um extrator de metadados e propriedades do Pyrite.
+Documento / Entrada do fluxo:
+${clip(prevContent, 4000)}
+
+Instrução de Extração:
+${customPropPrompt || `Extraia o valor mais adequado para a propriedade "${propName}".`}
+
+Responda com o valor direto e sucinto da propriedade (por exemplo, se for data: AAAA-MM-DD; se for número: apenas o número; se for texto: frase concisa). NÃO inclua explicações ou markdown adicionais.`
+
+          const aiPropRes = await callWorkflowAi({
+            system: 'Você extrai propriedades estruturadas de textos. Responda apenas com o valor exato.',
+            user: aiPropPrompt,
+            temperature: 0.1,
+            abortSignal
+          })
+
+          if (aiPropRes.success && aiPropRes.text) {
+            extractedPropValue = aiPropRes.text.trim().replace(/^["'`]|["'`]$/g, '')
+          }
+        }
+
+        if (!extractedPropValue) {
+          extractedPropValue = node.config.content || 'N/A'
+        }
+
+        workflowContext.properties[propName] = extractedPropValue
+
+        if (node.config.autoCreateProperty) {
+          workflowContext.propertiesToEnsure.push({
+            name: propName,
+            type: propType
+          })
+        }
+      }
+
+      // Se o modo for apenas gestão de propriedades
+      if (taskMode === 'properties_only') {
+        const propSummary = propName ? `Propriedade "${propName}": ${clip(extractedPropValue, 40)}` : 'Propriedades gerenciadas'
+        const propFull = `Gerenciador de Tarefas & Propriedades:\n• Propriedade gerenciada: ${propName || 'N/A'}\n• Tipo: ${propType}\n• Valor extraído: ${extractedPropValue || 'N/A'}${node.config.autoCreateProperty ? '\n• Garantida nas configurações do Quadro/Projeto' : ''}\n\nQuadro/Projeto: ${targetBoard}`
+
+        setNodeState(node.id, 'completed', propSummary, propFull)
+        node.config.lastOutput = propFull
+        node.config.lastExecutedAt = Date.now()
+
+        flowInstruction = `${flowInstruction}\n\n[Propriedade Registrada]: ${propName}=${extractedPropValue}`
+
+        const outgoing = workflow.edges.filter(e => e.sourceNodeId === node.id)
+        for (const edge of outgoing) {
+          activeQueue.push(edge.targetNodeId)
+        }
+        continue
+      }
+
       let tasksToCreate: Array<{
         title: string
         description?: string
@@ -4127,8 +4289,12 @@ ${clip(prevContent, 4000)}`
         ? `[Teste] ${tasksToCreate.length} tarefa(s) identificada(s)`
         : `${createdCount} tarefa(s) gerada(s) no quadro`
 
-      const fullOutput = `Tarefas geradas:\n` + tasksToCreate.map(t => `• [${t.priority}] ${t.title}${t.description ? ` (${t.description.slice(0, 60)}...)` : ''}`).join('\n') +
+      let fullOutput = `Tarefas geradas:\n` + tasksToCreate.map(t => `• [${t.priority}] ${t.title}${t.description ? ` (${t.description.slice(0, 60)}...)` : ''}`).join('\n') +
         (isTestRun ? '\n\n(Modo Teste: tarefas não persistidas no quadro)' : `\n\nQuadro/Projeto de Destino: ${targetBoard}`)
+
+      if (propName) {
+        fullOutput += `\n\nPropriedade associada:\n• ${propName}: ${extractedPropValue || 'N/A'}`
+      }
 
       setNodeState(node.id, 'completed', summary, fullOutput)
       node.config.lastOutput = fullOutput
@@ -4440,6 +4606,36 @@ Responda com o valor direto, conciso, sem markdown ou explicações adicionais.`
     const taskMode = node.config.taskMode || 'auto_ai'
     const defaultPriority = node.config.taskPriority || 'normal'
 
+    // Extração de propriedade se configurada
+    const propName = node.config.propertyName?.trim()
+    const propType = node.config.propertyType || 'text'
+    const customPrompt = node.config.propertyPrompt?.trim()
+    let val = ''
+
+    if (propName) {
+      if (customPrompt || prompt) {
+        const aiPrompt = `Você é um extrator de metadados do Pyrite.
+Documento / Entrada:
+${clip(prompt, 4000)}
+
+Instrução:
+${customPrompt || `Extraia o valor para a propriedade "${propName}".`}
+
+Responda com o valor direto, conciso, sem markdown ou explicações adicionais.`
+        const aiRes = await callWorkflowAi({ system: 'Você extrai propriedades estruturadas.', user: aiPrompt })
+        if (aiRes.success && aiRes.text) {
+          val = aiRes.text.trim().replace(/^["'`]|["'`]$/g, '')
+        }
+      }
+      if (!val) val = node.config.content || 'Exemplo de Valor'
+    }
+
+    if (taskMode === 'properties_only') {
+      return {
+        output: `Gerenciador de Tarefas & Propriedades (Modo Propriedade):\n• Nome: ${propName || 'N/A'}\n• Tipo: ${propType}\n• Valor extraído: ${val || 'N/A'}${node.config.autoCreateProperty ? '\n• Configurada para criação automática no Quadro/Projeto' : ''}\n\nQuadro/Projeto de Destino: ${targetBoard}`
+      }
+    }
+
     let tasksExtracted: Array<{ title: string; priority: string }> = []
 
     if (taskMode === 'auto_ai' && prompt) {
@@ -4467,9 +4663,11 @@ Responda com o valor direto, conciso, sem markdown ou explicações adicionais.`
       }]
     }
 
-    return {
-      output: `Teste de criação de tarefas:\n` + tasksExtracted.map(t => `• [${t.priority}] ${t.title}`).join('\n') + `\n\nQuadro/Projeto de Destino: ${targetBoard}`
+    let out = `Teste do Gerenciador de Tarefas:\n` + tasksExtracted.map(t => `• [${t.priority}] ${t.title}`).join('\n') + `\n\nQuadro/Projeto de Destino: ${targetBoard}`
+    if (propName) {
+      out += `\n\nPropriedade gerenciada:\n• ${propName}: ${val}`
     }
+    return { output: out }
   }
 
   if (node.kind === 'sticky_note') {

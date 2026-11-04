@@ -4,7 +4,6 @@ import type {
   AgentArtifact,
   AgentProfileVersion,
   AgentRun,
-  AutomationVersion,
   ContextBinding,
   ContextRole,
   MultiAgentStoreState,
@@ -21,7 +20,6 @@ import {
   executeWorkflowRun,
   type WorkflowCommitNoteFn,
   resumeWorkflowRun,
-  executeAutomationRun,
   formatCentsBRL,
   generateAgentDraftFromPrompt,
   updateAgentProfileWithVersion,
@@ -30,9 +28,8 @@ import {
   INITIAL_WORKFLOWS
 } from '../utils/multiAgentEngine'
 import { MarkdownRenderer } from './MarkdownRenderer'
-import { TeamCanvasEditor } from './TeamCanvasEditor'
+import { SquadManagementView } from './SquadManagementView'
 import { WorkflowCanvasEditor } from './WorkflowCanvasEditor'
-import { RoutineCanvasEditor } from './RoutineCanvasEditor'
 import { AiSettingsModal, type CustomAgentSkill } from './AiSettingsModal'
 import { AgentIcon, AgentIconPicker } from './AgentIcon'
 import {
@@ -44,8 +41,6 @@ import {
   Bot,
   Workflow,
   GitBranch,
-  ListTodo,
-  CalendarClock,
   Activity,
   Plus,
   Settings,
@@ -61,14 +56,9 @@ import {
   PanelLeft,
   PanelRight,
   ArrowUp,
-  ArrowLeft,
-  ArrowRight,
   ChevronRight,
   ChevronDown,
-  ChevronUp,
   Check,
-  CheckCircle2,
-  Clock,
   Copy,
   CornerUpLeft,
   Smile,
@@ -151,7 +141,7 @@ export interface UnifiedContextItem {
   rawProject?: ProjectContext
 }
 
-type PrimarySection = 'agents' | 'teams' | 'workflows' | 'tasks' | 'routines' | 'activity'
+type PrimarySection = 'agents' | 'squads' | 'workflows' | 'activity'
 
 const ACTION_PERMISSION_LABELS: Record<AgentActionPermission, string> = {
   read_context: 'Ler notas e referências vinculadas',
@@ -172,6 +162,12 @@ const AGENT_AVATAR_COLORS = [
   '#06b6d4'  // Cyan
 ]
 
+const STORAGE_KEY_SECTION = 'pyrite_myteam_active_section'
+const STORAGE_KEY_WORKFLOW = 'pyrite_myteam_selected_workflow_id'
+const STORAGE_KEY_AGENT = 'pyrite_myteam_selected_agent_id'
+const STORAGE_KEY_TEAM = 'pyrite_myteam_selected_team_id'
+const STORAGE_KEY_ROUTINE = 'pyrite_myteam_selected_routine_id'
+
 export const MyTeamView: React.FC<MyTeamViewProps> = ({
   store,
   onUpdateStore,
@@ -186,22 +182,99 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   onClearPreselectedNote,
   onLoadDemoSeedNotes
 }) => {
-  const [activeSection, setActiveSection] = useState<PrimarySection>('agents')
-  const [selectedAgentId, setSelectedAgentId] = useState<string>(() => store.agents[0]?.id || '')
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(() => store.runs[0]?.id || null)
+  const [activeSection, setActiveSection] = useState<PrimarySection>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_SECTION) as PrimarySection | null
+      if (saved && ['agents', 'squads', 'workflows', 'activity'].includes(saved)) {
+        return saved
+      }
+    } catch {}
+    return 'agents'
+  })
 
   // Seleções nos 3 Canvases
   const teams = store.teams?.length ? store.teams : INITIAL_TEAMS
   const workflows = store.workflows?.length ? store.workflows : INITIAL_WORKFLOWS
-  const [selectedTeamId, setSelectedTeamId] = useState<string>(() => teams[0]?.id || '')
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(() => workflows[0]?.id || '')
-  const [selectedRoutineId, setSelectedRoutineId] = useState<string>(() => store.automations[0]?.id || '')
+
+  const [selectedAgentId, setSelectedAgentId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_AGENT)
+      if (saved && store.agents.some(a => a.id === saved)) return saved
+    } catch {}
+    return store.agents[0]?.id || ''
+  })
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(() => store.runs[0]?.id || null)
+
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_TEAM)
+      if (saved && teams.some(t => t.id === saved)) return saved
+    } catch {}
+    return teams[0]?.id || ''
+  })
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_WORKFLOW)
+      if (saved && workflows.some(w => w.id === saved)) return saved
+    } catch {}
+    return workflows[0]?.id || ''
+  })
+  const [selectedRoutineId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_ROUTINE)
+      if (saved && store.automations.some(a => a.id === saved)) return saved
+    } catch {}
+    return store.automations[0]?.id || ''
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_SECTION, activeSection)
+    } catch {}
+  }, [activeSection])
+
+  useEffect(() => {
+    if (selectedWorkflowId) {
+      try {
+        localStorage.setItem(STORAGE_KEY_WORKFLOW, selectedWorkflowId)
+      } catch {}
+    }
+  }, [selectedWorkflowId])
+
+  useEffect(() => {
+    if (selectedAgentId) {
+      try {
+        localStorage.setItem(STORAGE_KEY_AGENT, selectedAgentId)
+      } catch {}
+    }
+  }, [selectedAgentId])
+
+  useEffect(() => {
+    if (selectedTeamId) {
+      try {
+        localStorage.setItem(STORAGE_KEY_TEAM, selectedTeamId)
+      } catch {}
+    }
+  }, [selectedTeamId])
+
+  useEffect(() => {
+    if (selectedRoutineId) {
+      try {
+        localStorage.setItem(STORAGE_KEY_ROUTINE, selectedRoutineId)
+      } catch {}
+    }
+  }, [selectedRoutineId])
+
+  useEffect(() => {
+    if (workflows.length > 0 && !workflows.some(w => w.id === selectedWorkflowId)) {
+      setSelectedWorkflowId(workflows[0].id)
+    }
+  }, [workflows, selectedWorkflowId])
 
   // Pedido atual e contexto temporário (request_context)
   const [promptInput, setPromptInput] = useState('')
-  const [taskPromptInput, setTaskPromptInput] = useState('')
-  const [isTaskAgentMenuOpen, setIsTaskAgentMenuOpen] = useState(false)
+
   const [agentSearchQuery, setAgentSearchQuery] = useState('')
   const [extraNoteIds, setExtraNoteIds] = useState<string[]>([])
   const [useTeamDelegation, setUseTeamDelegation] = useState(false)
@@ -833,43 +906,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     setPendingNoteBindModal(null)
   }
 
-  const executeRoutineDirectly = async (
-    routine: AutomationVersion,
-    _isTest: boolean,
-    customPrompt?: string,
-    extraNotes?: Note[],
-    eventFingerprint?: string
-  ) => {
-    const currentStore = storeRef.current
-    setIsExecuting(true)
-    try {
-      const promptText = customPrompt || `[Rotina: ${routine.name}] ${routine.description}`
-      const res = await executeAutomationRun({
-        automation: routine,
-        store: currentStore,
-        allNotes: notes,
-        triggerPrompt: promptText,
-        extraRequestNotes: extraNotes,
-        eventFingerprint
-      })
-      if (res.skippedReason) {
-        setStatusBanner({ type: 'warning', text: res.skippedReason })
-        return
-      }
-      await onUpdateStore(res.updatedStore)
-      if (res.run) {
-        setSelectedRunId(res.run.id)
-        setSelectedAgentId(res.run.agentId)
-        setActiveSection('agents')
-        setStatusBanner({
-          type: 'success',
-          text: `Rotina "${routine.name}" executada com sucesso! Entrega gerada.`
-        })
-      }
-    } finally {
-      setIsExecuting(false)
-    }
-  }
+  // executeRoutineDirectly removed
 
   const handleRunAgent = async (opts: {
     isTest: boolean
@@ -962,7 +999,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       setAnswerInputs({})
       if (!opts.existingRunToUpdate) {
         setPromptInput('')
-        setTaskPromptInput('')
       }
     } finally {
       setIsExecuting(false)
@@ -1281,9 +1317,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     .slice()
     .reverse()
 
-  const answeredRuns = store.runs.filter(r => r.status === 'completed')
-  const workingRuns = store.runs.filter(r => r.status === 'running')
-  const waitingRuns = store.runs.filter(r => r.status === 'waiting_user')
+
 
   return (
     <div className="flex h-full w-full bg-[#09090b] text-zinc-100 overflow-hidden select-none">
@@ -1293,10 +1327,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       <aside className="w-11 shrink-0 h-full bg-[#09090b] border-r border-zinc-900 flex flex-col items-center py-2.5 gap-1.5 z-30">
         {[
           { id: 'agents' as PrimarySection, icon: Bot, title: 'Agentes' },
-          { id: 'teams' as PrimarySection, icon: Users, title: 'Equipes' },
-          { id: 'workflows' as PrimarySection, icon: Workflow, title: 'Fluxo de trabalho' },
-          { id: 'tasks' as PrimarySection, icon: ListTodo, title: 'Tarefas' },
-          { id: 'routines' as PrimarySection, icon: CalendarClock, title: 'Rotinas' },
+          { id: 'squads' as PrimarySection, icon: Users, title: 'Esquadrões' },
+          { id: 'workflows' as PrimarySection, icon: Workflow, title: 'Fluxos de Trabalho' },
           { id: 'activity' as PrimarySection, icon: Activity, title: 'Atividade' }
         ].map(nav => {
           const Icon = nav.icon
@@ -2005,6 +2037,35 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 </div>
               )}
 
+              {/* Banner de Esquadrão Ativo no Chat */}
+              {useTeamDelegation && (() => {
+                const activeSquad = teams.find(t => t.id === selectedTeamId) || teams[0]
+                const stepCount = activeSquad?.pipeline?.length || activeSquad?.nodes.length || 0
+                return (
+                  <div className="mx-6 mt-3 px-4 py-2.5 rounded-2xl bg-blue-950/40 border border-blue-800/60 flex items-center justify-between gap-3 text-xs shadow-md">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-6 h-6 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="truncate">
+                        <span className="font-semibold text-blue-200">Esquadrão Ativo: {activeSquad?.name}</span>
+                        <span className="text-zinc-400 text-[11px] ml-2">
+                          ({stepCount} especialistas em colaboração na esteira)
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUseTeamDelegation(false)}
+                      className="text-[11px] text-blue-300 hover:text-white px-2 py-1 rounded-lg hover:bg-blue-900/40 transition-colors shrink-0 cursor-pointer"
+                      title="Voltar ao modo agente individual"
+                    >
+                      Desativar Esquadrão
+                    </button>
+                  </div>
+                )
+              })()}
+
               {/* Área de Mensagens Limpa (Idêntica ao Print 01) */}
               <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
                 {selectedAgent && (
@@ -2456,7 +2517,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           onChange={e => setUseTeamDelegation(e.target.checked)}
                           className="rounded bg-zinc-800 border-zinc-700 text-emerald-500"
                         />
-                        <span>Coordenar com equipe de especialistas</span>
+                        <span>Acionar Esquadrão em esteira colaborativa</span>
                       </label>
                     </div>
                   </div>
@@ -3241,300 +3302,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
           </div>
         )}
 
-        {/* ========================================================================== */}
-        {/* TELA 03: TAREFAS DELEGADAS ("Delegue o trabalho. Volte para uma resposta.")*/}
-        {/* ========================================================================== */}
-        {activeSection === 'tasks' && (
-          <div
-            onClick={() => setIsTaskAgentMenuOpen(false)}
-            className="flex-1 flex flex-col bg-[#111113] overflow-y-auto"
-          >
-            {/* Barra superior limpa */}
-            <header className="h-11 px-4 border-b border-zinc-900/90 flex items-center gap-3 shrink-0">
-              <div className="flex items-center gap-1 text-zinc-500">
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <ArrowRight className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex items-center gap-2 text-xs font-medium text-zinc-200">
-                <PanelLeft className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Tarefas</span>
-              </div>
-            </header>
-
-            {/* Coluna Central Idêntica ao Print 03 */}
-            <div className="max-w-xl w-full mx-auto pt-16 pb-12 px-4 flex flex-col">
-              {/* Hero Title */}
-              <div className="text-center space-y-1">
-                <div className="text-2xl font-semibold text-zinc-400 tracking-tight">
-                  Delegue o trabalho.
-                </div>
-                <div className="text-3xl font-bold text-zinc-100 tracking-tight">
-                  Volte para uma{' '}
-                  <span className="italic font-serif font-normal text-[#3b82f6]">resposta</span>.
-                </div>
-                <p className="text-xs text-zinc-500 pt-2 leading-relaxed">
-                  Seus agentes trabalham em tarefas em paralelo.
-                  <br />
-                  Cada resposta espera você aqui.
-                </p>
-              </div>
-
-              {/* Card de Prompt Centralizado (Idêntico ao Print 03) */}
-              <div
-                onClick={e => e.stopPropagation()}
-                className="mt-7 bg-[#18181b] border border-zinc-800/90 rounded-2xl p-3.5 shadow-2xl"
-              >
-                <textarea
-                  value={taskPromptInput}
-                  onChange={e => setTaskPromptInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      if (taskPromptInput.trim()) {
-                        handleRunAgent({ isTest: false, overridePrompt: taskPromptInput })
-                      }
-                    }
-                  }}
-                  placeholder="O que você quer que seja feito?"
-                  className="w-full h-14 bg-transparent text-xs text-zinc-100 placeholder-zinc-500 resize-none focus:outline-none leading-relaxed"
-                />
-
-                <div className="flex items-center justify-between pt-2">
-                  {/* Seletor de Agente com Menu Dropdown (Idêntico ao Print 03!) */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setIsTaskAgentMenuOpen(v => !v)}
-                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#202024] hover:bg-zinc-800 text-xs font-medium text-zinc-100 transition-colors cursor-pointer"
-                    >
-                      <span
-                        className="w-4 h-4 rounded-md flex items-center justify-center text-[9px] text-white font-bold"
-                        style={{ backgroundColor: getAgentColor(selectedAgent?.id) }}
-                      >
-                        ••
-                      </span>
-                      <span>{selectedAgent?.name || 'Selecionar Agente'}</span>
-                      <ChevronUp className="w-3.5 h-3.5 text-zinc-400" />
-                    </button>
-
-                    {isTaskAgentMenuOpen && (
-                      <div className="absolute left-0 top-full mt-1.5 w-52 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-40 space-y-0.5">
-                        {store.agents.map(ag => {
-                          const isSelected = ag.id === selectedAgent?.id
-                          return (
-                            <button
-                              key={ag.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedAgentId(ag.id)
-                                setIsTaskAgentMenuOpen(false)
-                              }}
-                              className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-zinc-800/80 flex items-center justify-between text-xs text-zinc-100 cursor-pointer"
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span
-                                  className="w-4 h-4 rounded-md flex items-center justify-center text-[9px] text-white font-bold shrink-0"
-                                  style={{ backgroundColor: getAgentColor(ag.id) }}
-                                >
-                                  ••
-                                </span>
-                                <span className="truncate font-medium">{ag.name}</span>
-                              </div>
-                              {isSelected && <Check className="w-3.5 h-3.5 text-zinc-200 shrink-0" />}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Direita: Microfone + Botão Circular ↑ */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="w-7 h-7 rounded-full bg-zinc-800/80 text-zinc-400 hover:text-zinc-200 flex items-center justify-center cursor-pointer"
-                      title="Ditado"
-                    >
-                      <Mic className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!taskPromptInput.trim() || isExecuting}
-                      onClick={() =>
-                        handleRunAgent({ isTest: false, overridePrompt: taskPromptInput })
-                      }
-                      className="w-7 h-7 rounded-full bg-zinc-700 hover:bg-zinc-100 hover:text-zinc-950 text-zinc-200 disabled:opacity-40 flex items-center justify-center transition-colors cursor-pointer"
-                      title="Delegar tarefa"
-                    >
-                      <ArrowUp className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Lista de Tarefas Delegadas abaixo do Composer (Idêntica ao Print 03!) */}
-              <div className="mt-8 space-y-5">
-                {store.runs.length > 0 ? (
-                  <>
-                    {/* Respondidas */}
-                    {answeredRuns.slice(0, 4).map(run => (
-                      <button
-                        key={run.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedAgentId(run.agentId)
-                          setSelectedRunId(run.id)
-                          setActiveSection('agents')
-                        }}
-                        className="w-full text-left px-2 py-1.5 rounded-xl hover:bg-zinc-900/80 flex items-center justify-between gap-3 text-xs transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <CheckCircle2 className="w-4 h-4 text-zinc-500 shrink-0" />
-                          <span className="text-zinc-300 truncate">{run.prompt}</span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-[11px] text-blue-400 font-medium">Respondida</span>
-                          <span
-                            className="w-4 h-4 rounded-md flex items-center justify-center text-[8px] text-white font-bold"
-                            style={{ backgroundColor: getAgentColor(run.agentId) }}
-                          >
-                            ••
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-
-                    {/* Trabalhando */}
-                    <div className="space-y-2">
-                      <div className="text-[11px] text-zinc-500 font-medium px-2">
-                        Trabalhando <span className="text-zinc-600">{workingRuns.length}</span>
-                      </div>
-                      {workingRuns.map(run => (
-                        <button
-                          key={run.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedAgentId(run.agentId)
-                            setSelectedRunId(run.id)
-                            setActiveSection('agents')
-                          }}
-                          className="w-full text-left px-2 py-1.5 rounded-xl hover:bg-zinc-900/80 flex items-center justify-between gap-3 text-xs cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <RefreshCw className="w-3.5 h-3.5 text-zinc-400 animate-spin shrink-0" />
-                            <span className="text-zinc-300 truncate">{run.prompt}</span>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-[11px] text-zinc-400">Processando...</span>
-                            <span
-                              className="w-4 h-4 rounded-md flex items-center justify-center text-[8px] text-white font-bold"
-                              style={{ backgroundColor: getAgentColor(run.agentId) }}
-                            >
-                              ••
-                            </span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Em espera */}
-                    <div className="space-y-2">
-                      <div className="text-[11px] text-zinc-500 font-medium px-2">
-                        Em espera <span className="text-zinc-600">{waitingRuns.length}</span>
-                      </div>
-                      {waitingRuns.map(run => (
-                        <button
-                          key={run.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedAgentId(run.agentId)
-                            setSelectedRunId(run.id)
-                            setActiveSection('agents')
-                          }}
-                          className="w-full text-left px-2 py-1.5 rounded-xl hover:bg-zinc-900/80 flex items-center justify-between gap-3 text-xs cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                            <span className="text-zinc-300 truncate">{run.prompt}</span>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-[11px] text-zinc-500">Em espera</span>
-                            <span
-                              className="w-4 h-4 rounded-md flex items-center justify-center text-[8px] text-white font-bold"
-                              style={{ backgroundColor: getAgentColor(run.agentId) }}
-                            >
-                              ••
-                            </span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  /* Decorative OpenBot TasksEmptyBoard (Idêntico ao Print 03 quando ainda não há tarefas!) */
-                  <div className="space-y-5 opacity-75">
-                    <div className="px-2 py-1.5 flex items-center justify-between gap-3 text-xs">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <CheckCircle2 className="w-4 h-4 text-zinc-600 shrink-0" />
-                        <span className="text-zinc-400 truncate">
-                          Elabore proposta comercial padronizada com base no catálogo
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[11px] text-blue-400">Respondida</span>
-                        <span className="w-4 h-4 rounded-md bg-blue-600 flex items-center justify-center text-[8px] text-white font-bold">
-                          ••
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="text-[11px] text-zinc-500 font-medium px-2">
-                        Trabalhando <span className="text-zinc-600">1</span>
-                      </div>
-                      <div className="px-2 py-1.5 flex items-center justify-between gap-3 text-xs">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <RefreshCw className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                          <span className="text-zinc-400 truncate">
-                            Resuma o escopo técnico e monte o cronograma de entregas...
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-[11px] text-zinc-400">
-                            Lendo Modelo de Proposta.md
-                          </span>
-                          <span className="w-4 h-4 rounded-md bg-emerald-500 flex items-center justify-center text-[8px] text-white font-bold">
-                            ••
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="text-[11px] text-zinc-500 font-medium px-2">
-                        Em espera <span className="text-zinc-600">1</span>
-                      </div>
-                      <div className="px-2 py-1.5 flex items-center justify-between gap-3 text-xs">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <Clock className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
-                          <span className="text-zinc-500 truncate">
-                            Verifique pendências de aprovação de orçamento na pasta Propostas
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-[11px] text-zinc-500">Em espera</span>
-                          <span className="w-4 h-4 rounded-md bg-blue-600 flex items-center justify-center text-[8px] text-white font-bold">
-                            ••
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* ========================================================================== */}
         {/* TELA 02: FLUXO DE TRABALHO (Canvas OpenBot tela cheia — Print 02!)          */}
@@ -3622,69 +3389,33 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         )}
 
         {/* ========================================================================== */}
-        {/* EQUIPES: CANVAS VISUAL DE EQUIPE                                           */}
+        {/* ESQUADRÕES: GESTÃO ELEGANTE DE ESQUADRÕES & ESTEIRAS                       */}
         {/* ========================================================================== */}
-        {activeSection === 'teams' && (
-          <TeamCanvasEditor
-            teams={teams}
+        {activeSection === 'squads' && (
+          <SquadManagementView
+            squads={teams}
             agents={store.agents}
-            notes={notes}
-            selectedTeamId={selectedTeamId}
-            onSelectTeam={setSelectedTeamId}
-            onSaveTeam={async updatedTeam => {
-              const exists = teams.some(t => t.id === updatedTeam.id)
+            selectedSquadId={selectedTeamId}
+            onSelectSquad={setSelectedTeamId}
+            onSaveSquad={async updatedSquad => {
+              const exists = teams.some(t => t.id === updatedSquad.id)
               const nextTeams = exists
-                ? teams.map(t => (t.id === updatedTeam.id ? updatedTeam : t))
-                : [...teams, updatedTeam]
+                ? teams.map(t => (t.id === updatedSquad.id ? updatedSquad : t))
+                : [...teams, updatedSquad]
               await onUpdateStore({ ...store, teams: nextTeams })
             }}
-            onDeleteTeam={async teamId => {
-              const nextTeams = teams.filter(t => t.id !== teamId)
+            onDeleteSquad={async squadId => {
+              const nextTeams = teams.filter(t => t.id !== squadId)
               await onUpdateStore({ ...store, teams: nextTeams })
               if (nextTeams[0]) setSelectedTeamId(nextTeams[0].id)
             }}
-            onOpenAgentChat={agentId => {
-              setSelectedAgentId(agentId)
-              setActiveSection('agents')
-            }}
-            onRunTeam={(team, isTest, prompt) => {
-              const leadId = team.coordinatorAgentId || team.nodes[0]?.agentId || store.agents[0]?.id || ''
+            onOpenSquadChat={squad => {
+              const leadId = squad.coordinatorAgentId || squad.pipeline?.[0]?.agentId || squad.nodes[0]?.agentId || store.agents[0]?.id || ''
               setSelectedAgentId(leadId)
+              setSelectedTeamId(squad.id)
               setUseTeamDelegation(true)
               setActiveSection('agents')
-              handleRunAgent({ isTest, overridePrompt: prompt, overrideTeam: team })
             }}
-            isExecuting={isExecuting}
-          />
-        )}
-
-        {/* ========================================================================== */}
-        {/* ROTINAS: CANVAS VISUAL DE ROTINAS                                          */}
-        {/* ========================================================================== */}
-        {activeSection === 'routines' && (
-          <RoutineCanvasEditor
-            automations={store.automations}
-            agents={store.agents}
-            teams={teams}
-            workflows={workflows}
-            projects={allUnifiedAsProjects}
-            folders={folders}
-            selectedRoutineId={selectedRoutineId}
-            onSelectRoutine={setSelectedRoutineId}
-            onSaveRoutine={async routine => {
-              const exists = store.automations.some(a => a.id === routine.id)
-              const nextAutos = exists
-                ? store.automations.map(a => (a.id === routine.id ? routine : a))
-                : [...store.automations, routine]
-              await onUpdateStore({ ...store, automations: nextAutos })
-            }}
-            onDeleteRoutine={async routineId => {
-              const nextAutos = store.automations.filter(a => a.id !== routineId)
-              await onUpdateStore({ ...store, automations: nextAutos })
-              if (nextAutos[0]) setSelectedRoutineId(nextAutos[0].id)
-            }}
-            onTestRoutine={routine => executeRoutineDirectly(routine, true)}
-            isExecuting={isExecuting}
           />
         )}
 

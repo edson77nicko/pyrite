@@ -22,7 +22,6 @@ import {
   diagramEdgePath,
   diagramEdgeMidpoint,
   diagramEdgeArrow,
-  diagramBounds,
   diagramConnectionProblem,
   getNodeCardDimensions,
   getNodeInputPort,
@@ -63,7 +62,9 @@ import {
   ListTodo,
   Loader2,
   FlaskConical,
-  AlertTriangle
+  AlertTriangle,
+  Eraser,
+  PanelLeft
 } from 'lucide-react'
 import { CustomSelect } from './CustomSelect'
 import { CustomTimePicker } from './CustomTimePicker'
@@ -89,21 +90,29 @@ interface WorkflowCanvasEditorProps {
 }
 
 /**
- * Campo de exibição do resultado de execução da etapa (idêntico ao ResultField do OpenBot).
+ * Campo de exibição do resultado de execução da etapa (sanfona minimalista, cópia e limpeza).
  */
 const ResultField: React.FC<{
   output?: string
   isRunning?: boolean
   lastExecutedAt?: number
-}> = ({ output, isRunning, lastExecutedAt }) => {
+  onClear?: () => void
+}> = ({ output, isRunning, lastExecutedAt, onClear }) => {
   const [copied, setCopied] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(true)
   if (!output && !isRunning) return null
 
-  const handleCopy = () => {
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation()
     if (!output) return
     navigator.clipboard.writeText(output)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleClearClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onClear?.()
   }
 
   const timeLabel = lastExecutedAt
@@ -111,43 +120,63 @@ const ResultField: React.FC<{
     : undefined
 
   return (
-    <div className="mt-2.5 pt-2 border-t border-zinc-800/60 text-xs">
-      <div className="flex items-center justify-between text-[10.5px] text-zinc-400 font-medium pb-1.5">
-        <span className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-amber-400 animate-ping' : 'bg-emerald-500'}`} />
-          <span>{isRunning ? 'Executando novo teste...' : 'Resultado do teste'}</span>
+    <div className="mt-2 pt-1.5 border-t border-zinc-800/60 text-xs">
+      <div className="flex items-center justify-between text-[10.5px] text-zinc-400 font-medium py-0.5">
+        <button
+          type="button"
+          onClick={() => setIsExpanded(v => !v)}
+          className="flex items-center gap-1.5 hover:text-zinc-200 cursor-pointer select-none text-left"
+          title={isExpanded ? 'Recolher resultado' : 'Expandir resultado'}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isRunning ? 'bg-amber-400 animate-ping' : 'bg-emerald-500'}`} />
+          <span className="truncate">{isRunning ? 'Executando novo teste...' : 'Resultado do teste'}</span>
           {timeLabel && !isRunning && (
             <span className="text-[9.5px] text-zinc-500 font-mono">({timeLabel})</span>
           )}
-        </span>
-        {output && !isRunning && (
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer flex items-center gap-1"
-            title="Copiar resultado"
-          >
-            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-            <span className="text-[10px]">{copied ? 'Copiado!' : 'Copiar'}</span>
-          </button>
-        )}
+          <ChevronDown className={`w-3 h-3 text-zinc-500 shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+        </button>
+
+        <div className="flex items-center gap-1 shrink-0">
+          {output && !isRunning && (
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+              title={copied ? 'Copiado!' : 'Copiar'}
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          )}
+          {output && !isRunning && onClear && (
+            <button
+              type="button"
+              onClick={handleClearClick}
+              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
+              title="Limpar resultado"
+            >
+              <Eraser className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {isRunning ? (
-        <div className="bg-[#101012] border border-amber-500/30 rounded-lg p-2.5 space-y-1.5 animate-pulse">
-          <div className="flex items-center gap-2 text-[11px] text-amber-300 font-medium">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-            <span>Processando etapa em tempo real...</span>
+      {isExpanded && (
+        isRunning ? (
+          <div className="bg-[#101012] border border-amber-500/30 rounded-lg p-2.5 space-y-1.5 animate-pulse mt-1.5">
+            <div className="flex items-center gap-2 text-[11px] text-amber-300 font-medium">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+              <span>Processando etapa em tempo real...</span>
+            </div>
+            <div className="space-y-1 pt-0.5 opacity-60">
+              <div className="h-2 bg-zinc-700/60 rounded w-4/5" />
+              <div className="h-2 bg-zinc-700/40 rounded w-2/3" />
+            </div>
           </div>
-          <div className="space-y-1 pt-0.5 opacity-60">
-            <div className="h-2 bg-zinc-700/60 rounded w-4/5" />
-            <div className="h-2 bg-zinc-700/40 rounded w-2/3" />
+        ) : (
+          <div className="bg-[#141416] border border-zinc-800/80 rounded-lg p-2 text-zinc-300 leading-relaxed max-h-36 overflow-y-auto custom-chat-scrollbar text-[11px] whitespace-pre-wrap select-text mt-1.5">
+            {output}
           </div>
-        </div>
-      ) : (
-        <div className="bg-[#141416] border border-zinc-800/80 rounded-lg p-2 text-zinc-300 leading-relaxed max-h-36 overflow-y-auto custom-chat-scrollbar text-[11px] whitespace-pre-wrap select-text">
-          {output}
-        </div>
+        )
       )}
     </div>
   )
@@ -198,14 +227,14 @@ const NODE_META: Record<
     color: '#f97316'
   },
   create_task: {
-    label: 'Gerar Tarefas',
+    label: 'Gerenciador de Tarefas',
     group: 'Etapas',
     color: '#06b6d4'
   },
   manage_properties: {
-    label: 'Propriedades (IA)',
+    label: 'Gerenciador de Tarefas',
     group: 'Etapas',
-    color: '#ec4899'
+    color: '#06b6d4'
   },
   deliverable: {
     label: 'Saída',
@@ -245,6 +274,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     activeRun && activeWorkflow && activeRun.workflowId === activeWorkflow.id ? activeRun : undefined
   const runStates = runForThisWorkflow?.workflowNodeStates
   const [dismissedRunId, setDismissedRunId] = useState<string | null>(null)
+  const [isRunPanelCollapsed, setIsRunPanelCollapsed] = useState(false)
   const [expandedRunSteps, setExpandedRunSteps] = useState<Record<string, boolean>>({})
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 80, y: 60 })
@@ -252,9 +282,22 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [inspectorOpen, setInspectorOpen] = useState(false)
-  const [isWorkflowMenuOpen, setIsWorkflowMenuOpen] = useState(false)
+  const [isFlowSidebarOpen, setIsFlowSidebarOpen] = useState(true)
+  const [flowSearchQuery, setFlowSearchQuery] = useState('')
   const [isRenamingWorkflow, setIsRenamingWorkflow] = useState(false)
   const [workflowTitleDraft, setWorkflowTitleDraft] = useState('')
+
+  const handleDuplicateWorkflow = (sourceWf: WorkflowDefinition) => {
+    const copy: WorkflowDefinition = {
+      ...JSON.parse(JSON.stringify(sourceWf)),
+      id: `wf-${Date.now()}`,
+      name: `${sourceWf.name} (Cópia)`,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }
+    onSaveWorkflow(copy)
+    onSelectWorkflow(copy.id)
+  }
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false)
   const [addMenuSearch, setAddMenuSearch] = useState('')
   const [addMenuPos, setAddMenuPos] = useState<{ x: number; y: number } | null>(null)
@@ -297,7 +340,6 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           handleRemoveEdge(selectedEdgeId)
         }
       } else if (e.key === 'Escape') {
-        setIsWorkflowMenuOpen(false)
         setIsAddMenuOpen(false)
         setInspectorOpen(false)
         setSelectedNodeId(null)
@@ -311,9 +353,6 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (workflowMenuRef.current && !workflowMenuRef.current.contains(e.target as Node)) {
-        setIsWorkflowMenuOpen(false)
-      }
       if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
         setIsAddMenuOpen(false)
       }
@@ -323,24 +362,48 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   }, [])
 
   const handleFitView = () => {
-    if (!activeWorkflow) return
+    if (!activeWorkflow || activeWorkflow.nodes.length === 0) return
     const rect = viewportRef.current?.getBoundingClientRect()
-    const bounds = diagramBounds(activeWorkflow.nodes.map(n => n.position))
-    if (!rect || !bounds) {
+    if (!rect || rect.width === 0 || rect.height === 0) {
       setZoom(1)
       setPan({ x: 80, y: 60 })
       return
     }
-    const nextZoom = Math.max(
-      0.45,
-      Math.min(1.15, Math.min((rect.width - 140) / bounds.width, (rect.height - 140) / bounds.height))
-    )
-    const centerX = bounds.minX + bounds.width / 2
-    const centerY = bounds.minY + bounds.height / 2
-    setZoom(Number(nextZoom.toFixed(2)))
+
+    // Calcula os limites geométricos reais de cada card considerando sua altura e largura reais
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+
+    for (const node of activeWorkflow.nodes) {
+      const dim = getNodeCardDimensions(node.kind)
+      const measuredH = cardHeights[node.id] || dim.height
+      minX = Math.min(minX, node.position.x)
+      minY = Math.min(minY, node.position.y)
+      maxX = Math.max(maxX, node.position.x + dim.width)
+      maxY = Math.max(maxY, node.position.y + measuredH)
+    }
+
+    const flowWidth = Math.max(100, maxX - minX)
+    const flowHeight = Math.max(100, maxY - minY)
+
+    // Margens balanceadas e simétricas
+    const availableW = Math.max(200, rect.width - 120)
+    const availableH = Math.max(200, rect.height - 120)
+
+    const scaleX = availableW / flowWidth
+    const scaleY = availableH / flowHeight
+    const nextZoom = Math.max(0.45, Math.min(1.05, Math.min(scaleX, scaleY)))
+
+    const flowCenterX = minX + flowWidth / 2
+    const flowCenterY = minY + flowHeight / 2
+
+    const finalZoom = Number(nextZoom.toFixed(2))
+    setZoom(finalZoom)
     setPan({
-      x: Math.round(rect.width / 2 - centerX * nextZoom),
-      y: Math.round(rect.height / 2 - centerY * nextZoom)
+      x: Math.round(rect.width / 2 - flowCenterX * finalZoom),
+      y: Math.round(rect.height / 2 - flowCenterY * finalZoom)
     })
   }
 
@@ -409,18 +472,30 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     }
     onSaveWorkflow(newWf)
     onSelectWorkflow(newWf.id)
-    setIsWorkflowMenuOpen(false)
   }
 
   const handleAddNodeAt = (kind: WorkflowNodeKind, worldPos?: { x: number; y: number } | null) => {
-    const meta = NODE_META[kind]
+    const meta = NODE_META[kind] || { label: 'Etapa' }
     const count = activeWorkflow.nodes.length
-    const pos = worldPos
-      ? { x: snapDiagramCoord(worldPos.x), y: snapDiagramCoord(worldPos.y) }
-      : {
-          x: snapDiagramCoord(180 + (count % 3) * 340),
-          y: snapDiagramCoord(160 + Math.floor(count / 3) * 220)
-        }
+    let pos: { x: number; y: number }
+
+    if (worldPos) {
+      pos = { x: snapDiagramCoord(worldPos.x), y: snapDiagramCoord(worldPos.y) }
+    } else {
+      // Posiciona no centro visível da viewport atual do usuário
+      const rect = viewportRef.current?.getBoundingClientRect()
+      const viewW = rect?.width || 800
+      const viewH = rect?.height || 600
+      const centerWorldX = (-pan.x + viewW / 2) / zoom
+      const centerWorldY = (-pan.y + viewH / 2) / zoom
+      const dim = getNodeCardDimensions(kind)
+      const jitter = ((count * 25) % 90) - 45
+      pos = {
+        x: snapDiagramCoord(Math.round(centerWorldX - dim.width / 2 + jitter)),
+        y: snapDiagramCoord(Math.round(centerWorldY - dim.height / 2 + jitter))
+      }
+    }
+
     const newNode: WorkflowNode = {
       id: `wn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       kind,
@@ -438,9 +513,11 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           : kind === 'read_note'
           ? { noteId: notes[0]?.id, noteTitle: notes[0]?.title, contextRole: 'permanent_ref' }
           : kind === 'condition'
-          ? { conditionType: 'contains', rule: '', trueLabel: 'Sim (Verdadeiro)', falseLabel: 'Não (Falso)' }
+          ? { conditionType: 'ai_rule', rule: '', trueLabel: 'Sim (Verdadeiro)', falseLabel: 'Não (Falso)' }
           : kind === 'approval'
           ? { approvalMessage: 'Revisar entregável gerado antes de salvar no cofre.' }
+          : kind === 'create_task'
+          ? { targetBoardId: 'default', taskMode: 'auto_ai', taskPriority: 'normal', autoCreateProperty: true }
           : kind === 'deliverable'
           ? { targetFolder: 'Propostas', outputType: 'note' }
           : { triggerType: 'manual' }
@@ -688,8 +765,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       items: [
         { kind: 'llm' as WorkflowNodeKind, label: 'LLM', icon: Sparkles, color: '#a855f7' },
         { kind: 'run_agent' as WorkflowNodeKind, label: 'Agente', icon: Bot, color: '#10b981' },
-        { kind: 'create_task' as WorkflowNodeKind, label: 'Gerar Tarefas', icon: ListTodo, color: '#06b6d4' },
-        { kind: 'manage_properties' as WorkflowNodeKind, label: 'Propriedades (IA)', icon: Sliders, color: '#ec4899' }
+        { kind: 'create_task' as WorkflowNodeKind, label: 'Gerenciador de Tarefas', icon: ListTodo, color: '#06b6d4' }
       ]
     },
     {
@@ -702,175 +778,254 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     }
   ]
 
+  const filteredWorkflows = workflows.filter(w =>
+    w.name.toLowerCase().includes(flowSearchQuery.toLowerCase()) ||
+    (w.description || '').toLowerCase().includes(flowSearchQuery.toLowerCase())
+  )
+
   return (
-    <div className="flex-1 flex flex-col bg-[#09090b] overflow-hidden select-none relative">
+    <div className="flex-1 flex h-full bg-[#09090b] overflow-hidden select-none relative">
       {/* ============================================================================ */}
-      {/* 1. BARRA SUPERIOR MINIMALISTA IDÊNTICA AO PRINT 02 DO OPENBOT                */}
+      {/* SIDEBAR LATERAL DE FLUXOS: Lista retrátil, busca e ações (Print 01 style!)     */}
       {/* ============================================================================ */}
-      <div className="h-11 px-4 border-b border-zinc-900/90 bg-[#09090b] flex items-center justify-between shrink-0 z-30">
-        {/* Esquerda: Status Local + Setas + Nome do Fluxo */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/60 border border-zinc-800/60 text-xs text-zinc-300 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] inline-block" />
-            <span>Local</span>
+      {isFlowSidebarOpen && (
+        <aside className="w-72 shrink-0 h-full bg-[#0c0c0e] border-r border-zinc-800/80 flex flex-col z-30">
+          {/* Topo da Sidebar de Fluxos */}
+          <div className="h-11 px-3 border-b border-zinc-800/80 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] inline-block" />
+              <span className="text-xs font-semibold text-zinc-100">Fluxos de Trabalho</span>
+              <span className="text-[10px] text-zinc-500 font-mono">({workflows.length})</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleCreateWorkflow}
+                className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white cursor-pointer"
+                title="Novo fluxo de trabalho"
+              >
+                <Plus className="w-4 h-4 text-emerald-400" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFlowSidebarOpen(false)}
+                className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 cursor-pointer"
+                title="Recolher lista de fluxos"
+              >
+                <PanelLeft className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-0.5 text-zinc-500">
-            <button
-              type="button"
-              onClick={handleFitView}
-              className="p-1 rounded hover:bg-zinc-850 hover:text-zinc-200 transition-colors cursor-pointer"
-              title="Centralizar visualização"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={handleFitView}
-              className="p-1 rounded hover:bg-zinc-850 hover:text-zinc-200 transition-colors cursor-pointer"
-              title="Ajustar à tela"
-            >
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="relative" ref={workflowMenuRef}>
-            {isRenamingWorkflow ? (
+          {/* Campo de Busca de Fluxos */}
+          <div className="p-2.5 border-b border-zinc-800/60">
+            <div className="relative flex items-center">
+              <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 pointer-events-none" />
               <input
                 type="text"
-                autoFocus
-                value={workflowTitleDraft}
-                onChange={e => setWorkflowTitleDraft(e.target.value)}
-                onBlur={() => {
-                  if (workflowTitleDraft.trim()) {
-                    onSaveWorkflow({ ...activeWorkflow, name: workflowTitleDraft.trim(), updatedAt: Date.now() })
-                  }
-                  setIsRenamingWorkflow(false)
-                }}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
+                value={flowSearchQuery}
+                onChange={e => setFlowSearchQuery(e.target.value)}
+                placeholder="Buscar fluxo..."
+                className="w-full bg-[#141416] border border-zinc-800/70 rounded-xl pl-8 pr-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+              />
+            </div>
+          </div>
+
+          {/* Lista com rolagem de Fluxos */}
+          <div className="flex-1 overflow-y-auto custom-chat-scrollbar p-2 space-y-1">
+            {filteredWorkflows.map(wf => {
+              const isSelected = wf.id === activeWorkflow.id
+              const realNodesCount = wf.nodes.filter(n => n.kind !== 'sticky_note' && n.kind !== 'text_block').length
+              return (
+                <div
+                  key={wf.id}
+                  onClick={() => onSelectWorkflow(wf.id)}
+                  className={`w-full group text-left p-2.5 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-2 ${
+                    isSelected
+                      ? 'bg-[#18181c] border-emerald-500/40 text-white shadow-xs'
+                      : 'bg-[#121214] border-zinc-800/60 text-zinc-300 hover:bg-[#151518] hover:border-zinc-700/60'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="font-semibold text-xs truncate">{wf.name}</div>
+                    <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+                      <span>{realNodesCount} blocos</span>
+                      <span>•</span>
+                      <span className={wf.status === 'published' ? 'text-emerald-400/90' : 'text-amber-400/90'}>
+                        {wf.status === 'published' ? 'Publicado' : 'Rascunho'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Ações rápidas */}
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDuplicateWorkflow(wf)
+                      }}
+                      className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                      title="Duplicar fluxo"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                    {workflows.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (window.confirm(`Excluir fluxo "${wf.name}"?`)) {
+                            onDeleteWorkflow(wf.id)
+                          }
+                        }}
+                        className="p-1 rounded hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                        title="Excluir fluxo"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </aside>
+      )}
+
+      {/* ÁREA PRINCIPAL DO CANVAS */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+        {/* ============================================================================ */}
+        {/* 1. BARRA SUPERIOR MINIMALISTA IDÊNTICA AO PRINT 02 DO OPENBOT                */}
+        {/* ============================================================================ */}
+        <div className="h-11 px-4 border-b border-zinc-900/90 bg-[#09090b] flex items-center justify-between shrink-0 z-30">
+          {/* Esquerda: Botão de abrir sidebar + Status Local + Setas + Nome do Fluxo */}
+          <div className="flex items-center gap-3">
+            {!isFlowSidebarOpen && (
+              <button
+                type="button"
+                onClick={() => setIsFlowSidebarOpen(true)}
+                className="p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                title="Abrir lista de fluxos"
+              >
+                <PanelLeft className="w-4 h-4" />
+              </button>
+            )}
+
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/60 border border-zinc-800/60 text-xs text-zinc-300 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] inline-block" />
+              <span>Local</span>
+            </div>
+
+            <div className="flex items-center gap-0.5 text-zinc-500">
+              <button
+                type="button"
+                onClick={handleFitView}
+                className="p-1 rounded hover:bg-zinc-850 hover:text-zinc-200 transition-colors cursor-pointer"
+                title="Centralizar visualização"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleFitView}
+                className="p-1 rounded hover:bg-zinc-850 hover:text-zinc-200 transition-colors cursor-pointer"
+                title="Ajustar à tela"
+              >
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="relative" ref={workflowMenuRef}>
+              {isRenamingWorkflow ? (
+                <input
+                  type="text"
+                  autoFocus
+                  value={workflowTitleDraft}
+                  onChange={e => setWorkflowTitleDraft(e.target.value)}
+                  onBlur={() => {
                     if (workflowTitleDraft.trim()) {
                       onSaveWorkflow({ ...activeWorkflow, name: workflowTitleDraft.trim(), updatedAt: Date.now() })
                     }
                     setIsRenamingWorkflow(false)
-                  }
-                  if (e.key === 'Escape') setIsRenamingWorkflow(false)
-                }}
-                className="bg-[#141416] border border-zinc-700 rounded-lg px-2 py-0.5 text-xs text-zinc-100 outline-none font-medium"
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsWorkflowMenuOpen(v => !v)}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-zinc-850 text-xs font-medium text-zinc-200 cursor-pointer transition-colors"
-              >
-                <span>{activeWorkflow.name}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
-              </button>
-            )}
-
-            {isWorkflowMenuOpen && (
-              <div
-                onMouseDown={e => e.stopPropagation()}
-                className="absolute left-0 top-full mt-1.5 w-64 bg-[#141416] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100"
-              >
-                <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                  Fluxos de trabalho
-                </div>
-                {workflows.map(wf => (
-                  <button
-                    key={wf.id}
-                    type="button"
-                    onClick={() => {
-                      onSelectWorkflow(wf.id)
-                      setIsWorkflowMenuOpen(false)
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between cursor-pointer ${
-                      wf.id === activeWorkflow.id
-                        ? 'bg-zinc-800/90 text-white font-medium'
-                        : 'text-zinc-300 hover:bg-zinc-800/50'
-                    }`}
-                  >
-                    <span className="truncate">{wf.name}</span>
-                    <span className="text-[10px] text-zinc-500">v{wf.version}</span>
-                  </button>
-                ))}
-                <div className="border-t border-zinc-800/80 my-1" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setWorkflowTitleDraft(activeWorkflow.name)
-                    setIsRenamingWorkflow(true)
-                    setIsWorkflowMenuOpen(false)
                   }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2 cursor-pointer"
-                >
-                  <Type className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>Renomear fluxo atual</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCreateWorkflow}
-                  className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Novo fluxo de trabalho</span>
-                </button>
-                {workflows.length > 1 && (
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      if (workflowTitleDraft.trim()) {
+                        onSaveWorkflow({ ...activeWorkflow, name: workflowTitleDraft.trim(), updatedAt: Date.now() })
+                      }
+                      setIsRenamingWorkflow(false)
+                    }
+                    if (e.key === 'Escape') setIsRenamingWorkflow(false)
+                  }}
+                  className="bg-[#141416] border border-zinc-700 rounded-lg px-2 py-0.5 text-xs text-zinc-100 outline-none font-medium"
+                />
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-xs text-zinc-100">{activeWorkflow.name}</span>
                   <button
                     type="button"
                     onClick={() => {
-                      onDeleteWorkflow(activeWorkflow.id)
-                      setIsWorkflowMenuOpen(false)
+                      setWorkflowTitleDraft(activeWorkflow.name)
+                      setIsRenamingWorkflow(true)
                     }}
-                    className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-rose-400 hover:bg-rose-950/30 flex items-center gap-2 cursor-pointer"
+                    className="p-1 text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                    title="Renomear fluxo"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Excluir fluxo atual</span>
+                    <Type className="w-3.5 h-3.5" />
                   </button>
-                )}
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleFitView}
+              className="p-1.5 rounded-lg border border-zinc-800/80 hover:bg-zinc-850 text-zinc-400 hover:text-zinc-200 text-xs flex items-center gap-1 cursor-pointer ml-1"
+              title="Centralizar e ajustar à tela"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span className="text-[11px]">Centralizar</span>
+            </button>
+          </div>
+
+          {/* Direita: Botão Pílula Branco "▷ Executar fluxo de trabalho" */}
+          <div className="flex items-center gap-2">
+            {!validation.valid && (
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-950/70 border border-amber-800/60 text-amber-300 text-[11px]"
+                title={validation.errors.join('\n')}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="truncate max-w-[220px]">{validation.errors[0]}</span>
               </div>
             )}
+            <button
+              type="button"
+              disabled={isExecuting}
+              onClick={() => handleStartRun(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white font-medium text-xs transition-all cursor-pointer disabled:opacity-50"
+              title="Percorre todo o fluxo sem gravar nada no cofre"
+            >
+              <FlaskConical className="w-3 h-3" />
+              <span>Testar</span>
+            </button>
+            <button
+              type="button"
+              disabled={isExecuting}
+              onClick={() => handleStartRun(false)}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-semibold text-xs transition-all shadow-sm cursor-pointer ${
+                validation.valid
+                  ? 'bg-zinc-100 hover:bg-white text-zinc-950 active:scale-95'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+              }`}
+              title={validation.valid ? 'Iniciar execução do fluxo' : validation.errors.join('\n')}
+            >
+              <Play className={`w-3 h-3 fill-current ${isExecuting ? 'animate-spin' : ''}`} />
+              <span>{isExecuting ? 'Executando fluxo...' : 'Executar fluxo de trabalho'}</span>
+            </button>
           </div>
         </div>
-
-        {/* Direita: Botão Pílula Branco "▷ Executar fluxo de trabalho" */}
-        <div className="flex items-center gap-2">
-          {!validation.valid && (
-            <div
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-950/70 border border-amber-800/60 text-amber-300 text-[11px]"
-              title={validation.errors.join('\n')}
-            >
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="truncate max-w-[220px]">{validation.errors[0]}</span>
-            </div>
-          )}
-          <button
-            type="button"
-            disabled={isExecuting}
-            onClick={() => handleStartRun(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white font-medium text-xs transition-all cursor-pointer disabled:opacity-50"
-            title="Percorre todo o fluxo sem gravar nada no cofre"
-          >
-            <FlaskConical className="w-3 h-3" />
-            <span>Testar</span>
-          </button>
-          <button
-            type="button"
-            disabled={isExecuting}
-            onClick={() => handleStartRun(false)}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-semibold text-xs transition-all shadow-sm cursor-pointer ${
-              validation.valid
-                ? 'bg-zinc-100 hover:bg-white text-zinc-950 active:scale-95'
-                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
-            }`}
-            title={validation.valid ? 'Iniciar execução do fluxo' : validation.errors.join('\n')}
-          >
-            <Play className={`w-3 h-3 fill-current ${isExecuting ? 'animate-spin' : ''}`} />
-            <span>{isExecuting ? 'Executando fluxo...' : 'Executar fluxo de trabalho'}</span>
-          </button>
-        </div>
-      </div>
 
       {/* ============================================================================ */}
       {/* 2. ÁREA DO CANVAS INFINITO COM DOT-GRID ESCURO (#09090b)                      */}
@@ -897,7 +1052,9 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             <div
               data-no-pan="true"
               onPointerDown={e => e.stopPropagation()}
-              className="absolute left-4 bottom-4 z-30 w-[340px] max-h-[60%] flex flex-col rounded-2xl bg-[#141416] border border-zinc-800 shadow-2xl overflow-hidden"
+              className={`absolute left-4 bottom-4 z-30 w-[340px] flex flex-col rounded-2xl bg-[#141416] border border-zinc-800 shadow-2xl overflow-hidden transition-all duration-150 ${
+                isRunPanelCollapsed ? 'max-h-10' : 'max-h-[60%]'
+              }`}
             >
               <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-zinc-800/80">
                 <div className="flex items-center gap-1.5 min-w-0">
@@ -919,17 +1076,28 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     {new Date(run.startedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setDismissedRunId(run.id)}
-                  className="text-zinc-500 hover:text-zinc-200 p-0.5 cursor-pointer"
-                  title="Fechar painel"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsRunPanelCollapsed(v => !v)}
+                    className="text-zinc-500 hover:text-zinc-200 p-0.5 cursor-pointer"
+                    title={isRunPanelCollapsed ? 'Expandir painel' : 'Minimizar painel'}
+                  >
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isRunPanelCollapsed ? 'rotate-180' : ''}`} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDismissedRunId(run.id)}
+                    className="text-zinc-500 hover:text-zinc-200 p-0.5 cursor-pointer"
+                    title="Fechar painel"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
-              <div className="overflow-y-auto custom-chat-scrollbar p-2 space-y-1.5">
+              {!isRunPanelCollapsed && (
+                <div className="overflow-y-auto custom-chat-scrollbar p-2 space-y-1.5">
                 {run.error && (
                   <div className="text-[11px] text-rose-300 bg-rose-950/30 border border-rose-900/50 rounded-lg p-2 leading-relaxed">
                     {run.error}
@@ -996,9 +1164,10 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                   )
                 })}
               </div>
-            </div>
-          )
-        })()}
+            )}
+          </div>
+        )
+      })()}
 
         <div
           ref={viewportRef}
@@ -1027,7 +1196,6 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               if (!isNode) {
                 setSelectedNodeId(null)
                 setSelectedEdgeId(null)
-                setIsWorkflowMenuOpen(false)
                 setIsAddMenuOpen(false)
               }
               setIsPanning(true)
@@ -1642,6 +1810,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           output={node.config.lastOutput}
                           isRunning={isExecutingThisNode}
                           lastExecutedAt={node.config.lastExecutedAt}
+                          onClear={() => handleUpdateNodeById(node.id, { config: { ...node.config, lastOutput: undefined, lastExecutedAt: undefined } })}
                         />
                       </div>
                     )}
@@ -1727,7 +1896,12 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <Play className="w-3 h-3" />
                         </button>
 
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
+                        <ResultField
+                          output={node.config.lastOutput}
+                          isRunning={isExecutingThisNode}
+                          lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined}
+                          onClear={() => handleUpdateNodeById(node.id, { config: { ...node.config, lastOutput: undefined, lastExecutedAt: undefined } })}
+                        />
                       </div>
                     )}
 
@@ -1797,7 +1971,12 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <Play className="w-3 h-3" />
                         </button>
 
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
+                        <ResultField
+                          output={node.config.lastOutput}
+                          isRunning={isExecutingThisNode}
+                          lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined}
+                          onClear={() => handleUpdateNodeById(node.id, { config: { ...node.config, lastOutput: undefined, lastExecutedAt: undefined } })}
+                        />
                       </div>
                     )}
 
@@ -1867,7 +2046,12 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <Play className="w-3 h-3" />
                         </button>
 
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
+                        <ResultField
+                          output={node.config.lastOutput}
+                          isRunning={isExecutingThisNode}
+                          lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined}
+                          onClear={() => handleUpdateNodeById(node.id, { config: { ...node.config, lastOutput: undefined, lastExecutedAt: undefined } })}
+                        />
                       </div>
                     )}
 
@@ -1959,7 +2143,12 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <Play className="w-3 h-3" />
                         </button>
 
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
+                        <ResultField
+                          output={node.config.lastOutput}
+                          isRunning={isExecutingThisNode}
+                          lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined}
+                          onClear={() => handleUpdateNodeById(node.id, { config: { ...node.config, lastOutput: undefined, lastExecutedAt: undefined } })}
+                        />
                       </div>
                     )}
 
@@ -2027,15 +2216,21 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                             )}
                           </div>
 
-                          <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
+                          <ResultField
+                          output={node.config.lastOutput}
+                          isRunning={isExecutingThisNode}
+                          lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined}
+                          onClear={() => handleUpdateNodeById(node.id, { config: { ...node.config, lastOutput: undefined, lastExecutedAt: undefined } })}
+                        />
                         </div>
                       )
                     })()}
 
-                    {/* CARD: GERAR TAREFAS / ITENS NO PROJETO */}
-                    {node.kind === 'create_task' && (
+                    {/* CARD: GERENCIADOR DE TAREFAS & PROPRIEDADES (COMPLETO COM IA) */}
+                    {(node.kind === 'create_task' || (node.kind as string) === 'manage_properties') && (
                       <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
-                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-2">
+                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-2.5">
+                          {/* 1. Destino */}
                           <div>
                             <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Quadro ou Projeto de Destino:</label>
                             <CustomSelect
@@ -2050,53 +2245,111 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                             />
                           </div>
 
+                          {/* 2. Modo de Operação */}
                           <div>
-                            <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Modo de Geração:</label>
+                            <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Modo de Operação da IA:</label>
                             <CustomSelect
                               value={node.config.taskMode || 'auto_ai'}
                               onChange={mode => handleUpdateNodeById(node.id, { config: { ...node.config, taskMode: mode as any } })}
                               options={[
-                                { value: 'auto_ai', label: 'Extrair tarefas/checklist com IA' },
-                                { value: 'single', label: 'Criar uma única tarefa' }
+                                { value: 'auto_ai', label: 'IA Completa (Criar Tarefas & Metadados)' },
+                                { value: 'extract_checklist', label: 'Extrair Apenas Checklist de Tarefas' },
+                                { value: 'single', label: 'Criar Tarefa Única Manual' },
+                                { value: 'properties_only', label: 'Apenas Extrair / Criar Propriedades' }
                               ]}
                               size="xs"
                               className="w-full"
                             />
                           </div>
 
-                          {node.config.taskMode === 'single' ? (
-                            <div>
-                              <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Título da Tarefa:</label>
-                              <input
-                                type="text"
-                                value={node.config.taskTitleTemplate || ''}
-                                onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, taskTitleTemplate: e.target.value } })}
-                                placeholder="Ex: Revisar proposta com o cliente..."
-                                className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
-                              />
-                            </div>
-                          ) : (
-                            <div className="text-[10px] text-cyan-400/90 bg-cyan-950/20 border border-cyan-800/30 p-2 rounded-xl flex items-center gap-2">
-                              <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                              <span>A IA analisará o texto da etapa anterior e criará tarefas automaticamente.</span>
+                          {/* Configuração de Tarefas (se aplicável) */}
+                          {node.config.taskMode !== 'properties_only' && (
+                            <div className="space-y-2 pt-1 border-t border-zinc-800/60">
+                              {node.config.taskMode === 'single' ? (
+                                <div>
+                                  <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Título da Tarefa:</label>
+                                  <input
+                                    type="text"
+                                    value={node.config.taskTitleTemplate || ''}
+                                    onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, taskTitleTemplate: e.target.value } })}
+                                    placeholder="Ex: Executar plano com a equipe..."
+                                    className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="text-[10px] text-cyan-400/90 bg-cyan-950/20 border border-cyan-800/30 p-2 rounded-xl flex items-center gap-2">
+                                  <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                  <span>A IA extrairá e organizará as tarefas diretamente do conteúdo do fluxo.</span>
+                                </div>
+                              )}
+
+                              <div>
+                                <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Prioridade Padrão:</label>
+                                <CustomSelect
+                                  value={node.config.taskPriority || 'normal'}
+                                  onChange={p => handleUpdateNodeById(node.id, { config: { ...node.config, taskPriority: p } })}
+                                  options={[
+                                    { value: 'urgent', label: '🔴 Urgente' },
+                                    { value: 'high', label: '🟠 Alta' },
+                                    { value: 'normal', label: '🟡 Normal' },
+                                    { value: 'low', label: '🔵 Baixa' }
+                                  ]}
+                                  size="xs"
+                                  className="w-full"
+                                />
+                              </div>
                             </div>
                           )}
 
-                          <div>
-                            <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Prioridade Padrão:</label>
-                            <CustomSelect
-                              value={node.config.taskPriority || 'normal'}
-                              onChange={p => handleUpdateNodeById(node.id, { config: { ...node.config, taskPriority: p } })}
-                              options={[
-                                { value: 'urgent', label: '🔴 Urgente' },
-                                { value: 'high', label: '🟠 Alta' },
-                                { value: 'normal', label: '🟡 Normal' },
-                                { value: 'low', label: '🔵 Baixa' }
-                              ]}
-                              size="xs"
-                              className="w-full"
-                            />
-                          </div>
+                          {/* Configuração de Propriedade da IA (se auto_ai ou properties_only) */}
+                          {(node.config.taskMode === 'auto_ai' || node.config.taskMode === 'properties_only') && (
+                            <div className="space-y-2 pt-1 border-t border-zinc-800/60">
+                              <label className="text-[10px] text-pink-300 font-medium flex items-center gap-1">
+                                <Sliders className="w-3 h-3 text-pink-400" />
+                                <span>Propriedade Customizada (Opcional):</span>
+                              </label>
+
+                              <div className="grid grid-cols-2 gap-2">
+                                <input
+                                  type="text"
+                                  value={node.config.propertyName || ''}
+                                  onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, propertyName: e.target.value } })}
+                                  placeholder="Nome (ex: Prazo, Valor)"
+                                  className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
+                                />
+                                <CustomSelect
+                                  value={node.config.propertyType || 'text'}
+                                  onChange={t => handleUpdateNodeById(node.id, { config: { ...node.config, propertyType: t } })}
+                                  options={[
+                                    { value: 'text', label: 'Texto' },
+                                    { value: 'number', label: 'Número' },
+                                    { value: 'date', label: 'Data' },
+                                    { value: 'select', label: 'Seleção' }
+                                  ]}
+                                  size="xs"
+                                  className="w-full"
+                                />
+                              </div>
+
+                              <input
+                                type="text"
+                                value={node.config.propertyPrompt || ''}
+                                onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, propertyPrompt: e.target.value } })}
+                                placeholder="Instrução para a IA (ex: extrair prazo em AAAA-MM-DD)..."
+                                className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-[11px] text-zinc-300 placeholder-zinc-500 focus:outline-none"
+                              />
+
+                              <label className="flex items-center gap-1.5 cursor-pointer select-none text-[10.5px] text-zinc-400">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(node.config.autoCreateProperty ?? true)}
+                                  onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, autoCreateProperty: e.target.checked } })}
+                                  className="rounded border-zinc-700 bg-zinc-800 text-pink-500 focus:ring-0 cursor-pointer"
+                                />
+                                <span>Criar propriedade no quadro se ainda não existir</span>
+                              </label>
+                            </div>
+                          )}
                         </div>
 
                         <button
@@ -2106,91 +2359,15 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           className="w-full py-2 rounded-xl bg-cyan-950/40 hover:bg-cyan-950/60 text-cyan-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-cyan-800/40"
                         >
                           <Play className="w-3 h-3" />
-                          <span>{isExecutingThisNode ? 'Extraindo tarefas...' : 'Testar geração de tarefas'}</span>
+                          <span>{isExecutingThisNode ? 'Gerenciando tarefas...' : 'Testar gerenciador de tarefas'}</span>
                         </button>
 
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
-                      </div>
-                    )}
-
-                    {/* CARD: GERENCIAR PROPRIEDADES (IA) */}
-                    {node.kind === 'manage_properties' && (
-                      <div className="space-y-2.5" onPointerDown={e => e.stopPropagation()}>
-                        <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-2">
-                          <div>
-                            <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Nome da Propriedade:</label>
-                            <input
-                              type="text"
-                              value={node.config.propertyName || ''}
-                              onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, propertyName: e.target.value } })}
-                              placeholder="Ex: Prazo, Valor Estimado, Responsável..."
-                              className="w-full bg-[#141416] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Tipo de Dado:</label>
-                              <CustomSelect
-                                value={node.config.propertyType || 'text'}
-                                onChange={t => handleUpdateNodeById(node.id, { config: { ...node.config, propertyType: t } })}
-                                options={[
-                                  { value: 'text', label: 'Texto' },
-                                  { value: 'number', label: 'Número / Moeda' },
-                                  { value: 'date', label: 'Data' },
-                                  { value: 'select', label: 'Seleção' }
-                                ]}
-                                size="xs"
-                                className="w-full"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Quadro / Projeto:</label>
-                              <CustomSelect
-                                value={node.config.targetBoardId || node.config.boardId || 'default'}
-                                onChange={b => handleUpdateNodeById(node.id, { config: { ...node.config, targetBoardId: b, boardId: b } })}
-                                options={taskBoards.map(b => ({
-                                  value: b.id,
-                                  label: b.category === 'project' ? `📁 ${b.name}` : `📋 ${b.name}`
-                                }))}
-                                size="xs"
-                                className="w-full"
-                              />
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Instrução para a IA extrair do documento:</label>
-                            <textarea
-                              value={node.config.propertyPrompt || ''}
-                              onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, propertyPrompt: e.target.value } })}
-                              placeholder="Ex: Encontre o valor total do contrato em reais ou a data final de entrega..."
-                              className="w-full h-14 bg-[#141416] border border-zinc-800 rounded-lg p-2 text-xs text-zinc-200 resize-none focus:outline-none placeholder-zinc-500 leading-relaxed"
-                            />
-                          </div>
-
-                          <label className="flex items-center gap-2 cursor-pointer pt-0.5 select-none text-[11px] text-zinc-300">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(node.config.autoCreateProperty ?? true)}
-                              onChange={e => handleUpdateNodeById(node.id, { config: { ...node.config, autoCreateProperty: e.target.checked } })}
-                              className="rounded border-zinc-700 bg-zinc-800 text-pink-500 focus:ring-0 cursor-pointer"
-                            />
-                            <span>Criar propriedade no quadro se ainda não existir</span>
-                          </label>
-                        </div>
-
-                        <button
-                          type="button"
-                          disabled={isExecuting || isExecutingThisNode}
-                          onClick={() => handleExecuteSingleNode(node)}
-                          className="w-full py-2 rounded-xl bg-pink-950/40 hover:bg-pink-950/60 text-pink-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-pink-800/40"
-                        >
-                          <Play className="w-3 h-3" />
-                          <span>{isExecutingThisNode ? 'Extraindo metadados...' : 'Testar extração de propriedade'}</span>
-                        </button>
-
-                        <ResultField output={node.config.lastOutput} isRunning={isExecutingThisNode} lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined} />
+                        <ResultField
+                          output={node.config.lastOutput}
+                          isRunning={isExecutingThisNode}
+                          lastExecutedAt={node.config.lastOutput ? node.config.lastExecutedAt : undefined}
+                          onClear={() => handleUpdateNodeById(node.id, { config: { ...node.config, lastOutput: undefined, lastExecutedAt: undefined } })}
+                        />
                       </div>
                     )}
 
@@ -2330,11 +2507,11 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           )}
 
           {/* ======================================================================== */}
-          {/* 4. PÍLULA DE ZOOM NO CANTO INFERIOR ESQUERDO (Idêntico ao Print 02!)     */}
+          {/* 4. PÍLULA DE ZOOM NO CANTO INFERIOR DIREITO (Mover para a direita)       */}
           {/* ======================================================================== */}
           <div
             onPointerDown={e => e.stopPropagation()}
-            className="absolute bottom-4 left-4 flex items-center gap-1 bg-[#141416]/95 backdrop-blur-md border border-zinc-800/90 rounded-xl px-2 py-1.5 shadow-2xl z-30 text-xs text-zinc-300"
+            className="absolute bottom-4 right-4 flex items-center gap-1 bg-[#141416]/95 backdrop-blur-md border border-zinc-800/90 rounded-xl px-2 py-1.5 shadow-2xl z-30 text-xs text-zinc-300"
           >
             <button
               type="button"
@@ -2686,7 +2863,12 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     <Play className="w-3.5 h-3.5" />
                     <span>{executingNodeId === selectedNode.id ? 'Testando...' : 'Testar esta etapa'}</span>
                   </button>
-                  <ResultField output={selectedNode.config.lastOutput} isRunning={executingNodeId === selectedNode.id} lastExecutedAt={selectedNode.config.lastExecutedAt} />
+                  <ResultField
+                    output={selectedNode.config.lastOutput}
+                    isRunning={executingNodeId === selectedNode.id}
+                    lastExecutedAt={selectedNode.config.lastExecutedAt}
+                    onClear={() => handleUpdateSelectedNode({ config: { ...selectedNode.config, lastOutput: undefined, lastExecutedAt: undefined } })}
+                  />
                 </div>
               </div>
             ) : (
@@ -2750,6 +2932,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
         )}
       </div>
     </div>
+  </div>
   )
 }
 

@@ -302,14 +302,27 @@ export interface TeamEdge {
   label?: string
 }
 
+export interface SquadPipelineStep {
+  id: string
+  agentId: string
+  roleInSquad: string
+  order: number
+  customPrompt?: string
+  expectedOutput?: 'html' | 'note' | 'tasks' | 'text'
+}
+
 export interface TeamDefinition {
   id: string
   version: number
   name: string
   description: string
+  objective?: string
+  color?: string
+  icon?: string
   coordinatorAgentId: string
   nodes: TeamMemberNode[]
   edges: TeamEdge[]
+  pipeline?: SquadPipelineStep[]
   maxParallelSubtasks: number
   createdAt: number
   updatedAt: number
@@ -365,7 +378,7 @@ export interface WorkflowNode {
     falseLabel?: string
     boardId?: string
     targetBoardId?: string
-    taskMode?: 'single' | 'extract_checklist' | 'auto_ai'
+    taskMode?: 'single' | 'extract_checklist' | 'auto_ai' | 'properties_only'
     taskPriority?: string
     taskStatusId?: string
     taskTitleTemplate?: string
