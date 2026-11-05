@@ -255,15 +255,21 @@ export const getLabelColor = (label: string): LabelColorStyle => {
   return LABEL_PALETTES[index]
 }
 
-export const SAVED_LABELS_STORAGE_KEY = 'pyrite_vault_saved_labels'
+export const getBoardSavedLabelsKey = (boardId = 'default') => `pyrite_task_board_labels_${boardId}`
 
-/** Extract all saved labels from storage, settings, and existing tasks */
-export const getSavedLabels = (settings?: TaskSettings, tasks?: TaskItem[]): string[] => {
+/** Extract all saved labels for a specific project/board */
+export const getSavedLabels = (
+  settings?: TaskSettings,
+  tasksOrBoardId?: TaskItem[] | string,
+  maybeBoardId?: string
+): string[] => {
   const set = new Set<string>()
+  const tasks = Array.isArray(tasksOrBoardId) ? tasksOrBoardId : undefined
+  const targetBoard = typeof tasksOrBoardId === 'string' ? tasksOrBoardId : (maybeBoardId || 'default')
 
-  // From localStorage
+  // From localStorage for this board
   try {
-    const raw = localStorage.getItem(SAVED_LABELS_STORAGE_KEY)
+    const raw = localStorage.getItem(getBoardSavedLabelsKey(targetBoard))
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
@@ -274,17 +280,18 @@ export const getSavedLabels = (settings?: TaskSettings, tasks?: TaskItem[]): str
     }
   } catch {}
 
-  // From settings
-  if (settings?.savedLabels && Array.isArray(settings.savedLabels)) {
-    settings.savedLabels.forEach(l => {
+  // From settings boardLabels
+  if (settings?.boardLabels && Array.isArray(settings.boardLabels[targetBoard])) {
+    settings.boardLabels[targetBoard].forEach(l => {
       if (typeof l === 'string' && l.trim()) set.add(l.trim())
     })
   }
 
-  // From existing tasks
+  // From existing tasks that belong to this board
   if (tasks && Array.isArray(tasks)) {
     tasks.forEach(t => {
-      if (Array.isArray(t.tags)) {
+      const tBoard = t.boardId || 'default'
+      if (tBoard === targetBoard && Array.isArray(t.tags)) {
         t.tags.forEach(l => {
           if (typeof l === 'string' && l.trim()) set.add(l.trim())
         })
@@ -295,32 +302,61 @@ export const getSavedLabels = (settings?: TaskSettings, tasks?: TaskItem[]): str
   return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
 }
 
-/** Save a new label to the saved labels pool in localStorage */
-export const saveLabelToPool = (label: string, settings?: TaskSettings, tasks?: TaskItem[]): string[] => {
+/** Save a new label to this board's pool */
+export const saveLabelToPool = (
+  label: string,
+  settings?: TaskSettings,
+  tasksOrBoardId?: TaskItem[] | string,
+  maybeBoardId?: string
+): string[] => {
   const clean = label.trim().replace(/^#/, '')
-  if (!clean) return getSavedLabels(settings, tasks)
+  const tasks = Array.isArray(tasksOrBoardId) ? tasksOrBoardId : undefined
+  const targetBoard = typeof tasksOrBoardId === 'string' ? tasksOrBoardId : (maybeBoardId || 'default')
+  if (!clean) return getSavedLabels(settings, tasks, targetBoard)
 
-  const current = getSavedLabels(settings, tasks)
+  const current = getSavedLabels(settings, tasks, targetBoard)
   if (!current.some(l => l.toLowerCase() === clean.toLowerCase())) {
     const updated = [...current, clean].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
     try {
-      localStorage.setItem(SAVED_LABELS_STORAGE_KEY, JSON.stringify(updated))
+      localStorage.setItem(getBoardSavedLabelsKey(targetBoard), JSON.stringify(updated))
     } catch {}
     return updated
   }
   return current
 }
 
-/** Remove a label from the saved pool */
-export const removeLabelFromPool = (label: string): string[] => {
-  const clean = label.trim()
+/** Rename an existing label in this board's pool */
+export const renameLabelInPool = (oldLabel: string, newLabel: string, boardId = 'default'): string[] => {
+  const targetBoard = boardId || 'default'
+  const oldClean = oldLabel.trim().toLowerCase()
+  const newClean = newLabel.trim().replace(/^#/, '')
+  if (!newClean) return []
+
   try {
-    const raw = localStorage.getItem(SAVED_LABELS_STORAGE_KEY)
+    const raw = localStorage.getItem(getBoardSavedLabelsKey(targetBoard))
+    const list: string[] = raw ? JSON.parse(raw) : []
+    const updated = list.map(l => l.toLowerCase() === oldClean ? newClean : l)
+    if (!updated.some(l => l.toLowerCase() === newClean.toLowerCase())) {
+      updated.push(newClean)
+    }
+    const deduplicated = Array.from(new Set(updated)).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
+    localStorage.setItem(getBoardSavedLabelsKey(targetBoard), JSON.stringify(deduplicated))
+    return deduplicated
+  } catch {}
+  return []
+}
+
+/** Remove a label from this board's pool */
+export const removeLabelFromPool = (label: string, boardId = 'default'): string[] => {
+  const targetBoard = boardId || 'default'
+  const clean = label.trim().toLowerCase()
+  try {
+    const raw = localStorage.getItem(getBoardSavedLabelsKey(targetBoard))
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
-        const updated = parsed.filter((l: string) => l.toLowerCase() !== clean.toLowerCase())
-        localStorage.setItem(SAVED_LABELS_STORAGE_KEY, JSON.stringify(updated))
+        const updated = parsed.filter((l: string) => l.toLowerCase() !== clean)
+        localStorage.setItem(getBoardSavedLabelsKey(targetBoard), JSON.stringify(updated))
         return updated
       }
     }

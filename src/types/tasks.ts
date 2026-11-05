@@ -79,6 +79,7 @@ export interface TaskItem {
   completed: boolean
   statusId: string
   priority: TaskPriority
+  icon?: string
   date?: string
   startDate?: string
   deadline?: string
@@ -102,4 +103,5 @@ export interface TaskSettings {
   statusIndicatorStyle?: StatusIndicatorStyle
   titleColumnName?: string
   savedLabels?: string[]
+  boardLabels?: Record<string, string[]>
 }

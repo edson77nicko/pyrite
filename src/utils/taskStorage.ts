@@ -49,7 +49,7 @@ export const INITIAL_TASKS: TaskItem[] = [
     deadline: todayStr,
     contextNoteId: 'note-welcome',
     contextNoteTitle: 'Bem-vindo ao Pyrite',
-    tags: ['planejamento', 'foco'],
+    tags: [],
     description: '### Objetivos desta tarefa\n- [ ] Levantar requisitos principais\n- [ ] Conectar com a nota de contexto vinculada\n- [ ] Definir entregáveis da semana\n\nEssa tarefa foi estruturada com suporte a propriedades e vinculação de notas locais.',
     createdAt: Date.now() - 3600000 * 5,
     updatedAt: Date.now()
@@ -64,7 +64,7 @@ export const INITIAL_TASKS: TaskItem[] = [
     deadline: tomorrow,
     contextNoteId: 'note-knowledge-graph',
     contextNoteTitle: 'Grafos de Conhecimento',
-    tags: ['metodologia', 'segundo-cerebro'],
+    tags: [],
     description: 'Revisar conexões e organizar o mapa de links bidirecionais entre os tópicos centrais.',
     createdAt: Date.now() - 3600000 * 12,
     updatedAt: Date.now()
@@ -79,7 +79,7 @@ export const INITIAL_TASKS: TaskItem[] = [
     deadline: tomorrow,
     contextNoteId: 'note-obsidian-re',
     contextNoteTitle: 'Arquitetura do Obsidian',
-    tags: ['engenharia', 'desempenho'],
+    tags: [],
     description: 'Avaliar integridade do sistema de arquivos e tempo de inicialização dos vaults.',
     createdAt: Date.now() - 3600000 * 24,
     updatedAt: Date.now()
@@ -94,7 +94,7 @@ export const INITIAL_TASKS: TaskItem[] = [
     deadline: todayStr,
     contextNoteId: 'note-quiz-checklist',
     contextNoteTitle: 'Checklist do Quiz',
-    tags: ['marketing'],
+    tags: [],
     description: 'Métricas analisadas e aprovadas para o fechamento do ciclo.',
     createdAt: Date.now() - 3600000 * 48,
     updatedAt: Date.now()
@@ -164,7 +164,8 @@ export function loadTaskSettings(vaultKey = 'default'): TaskSettings {
           boardProperties: parsed.boardProperties && typeof parsed.boardProperties === 'object' ? parsed.boardProperties : undefined,
           statusIndicatorStyle: parsed.statusIndicatorStyle,
           titleColumnName: parsed.titleColumnName,
-          savedLabels: Array.isArray(parsed.savedLabels) ? parsed.savedLabels : undefined
+          savedLabels: Array.isArray(parsed.savedLabels) ? parsed.savedLabels : undefined,
+          boardLabels: parsed.boardLabels && typeof parsed.boardLabels === 'object' ? parsed.boardLabels : undefined
         }
       }
     }

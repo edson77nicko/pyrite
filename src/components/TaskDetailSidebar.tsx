@@ -11,6 +11,7 @@ import {
   STAR_TO_PRIORITY,
   getSavedLabels,
   saveLabelToPool,
+  renameLabelInPool,
   removeLabelFromPool
 } from '../utils/taskProperties'
 import { TaskCustomPropertyField } from './TaskCustomPropertyField'
@@ -20,6 +21,7 @@ import { StatusBadge, computeStatusProgress } from './StatusIndicator'
 import { LivePreviewEditor } from './LivePreviewEditor'
 import { TaskLabelBadge } from './TaskLabelBadge'
 import { TaskLabelPicker } from './TaskLabelPicker'
+import { IconPickerPopover, renderDynamicIcon } from './IconPickerPopover'
 import {
   CheckCircle2,
   X,
@@ -138,12 +140,12 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [isPriorityDropdownOpen, setIsPriorityDropdownOpen] = useState(false)
   const [isDeletingTask, setIsDeletingTask] = useState(false)
+  const [isTaskIconPickerOpen, setIsTaskIconPickerOpen] = useState(false)
 
   const sidebarRef = useRef<HTMLElement>(null)
   const dateBtnRef = useRef<HTMLButtonElement>(null)
   const deadlineBtnRef = useRef<HTMLButtonElement>(null)
 
-  const [isBursting, setIsBursting] = useState(false)
   const [burstingSubtaskId, setBurstingSubtaskId] = useState<string | null>(null)
 
   // Close sidebar on click outside, preserving task switches, popovers and editor interactions
@@ -255,30 +257,6 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
     setEditingSubtaskId(null)
   }
 
-  const handleToggleComplete = () => {
-    const nextCompleted = !task.completed
-    if (nextCompleted) {
-      setIsBursting(true)
-      setTimeout(() => setIsBursting(false), 500)
-    }
-
-    let nextStatusId = task.statusId
-    if (nextCompleted) {
-      const completedStatus = settings.statuses.find(s => s.isCompleted)
-      if (completedStatus) nextStatusId = completedStatus.id
-    } else {
-      const activeStatusObj = settings.statuses.find(s => !s.isCompleted)
-      if (activeStatusObj) nextStatusId = activeStatusObj.id
-    }
-
-    onUpdateTask({
-      ...task,
-      completed: nextCompleted,
-      statusId: nextStatusId,
-      updatedAt: Date.now()
-    })
-  }
-
   const handleTitleChange = (newTitle: string) => {
     onUpdateTask({ ...task, title: newTitle, updatedAt: Date.now() })
   }
@@ -327,18 +305,32 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
     })
   }
 
+  const boardId = task.boardId || 'default'
+
   const allSavedLabels = useMemo(() => {
-    return getSavedLabels(settings)
-  }, [settings])
+    return getSavedLabels(settings, undefined, boardId)
+  }, [settings, boardId])
 
   const handleCreateLabel = (labelName: string) => {
     const clean = labelName.trim().replace(/^#/, '')
     if (!clean) return
-    saveLabelToPool(clean, settings)
+    saveLabelToPool(clean, settings, boardId)
     if (!task.tags.some(t => t.toLowerCase() === clean.toLowerCase())) {
       onUpdateTask({
         ...task,
         tags: [...task.tags, clean],
+        updatedAt: Date.now()
+      })
+    }
+  }
+
+  const handleRenameSavedLabel = (oldLabel: string, newLabel: string) => {
+    renameLabelInPool(oldLabel, newLabel, boardId)
+    if (task.tags.some(t => t.toLowerCase() === oldLabel.toLowerCase())) {
+      const updatedTags = task.tags.map(t => (t.toLowerCase() === oldLabel.toLowerCase() ? newLabel : t))
+      onUpdateTask({
+        ...task,
+        tags: updatedTags,
         updatedAt: Date.now()
       })
     }
@@ -357,7 +349,14 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
   }
 
   const handleDeleteSavedLabel = (labelName: string) => {
-    removeLabelFromPool(labelName)
+    removeLabelFromPool(labelName, boardId)
+    if (task.tags.some(t => t.toLowerCase() === labelName.toLowerCase())) {
+      onUpdateTask({
+        ...task,
+        tags: task.tags.filter(t => t.toLowerCase() !== labelName.toLowerCase()),
+        updatedAt: Date.now()
+      })
+    }
   }
 
   const handleRemoveTag = (tagToRemove: string) => {
@@ -503,34 +502,42 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
 
       {/* 2. Scrollable Task Details Body */}
       <div className="flex-1 overflow-y-auto p-5 custom-chat-scrollbar space-y-4 flex flex-col">
-        {/* Title & Completion checkbox with Affine 4-Dot Cardinal Burst */}
+        {/* Title & Task Icon button with IconPickerPopover */}
         <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={handleToggleComplete}
-            className="mt-1 transition-transform hover:scale-105 cursor-pointer shrink-0 relative flex items-center justify-center p-0.5"
-            title={task.completed ? "Marcar como pendente" : "Marcar como concluída"}
-          >
-            <div
-              className={`w-5 h-5 rounded-[6px] flex items-center justify-center transition-all ${
-                task.completed
-                  ? 'bg-emerald-500 text-zinc-950 shadow-xs affine-check-pop'
-                  : 'border-2 border-zinc-650 hover:border-zinc-400 bg-transparent'
-              }`}
+          <div className="relative mt-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsTaskIconPickerOpen(prev => !prev)}
+              className="p-1 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f24] border border-zinc-800 hover:border-zinc-700 transition-all cursor-pointer flex items-center justify-center group"
+              title="Escolher ícone da tarefa"
             >
-              {task.completed && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-            </div>
+              {task.icon ? (
+                renderDynamicIcon(task.icon, 'w-5 h-5 text-[var(--accent,#c59b27)]')
+              ) : (
+                <div className="w-5 h-5 rounded-md border border-dashed border-zinc-650 hover:border-zinc-400 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition-colors">
+                  <CheckSquare className="w-3.5 h-3.5" />
+                </div>
+              )}
+            </button>
 
-            {/* Affine 4-Dot Cardinal Burst */}
-            {isBursting && (
-              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-top" />
-                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-bottom" />
-                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-left" />
-                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
-              </div>
+            {isTaskIconPickerOpen && (
+              <IconPickerPopover
+                selectedIcon={task.icon}
+                onSelectIcon={iconName => {
+                  onUpdateTask({ ...task, icon: iconName, updatedAt: Date.now() })
+                  setIsTaskIconPickerOpen(false)
+                }}
+                onRemoveIcon={() => {
+                  const nextTask = { ...task, updatedAt: Date.now() }
+                  delete nextTask.icon
+                  onUpdateTask(nextTask)
+                  setIsTaskIconPickerOpen(false)
+                }}
+                onClose={() => setIsTaskIconPickerOpen(false)}
+                align="left"
+              />
             )}
-          </button>
+          </div>
 
           <div className="flex-1 min-w-0 flex items-center gap-1.5">
             <input
@@ -583,6 +590,7 @@ export const TaskDetailSidebar: React.FC<TaskDetailSidebarProps> = ({
                   allSavedLabels={allSavedLabels}
                   onToggleLabel={handleToggleLabel}
                   onCreateLabel={handleCreateLabel}
+                  onRenameSavedLabel={handleRenameSavedLabel}
                   onDeleteSavedLabel={handleDeleteSavedLabel}
                   onClose={() => setIsAddingTag(false)}
                   align="left"

@@ -14,6 +14,7 @@ import {
   STAR_TO_PRIORITY,
   getSavedLabels,
   saveLabelToPool,
+  renameLabelInPool,
   removeLabelFromPool,
   type PropertyItem
 } from '../utils/taskProperties'
@@ -26,6 +27,7 @@ import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import { TaskContextPicker } from './TaskContextPicker'
 import { TaskLabelBadge } from './TaskLabelBadge'
 import { TaskLabelPicker } from './TaskLabelPicker'
+import { IconPickerPopover, renderDynamicIcon } from './IconPickerPopover'
 import {
   StatusBadge,
   StatusProgressCircle,
@@ -34,7 +36,6 @@ import {
   type StatusIndicatorStyle
 } from './StatusIndicator'
 import {
-  CheckCircle2,
   Plus,
   Settings,
   Search,
@@ -67,6 +68,7 @@ interface TasksViewProps {
   activeBoardId?: string
   taskBoards?: TaskBoard[]
   onSelectTaskBoard?: (boardId: string) => void
+  onChangeTaskBoardIcon?: (boardId: string, icon: string) => void
   onSelectTask: (task: TaskItem | null) => void
   onCreateTask: (initialTitle?: string, initialData?: Partial<TaskItem>) => void
   onUpdateTask: (task: TaskItem) => void
@@ -108,6 +110,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   activeBoardId = 'default',
   taskBoards = [],
   onSelectTaskBoard,
+  onChangeTaskBoardIcon,
   onSelectTask,
   onCreateTask,
   onUpdateTask,
@@ -135,25 +138,33 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [isGroupingMenuOpen, setIsGroupingMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isBoardIconPickerOpen, setIsBoardIconPickerOpen] = useState(false)
 
-  // Labels pool
+  // Labels pool for this specific project/board
   const allSavedLabels = useMemo(() => {
-    return getSavedLabels(settings, tasks)
-  }, [settings, tasks])
+    return getSavedLabels(settings, tasks, activeBoardId || 'default')
+  }, [settings, tasks, activeBoardId])
 
   const handleCreateLabelForTask = (labelName: string, task: TaskItem) => {
     const clean = labelName.trim().replace(/^#/, '')
     if (!clean) return
-    saveLabelToPool(clean, settings, tasks)
+    const boardKey = activeBoardId || 'default'
+    saveLabelToPool(clean, settings, tasks, boardKey)
     const exists = task.tags.some(t => t.toLowerCase() === clean.toLowerCase())
     if (!exists) {
       onUpdateTask({ ...task, tags: [...task.tags, clean], updatedAt: Date.now() })
     }
-    if (onUpdateSettings && (!settings.savedLabels || !settings.savedLabels.some(l => l.toLowerCase() === clean.toLowerCase()))) {
-      onUpdateSettings({
-        ...settings,
-        savedLabels: [...(settings.savedLabels || []), clean]
-      })
+    if (onUpdateSettings) {
+      const curBoardLabels = settings.boardLabels?.[boardKey] || []
+      if (!curBoardLabels.some(l => l.toLowerCase() === clean.toLowerCase())) {
+        onUpdateSettings({
+          ...settings,
+          boardLabels: {
+            ...(settings.boardLabels || {}),
+            [boardKey]: [...curBoardLabels, clean]
+          }
+        })
+      }
     }
   }
 
@@ -165,12 +176,53 @@ export const TasksView: React.FC<TasksViewProps> = ({
     onUpdateTask({ ...task, tags: nextTags, updatedAt: Date.now() })
   }
 
-  const handleDeleteSavedLabel = (labelName: string) => {
-    removeLabelFromPool(labelName)
-    if (onUpdateSettings && settings.savedLabels) {
+  const handleRenameSavedLabel = (oldLabel: string, newLabel: string) => {
+    const boardKey = activeBoardId || 'default'
+    renameLabelInPool(oldLabel, newLabel, boardKey)
+
+    // Update in all tasks belonging to this board
+    tasks.forEach(t => {
+      const tBoard = t.boardId || 'default'
+      if (tBoard === boardKey && t.tags.some(tg => tg.toLowerCase() === oldLabel.toLowerCase())) {
+        const nextTags = t.tags.map(tg => (tg.toLowerCase() === oldLabel.toLowerCase() ? newLabel : tg))
+        onUpdateTask({ ...t, tags: nextTags, updatedAt: Date.now() })
+      }
+    })
+
+    if (onUpdateSettings && settings.boardLabels?.[boardKey]) {
+      const updated = settings.boardLabels[boardKey].map(l =>
+        l.toLowerCase() === oldLabel.toLowerCase() ? newLabel : l
+      )
       onUpdateSettings({
         ...settings,
-        savedLabels: settings.savedLabels.filter(l => l.toLowerCase() !== labelName.toLowerCase())
+        boardLabels: {
+          ...settings.boardLabels,
+          [boardKey]: updated
+        }
+      })
+    }
+  }
+
+  const handleDeleteSavedLabel = (labelName: string) => {
+    const boardKey = activeBoardId || 'default'
+    removeLabelFromPool(labelName, boardKey)
+
+    // Remove from all tasks belonging to this board
+    tasks.forEach(t => {
+      const tBoard = t.boardId || 'default'
+      if (tBoard === boardKey && t.tags.some(tg => tg.toLowerCase() === labelName.toLowerCase())) {
+        const nextTags = t.tags.filter(tg => tg.toLowerCase() !== labelName.toLowerCase())
+        onUpdateTask({ ...t, tags: nextTags, updatedAt: Date.now() })
+      }
+    })
+
+    if (onUpdateSettings && settings.boardLabels?.[boardKey]) {
+      onUpdateSettings({
+        ...settings,
+        boardLabels: {
+          ...settings.boardLabels,
+          [boardKey]: settings.boardLabels[boardKey].filter(l => l.toLowerCase() !== labelName.toLowerCase())
+        }
       })
     }
   }
@@ -596,28 +648,66 @@ export const TasksView: React.FC<TasksViewProps> = ({
         )
       }
 
-      case 'multiselect':
+      case 'multiselect': {
+        const selectedIds: string[] = Array.isArray(v) ? v : []
+        const selectedItems = items.filter(it => selectedIds.includes(it.id))
+        const isEditing = inlineCustomField?.taskId === task.id && inlineCustomField.propId === prop.id
+
         return (
-          <div className="flex flex-wrap gap-1">
-            {items.map(it => {
-              const selected: string[] = Array.isArray(v) ? v : []
-              const on = selected.includes(it.id)
-              return (
-                <button
-                  key={it.id}
-                  type="button"
-                  onClick={e => {
-                    e.stopPropagation()
-                    updateValue(on ? selected.filter(s => s !== it.id) : [...selected, it.id])
-                  }}
-                  className={`cursor-pointer transition-opacity ${on ? 'opacity-100' : 'opacity-40 hover:opacity-80'}`}
-                >
-                  <Pill item={it} />
-                </button>
-              )
-            })}
+          <div className="relative max-w-full" data-inline-popover="true">
+            <div
+              onClick={e => {
+                e.stopPropagation()
+                setInlineCustomField(isEditing ? null : { taskId: task.id, propId: prop.id })
+              }}
+              className="flex items-center gap-1 max-w-full overflow-hidden cursor-pointer flex-nowrap"
+            >
+              {selectedItems.length > 0 ? (
+                selectedItems.map(it => <Pill key={it.id} item={it} />)
+              ) : (
+                <span className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity whitespace-nowrap">
+                  + escolher
+                </span>
+              )}
+            </div>
+
+            {isEditing && (
+              <div
+                onClick={e => e.stopPropagation()}
+                className="absolute top-full left-0 mt-1 z-40 w-48 rounded-xl bg-[#18181b] shadow-2xl p-1.5 space-y-0.5 border border-zinc-700/80 animate-in fade-in-50"
+              >
+                <div className="text-[10px] font-semibold text-zinc-400 px-2 py-0.5 uppercase tracking-wider">
+                  {prop.name}
+                </div>
+                {items.length === 0 ? (
+                  <div className="p-2 text-center text-zinc-500 text-xs">Sem opções</div>
+                ) : (
+                  items.map(it => {
+                    const on = selectedIds.includes(it.id)
+                    return (
+                      <button
+                        key={it.id}
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation()
+                          const next = on ? selectedIds.filter(id => id !== it.id) : [...selectedIds, it.id]
+                          updateValue(next)
+                        }}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                          on ? 'bg-zinc-800 text-white font-medium' : 'hover:bg-zinc-800/50 text-zinc-300'
+                        }`}
+                      >
+                        <Pill item={it} />
+                        {on && <Check className="w-3.5 h-3.5 text-zinc-400 shrink-0" />}
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            )}
           </div>
         )
+      }
 
       case 'text':
       case 'number':
@@ -876,7 +966,31 @@ export const TasksView: React.FC<TasksViewProps> = ({
       <div className="app-tasks-header h-12 px-5 bg-[#0e0e11] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
         {/* Left: Title & Counters */}
         <div className="flex items-center gap-2.5">
-          <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--accent, #c59b27)' }} />
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsBoardIconPickerOpen(o => !o)}
+              className="p-1 rounded-lg hover:bg-zinc-800 text-[var(--accent,#c59b27)] transition-colors cursor-pointer flex items-center justify-center group/iconbtn"
+              title="Trocar ícone do projeto"
+            >
+              {renderDynamicIcon(currentBoard?.icon || 'CheckCircle2', 'w-4 h-4 shrink-0', { color: 'var(--accent, #c59b27)' })}
+            </button>
+
+            {isBoardIconPickerOpen && (
+              <IconPickerPopover
+                selectedIcon={currentBoard?.icon}
+                onSelectIcon={iconName => {
+                  if (onChangeTaskBoardIcon && currentBoard) {
+                    onChangeTaskBoardIcon(currentBoard.id, iconName)
+                  }
+                  setIsBoardIconPickerOpen(false)
+                }}
+                onClose={() => setIsBoardIconPickerOpen(false)}
+                align="left"
+              />
+            )}
+          </div>
+
           <div className="flex items-center gap-2">
             <h1 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">
               {currentBoard?.name || 'Tarefas'}
@@ -1339,6 +1453,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           className={`px-3 py-1.5 font-medium text-zinc-100 text-[12.5px] border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
                         >
                           <div className="flex items-center gap-1.5 w-full">
+                            {/* Task Icon */}
+                            <span className="shrink-0" title="Ícone da tarefa">
+                              {renderDynamicIcon(task.icon || 'CheckCircle2', 'w-3.5 h-3.5 shrink-0 text-zinc-500')}
+                            </span>
+
                             {/* Inline editable title input */}
                             <input
                               type="text"
@@ -1409,16 +1528,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         {!isColumnHidden('prop_status') && (
                           <td
                             style={{ width: columnWidths.prop_status || 170 }}
-                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                            className={`px-3 py-2 overflow-hidden max-w-0 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
                           >
-                            <div className="relative inline-block" data-inline-popover="true">
+                            <div className="relative inline-block max-w-full truncate" data-inline-popover="true">
                               <button
                                 type="button"
                                 onClick={e => {
                                   e.stopPropagation()
                                   setInlineStatusTaskId(inlineStatusTaskId === task.id ? null : task.id)
                                 }}
-                                className="cursor-pointer text-left"
+                                className="cursor-pointer text-left max-w-full truncate block"
                                 title="Clique para alterar status"
                               >
                                 <StatusBadge
@@ -1478,10 +1597,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         {!isColumnHidden('prop_priority') && (
                           <td
                             style={{ width: columnWidths.prop_priority || 130 }}
-                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                            className={`px-3 py-2 overflow-hidden max-w-0 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
                           >
                             {priorityStyle === 'stars' ? (
-                              <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
+                              <div className="flex items-center gap-0.5 max-w-full overflow-hidden" onClick={e => e.stopPropagation()}>
                                 {[1, 2, 3, 4, 5].map(starNum => {
                                   const starCount = PRIORITY_STAR_MAP[task.priority] ?? 0
                                   const isActive = starNum <= (starCount === 4 && starNum === 5 ? 4 : starCount)
@@ -1505,26 +1624,26 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 })}
                               </div>
                             ) : (
-                              <div className="relative inline-block" data-inline-popover="true">
+                              <div className="relative inline-block max-w-full truncate" data-inline-popover="true">
                                 <button
                                   type="button"
                                   onClick={e => {
                                     e.stopPropagation()
                                     setInlinePriorityTaskId(inlinePriorityTaskId === task.id ? null : task.id)
                                   }}
-                                  className="cursor-pointer text-left"
+                                  className="cursor-pointer text-left max-w-full truncate block"
                                   title="Clique para alterar prioridade"
                                 >
                                   {task.priority !== 'none' ? (
                                     <span
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-medium"
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-medium max-w-full truncate"
                                       style={{
                                         backgroundColor: priorityInfo.bg,
                                         color: priorityInfo.color
                                       }}
                                     >
-                                      <Flag className="w-2.5 h-2.5" />
-                                      <span>{priorityInfo.label}</span>
+                                      <Flag className="w-2.5 h-2.5 shrink-0" />
+                                      <span className="truncate">{priorityInfo.label}</span>
                                     </span>
                                   ) : (
                                     <span className="text-zinc-600 hover:text-zinc-400 text-[11px]">-</span>
@@ -1570,12 +1689,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         {!isColumnHidden('prop_deadline') && (
                           <td
                             style={{ width: columnWidths.prop_deadline || 160 }}
-                            className={`px-3 py-2 text-zinc-300 relative whitespace-nowrap border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                            className={`px-3 py-2 text-zinc-300 relative overflow-hidden max-w-0 whitespace-nowrap border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
                           >
-                            <div className="inline-block">
+                            <div className="inline-block max-w-full overflow-hidden">
                               {task.deadline || task.startDate || task.date ? (
                                 <div
-                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-zinc-800/40 transition-colors cursor-pointer whitespace-nowrap"
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-zinc-800/40 transition-colors cursor-pointer whitespace-nowrap max-w-full overflow-hidden"
                                   onClick={e => {
                                     e.stopPropagation()
                                     if (editingDeadlineTaskId === task.id) {
@@ -1659,16 +1778,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         {!isColumnHidden('prop_context') && (
                           <td
                             style={{ width: columnWidths.prop_context || 170 }}
-                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                            className={`px-3 py-2 overflow-hidden max-w-0 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
                           >
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 max-w-full overflow-hidden">
                               {task.contextNoteId ? (
                                 <span
                                   onClick={e => {
                                     e.stopPropagation()
                                     setInlineContextTaskId(task.id)
                                   }}
-                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#18181b] hover:bg-zinc-800 transition-colors text-[11px] font-medium max-w-[150px] truncate cursor-pointer"
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#18181b] hover:bg-zinc-800 transition-colors text-[11px] font-medium max-w-full truncate cursor-pointer"
                                   style={{ color: 'var(--accent, #c59b27)' }}
                                   title="Clique para alterar nota vinculada"
                                 >
@@ -1682,7 +1801,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                     e.stopPropagation()
                                     setInlineContextTaskId(task.id)
                                   }}
-                                  className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity cursor-pointer"
+                                  className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity cursor-pointer whitespace-nowrap"
                                   title="Vincular nota"
                                 >
                                   + nota
@@ -1696,7 +1815,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                     e.stopPropagation()
                                     onOpenNote(task.contextNoteId!)
                                   }}
-                                  className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-zinc-200 transition-opacity cursor-pointer"
+                                  className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-zinc-200 transition-opacity cursor-pointer shrink-0"
                                   title="Abrir nota no editor"
                                 >
                                   <ExternalLink className="w-3 h-3" />
@@ -1710,10 +1829,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         {!isColumnHidden('prop_tags') && (
                           <td
                             style={{ width: columnWidths.prop_tags || 150 }}
-                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all relative ${rowBg}`}
+                            className={`px-3 py-2 overflow-hidden max-w-0 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all relative ${rowBg}`}
                             data-inline-popover="true"
                           >
-                            <div className="flex items-center gap-1.5 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-nowrap overflow-hidden max-w-full">
                               {task.tags.map(tag => (
                                 <TaskLabelBadge
                                   key={tag}
@@ -1734,7 +1853,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                   e.stopPropagation()
                                   setInlineTagsTaskId(inlineTagsTaskId === task.id ? null : task.id)
                                 }}
-                                className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity cursor-pointer whitespace-nowrap"
+                                className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
                                 title="Adicionar ou selecionar rótulo"
                               >
                                 + rótulo
@@ -1747,6 +1866,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 allSavedLabels={allSavedLabels}
                                 onToggleLabel={lbl => handleToggleLabelForTask(lbl, task)}
                                 onCreateLabel={lbl => handleCreateLabelForTask(lbl, task)}
+                                onRenameSavedLabel={handleRenameSavedLabel}
                                 onDeleteSavedLabel={handleDeleteSavedLabel}
                                 onClose={() => setInlineTagsTaskId(null)}
                                 align="left"
@@ -1760,9 +1880,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <td
                             key={cp.id}
                             style={{ width: columnWidths[cp.id] || 150 }}
-                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
+                            className={`px-3 py-2 overflow-hidden max-w-0 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${rowBg}`}
                           >
-                            {renderCustomCell(task, cp)}
+                            <div className="max-w-full overflow-hidden truncate">
+                              {renderCustomCell(task, cp)}
+                            </div>
                           </td>
                         ))}
 
@@ -2063,6 +2185,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                   </div>
                                 )}
                               </button>
+                              {task.icon && (
+                                <span className="shrink-0 mt-0.5" title={`Ícone: ${task.icon}`}>
+                                  {renderDynamicIcon(task.icon, 'w-3.5 h-3.5 shrink-0 text-zinc-400')}
+                                </span>
+                              )}
                               <span
                                 className={`text-xs font-medium text-zinc-200 flex-1 leading-snug ${
                                   task.completed ? 'line-through text-zinc-500' : ''

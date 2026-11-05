@@ -6,9 +6,10 @@ import { TaskContextPicker } from './TaskContextPicker'
 import { CustomDatePickerPopover } from './CustomDatePickerPopover'
 import { TaskCustomPropertyField } from './TaskCustomPropertyField'
 import { StatusBadge, computeStatusProgress } from './StatusIndicator'
-import { getBoardProperties, formatDateBR, getSavedLabels, saveLabelToPool, removeLabelFromPool } from '../utils/taskProperties'
+import { getBoardProperties, formatDateBR, getSavedLabels, saveLabelToPool, renameLabelInPool, removeLabelFromPool } from '../utils/taskProperties'
 import { TaskLabelBadge } from './TaskLabelBadge'
 import { TaskLabelPicker } from './TaskLabelPicker'
+import { IconPickerPopover, renderDynamicIcon } from './IconPickerPopover'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -18,6 +19,7 @@ import {
   Flag,
   Compass,
   Check,
+  CheckSquare,
   Plus,
   PanelLeftClose,
   ChevronDown,
@@ -55,19 +57,34 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
   const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false)
   const [isEndDatePickerOpen, setIsEndDatePickerOpen] = useState(false)
   const [isAddingTag, setIsAddingTag] = useState(false)
+  const [isTaskIconPickerOpen, setIsTaskIconPickerOpen] = useState(false)
+
+  const boardId = task.boardId || 'default'
 
   const allSavedLabels = useMemo(() => {
-    return getSavedLabels(settings)
-  }, [settings])
+    return getSavedLabels(settings, undefined, boardId)
+  }, [settings, boardId])
 
   const handleCreateLabel = (labelName: string) => {
     const clean = labelName.trim().replace(/^#/, '')
     if (!clean) return
-    saveLabelToPool(clean, settings)
+    saveLabelToPool(clean, settings, boardId)
     if (!task.tags.some(t => t.toLowerCase() === clean.toLowerCase())) {
       onUpdateTask({
         ...task,
         tags: [...task.tags, clean],
+        updatedAt: Date.now()
+      })
+    }
+  }
+
+  const handleRenameSavedLabel = (oldLabel: string, newLabel: string) => {
+    renameLabelInPool(oldLabel, newLabel, boardId)
+    if (task.tags.some(t => t.toLowerCase() === oldLabel.toLowerCase())) {
+      const updatedTags = task.tags.map(t => (t.toLowerCase() === oldLabel.toLowerCase() ? newLabel : t))
+      onUpdateTask({
+        ...task,
+        tags: updatedTags,
         updatedAt: Date.now()
       })
     }
@@ -86,7 +103,14 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
   }
 
   const handleDeleteSavedLabel = (labelName: string) => {
-    removeLabelFromPool(labelName)
+    removeLabelFromPool(labelName, boardId)
+    if (task.tags.some(t => t.toLowerCase() === labelName.toLowerCase())) {
+      onUpdateTask({
+        ...task,
+        tags: task.tags.filter(t => t.toLowerCase() !== labelName.toLowerCase()),
+        updatedAt: Date.now()
+      })
+    }
   }
 
   // Subtask local states
@@ -95,8 +119,7 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null)
   const [editingSubtaskTitle, setEditingSubtaskTitle] = useState('')
 
-  // Completion burst animation
-  const [isBursting, setIsBursting] = useState(false)
+  // Completion burst animation for subtasks
   const [burstingSubtaskId, setBurstingSubtaskId] = useState<string | null>(null)
 
   const startDateBtnRef = useRef<HTMLButtonElement>(null)
@@ -139,30 +162,6 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
       p => !['prop_status', 'prop_priority', 'prop_deadline', 'prop_context', 'prop_tags'].includes(p.id) && !p.hidden
     )
   }, [boardProps])
-
-  const handleToggleComplete = () => {
-    const nextCompleted = !task.completed
-    if (nextCompleted) {
-      setIsBursting(true)
-      setTimeout(() => setIsBursting(false), 500)
-    }
-
-    let nextStatusId = task.statusId
-    if (nextCompleted) {
-      const completedStatus = settings.statuses.find(s => s.isCompleted)
-      if (completedStatus) nextStatusId = completedStatus.id
-    } else {
-      const activeStatusObj = settings.statuses.find(s => !s.isCompleted)
-      if (activeStatusObj) nextStatusId = activeStatusObj.id
-    }
-
-    onUpdateTask({
-      ...task,
-      completed: nextCompleted,
-      statusId: nextStatusId,
-      updatedAt: Date.now()
-    })
-  }
 
   const handleTitleChange = (newTitle: string) => {
     onUpdateTask({ ...task, title: newTitle, updatedAt: Date.now() })
@@ -393,33 +392,42 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
         {/* Scrollable Document Content */}
         <div className="flex-1 overflow-y-auto custom-chat-scrollbar px-6 md:px-14 py-8 task-document-page">
           <div className="max-w-3xl mx-auto space-y-6">
-            {/* Title with Checkbox & Recuar toggle */}
+            {/* Title with Task Icon & Recuar toggle */}
             <div className="flex items-start gap-3">
-              <button
-                type="button"
-                onClick={handleToggleComplete}
-                className="mt-1.5 shrink-0 cursor-pointer relative flex items-center justify-center p-0.5"
-                title={task.completed ? 'Marcar como pendente' : 'Marcar como concluída'}
-              >
-                <div
-                  className={`w-5 h-5 rounded-[5px] flex items-center justify-center transition-all ${
-                    task.completed
-                      ? 'bg-emerald-500 text-zinc-950 shadow-xs'
-                      : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
-                  }`}
+              <div className="relative mt-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsTaskIconPickerOpen(prev => !prev)}
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-[#18181c] border border-zinc-800 hover:border-zinc-700 transition-all cursor-pointer flex items-center justify-center group"
+                  title="Escolher ícone da tarefa"
                 >
-                  {task.completed && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                </div>
+                  {task.icon ? (
+                    renderDynamicIcon(task.icon, 'w-6 h-6 text-[var(--accent,#c59b27)]')
+                  ) : (
+                    <div className="w-6 h-6 rounded-md border border-dashed border-zinc-650 hover:border-zinc-400 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition-colors">
+                      <CheckSquare className="w-4 h-4" />
+                    </div>
+                  )}
+                </button>
 
-                {isBursting && (
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    <span className="absolute w-1.5 h-1.5 rounded-full bg-emerald-400 affine-dot-top" />
-                    <span className="absolute w-1.5 h-1.5 rounded-full bg-emerald-400 affine-dot-bottom" />
-                    <span className="absolute w-1.5 h-1.5 rounded-full bg-emerald-400 affine-dot-left" />
-                    <span className="absolute w-1.5 h-1.5 rounded-full bg-emerald-400 affine-dot-right" />
-                  </div>
+                {isTaskIconPickerOpen && (
+                  <IconPickerPopover
+                    selectedIcon={task.icon}
+                    onSelectIcon={iconName => {
+                      onUpdateTask({ ...task, icon: iconName, updatedAt: Date.now() })
+                      setIsTaskIconPickerOpen(false)
+                    }}
+                    onRemoveIcon={() => {
+                      const nextTask = { ...task, updatedAt: Date.now() }
+                      delete nextTask.icon
+                      onUpdateTask(nextTask)
+                      setIsTaskIconPickerOpen(false)
+                    }}
+                    onClose={() => setIsTaskIconPickerOpen(false)}
+                    align="left"
+                  />
                 )}
-              </button>
+              </div>
 
               <div className="flex-1 min-w-0 flex items-center gap-2">
                 <input
@@ -718,6 +726,7 @@ export const TaskDocumentView: React.FC<TaskDocumentViewProps> = ({
                           allSavedLabels={allSavedLabels}
                           onToggleLabel={handleToggleLabel}
                           onCreateLabel={handleCreateLabel}
+                          onRenameSavedLabel={handleRenameSavedLabel}
                           onDeleteSavedLabel={handleDeleteSavedLabel}
                           onClose={() => setIsAddingTag(false)}
                           align="left"

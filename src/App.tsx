@@ -471,16 +471,26 @@ export const App: React.FC = () => {
     }
 
     if (view === 'tasks') {
+      const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
+      const currentBoard = currentBoards.find(b => b.id === (activeBoardId || 'default')) || currentBoards[0]
+      const bId = currentBoard?.id || 'default'
+      const tabNoteId = `__tasks__:${bId}`
+      const bTitle = currentBoard?.name || 'Tarefas'
+      const bIcon = currentBoard?.icon || 'CheckCircle2'
+      setActiveBoardId(bId)
+      setCurrentView('tasks')
+
       setTabs(prev => {
-        const existing = prev.find(t => t.noteId === '__tasks__')
+        const existing = prev.find(t => t.noteId === tabNoteId || (bId === 'default' && t.noteId === '__tasks__'))
         if (existing) {
           setActiveTabId(existing.id)
-          return prev
+          return prev.map(t => t.id === existing.id ? { ...t, noteId: tabNoteId, title: bTitle, icon: bIcon } : t)
         }
         const tasksTab: TabItem = {
-          id: 'tab_tasks',
-          noteId: '__tasks__',
-          title: 'Tarefas'
+          id: `tab_tasks_${bId}`,
+          noteId: tabNoteId,
+          title: bTitle,
+          icon: bIcon
         }
         setActiveTabId(tasksTab.id)
         return [...prev, tasksTab]
@@ -560,7 +570,9 @@ export const App: React.FC = () => {
       setCurrentView('graph')
     } else if (tab.noteId === '__canvas__') {
       setCurrentView('canvas')
-    } else if (tab.noteId === '__tasks__') {
+    } else if (tab.noteId === '__tasks__' || tab.noteId.startsWith('__tasks__')) {
+      const targetBoardId = tab.noteId.includes(':') ? tab.noteId.split(':')[1] : 'default'
+      setActiveBoardId(targetBoardId)
       setCurrentView('tasks')
     } else if (tab.noteId === '__agents__') {
       setCurrentView('agents')
@@ -589,7 +601,9 @@ export const App: React.FC = () => {
         setCurrentView('graph')
       } else if (nextTab.noteId === '__canvas__') {
         setCurrentView('canvas')
-      } else if (nextTab.noteId === '__tasks__') {
+      } else if (nextTab.noteId === '__tasks__' || nextTab.noteId.startsWith('__tasks__')) {
+        const targetBoardId = nextTab.noteId.includes(':') ? nextTab.noteId.split(':')[1] : 'default'
+        setActiveBoardId(targetBoardId)
         setCurrentView('tasks')
       } else if (nextTab.noteId === '__agents__') {
         setCurrentView('agents')
@@ -607,16 +621,21 @@ export const App: React.FC = () => {
     const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
     const boardObj = currentBoards.find(b => b.id === boardId)
     const boardTitle = boardObj?.name || 'Tarefas'
+    const boardIcon = boardObj?.icon || 'CheckCircle2'
+    const tabNoteId = `__tasks__:${boardId}`
+    const tabId = `tab_tasks_${boardId}`
+
     setTabs(prev => {
-      const existing = prev.find(t => t.noteId === '__tasks__')
+      const existing = prev.find(t => t.noteId === tabNoteId || (boardId === 'default' && t.noteId === '__tasks__'))
       if (existing) {
         setActiveTabId(existing.id)
-        return prev.map(t => t.id === existing.id ? { ...t, title: boardTitle } : t)
+        return prev.map(t => t.id === existing.id ? { ...t, noteId: tabNoteId, title: boardTitle, icon: boardIcon } : t)
       }
       const tasksTab: TabItem = {
-        id: 'tab_tasks',
-        noteId: '__tasks__',
-        title: boardTitle
+        id: tabId,
+        noteId: tabNoteId,
+        title: boardTitle,
+        icon: boardIcon
       }
       setActiveTabId(tasksTab.id)
       return [...prev, tasksTab]
@@ -647,19 +666,18 @@ export const App: React.FC = () => {
     handleUpdateTaskSettings(updatedSettings)
     setActiveBoardId(newBoard.id)
     setCurrentView('tasks')
+
+    const tabNoteId = `__tasks__:${newBoard.id}`
+    const tabId = `tab_tasks_${newBoard.id}`
     setTabs(prev => {
-      const existing = prev.find(t => t.noteId === '__tasks__')
-      if (existing) {
-        setActiveTabId(existing.id)
-        return prev.map(t => t.id === existing.id ? { ...t, title: newBoard.name } : t)
+      const newTab: TabItem = {
+        id: tabId,
+        noteId: tabNoteId,
+        title: newBoard.name,
+        icon: newBoard.icon
       }
-      const tasksTab: TabItem = {
-        id: 'tab_tasks',
-        noteId: '__tasks__',
-        title: newBoard.name
-      }
-      setActiveTabId(tasksTab.id)
-      return [...prev, tasksTab]
+      setActiveTabId(newTab.id)
+      return [...prev, newTab]
     })
   }
 
@@ -670,6 +688,13 @@ export const App: React.FC = () => {
       b.id === boardId ? { ...b, name: newName.trim() } : b
     )
     handleUpdateTaskSettings({ ...taskSettings, boards: updatedBoards })
+    setTabs(prev =>
+      prev.map(t =>
+        t.noteId === `__tasks__:${boardId}` || (boardId === 'default' && t.noteId === '__tasks__')
+          ? { ...t, title: newName.trim() }
+          : t
+      )
+    )
   }
 
   const handleChangeTaskBoardIcon = (boardId: string, icon: string) => {
@@ -678,6 +703,13 @@ export const App: React.FC = () => {
       b.id === boardId ? { ...b, icon } : b
     )
     handleUpdateTaskSettings({ ...taskSettings, boards: updatedBoards })
+    setTabs(prev =>
+      prev.map(t =>
+        t.noteId === `__tasks__:${boardId}` || (boardId === 'default' && t.noteId === '__tasks__')
+          ? { ...t, icon }
+          : t
+      )
+    )
   }
 
   const handleDeleteTaskBoard = (boardId: string) => {
@@ -685,6 +717,7 @@ export const App: React.FC = () => {
     const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
     const updatedBoards = currentBoards.filter(b => b.id !== boardId)
     handleUpdateTaskSettings({ ...taskSettings, boards: updatedBoards })
+    setTabs(prev => prev.filter(t => t.noteId !== `__tasks__:${boardId}`))
     if (activeBoardId === boardId) {
       setActiveBoardId('default')
     }
@@ -1982,6 +2015,7 @@ export const App: React.FC = () => {
                   activeBoardId={activeBoardId}
                   taskBoards={taskBoards}
                   onSelectTaskBoard={handleSelectTaskBoard}
+                  onChangeTaskBoardIcon={handleChangeTaskBoardIcon}
                   onSelectTask={(task) => setSelectedTaskId(task ? task.id : null)}
                   onCreateTask={handleCreateTask}
                   onUpdateTask={handleUpdateTask}

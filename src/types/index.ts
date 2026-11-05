@@ -74,6 +74,7 @@ export interface TabItem {
   title: string
   isPinned?: boolean
   type?: NoteType
+  icon?: string
 }
 
 export * from './draw'

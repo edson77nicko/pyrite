@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import type { TabItem, EditorDisplayMode, ViewMode } from '../types'
 import type { UpdaterStatusData } from '../types/electron'
+import { renderDynamicIcon } from './IconPickerPopover'
 import {
   FileText,
   Plus,
@@ -136,7 +137,7 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
           const isActive = tab.id === activeTabId
           const isGraphTab = tab.noteId === '__graph__'
           const isCanvasTab = tab.noteId === '__canvas__'
-          const isTasksTab = tab.noteId === '__tasks__'
+          const isTasksTab = tab.noteId === '__tasks__' || tab.noteId.startsWith('__tasks__')
           const isAgentsTab = tab.noteId === '__agents__'
           const isDrawTab = tab.type === 'draw'
           const isMindMapTab = tab.type === 'mindmap'
@@ -197,7 +198,11 @@ export const TabHeader: React.FC<TabHeaderProps> = ({
               }`}
               style={isActive ? { borderTopColor: 'var(--accent)' } : undefined}
             >
-              <TabIcon className="w-3.5 h-3.5 shrink-0" style={isHtmlTab ? { color: '#f97316' } : isActive ? { color: 'var(--accent-icon, var(--accent))' } : { color: '#71717a' }} />
+              {tab.icon ? (
+                renderDynamicIcon(tab.icon, 'w-3.5 h-3.5 shrink-0', isHtmlTab ? { color: '#f97316' } : isActive ? { color: 'var(--accent-icon, var(--accent))' } : { color: '#71717a' })
+              ) : (
+                <TabIcon className="w-3.5 h-3.5 shrink-0" style={isHtmlTab ? { color: '#f97316' } : isActive ? { color: 'var(--accent-icon, var(--accent))' } : { color: '#71717a' }} />
+              )}
               <span className="truncate">{tab.title || 'Sem título'}</span>
 
               {/* If Pinned: Show ONLY the Gold Pin icon (click to unpin) */}
