@@ -29,6 +29,51 @@ const POPULAR_ICON_NAMES = [
   'Palette'
 ]
 
+export interface IconCategory {
+  id: string
+  label: string
+}
+
+export const ICON_CATEGORIES: IconCategory[] = [
+  { id: 'all', label: 'Todos' },
+  { id: 'popular', label: 'Populares' },
+  { id: 'work', label: 'Trabalho' },
+  { id: 'tech', label: 'Tecnologia' },
+  { id: 'business', label: 'Negócios' },
+  { id: 'design', label: 'Design' },
+  { id: 'comm', label: 'Comunicação' }
+]
+
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  work: [
+    'briefcase', 'calendar', 'clock', 'timer', 'watch', 'file', 'folder', 'archive',
+    'bookmark', 'check', 'clipboard', 'list', 'task', 'todo', 'target', 'milestone',
+    'flag', 'pin', 'note', 'presentation', 'paperclip', 'table', 'sheet', 'kanban',
+    'workflow', 'inbox', 'award', 'trophy'
+  ],
+  tech: [
+    'code', 'terminal', 'cpu', 'database', 'server', 'network', 'wifi', 'cloud',
+    'git', 'branch', 'bug', 'chip', 'harddrive', 'keyboard', 'laptop', 'monitor',
+    'smartphone', 'router', 'cable', 'bot', 'robot', 'sparkles', 'command', 'globe',
+    'link', 'shield', 'lock', 'key', 'wrench'
+  ],
+  business: [
+    'dollar', 'euro', 'pound', 'bitcoin', 'coins', 'creditcard', 'wallet', 'receipt',
+    'bank', 'vault', 'chart', 'graph', 'trend', 'percent', 'calculator', 'store',
+    'shopping', 'cart', 'bag', 'tag', 'package', 'box', 'truck', 'handshake'
+  ],
+  design: [
+    'palette', 'brush', 'pen', 'pencil', 'image', 'camera', 'video', 'film', 'play',
+    'music', 'audio', 'volume', 'speaker', 'headphones', 'mic', 'sliders', 'crop',
+    'layers', 'layout', 'grid', 'eye', 'circle', 'square', 'star', 'sun', 'moon',
+    'heart', 'wand'
+  ],
+  comm: [
+    'user', 'group', 'message', 'chat', 'mail', 'send', 'bell', 'phone', 'share',
+    'megaphone', 'at'
+  ]
+}
+
 // Portuguese keyword expansions for intuitive searching
 const PT_KEYWORD_MAP: Record<string, string[]> = {
   fogo: ['flame', 'fire'],
@@ -108,7 +153,6 @@ const PT_KEYWORD_MAP: Record<string, string[]> = {
 
 // Retrieve all available icon names from lucide-react once
 const ALL_LUCIDE_NAMES = Object.keys(icons).filter(key => {
-  // Filter out any metadata, prototype or non-component properties
   return typeof (icons as any)[key] === 'object' || typeof (icons as any)[key] === 'function'
 })
 
@@ -123,7 +167,6 @@ export const renderDynamicIcon = (
   if (Component) {
     return <Component className={className} style={style} />
   }
-  // Try case-insensitive lookup if direct key wasn't found
   const lowerName = name.toLowerCase()
   const foundKey = ALL_LUCIDE_NAMES.find(k => k.toLowerCase() === lowerName)
   if (foundKey) {
@@ -149,6 +192,7 @@ export const IconPickerPopover: React.FC<IconPickerPopoverProps> = ({
   align = 'left'
 }) => {
   const [search, setSearch] = useState('')
+  const [activeCategory, setActiveCategory] = useState<string>('all')
   const [displayLimit, setDisplayLimit] = useState(120)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -176,14 +220,26 @@ export const IconPickerPopover: React.FC<IconPickerPopoverProps> = ({
 
   const cleanSearch = search.trim().toLowerCase()
 
-  // Reset pagination when searching
+  // Reset pagination when searching or changing category
   useEffect(() => {
     setDisplayLimit(120)
     if (scrollRef.current) scrollRef.current.scrollTop = 0
-  }, [search])
+  }, [search, activeCategory])
+
+  const categoryBaseIcons = useMemo(() => {
+    if (activeCategory === 'all') return ALL_LUCIDE_NAMES
+    if (activeCategory === 'popular') return POPULAR_ICON_NAMES
+    const words = CATEGORY_KEYWORDS[activeCategory]
+    if (!words) return ALL_LUCIDE_NAMES
+
+    return ALL_LUCIDE_NAMES.filter(name => {
+      const lower = name.toLowerCase()
+      return words.some(w => lower.includes(w))
+    })
+  }, [activeCategory])
 
   const filteredIconNames = useMemo(() => {
-    if (!cleanSearch) return ALL_LUCIDE_NAMES
+    if (!cleanSearch) return categoryBaseIcons
 
     // Expand search terms with Portuguese synonym translations
     const expandedTerms = [cleanSearch]
@@ -193,11 +249,11 @@ export const IconPickerPopover: React.FC<IconPickerPopoverProps> = ({
       }
     })
 
-    return ALL_LUCIDE_NAMES.filter(name => {
+    return categoryBaseIcons.filter(name => {
       const lower = name.toLowerCase()
       return expandedTerms.some(term => lower.includes(term))
     })
-  }, [cleanSearch])
+  }, [cleanSearch, categoryBaseIcons])
 
   const displayedIcons = useMemo(() => {
     return filteredIconNames.slice(0, displayLimit)
@@ -243,6 +299,27 @@ export const IconPickerPopover: React.FC<IconPickerPopoverProps> = ({
         ) : null}
       </div>
 
+      {/* Categorias (Filtro por Abas) */}
+      <div className="px-2 py-1.5 border-b border-zinc-800/80 bg-[#121215] flex items-center gap-1 overflow-x-auto no-scrollbar">
+        {ICON_CATEGORIES.map(cat => {
+          const isActive = activeCategory === cat.id
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setActiveCategory(cat.id)}
+              className={`px-2 py-0.5 rounded-full text-[10.5px] font-medium whitespace-nowrap transition-all cursor-pointer ${
+                isActive
+                  ? 'bg-zinc-800 text-[var(--accent,#c59b27)] border border-zinc-700 shadow-xs'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 border border-transparent'
+              }`}
+            >
+              {cat.label}
+            </button>
+          )
+        })}
+      </div>
+
       {/* Remove Icon Action Bar */}
       {onRemoveIcon && selectedIcon && (
         <div className="px-3 py-1.5 border-b border-zinc-800/60 bg-[#161619] flex items-center justify-between">
@@ -273,8 +350,8 @@ export const IconPickerPopover: React.FC<IconPickerPopoverProps> = ({
         onScroll={handleScroll}
         className="max-h-72 overflow-y-auto p-2.5 custom-chat-scrollbar space-y-3"
       >
-        {/* Popular / Mais usados em evidência no topo */}
-        {!cleanSearch && (
+        {/* Popular / Mais usados em evidência quando em 'all' e sem busca */}
+        {!cleanSearch && activeCategory === 'all' && (
           <div>
             <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider px-1 pb-1.5">
               Mais Usados
@@ -309,18 +386,18 @@ export const IconPickerPopover: React.FC<IconPickerPopoverProps> = ({
           </div>
         )}
 
-        {/* Full Library Grid */}
+        {/* Categorized Library Grid */}
         <div>
-          {!cleanSearch ? (
-            <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider px-1 pb-1.5 flex items-center justify-between">
-              <span>Biblioteca Completa</span>
-              <span className="text-zinc-600 font-mono">1.800+ ícones</span>
-            </div>
-          ) : (
-            <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider px-1 pb-1.5 flex items-center justify-between">
-              <span>Resultados ({filteredIconNames.length})</span>
-            </div>
-          )}
+          <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider px-1 pb-1.5 flex items-center justify-between">
+            <span>
+              {activeCategory === 'all'
+                ? 'Biblioteca Completa'
+                : ICON_CATEGORIES.find(c => c.id === activeCategory)?.label}
+            </span>
+            <span className="text-zinc-600 font-mono">
+              {filteredIconNames.length} {filteredIconNames.length === 1 ? 'ícone' : 'ícones'}
+            </span>
+          </div>
 
           {filteredIconNames.length === 0 ? (
             <div className="py-8 text-center text-zinc-500 text-xs">

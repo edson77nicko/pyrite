@@ -1763,11 +1763,22 @@ export const App: React.FC = () => {
           onOpenDailyNote={handleOpenDailyNote}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
           isAiOpen={isAiOpen}
-          onToggleAi={() => setIsAiOpen(o => !o)}
+          onToggleAi={() => {
+            setIsAiOpen(prev => {
+              const next = !prev
+              if (next && isLeftSidebarOpen) {
+                setIsLeftSidebarOpen(false)
+              }
+              return next
+            })
+          }}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenVaultSwitcher={() => setIsVaultSwitcherOpen(true)}
           isConversationsOpen={isAiConversationsOpen}
           onToggleConversations={() => {
+            if (!isAiOpen && isLeftSidebarOpen) {
+              setIsLeftSidebarOpen(false)
+            }
             setIsAiOpen(true)
             setIsAiConversationsOpen(o => !o)
           }}
@@ -2092,7 +2103,12 @@ export const App: React.FC = () => {
         onCreateNote={handleCreateNote}
         onCreateDraw={(folder, title) => handleCreateNote(folder, title, 'draw')}
         onChangeViewMode={handleChangeView}
-        onOpenAi={() => setIsAiOpen(true)}
+        onOpenAi={() => {
+          if (isLeftSidebarOpen) {
+            setIsLeftSidebarOpen(false)
+          }
+          setIsAiOpen(true)
+        }}
         onOpenLocalFolder={handleOpenLocalFolder}
         onOpenVaultSwitcher={() => setIsVaultSwitcherOpen(true)}
         onToggleTheme={() => handleUpdateSettings({ ...settings, themeMode: settings.themeMode === 'light' ? 'dark' : 'light' })}

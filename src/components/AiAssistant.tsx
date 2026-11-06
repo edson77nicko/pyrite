@@ -1,21 +1,22 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import type { Note, NoteType, AgentProfileVersion, MultiAgentStoreState } from '../types'
 import type { TaskItem, TaskSettings, SubTask, TaskBoard } from '../types/tasks'
-import { extractWikiLinks } from '../utils/vault'
 import { executeAgentRun, resolveNoteByIdOrFallback } from '../utils/multiAgentEngine'
 import { mindMapToMarkdownOutline, parseMindMapDocument, serializeMindMapDocument, isMindMapContent, cleanNodeTitle } from '../utils/mindMapUtils'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { AiSettingsModal } from './AiSettingsModal'
 import { FolderTreePicker } from './FolderTreePicker'
 import { AgentIcon } from './AgentIcon'
+import { renderDynamicIcon } from './IconPickerPopover'
 import {
   Sparkles,
   Bot,
   User,
-  RefreshCw,
   X,
   ArrowUp,
   ChevronDown,
+  ChevronUp,
+  ChevronRight,
   Loader2,
   KeyRound,
   Folder,
@@ -35,9 +36,6 @@ import {
   FileText,
   Clock,
   CheckCircle2,
-  CheckSquare,
-  Calendar,
-  Flag,
   ListTodo,
   FilePlus
 } from 'lucide-react'
@@ -132,6 +130,188 @@ export function parseMessageTaskActions(text: string): { displayText: string; ac
 
   const displayText = text.replace(/```task-action\s*[\s\S]*?\s*```/g, '').trim()
   return { displayText, actions }
+}
+
+export function parseThoughtBlocks(text: string): { thoughts: string[]; cleanText: string } {
+  const thoughts: string[] = []
+  if (!text) return { thoughts, cleanText: '' }
+
+  const thoughtRegex = /<(?:thought|think)>([\s\S]*?)<\/(?:thought|think)>/gi
+  let match
+  while ((match = thoughtRegex.exec(text)) !== null) {
+    if (match[1] && match[1].trim()) {
+      thoughts.push(match[1].trim())
+    }
+  }
+
+  const cleanText = text.replace(/<(?:thought|think)>[\s\S]*?<\/(?:thought|think)>/gi, '').trim()
+  return { thoughts, cleanText }
+}
+
+export const CollapsibleThought: React.FC<{ thought: string }> = ({ thought }) => {
+  const [isOpen, setIsOpen] = useState(false)
+  return (
+    <div className="my-1.5 rounded-lg border border-zinc-800/60 bg-zinc-950/40 text-xs overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsOpen(o => !o)}
+        className="w-full flex items-center gap-1.5 px-2.5 py-1 text-left text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-[11px]"
+      >
+        <Sparkles className="w-3 h-3 text-[var(--accent)] shrink-0" />
+        <span className="font-mono text-[10px] text-zinc-400">Processo de raciocínio</span>
+        <ChevronRight className={`w-3 h-3 text-zinc-500 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="px-3 py-2 border-t border-zinc-800/40 text-[11px] text-zinc-400 font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto custom-chat-scrollbar bg-black/20">
+          {thought}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface TaskActionsCollapsibleProps {
+  messageId: string
+  actions: ParsedTaskAction[]
+  executedTaskActions: Record<string, boolean>
+  onExecute: (act: ParsedTaskAction, key: string) => void
+  onOpenTasks?: () => void
+  taskBoards?: TaskBoard[]
+  defaultBoardId?: string
+}
+
+export const TaskActionsCollapsible: React.FC<TaskActionsCollapsibleProps> = ({
+  messageId,
+  actions,
+  executedTaskActions,
+  onExecute,
+  onOpenTasks,
+  taskBoards = [],
+  defaultBoardId
+}) => {
+  const [isOpen, setIsOpen] = useState(false)
+
+  const targetBoardId = actions[0]?.boardId || defaultBoardId || 'default'
+  const board = taskBoards.find(b => b.id === targetBoardId)
+  const boardName = board?.name || 'Geral'
+
+  const total = actions.length
+  const completedCount = actions.filter((_, idx) => executedTaskActions[`${messageId}_${idx}`]).length
+  const allDone = completedCount >= total
+
+  return (
+    <div className="mt-2 rounded-xl border border-zinc-800/80 bg-[#121318] overflow-hidden text-xs shadow-xs">
+      {/* Collapsible Header Bar - Gemini single-line style */}
+      <div className="flex items-center justify-between px-3 py-2 bg-zinc-900/60 hover:bg-zinc-850/60 transition-colors">
+        <button
+          type="button"
+          onClick={() => setIsOpen(o => !o)}
+          className="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer min-w-0 flex-1 text-left"
+        >
+          {allDone ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <ListTodo className="w-4 h-4 text-[var(--accent)] shrink-0" />
+          )}
+          <span className="font-semibold text-xs truncate">
+            {allDone
+              ? `${total} ${total === 1 ? 'tarefa criada' : 'tarefas criadas'} em "${boardName}"`
+              : `${total} ${total === 1 ? 'tarefa proposta' : 'tarefas propostas'} para "${boardName}"`}
+          </span>
+          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+        </button>
+
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          {!allDone && (
+            <button
+              type="button"
+              onClick={() => {
+                actions.forEach((act, idx) => {
+                  const key = `${messageId}_${idx}`
+                  if (!executedTaskActions[key]) {
+                    onExecute(act, key)
+                  }
+                })
+              }}
+              className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-semibold cursor-pointer transition-colors"
+            >
+              Criar todas ({total - completedCount})
+            </button>
+          )}
+
+          {onOpenTasks && (
+            <button
+              type="button"
+              onClick={onOpenTasks}
+              className="text-[10px] text-zinc-400 hover:text-[var(--accent)] flex items-center gap-1 cursor-pointer transition-colors"
+              title="Abrir quadro de tarefas"
+            >
+              <span>Ver tarefas</span>
+              <span>→</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Expanded List - Strictly 1 Line per Task (Gemini style) */}
+      {isOpen && (
+        <div className="divide-y divide-zinc-800/50 border-t border-zinc-800/80 max-h-64 overflow-y-auto custom-chat-scrollbar bg-[#0f1015]">
+          {actions.map((act, idx) => {
+            const taskKey = `${messageId}_${idx}`
+            const isDone = !!executedTaskActions[taskKey]
+
+            return (
+              <div
+                key={taskKey}
+                className="flex items-center justify-between gap-2.5 px-3 py-1.5 hover:bg-zinc-850/40 transition-colors group"
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  {isDone ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  ) : (
+                    <span className="w-3.5 h-3.5 flex items-center justify-center rounded-xs border border-zinc-700 shrink-0 text-[9px] text-zinc-400">
+                      {idx + 1}
+                    </span>
+                  )}
+                  <span className={`truncate text-[11px] font-medium ${isDone ? 'text-zinc-200' : 'text-zinc-300'}`}>
+                    {act.title}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {act.priority && act.priority !== 'none' && (
+                    <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded ${
+                      act.priority === 'urgent'
+                        ? 'bg-rose-500/20 text-rose-300'
+                        : act.priority === 'high'
+                        ? 'bg-amber-500/20 text-amber-300'
+                        : 'bg-zinc-800 text-zinc-400'
+                    }`}>
+                      {act.priority}
+                    </span>
+                  )}
+                  {act.subtasks && act.subtasks.length > 0 && (
+                    <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline">
+                      {act.subtasks.length} subtarefas
+                    </span>
+                  )}
+                  {!isDone && (
+                    <button
+                      type="button"
+                      onClick={() => onExecute(act, taskKey)}
+                      className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 font-medium cursor-pointer transition-colors"
+                    >
+                      + Criar
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export const AGENT_SPECIALTIES: AgentSpecialty[] = [
@@ -296,7 +476,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   currentNote,
   allNotes,
   onConnectNote,
-  onAddTag,
+  onAddTag: _onAddTag,
   onInsertSnippet,
   onCreateNote,
   onUpdateNote,
@@ -571,6 +751,33 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
   const messages = activeConversation?.messages || []
 
+  const chatFeedRef = useRef<HTMLDivElement | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    if (chatFeedRef.current) {
+      chatFeedRef.current.scrollTo({
+        top: chatFeedRef.current.scrollHeight,
+        behavior
+      })
+    } else if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior, block: 'end' })
+    }
+  }
+
+  // Scroll immediately to bottom on mount and when conversation is selected/opened
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollToBottom('auto')
+    }, 60)
+    return () => clearTimeout(timer)
+  }, [activeConversationId])
+
+  // Follow stream/messages smoothly when updated or generating
+  useEffect(() => {
+    scrollToBottom('smooth')
+  }, [messages, isGenerating])
+
   const setMessages = (updateFn: (prev: ChatMessage[]) => ChatMessage[]) => {
     setConversations(prevConvs => {
       return prevConvs.map(c => {
@@ -722,9 +929,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   }, [])
 
   const [input, setInput] = useState('')
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [suggestedConnections, setSuggestedConnections] = useState<{ note: Note; reason: string }[]>([])
-  const [suggestedTags, setSuggestedTags] = useState<string[]>([])
   const [conversationFilter, setConversationFilter] = useState('')
 
   // Drag handler to resize chat width
@@ -753,50 +957,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
-  }
-
-  // Smart Discovery of unlinked notes with semantic relevance
-  const runSmartDiscovery = () => {
-    setIsAnalyzing(true)
-    setTimeout(() => {
-      const currentLinks = extractWikiLinks(effectiveNote.content).map(l => l.toLowerCase())
-      const currentWords = new Set(
-        effectiveNote.content.toLowerCase().replace(/[^a-zA-Z0-9\u00C0-\u017F\s]/g, '').split(/\s+/).filter(w => w.length > 3)
-      )
-
-      const candidates: { note: Note; score: number; matchCount: number }[] = []
-
-      for (const n of allNotes) {
-        if (n.id === effectiveNote.id) continue
-        if (currentLinks.includes(n.title.toLowerCase())) continue // already explicitly linked
-
-        const otherWords = n.content.toLowerCase().replace(/[^a-zA-Z0-9\u00C0-\u017F\s]/g, '').split(/\s+/).filter(w => w.length > 3)
-        let matches = 0
-        for (const w of otherWords) {
-          if (currentWords.has(w)) matches++
-        }
-
-        if (matches > 2) {
-          candidates.push({ note: n, score: matches, matchCount: matches })
-        }
-      }
-
-      candidates.sort((a, b) => b.score - a.score)
-      const top3 = candidates.slice(0, 3).map(c => ({
-        note: c.note,
-        reason: `Compartilha conceitos centrais e vocabulário chave (${c.matchCount} termos em comum).`
-      }))
-
-      setSuggestedConnections(top3)
-
-
-      // Suggest Tags
-      const potentialTags = ['conhecimento', 'produtividade', 'metodologia', 'arquitetura', 'ideias', 'estudos']
-      const newTags = potentialTags.filter(t => !effectiveNote.tags.includes(t)).slice(0, 3)
-      setSuggestedTags(newTags)
-
-      setIsAnalyzing(false)
-    }, 400)
   }
 
   // Audio Recording Handlers
@@ -1170,7 +1330,7 @@ ${selectedTeamAgent.knowledgeBindings
         const tasksDirective = `DIRETRIZ DE GESTÃO DE PROJETOS E TAREFAS:
 - Você é capaz de atuar como gestor de projetos do usuário: planejar entregas, analisar gargalos e decompor objetivos em tarefas acionáveis e subtarefas.
 - ${boardContextText}
-${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList}\n` : ''}- Quando sugerir criar tarefas, forneça blocos executáveis formatados com a sintaxe especial:
+${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList}\n` : ''}- Quando o usuário solicitar criar tarefas, planejar ou converter uma lista/tabela em tarefas, forneça blocos executáveis formatados com a sintaxe especial:
 \`\`\`task-action
 {
   "action": "create",
@@ -1183,7 +1343,7 @@ ${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList
   "boardId": "${effectiveBoardId}"
 }
 \`\`\`
-O Pyrite renderiza esses blocos automaticamente como cards com botão de 1 clique para criação direta no cofre.`
+- REGRA CRÍTICA DE FORMATO: As tarefas são cadastradas AUTOMATICAMENTE pelo Pyrite no projeto selecionado. Portanto, NUNCA replique ou duplique a lista exaustiva de tarefas nem construa tabelas gigantes no texto da resposta markdown do chat quando já incluir os blocos task-action. Forneça apenas um breve resumo executivo (1 a 3 frases) informando o que foi estruturado. O usuário verá as tarefas criadas em formato compacto de uma linha e diretamente no quadro do projeto.`
 
         const mindMapDirective = `DIRETRIZ DE OURO PARA MAPAS MENTAIS (MINDMAP):
 - O Pyrite possui um motor gráfico próprio de mapas mentais interativos.
@@ -1380,7 +1540,23 @@ Diretrizes gerais:
             }
           }
 
-          setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'ai', text: responseText }])
+          const newAiId = `ai_${Date.now()}`
+          const { actions: autoActions } = parseMessageTaskActions(responseText)
+          if (autoActions.length > 0 && onCreateTask) {
+            const targetBoardId = autoActions[0].boardId || activeConversation?.linkedBoardId || activeBoardId || 'default'
+            const boardObj = taskBoards.find(b => b.id === targetBoardId)
+            const targetBoardName = boardObj?.name || 'Geral'
+
+            autoActions.forEach((act, idx) => {
+              const key = `${newAiId}_${idx}`
+              handleExecuteTaskAction(act, key)
+            })
+
+            setToastNotice(`✨ ${autoActions.length} ${autoActions.length === 1 ? 'tarefa criada' : 'tarefas criadas'} em "${targetBoardName}"!`)
+            setTimeout(() => setToastNotice(null), 4000)
+          }
+
+          setMessages(prev => [...prev, { id: newAiId, sender: 'ai', text: responseText }])
         } else {
           setMessages(prev => [
             ...prev,
@@ -1613,23 +1789,22 @@ Diretrizes gerais:
 
           {/* OpenBot Team Agent Selector: Talk to any agent from Minha Equipe right inside the global chat */}
           {teamAgents && teamAgents.length > 0 && (
-            <div ref={teamAgentMenuRef} className="relative">
+            <div ref={teamAgentMenuRef} className="relative min-w-0 max-w-[125px]">
               <button
                 type="button"
                 onClick={() => setIsTeamAgentMenuOpen(o => !o)}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-xs transition-all cursor-pointer shadow-sm ${
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-xs transition-all cursor-pointer shadow-sm max-w-[125px] overflow-hidden ${
                   selectedTeamAgent
                     ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-[var(--accent)] font-semibold'
                     : 'bg-zinc-900 border-zinc-700/70 hover:border-zinc-500 text-zinc-200'
                 }`}
-                title="Escolher com qual Agente conversar (Assistente Geral ou Agente da Minha Equipe)"
               >
                 {selectedTeamAgent ? (
                   <AgentIcon variant={selectedTeamAgent.icon} size={15} className="shrink-0 rounded-xs" />
                 ) : (
                   <span className="text-xs leading-none">✨</span>
                 )}
-                <span className="max-w-[105px] truncate text-[11px]">
+                <span className="truncate text-[11px] min-w-0 flex-1">
                   {selectedTeamAgent ? selectedTeamAgent.name : 'Agente Geral'}
                 </span>
                 <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -1677,9 +1852,6 @@ Diretrizes gerais:
                     {!selectedTeamAgent && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
                   </button>
 
-                  <div className="px-2 pt-1 text-[9px] font-mono uppercase tracking-wider text-zinc-500">
-                    Agentes da Minha Equipe ({teamAgents.length})
-                  </div>
                   <div className="max-h-56 overflow-y-auto space-y-0.5 pr-0.5">
                     {teamAgents.map(ag => {
                       const isCur = selectedTeamAgent?.id === ag.id
@@ -1716,66 +1888,9 @@ Diretrizes gerais:
               )}
             </div>
           )}
-
-          {/* Linked Task Board Selector */}
-          {taskBoards && taskBoards.length > 0 && (
-            <div ref={boardMenuRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setIsBoardMenuOpen(o => !o)}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-700/70 hover:border-zinc-500 text-zinc-300 text-xs transition-all cursor-pointer shadow-sm"
-                title="Vincular aba de tarefas a este chat"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                <span className="max-w-[85px] truncate text-[11px] font-medium">
-                  {currentLinkedBoard?.name || 'Aba Atual'}
-                </span>
-                <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
-              </button>
-              {isBoardMenuOpen && (
-                <div className="absolute top-9 left-0 z-50 w-52 bg-[#101117] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800">
-                    VINCULAR ABA DE TAREFAS
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleSetLinkedBoardId(undefined)
-                      setIsBoardMenuOpen(false)
-                    }}
-                    className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
-                      !activeConversation?.linkedBoardId ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-850'
-                    }`}
-                  >
-                    <span className="truncate">Automático (Aba Ativa)</span>
-                    {!activeConversation?.linkedBoardId && <Check className="w-3.5 h-3.5 text-[var(--accent)]" />}
-                  </button>
-                  {taskBoards.map(b => {
-                    const isCur = activeConversation?.linkedBoardId === b.id
-                    return (
-                      <button
-                        key={b.id}
-                        type="button"
-                        onClick={() => {
-                          handleSetLinkedBoardId(b.id)
-                          setIsBoardMenuOpen(false)
-                        }}
-                        className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
-                          isCur ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-850'
-                        }`}
-                      >
-                        <span className="truncate">{b.name}</span>
-                        {isCur && <Check className="w-3.5 h-3.5 text-[var(--accent)]" />}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* Action Buttons: Conversations Drawer Toggle, Settings Icon (NO text!), Smart Discovery, Close */}
+        {/* Action Buttons: Conversations Drawer Toggle, Settings Icon, Close */}
         <div className="flex items-center gap-0.5">
           {/* Toggle Conversations History Drawer */}
           <button
@@ -1812,14 +1927,6 @@ Diretrizes gerais:
             )}
           </button>
 
-          <button
-            onClick={runSmartDiscovery}
-            disabled={isAnalyzing}
-            className="p-1.5 text-zinc-400 hover:text-[var(--accent)] hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
-            title="Analisar conexões semânticas com o Vault"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin text-[var(--accent)]' : ''}`} />
-          </button>
           <button
             onClick={onClose}
             className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 rounded-md transition-colors cursor-pointer"
@@ -1990,53 +2097,15 @@ Diretrizes gerais:
       )}
 
       {/* 3. CHAT FEED */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-chat-scrollbar">
-        {/* Semantic Suggestions */}
-        {suggestedConnections.length > 0 && (
-          <div className="p-2.5 bg-[#121216] rounded-xl border border-zinc-800/90 space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-300">
-              <span className="flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-[#c59b27]" />
-                Conexões Descobertas
-              </span>
+      <div ref={chatFeedRef} className="flex-1 overflow-y-auto p-3 space-y-3 custom-chat-scrollbar">
+        {messages.length === 0 && (
+          <div className="h-full min-h-[220px] flex flex-col items-center justify-center text-center p-4 text-zinc-500 space-y-2">
+            <div className="w-10 h-10 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center text-lg shadow-inner">
+              ✨
             </div>
-            <div className="space-y-1.5 pt-0.5">
-              {suggestedConnections.map(c => (
-                <div
-                  key={c.note.id}
-                  className="p-2 bg-zinc-900/90 rounded-lg border border-zinc-800/80 space-y-1"
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-medium text-[#d4af37] truncate text-[11px]">[[{c.note.title}]]</span>
-                    <button
-                      onClick={() => onConnectNote(c.note.title)}
-                      className="px-2 py-0.5 bg-[#c59b27] hover:bg-[#d8b150] text-zinc-950 font-bold rounded text-[10px] transition-colors shrink-0 shadow-sm cursor-pointer"
-                      title="Adicionar link na nota"
-                    >
-                      + Linkar
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-zinc-500 leading-tight">{c.reason}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Suggested Tags */}
-        {suggestedTags.length > 0 && (
-          <div className="p-2.5 bg-[#121216] rounded-xl border border-zinc-800/90 space-y-1">
-            <span className="font-semibold text-zinc-300 text-[11px]">Tags Sugeridas</span>
-            <div className="flex flex-wrap gap-1 pt-1">
-              {suggestedTags.map(t => (
-                <button
-                  key={t}
-                  onClick={() => onAddTag(t)}
-                  className="px-2 py-0.5 bg-zinc-800 hover:bg-[#c59b27]/20 text-[#d4af37] border border-zinc-700/60 rounded-full text-[10px] font-mono transition-colors cursor-pointer"
-                >
-                  +{t}
-                </button>
-              ))}
+            <div className="space-y-0.5">
+              <p className="text-xs font-medium text-zinc-300">Como posso ajudar você hoje?</p>
+              <p className="text-[11px] text-zinc-500">Pergunte sobre suas notas, planeje projetos ou crie tarefas.</p>
             </div>
           </div>
         )}
@@ -2071,7 +2140,8 @@ Diretrizes gerais:
                 </div>
               ) : (
                 (() => {
-                  const { displayText, actions: taskActions } = parseMessageTaskActions(m.text)
+                  const { thoughts, cleanText: thoughtFreeText } = parseThoughtBlocks(m.text)
+                  const { displayText, actions: taskActions } = parseMessageTaskActions(thoughtFreeText)
 
                   return (
                     <div className="w-full text-zinc-200 px-1 py-1 space-y-2">
@@ -2081,143 +2151,32 @@ Diretrizes gerais:
                           <span>Preparando uma resposta para você…</span>
                         </div>
                       ) : (
-                        <MarkdownRenderer
-                          content={displayText}
-                          onNavigate={onConnectNote}
-                          onButtonClick={(promptText) => executePrompt(promptText)}
-                          onInsertSnippet={agentRule === 'editor' ? onInsertSnippet : undefined}
-                        />
-                      )}
+                        <>
+                          {thoughts.map((th, i) => (
+                            <CollapsibleThought key={i} thought={th} />
+                          ))}
 
-                      {/* Executable Task Actions Cards */}
-                      {taskActions.length > 0 && (
-                        <div className="mt-3 space-y-2 pt-2 border-t border-zinc-800/60">
-                          <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-400">
-                            <span className="flex items-center gap-1.5">
-                              <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Plano de Tarefas Proposto pelo Agente</span>
-                            </span>
-                            {taskActions.length > 1 && onCreateTask && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  taskActions.forEach((act, idx) => {
-                                    const key = `${m.id}_${idx}`
-                                    if (!executedTaskActions[key]) {
-                                      handleExecuteTaskAction(act, key)
-                                    }
-                                  })
-                                }}
-                                className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 font-medium transition-colors cursor-pointer"
-                              >
-                                Criar todas ({taskActions.length})
-                              </button>
-                            )}
-                          </div>
+                          {displayText ? (
+                            <MarkdownRenderer
+                              content={displayText}
+                              onNavigate={onConnectNote}
+                              onButtonClick={(promptText) => executePrompt(promptText)}
+                              onInsertSnippet={agentRule === 'editor' ? onInsertSnippet : undefined}
+                            />
+                          ) : null}
 
-                          <div className="space-y-1.5">
-                            {taskActions.map((act, idx) => {
-                              const taskKey = `${m.id}_${idx}`
-                              const isDone = !!executedTaskActions[taskKey]
-
-                              return (
-                                <div
-                                  key={taskKey}
-                                  className="p-3 rounded-xl bg-[#13141a] border border-zinc-800/80 hover:border-zinc-700/80 transition-all space-y-2 shadow-xs"
-                                >
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="flex items-start gap-2 min-w-0">
-                                      <CheckSquare className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
-                                      <div className="min-w-0">
-                                        <div className="font-semibold text-zinc-100 text-xs leading-snug">{act.title}</div>
-                                        {act.description && (
-                                          <div className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">{act.description}</div>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {onCreateTask && (
-                                      <button
-                                        type="button"
-                                        disabled={isDone}
-                                        onClick={() => handleExecuteTaskAction(act, taskKey)}
-                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 transition-colors flex items-center gap-1 cursor-pointer ${
-                                          isDone
-                                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 cursor-default'
-                                            : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-sm'
-                                        }`}
-                                      >
-                                        {isDone ? (
-                                          <>
-                                            <Check className="w-3 h-3" />
-                                            <span>Criada!</span>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Plus className="w-3 h-3 stroke-[2.5]" />
-                                            <span>Criar Tarefa</span>
-                                          </>
-                                        )}
-                                      </button>
-                                    )}
-                                  </div>
-
-                                  {/* Badges */}
-                                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                                    {act.priority && act.priority !== 'none' && (
-                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-medium bg-zinc-800/80 text-zinc-300">
-                                        <Flag className="w-2.5 h-2.5 text-zinc-400" />
-                                        <span>Prioridade: {act.priority}</span>
-                                      </span>
-                                    )}
-                                    {act.deadline && (
-                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-zinc-800/80 text-zinc-300">
-                                        <Calendar className="w-2.5 h-2.5 text-zinc-400" />
-                                        <span>Prazo: {act.deadline}</span>
-                                      </span>
-                                    )}
-                                    {act.subtasks && act.subtasks.length > 0 && (
-                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] bg-zinc-800/80 text-zinc-300">
-                                        <ListTodo className="w-2.5 h-2.5 text-zinc-400" />
-                                        <span>{act.subtasks.length} subtarefas</span>
-                                      </span>
-                                    )}
-                                    {act.tags && act.tags.map(t => (
-                                      <span key={t} className="px-1.5 py-0.5 rounded bg-zinc-850 text-[9px] text-zinc-400 font-mono">
-                                        #{t}
-                                      </span>
-                                    ))}
-                                  </div>
-
-                                  {/* Subtasks Preview List */}
-                                  {act.subtasks && act.subtasks.length > 0 && (
-                                    <div className="pt-1.5 border-t border-zinc-800/60 space-y-1">
-                                      {act.subtasks.map((st, i) => (
-                                        <div key={i} className="flex items-center gap-1.5 text-[10.5px] text-zinc-400 pl-1">
-                                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0" />
-                                          <span>{st}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-
-                          {onOpenTasks && (
-                            <div className="pt-1 flex justify-end">
-                              <button
-                                type="button"
-                                onClick={onOpenTasks}
-                                className="text-[10px] text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 cursor-pointer"
-                              >
-                                <span>Abrir quadro de tarefas</span>
-                                <span>→</span>
-                              </button>
-                            </div>
+                          {taskActions.length > 0 && (
+                            <TaskActionsCollapsible
+                              messageId={m.id}
+                              actions={taskActions}
+                              executedTaskActions={executedTaskActions}
+                              onExecute={handleExecuteTaskAction}
+                              onOpenTasks={onOpenTasks}
+                              taskBoards={taskBoards}
+                              defaultBoardId={effectiveBoardId}
+                            />
                           )}
-                        </div>
+                        </>
                       )}
 
                       {m.isActionable && (
@@ -2305,6 +2264,7 @@ Diretrizes gerais:
               )}
             </div>
           ))}
+          <div ref={messagesEndRef} className="h-px shrink-0" />
         </div>
       </div>
 
@@ -2365,51 +2325,81 @@ Diretrizes gerais:
           </div>
         )}
 
-        {/* Dynamic HTML / Specialty Prompt Chips */}
-        {(effectiveNote.type === 'html' || effectiveNote.filePath?.endsWith('.html') || effectiveNote.filePath?.endsWith('.htm')) ? (
-          <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10px]">
+        {/* Project Selector (Moved from header to above chat input) */}
+        {taskBoards && taskBoards.length > 0 && (
+          <div ref={boardMenuRef} className="relative flex items-center justify-between pb-0.5">
             <button
               type="button"
-              onClick={() => handleSelectSlashItem('Melhore e modernize o design deste arquivo HTML utilizando Tailwind CSS via CDN, paleta elegante no tema escuro, tipografia refinada e espaçamentos perfeitos.')}
-              className="px-2 py-0.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 whitespace-nowrap cursor-pointer transition-colors"
+              onClick={() => setIsBoardMenuOpen(o => !o)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-zinc-100 transition-all cursor-pointer shadow-xs max-w-full"
             >
-              🎨 Estilizar Tailwind
+              <span className="text-[10px] text-zinc-500 font-medium shrink-0">Projeto:</span>
+              <div className="flex items-center gap-1.5 truncate">
+                {currentLinkedBoard ? (
+                  renderDynamicIcon(currentLinkedBoard.icon, "w-3.5 h-3.5 shrink-0", { color: 'var(--accent, #c59b27)' })
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[var(--accent, #c59b27)] shrink-0" />
+                )}
+                <span className="truncate font-medium text-[11px] text-zinc-200">
+                  {currentLinkedBoard?.name || 'Automático (Aba Ativa)'}
+                </span>
+              </div>
+              <ChevronUp className={`w-3 h-3 text-zinc-500 shrink-0 transition-transform ${isBoardMenuOpen ? 'rotate-180' : ''}`} />
             </button>
-            <button
-              type="button"
-              onClick={() => handleSelectSlashItem('Torne este código HTML 100% responsivo para mobile, tablet e desktop, com classes Tailwind e layouts flexíveis.')}
-              className="px-2 py-0.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 whitespace-nowrap cursor-pointer transition-colors"
-            >
-              📱 Tornar Responsivo
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectSlashItem('Adicione uma seção com gráfico interativo ou dashboard de dados usando a biblioteca Chart.js via CDN neste arquivo HTML.')}
-              className="px-2 py-0.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 whitespace-nowrap cursor-pointer transition-colors"
-            >
-              📊 Gráfico Chart.js
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectSlashItem('Adicione interatividade dinâmica com JavaScript moderno nesta página HTML (animações, eventos de clique, feedback visual).')}
-              className="px-2 py-0.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 whitespace-nowrap cursor-pointer transition-colors"
-            >
-              ⚡ Interatividade JS
-            </button>
-          </div>
-        ) : activeSpecialty.presets.length > 0 && (
-          <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10px]">
-            {activeSpecialty.presets.map((pr, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleSelectSlashItem(pr.prompt)}
-                className="px-2 py-0.5 rounded-full bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border border-zinc-700/60 whitespace-nowrap cursor-pointer transition-colors hover:text-[var(--accent)] hover:border-[var(--accent)]/40"
-                title={pr.prompt}
-              >
-                {pr.label}
-              </button>
-            ))}
+
+            {/* Modal Popover for Project Selector with Project Icons like sidebar */}
+            {isBoardMenuOpen && (
+              <div className="absolute bottom-full left-0 mb-1.5 z-50 w-64 bg-[#12131a] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl space-y-1 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
+                  <span>SELECIONAR PROJETO</span>
+                  <span className="text-[9px] text-zinc-500">{taskBoards.length} projetos</span>
+                </div>
+                <div className="max-h-56 overflow-y-auto space-y-0.5 custom-chat-scrollbar">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSetLinkedBoardId(undefined)
+                      setIsBoardMenuOpen(false)
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                      !activeConversation?.linkedBoardId
+                        ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white font-medium'
+                        : 'text-zinc-300 hover:bg-zinc-800/70'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[var(--accent, #c59b27)] shrink-0" />
+                      <span className="truncate text-[11px]">Automático (Aba Ativa)</span>
+                    </div>
+                    {!activeConversation?.linkedBoardId && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
+                  </button>
+                  {taskBoards.map(b => {
+                    const isCur = activeConversation?.linkedBoardId === b.id
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => {
+                          handleSetLinkedBoardId(b.id)
+                          setIsBoardMenuOpen(false)
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                          isCur
+                            ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white font-medium'
+                            : 'text-zinc-300 hover:bg-zinc-800/70'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {renderDynamicIcon(b.icon, "w-3.5 h-3.5 shrink-0", { color: 'var(--accent, #c59b27)' })}
+                          <span className="truncate text-[11px]">{b.name}</span>
+                        </div>
+                        {isCur && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
