@@ -257,9 +257,9 @@ input[type="checkbox"]:focus-visible,
 .pyrite-table-menu hr { border: 0; border-top: 1px solid #3f3f46; margin: 4px 0; }
 
 /* Every embedded block has a real caret landing point before/after it. */
-.pyrite-editor-surface { cursor: text; }
-.pyrite-editor-surface > p, .editor-paragraph { min-height: 1.65em; margin: 3px 0; }
-.pyrite-editor-surface > .editor-gap { min-height: 22px; margin: 0; }
+.pyrite-editor-surface { cursor: text; line-height: 1.5; }
+.pyrite-editor-surface > p, .editor-paragraph { min-height: 1.4em; margin: 1.5px 0; line-height: 1.5; }
+.pyrite-editor-surface > .editor-gap { min-height: 12px; margin: 0; }
 .pyrite-editor-surface[contenteditable="false"] > .editor-gap { display: none; }
 
 /* Pyrite Rich Editor Typography (ensures H1-H4, lists, blockquotes render styled inside contenteditable) */
@@ -2156,9 +2156,9 @@ html.light .dark-theme-zone .hover\:bg-white\/\[0\.14\]:hover {
 /* Checkbox e Listas Fluidas: texto subsequente inicia no começo da página */
 .pyrite-editor-surface .task-item {
   display: block !important;
-  margin-top: 0.35rem !important;
-  margin-bottom: 0.35rem !important;
-  line-height: 1.625 !important;
+  margin-top: 0.18rem !important;
+  margin-bottom: 0.18rem !important;
+  line-height: 1.5 !important;
   clear: both !important;
 }
 

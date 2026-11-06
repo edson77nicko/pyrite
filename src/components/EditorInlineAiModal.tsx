@@ -109,6 +109,11 @@ export const EditorInlineAiModal: React.FC<EditorInlineAiModalProps> = ({
   // Click outside and escape handling
   useEffect(() => {
     if (!isOpen) return
+    let isMounted = false
+    const timer = setTimeout(() => {
+      isMounted = true
+    }, 60)
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -116,6 +121,7 @@ export const EditorInlineAiModal: React.FC<EditorInlineAiModalProps> = ({
       }
     }
     const handleClickOutside = (e: MouseEvent) => {
+      if (!isMounted) return
       if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
         onClose()
       }
@@ -123,6 +129,7 @@ export const EditorInlineAiModal: React.FC<EditorInlineAiModalProps> = ({
     window.addEventListener('keydown', handleKeyDown)
     document.addEventListener('mousedown', handleClickOutside)
     return () => {
+      clearTimeout(timer)
       window.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('mousedown', handleClickOutside)
     }

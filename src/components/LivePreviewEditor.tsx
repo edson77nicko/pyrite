@@ -297,7 +297,7 @@ interface EmbeddedHost {
 function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): string {
   const cleanMd = stripDuplicateTitleFromContent(md, noteTitle)
   if (!cleanMd.trim()) {
-    return '<p class="my-1.5 text-zinc-300 leading-relaxed"><br></p>'
+    return '<p class="my-0.5 text-zinc-300 leading-[1.5]"><br></p>'
   }
 
   const lines = cleanMd.split('\n')
@@ -467,13 +467,13 @@ function markdownToHtml(md: string, allNotes: Note[], noteTitle?: string): strin
 
     // Empty line
     if (!line.trim()) {
-      htmlParts.push(`<p class="my-1 text-zinc-300 leading-relaxed"><br></p>`)
+      htmlParts.push(`<p class="my-0.5 text-zinc-300 leading-[1.5]"><br></p>`)
       i++
       continue
     }
 
     // Standard Paragraph
-    htmlParts.push(`<p class="my-1.5 text-zinc-300 leading-relaxed">${formatInlineHtml(line, allNotes)}</p>`)
+    htmlParts.push(`<p class="my-0.5 text-zinc-300 leading-[1.5]">${formatInlineHtml(line, allNotes)}</p>`)
     i++
   }
 
@@ -809,6 +809,15 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   const [selectionToolbar, setSelectionToolbar] = useState<{
     top: number
     left: number
+    text?: string
+    range?: Range
+  } | null>(null)
+
+  // AppFlowy-style Drop line indicator state when dragging blocks
+  const [dropIndicator, setDropIndicator] = useState<{
+    top: number
+    left: number
+    width: number
   } | null>(null)
 
   // AppFlowy-style Hovered Block Gutter Handle state
@@ -1193,6 +1202,17 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       return
     }
 
+    // Shortcut to open Inline AI for selection (Ctrl+E, Ctrl+I, Ctrl+J)
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'E' || e.key === 'i' || e.key === 'I' || e.key === 'j' || e.key === 'J')) {
+      const sel = window.getSelection()
+      if (sel && !sel.isCollapsed && sel.rangeCount) {
+        e.preventDefault()
+        e.stopPropagation()
+        handleOpenAiForSelection(sel.getRangeAt(0).cloneRange(), sel.toString().trim())
+        return
+      }
+    }
+
     // If slash menu active, handle keys
     if (slashMenu && filteredSlashCommands.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -1293,7 +1313,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           // If current task item has no text, exit checklist mode and convert to a clean paragraph
           if (!rawText) {
             const p = document.createElement('p')
-            p.className = 'my-1.5 text-[13px] md:text-sm text-zinc-300 leading-relaxed'
+            p.className = 'my-0.5 text-[13px] md:text-sm text-zinc-300 leading-[1.5]'
             p.innerHTML = '<br>'
             taskItem.replaceWith(p)
             const newRange = document.createRange()
@@ -1356,7 +1376,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             const parentList = liElement.closest('ul, ol')
             liElement.remove()
             const p = document.createElement('p')
-            p.className = 'my-1.5 text-[13px] md:text-sm text-zinc-300 leading-relaxed'
+            p.className = 'my-0.5 text-[13px] md:text-sm text-zinc-300 leading-[1.5]'
             p.innerHTML = '<br>'
             if (parentList) {
               if (parentList.children.length === 0) {
@@ -1425,7 +1445,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           if (!rawText || range.startOffset === 0) {
             e.preventDefault()
             const p = document.createElement('p')
-            p.className = 'my-1.5 text-[13px] md:text-sm text-zinc-300 leading-relaxed'
+            p.className = 'my-0.5 text-[13px] md:text-sm text-zinc-300 leading-[1.5]'
             p.innerHTML = rawText ? escapeHtml(rawText) : '<br>'
             taskItem.replaceWith(p)
             const newRange = document.createRange()
@@ -1646,7 +1666,9 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
     setSelectionToolbar({
       top: Math.max(12, rect.top - 46),
-      left: Math.max(120, Math.min(window.innerWidth - 120, rect.left + rect.width / 2))
+      left: Math.max(120, Math.min(window.innerWidth - 120, rect.left + rect.width / 2)),
+      text: selectedText,
+      range: range.cloneRange()
     })
   }, [])
 
@@ -1692,21 +1714,29 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   }
 
   // Open Inline AI Modal for current text selection
-  const handleOpenAiForSelection = () => {
-    const sel = window.getSelection()
-    if (!sel || sel.isCollapsed || !sel.rangeCount) return
-    const text = sel.toString().trim()
-    const range = sel.getRangeAt(0).cloneRange()
+  const handleOpenAiForSelection = (customRange?: Range, customText?: string) => {
+    let text = customText || selectionToolbar?.text || ''
+    let range = customRange || selectionToolbar?.range || null
+
+    if (!text || !range) {
+      const sel = window.getSelection()
+      if (sel && !sel.isCollapsed && sel.rangeCount) {
+        text = sel.toString().trim()
+        range = sel.getRangeAt(0).cloneRange()
+      }
+    }
+
+    if (!text || !range) return
+
     const rect = range.getBoundingClientRect()
+    const top = Math.max(20, rect.bottom + 10)
+    const left = Math.max(20, Math.min(window.innerWidth - 480, rect.left))
 
     setSelectionToolbar(null)
     setInlineAi({
       isOpen: true,
       targetText: text,
-      position: {
-        top: Math.max(20, rect.bottom + 10),
-        left: Math.max(20, Math.min(window.innerWidth - 480, rect.left))
-      },
+      position: { top, left },
       range
     })
   }
@@ -1733,12 +1763,12 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       const block = inlineAi.targetBlock
       if (action === 'replace') {
         const p = document.createElement('p')
-        p.className = 'my-1.5 text-zinc-300 leading-relaxed'
+        p.className = 'my-0.5 text-zinc-300 leading-[1.5]'
         p.innerHTML = formatInlineHtml(generatedText, allNotes) || '<br>'
         block.replaceWith(p)
       } else {
         const p = document.createElement('p')
-        p.className = 'my-1.5 text-zinc-300 leading-relaxed'
+        p.className = 'my-0.5 text-zinc-300 leading-[1.5]'
         p.innerHTML = formatInlineHtml(generatedText, allNotes) || '<br>'
         block.after(p)
       }
@@ -1753,7 +1783,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       } else {
         range.collapse(false)
         const p = document.createElement('p')
-        p.className = 'my-1.5 text-zinc-300 leading-relaxed'
+        p.className = 'my-0.5 text-zinc-300 leading-[1.5]'
         p.innerHTML = formatInlineHtml(generatedText, allNotes) || '<br>'
         const block = range.startContainer instanceof HTMLElement
           ? range.startContainer.closest('p, div, h1, h2, h3, li')
@@ -1765,7 +1795,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         }
       }
     } else {
-      insertBlock(`<p class="my-1.5 text-zinc-300 leading-relaxed">${formatInlineHtml(generatedText, allNotes)}</p>`)
+      insertBlock(`<p class="my-0.5 text-zinc-300 leading-[1.5]">${formatInlineHtml(generatedText, allNotes)}</p>`)
     }
 
     refreshBlocks()
@@ -1800,12 +1830,13 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     if (!related?.closest('.appflowy-block-gutter')) {
       setHoveredBlock(null)
     }
+    setDropIndicator(null)
   }
 
   const handleBlockInsertBelow = (element: HTMLElement) => {
     pushHistorySnapshot(true)
     const newP = document.createElement('p')
-    newP.className = 'my-1.5 text-zinc-300 leading-relaxed'
+    newP.className = 'my-0.5 text-zinc-300 leading-[1.5]'
     newP.innerHTML = '<br>'
     element.after(newP)
     refreshBlocks()
@@ -1904,7 +1935,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       element.replaceWith(shell.firstElementChild || shell)
     } else {
       const p = document.createElement('p')
-      p.className = 'my-1.5 text-zinc-300 leading-relaxed'
+      p.className = 'my-0.5 text-zinc-300 leading-[1.5]'
       p.innerHTML = formatInlineHtml(rawText, allNotes) || '<br>'
       element.replaceWith(p)
     }
@@ -1926,18 +1957,40 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       draggedBlock.classList.remove('opacity-40')
       setDraggedBlock(null)
     }
+    setDropIndicator(null)
   }
 
   const handleEditorDragOver = (e: React.DragEvent) => {
     if (!draggedBlock || !containerRef.current) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
+
+    const container = containerRef.current
+    let target = e.target as HTMLElement | null
+    while (target && target.parentElement !== container) {
+      target = target.parentElement
+    }
+
+    if (target && target !== container && target !== draggedBlock) {
+      const rect = target.getBoundingClientRect()
+      const isAfter = e.clientY > rect.top + rect.height / 2
+      const lineY = isAfter ? rect.bottom : rect.top
+
+      setDropIndicator({
+        top: lineY,
+        left: rect.left,
+        width: rect.width
+      })
+    } else {
+      setDropIndicator(null)
+    }
   }
 
   const handleEditorDrop = (e: React.DragEvent) => {
     if (!draggedBlock || !containerRef.current) return
     e.preventDefault()
     draggedBlock.classList.remove('opacity-40')
+    setDropIndicator(null)
 
     const container = containerRef.current
     let target = e.target as HTMLElement | null
@@ -2095,7 +2148,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           isComposingRef.current = false
           handleInput()
         }}
-        className={`pyrite-editor-surface w-full min-h-[400px] focus:outline-none font-sans text-zinc-300 leading-relaxed ${fontSizeClass} select-text`}
+        className={`pyrite-editor-surface w-full min-h-[400px] focus:outline-none font-sans text-zinc-300 leading-[1.5] ${fontSizeClass} select-text`}
       />
 
       {blockHosts.map(block => createPortal(block.kind === 'table'
@@ -2117,6 +2170,22 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         onDragStart={handleBlockDragStart}
         onDragEnd={handleBlockDragEnd}
       />
+
+      {/* AppFlowy-style Drop Line Indicator */}
+      {dropIndicator && (
+        <div
+          style={{
+            position: 'fixed',
+            top: `${dropIndicator.top - 1}px`,
+            left: `${dropIndicator.left}px`,
+            width: `${dropIndicator.width}px`,
+            zIndex: 9999
+          }}
+          className="pointer-events-none h-[2px] bg-[#c59b27] rounded-full shadow-[0_0_8px_rgba(197,155,39,0.9)] transition-all duration-75"
+        >
+          <div className="absolute -left-1 -top-1 w-2.5 h-2.5 rounded-full bg-[#c59b27] shadow-[0_0_6px_rgba(197,155,39,0.95)]" />
+        </div>
+      )}
 
       {/* AppFlowy-style Inline AI Floating Modal */}
       <EditorInlineAiModal
@@ -2145,6 +2214,12 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             type="button"
             onMouseDown={e => {
               e.preventDefault()
+              e.stopPropagation()
+              handleOpenAiForSelection()
+            }}
+            onClick={e => {
+              e.preventDefault()
+              e.stopPropagation()
               handleOpenAiForSelection()
             }}
             className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 transition-all font-medium text-[11px] cursor-pointer"
