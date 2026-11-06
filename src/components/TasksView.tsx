@@ -51,6 +51,9 @@ import {
   ChevronRight,
   Check,
   CheckSquare,
+  Minus,
+  MoreHorizontal,
+  Clock,
   CornerDownRight,
   Pencil,
   PanelRightOpen,
@@ -81,7 +84,7 @@ type ViewMode = 'list' | 'kanban' | 'gantt'
 type KanbanGroupBy = string
 
 const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
-  col_select: 44,
+  col_select: 34,
   col_title: 320,
   prop_status: 170,
   prop_priority: 130,
@@ -92,7 +95,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
 }
 
 const MIN_COLUMN_WIDTHS: Record<string, number> = {
-  col_select: 40,
+  col_select: 32,
   col_title: 150,
   prop_status: 110,
   prop_priority: 90,
@@ -250,6 +253,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
   // Task deletion custom modal state
   const [taskToDelete, setTaskToDelete] = useState<TaskItem | null>(null)
 
+  // Multi-selection for bulk actions
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
+  const [isBulkMenuOpen, setIsBulkMenuOpen] = useState(false)
+
   // Drag and drop state
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
   const [dragOverColumnId, setDragOverColumnId] = useState<string | null>(null)
@@ -290,6 +297,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       setInlineBoardTaskId(null)
       setInlineBoardPropId(null)
       setInlineCustomField(null)
+      setIsBulkMenuOpen(false)
     }
     window.addEventListener('click', handleClickOutside)
     return () => window.removeEventListener('click', handleClickOutside)
@@ -475,7 +483,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 if (e.key === 'Enter') e.currentTarget.blur()
                 if (e.key === 'Escape') setInlineCustomField(null)
               }}
-              className="w-full bg-zinc-900 border border-[var(--accent,#c59b27)]/60 rounded px-1.5 py-0.5 text-xs text-zinc-100 font-mono outline-none"
+              className="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 p-0 text-xs text-zinc-100 font-mono cursor-text"
             />
           )
         }
@@ -731,7 +739,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 if (e.key === 'Enter') e.currentTarget.blur()
                 if (e.key === 'Escape') setInlineCustomField(null)
               }}
-              className="w-full bg-zinc-900 border border-[var(--accent,#c59b27)]/60 rounded px-1.5 py-0.5 text-xs text-zinc-100 outline-none"
+              className="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 p-0 text-xs text-zinc-100 cursor-text"
             />
           )
         }
@@ -879,6 +887,92 @@ export const TasksView: React.FC<TasksViewProps> = ({
       return matchesTitle || matchesTag || matchesContext
     })
   }, [boardTasks, searchQuery])
+
+  // Multi-selection computed states
+  const isAllSelected = useMemo(() => {
+    return filteredTasks.length > 0 && filteredTasks.every(t => selectedTaskIds.has(t.id))
+  }, [filteredTasks, selectedTaskIds])
+
+  const isSomeSelected = useMemo(() => {
+    return selectedTaskIds.size > 0 && !isAllSelected
+  }, [selectedTaskIds, isAllSelected])
+
+  const handleToggleSelectAll = (e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    if (isAllSelected) {
+      setSelectedTaskIds(new Set())
+    } else {
+      setSelectedTaskIds(new Set(filteredTasks.map(t => t.id)))
+    }
+  }
+
+  const handleToggleSelectTask = (taskId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelectedTaskIds(prev => {
+      const next = new Set(prev)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
+  }
+
+  // Bulk action handlers
+  const handleBulkComplete = (e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    const completedStatus = safeStatuses.find(s => s.isCompleted) || safeStatuses[0]
+    filteredTasks.forEach(task => {
+      if (selectedTaskIds.has(task.id)) {
+        onUpdateTask({ ...task, completed: true, statusId: completedStatus.id, updatedAt: Date.now() })
+      }
+    })
+    setIsBulkMenuOpen(false)
+  }
+
+  const handleBulkPending = (e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    const activeStatus = safeStatuses.find(s => !s.isCompleted) || safeStatuses[0]
+    filteredTasks.forEach(task => {
+      if (selectedTaskIds.has(task.id)) {
+        onUpdateTask({ ...task, completed: false, statusId: activeStatus.id, updatedAt: Date.now() })
+      }
+    })
+    setIsBulkMenuOpen(false)
+  }
+
+  const handleBulkSetStatus = (statusId: string) => {
+    const chosenStatus = safeStatuses.find(s => s.id === statusId)
+    filteredTasks.forEach(task => {
+      if (selectedTaskIds.has(task.id)) {
+        onUpdateTask({
+          ...task,
+          statusId,
+          completed: Boolean(chosenStatus?.isCompleted),
+          updatedAt: Date.now()
+        })
+      }
+    })
+    setIsBulkMenuOpen(false)
+  }
+
+  const handleBulkSetPriority = (priority: TaskPriority) => {
+    filteredTasks.forEach(task => {
+      if (selectedTaskIds.has(task.id)) {
+        onUpdateTask({ ...task, priority, updatedAt: Date.now() })
+      }
+    })
+    setIsBulkMenuOpen(false)
+  }
+
+  const handleBulkDelete = (e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    const count = selectedTaskIds.size
+    if (count === 0) return
+    if (window.confirm(`Deseja realmente excluir as ${count} tarefas selecionadas?`)) {
+      selectedTaskIds.forEach(id => onDeleteTask(id))
+      setSelectedTaskIds(new Set())
+    }
+    setIsBulkMenuOpen(false)
+  }
 
   const handleToggleComplete = (task: TaskItem, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -1171,10 +1265,133 @@ export const TasksView: React.FC<TasksViewProps> = ({
               <tr className="text-zinc-300 uppercase text-[10.5px] tracking-wider font-semibold border-b border-zinc-800/80">
                 {/* Checkbox column */}
                 <th
-                  style={{ width: columnWidths.col_select || 44 }}
-                  className="w-11 px-3 py-2.5 text-center border-r border-zinc-800/60 bg-[#18181b] select-none"
+                  style={{ width: columnWidths.col_select || 34 }}
+                  className="w-8.5 px-1 py-2 text-center border-r border-zinc-800/60 bg-[#18181b] select-none relative"
                 >
-                  <CheckSquare className="w-3.5 h-3.5 mx-auto text-zinc-500 opacity-70" />
+                  <div className="flex items-center justify-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={handleToggleSelectAll}
+                      className="cursor-pointer p-0.5 rounded hover:bg-zinc-800 transition-colors flex items-center justify-center text-zinc-400 hover:text-white"
+                      title={isAllSelected ? "Desmarcar todas" : "Selecionar todas as tarefas"}
+                    >
+                      <div
+                        className={`w-4 h-4 rounded-[4px] flex items-center justify-center transition-all ${
+                          isAllSelected
+                            ? 'bg-[var(--accent,#c59b27)] border border-[var(--accent,#c59b27)] text-black'
+                            : isSomeSelected
+                            ? 'bg-[var(--accent,#c59b27)]/20 border border-[var(--accent,#c59b27)] text-[var(--accent,#c59b27)]'
+                            : 'border border-zinc-700 hover:border-zinc-500 bg-transparent'
+                        }`}
+                      >
+                        {isAllSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        {isSomeSelected && <Minus className="w-3 h-3 stroke-[3]" />}
+                      </div>
+                    </button>
+
+                    {/* Bulk Action Icon Button */}
+                    <div className="relative inline-block" data-inline-popover="true">
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation()
+                          setIsBulkMenuOpen(prev => !prev)
+                        }}
+                        className={`p-0.5 rounded transition-colors cursor-pointer ${
+                          selectedTaskIds.size > 0
+                            ? 'text-[var(--accent,#c59b27)] hover:bg-zinc-800'
+                            : 'text-zinc-600 hover:text-zinc-400'
+                        }`}
+                        title="Ações em massa"
+                      >
+                        <MoreHorizontal className="w-3.5 h-3.5" />
+                      </button>
+
+                      {isBulkMenuOpen && (
+                        <div
+                          onClick={e => e.stopPropagation()}
+                          className="absolute top-full left-0 mt-1 z-50 w-52 rounded-xl bg-[#18181b] border border-zinc-700/80 shadow-2xl p-1.5 space-y-1 text-left normal-case tracking-normal animate-in fade-in zoom-in-95 duration-100"
+                        >
+                          <div className="px-2 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider border-b border-zinc-800">
+                            Ações em massa {selectedTaskIds.size > 0 && `(${selectedTaskIds.size})`}
+                          </div>
+
+                          {selectedTaskIds.size === 0 ? (
+                            <div className="px-2 py-2 text-xs text-zinc-500 italic">
+                              Selecione ao menos uma tarefa para executar ações em massa.
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={handleBulkComplete}
+                                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-emerald-400 hover:bg-emerald-500/10 transition-colors cursor-pointer"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Marcar como concluída</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={handleBulkPending}
+                                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-zinc-300 hover:bg-zinc-800 transition-colors cursor-pointer"
+                              >
+                                <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                                <span>Marcar como pendente</span>
+                              </button>
+
+                              {/* Status Submenu */}
+                              <div className="pt-1 border-t border-zinc-800">
+                                <div className="px-2 py-0.5 text-[10px] text-zinc-500">Alterar Status:</div>
+                                <div className="space-y-0.5">
+                                  {safeStatuses.map(st => (
+                                    <button
+                                      key={st.id}
+                                      type="button"
+                                      onClick={() => handleBulkSetStatus(st.id)}
+                                      className="w-full flex items-center gap-2 px-2 py-1 rounded-md text-xs text-zinc-300 hover:bg-zinc-800 cursor-pointer"
+                                    >
+                                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: st.color }} />
+                                      <span className="truncate">{st.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Priority Submenu */}
+                              <div className="pt-1 border-t border-zinc-800">
+                                <div className="px-2 py-0.5 text-[10px] text-zinc-500">Alterar Prioridade:</div>
+                                <div className="space-y-0.5">
+                                  {safePriorities.map(pr => (
+                                    <button
+                                      key={pr.id}
+                                      type="button"
+                                      onClick={() => handleBulkSetPriority(pr.id as TaskPriority)}
+                                      className="w-full flex items-center gap-2 px-2 py-1 rounded-md text-xs text-zinc-300 hover:bg-zinc-800 cursor-pointer"
+                                    >
+                                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: pr.color }} />
+                                      <span className="truncate">{pr.label}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="pt-1 border-t border-zinc-800">
+                                <button
+                                  type="button"
+                                  onClick={handleBulkDelete}
+                                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Excluir selecionadas</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </th>
 
                 {/* Task Title / Item Name */}
@@ -1410,40 +1627,32 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         onClick={() => onSelectTask(task)}
                         className="group transition-all cursor-pointer"
                       >
-                        {/* Checkbox */}
+                        {/* Checkbox / Selection */}
                         <td
-                          style={{ width: columnWidths.col_select || 44 }}
-                          className={`px-3 py-2 text-center border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${
-                            isSelected
+                          style={{ width: columnWidths.col_select || 34 }}
+                          className={`w-8.5 px-1 py-2 text-center border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all ${
+                            selectedTaskIds.has(task.id)
                               ? 'bg-[#222226] border-l-[3px] border-l-[var(--accent,#c59b27)]'
+                              : isSelected
+                              ? 'bg-[#1c1c20] border-l-[3px] border-l-[var(--accent,#c59b27)]/60'
                               : 'bg-[#141416] group-hover:bg-[#1a1a1e] border-l-[3px] border-l-transparent'
                           }`}
                         >
                           <button
                             type="button"
-                            onClick={e => handleToggleComplete(task, e)}
+                            onClick={e => handleToggleSelectTask(task.id, e)}
                             className="relative cursor-pointer flex items-center justify-center p-0.5 mx-auto"
-                            title={task.completed ? 'Marcar como pendente' : 'Marcar como concluída'}
+                            title={selectedTaskIds.has(task.id) ? 'Desmarcar seleção' : 'Selecionar tarefa'}
                           >
                             <div
                               className={`w-4 h-4 rounded-[4px] flex items-center justify-center transition-all ${
-                                task.completed
-                                  ? 'bg-emerald-500 border border-emerald-500 text-zinc-950 shadow-xs affine-check-pop'
-                                  : 'border border-zinc-700/80 hover:border-zinc-500 bg-transparent'
+                                selectedTaskIds.has(task.id)
+                                  ? 'bg-[var(--accent,#c59b27)] border border-[var(--accent,#c59b27)] text-black shadow-xs'
+                                  : 'border border-zinc-700/80 hover:border-zinc-400 bg-transparent'
                               }`}
                             >
-                              {task.completed && <Check className="w-3 h-3 stroke-[3]" />}
+                              {selectedTaskIds.has(task.id) && <Check className="w-3 h-3 stroke-[3]" />}
                             </div>
-
-                            {/* Affine 4-Dot Cardinal Burst */}
-                            {burstingTaskId === task.id && (
-                              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-top" />
-                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-bottom" />
-                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-left" />
-                                <span className="absolute w-1 h-1 rounded-full bg-emerald-400 affine-dot-right" />
-                              </div>
-                            )}
                           </button>
                         </td>
 
@@ -1458,7 +1667,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               {renderDynamicIcon(task.icon || 'CheckCircle2', 'w-3.5 h-3.5 shrink-0 text-zinc-500')}
                             </span>
 
-                            {/* Inline editable title input */}
+                            {/* Inline editable title input - subtle styling */}
                             <input
                               type="text"
                               value={editingTitleId === task.id ? titleDraft : task.title}
@@ -1484,7 +1693,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                   setEditingTitleId(null)
                                 }
                               }}
-                              className={`flex-1 min-w-0 bg-transparent py-0.5 px-1 rounded hover:bg-zinc-800/40 focus:bg-zinc-900 focus:ring-1 focus:ring-[var(--accent,#c59b27)]/50 outline-none text-[12.5px] transition-colors ${
+                              className={`flex-1 min-w-0 bg-transparent py-0.5 px-0.5 border-none outline-none focus:outline-none focus:ring-0 text-[12.5px] cursor-text transition-colors ${
                                 task.completed ? 'line-through text-zinc-500' : 'text-zinc-100'
                               }`}
                             />
@@ -1508,6 +1717,19 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 </span>
                               </button>
                             )}
+
+                            {/* Hover action to add subtask (restored) */}
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation()
+                                if (!isExpanded) toggleTaskExpand(task.id)
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-200 px-1.5 py-0.5 rounded hover:bg-zinc-800/60 transition-all shrink-0 cursor-pointer"
+                              title="Adicionar subtarefas"
+                            >
+                              + subtarefa
+                            </button>
 
                             {/* Subtle hover icon button with box & arrow to explicitly open task drawer */}
                             <button
@@ -1829,10 +2051,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         {!isColumnHidden('prop_tags') && (
                           <td
                             style={{ width: columnWidths.prop_tags || 150 }}
-                            className={`px-3 py-2 overflow-hidden max-w-0 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all relative ${rowBg}`}
+                            className={`px-3 py-2 border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none transition-all relative ${
+                              inlineTagsTaskId === task.id ? 'overflow-visible z-40' : 'overflow-hidden max-w-0'
+                            } ${rowBg}`}
                             data-inline-popover="true"
                           >
-                            <div className="flex items-center gap-1.5 flex-nowrap overflow-hidden max-w-full">
+                            <div className="flex items-center gap-1.5 flex-wrap overflow-hidden max-w-full">
                               {task.tags.map(tag => (
                                 <TaskLabelBadge
                                   key={tag}
@@ -1847,31 +2071,34 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                   }}
                                 />
                               ))}
-                              <button
-                                type="button"
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  setInlineTagsTaskId(inlineTagsTaskId === task.id ? null : task.id)
-                                }}
-                                className="opacity-0 group-hover:opacity-100 text-[10.5px] text-zinc-500 hover:text-zinc-300 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
-                                title="Adicionar ou selecionar rótulo"
-                              >
-                                + rótulo
-                              </button>
-                            </div>
 
-                            {inlineTagsTaskId === task.id && (
-                              <TaskLabelPicker
-                                selectedLabels={task.tags}
-                                allSavedLabels={allSavedLabels}
-                                onToggleLabel={lbl => handleToggleLabelForTask(lbl, task)}
-                                onCreateLabel={lbl => handleCreateLabelForTask(lbl, task)}
-                                onRenameSavedLabel={handleRenameSavedLabel}
-                                onDeleteSavedLabel={handleDeleteSavedLabel}
-                                onClose={() => setInlineTagsTaskId(null)}
-                                align="left"
-                              />
-                            )}
+                              <div className="relative inline-block">
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    setInlineTagsTaskId(inlineTagsTaskId === task.id ? null : task.id)
+                                  }}
+                                  className="text-[11px] text-zinc-500 hover:text-zinc-200 px-2 py-0.5 rounded-full border border-dashed border-zinc-750 hover:border-zinc-500 hover:bg-[#1b1b20] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                                  title="Adicionar ou selecionar rótulos"
+                                >
+                                  + Rótulo
+                                </button>
+
+                                {inlineTagsTaskId === task.id && (
+                                  <TaskLabelPicker
+                                    selectedLabels={task.tags}
+                                    allSavedLabels={allSavedLabels}
+                                    onToggleLabel={lbl => handleToggleLabelForTask(lbl, task)}
+                                    onCreateLabel={lbl => handleCreateLabelForTask(lbl, task)}
+                                    onRenameSavedLabel={handleRenameSavedLabel}
+                                    onDeleteSavedLabel={handleDeleteSavedLabel}
+                                    onClose={() => setInlineTagsTaskId(null)}
+                                    align="left"
+                                  />
+                                )}
+                              </div>
+                            </div>
                           </td>
                         )}
 
@@ -2018,8 +2245,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
               {/* Inline Quick Add Row */}
               <tr className="bg-[#141416] hover:bg-[#1a1a1e] transition-colors rounded-none border-b border-zinc-800/60 task-quick-add-row">
                 <td
-                  style={{ width: columnWidths.col_select || 44 }}
-                  className="px-3 py-2.5 text-center border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none"
+                  style={{ width: columnWidths.col_select || 34 }}
+                  className="w-8.5 px-1 py-2 text-center border-r border-zinc-800/40 border-b border-zinc-800/60 rounded-none"
                 >
                   <Plus className="w-3.5 h-3.5 text-zinc-500 mx-auto" />
                 </td>
@@ -2037,6 +2264,59 @@ export const TasksView: React.FC<TasksViewProps> = ({
               </tr>
             </tbody>
           </table>
+
+          {/* Floating Bulk Actions Bar */}
+          {selectedTaskIds.size > 0 && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#161619] border border-zinc-700/80 shadow-2xl rounded-2xl px-4 py-2 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-150">
+              <div className="flex items-center gap-2 pr-2 border-r border-zinc-800">
+                <span className="w-2 h-2 rounded-full bg-[var(--accent,#c59b27)] animate-pulse" />
+                <span className="text-xs font-semibold text-zinc-200">
+                  {selectedTaskIds.size} {selectedTaskIds.size === 1 ? 'tarefa selecionada' : 'tarefas selecionadas'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleBulkComplete}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Marcar selecionadas como concluídas"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Concluir</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleBulkPending}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Marcar selecionadas como pendentes"
+                >
+                  <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Pendente</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  className="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Excluir selecionadas"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Excluir</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedTaskIds(new Set())}
+                className="p-1 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 cursor-pointer ml-1"
+                title="Desmarcar todas"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 

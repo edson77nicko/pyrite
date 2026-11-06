@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import pyriteLogo from '../assets/icone_pyrite.png'
 import type { Note, NoteType, ViewMode } from '../types'
 import type { TaskBoard, TaskItem } from '../types/tasks'
+import { renderDynamicIcon, IconPickerPopover } from './IconPickerPopover'
 import {
   Folder,
   FolderOpen,
@@ -19,15 +20,6 @@ import {
   ChevronsDownUp,
   Palette,
   CheckCircle2,
-  ListTodo,
-  Target,
-  FolderKanban,
-  Sparkles,
-  Bookmark,
-  Layers,
-  Flag,
-  Zap,
-  Briefcase,
   MoreVertical,
   Pencil,
   Brain,
@@ -79,20 +71,7 @@ const BOARD_ICON_OPTIONS = [
 ]
 
 const renderBoardIcon = (iconName?: string, className = "w-3.5 h-3.5 shrink-0") => {
-  switch (iconName) {
-    case 'ListTodo': return <ListTodo className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-    case 'Target': return <Target className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-    case 'FolderKanban': return <FolderKanban className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-    case 'Sparkles': return <Sparkles className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-    case 'Star': return <Star className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-    case 'Calendar': return <Calendar className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-    case 'Bookmark': return <Bookmark className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-    case 'Layers': return <Layers className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-    case 'Flag': return <Flag className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-    case 'Zap': return <Zap className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-    case 'Briefcase': return <Briefcase className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-    default: return <CheckCircle2 className={className} style={{ color: 'var(--accent, #c59b27)' }} />
-  }
+  return renderDynamicIcon(iconName, className, { color: 'var(--accent, #c59b27)' })
 }
 
 // Module-level drag tracker to guarantee persistence across React render frames
@@ -421,6 +400,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [editingBoardName, setEditingBoardName] = useState('')
   const [boardMenuId, setBoardMenuId] = useState<string | null>(null)
   const [boardToDelete, setBoardToDelete] = useState<TaskBoard | null>(null)
+  const [iconPickerBoardId, setIconPickerBoardId] = useState<string | null>(null)
 
   // Estados para recolher/expandir seções de Itens e Projetos
   const [isItemsCollapsed, setIsItemsCollapsed] = useState<boolean>(() => {
@@ -1224,8 +1204,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   if (e.key === 'Escape') setIsCreatingBoard(false)
                 }}
               />
-              <div className="flex items-center gap-1 flex-wrap">
+              <div className="flex items-center justify-between">
                 <span className="text-[10px] text-zinc-400 font-mono">Ícone:</span>
+                <button
+                  type="button"
+                  onClick={() => setIconPickerBoardId('__new_item_board__')}
+                  className="text-[10px] text-[var(--accent,#c59b27)] hover:underline cursor-pointer"
+                >
+                  Mais...
+                </button>
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
                 {BOARD_ICON_OPTIONS.map(ico => (
                   <button
                     type="button"
@@ -1237,6 +1226,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </button>
                 ))}
               </div>
+              {iconPickerBoardId === '__new_item_board__' && (
+                <div className="relative">
+                  <IconPickerPopover
+                    selectedIcon={newBoardIcon}
+                    onSelectIcon={ico => {
+                      setNewBoardIcon(ico)
+                      setIconPickerBoardId(null)
+                    }}
+                    onClose={() => setIconPickerBoardId(null)}
+                    align="left"
+                  />
+                </div>
+              )}
               <div className="flex justify-end gap-1.5 pt-1">
                 <button
                   type="button"
@@ -1464,8 +1466,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   if (e.key === 'Escape') setIsCreatingBoard(false)
                 }}
               />
-              <div className="flex items-center gap-1 flex-wrap">
+              <div className="flex items-center justify-between">
                 <span className="text-[10px] text-zinc-400 font-mono">Ícone:</span>
+                <button
+                  type="button"
+                  onClick={() => setIconPickerBoardId('__new_item_board__')}
+                  className="text-[10px] text-[var(--accent,#c59b27)] hover:underline cursor-pointer"
+                >
+                  Mais...
+                </button>
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
                 {BOARD_ICON_OPTIONS.map(ico => (
                   <button
                     type="button"
@@ -1477,6 +1488,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </button>
                 ))}
               </div>
+              {iconPickerBoardId === '__new_item_board__' && (
+                <div className="relative">
+                  <IconPickerPopover
+                    selectedIcon={newBoardIcon}
+                    onSelectIcon={ico => {
+                      setNewBoardIcon(ico)
+                      setIconPickerBoardId(null)
+                    }}
+                    onClose={() => setIconPickerBoardId(null)}
+                    align="left"
+                  />
+                </div>
+              )}
               <div className="flex justify-end gap-1.5 pt-1">
                 <button
                   type="button"
@@ -1596,7 +1620,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           <span>Renomear</span>
                         </button>
 
-                        <div className="px-2 py-1 text-[10px] text-zinc-500 font-mono">Ícone:</div>
+                        <div className="flex items-center justify-between px-2 py-1 text-[10px] text-zinc-500 font-mono">
+                          <span>Ícone:</span>
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation()
+                              setIconPickerBoardId(b.id)
+                            }}
+                            className="text-[10px] text-[var(--accent,#c59b27)] hover:underline cursor-pointer"
+                          >
+                            Mais ícones...
+                          </button>
+                        </div>
                         <div className="grid grid-cols-4 gap-1 p-1">
                           {BOARD_ICON_OPTIONS.map(ico => (
                             <button
@@ -1612,6 +1648,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             </button>
                           ))}
                         </div>
+
+                        {iconPickerBoardId === b.id && (
+                          <div className="relative">
+                            <IconPickerPopover
+                              selectedIcon={b.icon}
+                              onSelectIcon={ico => {
+                                onChangeTaskBoardIcon?.(b.id, ico)
+                                setIconPickerBoardId(null)
+                                setBoardMenuId(null)
+                              }}
+                              onClose={() => setIconPickerBoardId(null)}
+                              align="left"
+                            />
+                          </div>
+                        )}
 
                         {b.id !== 'default' && (
                           <button
