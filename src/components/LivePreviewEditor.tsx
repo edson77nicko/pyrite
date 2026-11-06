@@ -9,6 +9,8 @@ import { createPortal } from 'react-dom'
 import { EditableTable } from './EditableTable'
 import { EditableCodeBlock } from './EditableCodeBlock'
 import { EditableCallout } from './EditableCallout'
+import { EditorInlineAiModal } from './EditorInlineAiModal'
+import { EditorBlockGutter } from './EditorBlockGutter'
 import { parseCodeInfo, serializeCodeBlock, serializeCallout } from '../utils/editorBlocks'
 import type { CodeBlockData, CalloutData } from '../utils/editorBlocks'
 import { ensureEditorLandingZones, exitEditorBlock, focusBlankEditorLine, insertEditorBlock } from '../utils/editorSurface'
@@ -67,6 +69,12 @@ interface SlashCommandItem {
 }
 
 const SLASH_COMMANDS: SlashCommandItem[] = [
+  {
+    id: 'ai',
+    title: 'Perguntar à IA / Gerar Texto',
+    icon: <Sparkles className="w-3.5 h-3.5 text-amber-400" />,
+    keywords: ['ai', 'ia', 'inteligencia', 'gerar', 'escrever', 'ask', 'prompt', 'gemini']
+  },
   {
     id: 'h1',
     title: 'Título 1',
@@ -803,13 +811,37 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     left: number
   } | null>(null)
 
+  // AppFlowy-style Hovered Block Gutter Handle state
+  const [hoveredBlock, setHoveredBlock] = useState<{
+    element: HTMLElement
+    top: number
+    left: number
+  } | null>(null)
+
+  const [draggedBlock, setDraggedBlock] = useState<HTMLElement | null>(null)
+
+  // AppFlowy-style Inline AI Modal state
+  const [inlineAi, setInlineAi] = useState<{
+    isOpen: boolean
+    targetText: string
+    position: { top: number; left: number }
+    targetBlock?: HTMLElement | null
+    range?: Range | null
+  }>({
+    isOpen: false,
+    targetText: '',
+    position: { top: 0, left: 0 }
+  })
+
+  const isComposingRef = useRef(false)
+
   const isEditable = displayMode === 'live'
 
   useEffect(() => {
     if (slashMenu) document.querySelector('.editor-command-item[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [slashMenu])
 
-  // Debounced Markdown Synchronization to parent state
+  // Debounced Markdown Synchronization to parent state (smooth 450ms debounce)
   const handleSync = useCallback(() => {
     if (!containerRef.current) return
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
@@ -822,7 +854,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         onUpdateContent(md)
         isTypingRef.current = false
       }
-    }, 250)
+    }, 450)
   }, [onUpdateContent])
 
   useEffect(() => () => {
@@ -1078,6 +1110,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
   // Handle typing inside unified contentEditable
   const handleInput = () => {
+    if (isComposingRef.current) return
     isTypingRef.current = true
     refreshBlocks()
     handleSync()
@@ -1510,6 +1543,20 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
     setSlashMenu(null)
 
+    if (cmdId === 'ai') {
+      const sel = window.getSelection()
+      const rect = sel?.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : { top: 120, left: 120 }
+      setInlineAi({
+        isOpen: true,
+        targetText: '',
+        position: {
+          top: Math.max(20, rect.top + 28),
+          left: Math.max(20, Math.min(window.innerWidth - 480, rect.left))
+        }
+      })
+      return
+    }
+
     if (cmdId === 'h1') formatBlockSafe('h1')
     else if (cmdId === 'h2') formatBlockSafe('h2')
     else if (cmdId === 'h3') formatBlockSafe('h3')
@@ -1644,6 +1691,275 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     handleSync()
   }
 
+  // Open Inline AI Modal for current text selection
+  const handleOpenAiForSelection = () => {
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return
+    const text = sel.toString().trim()
+    const range = sel.getRangeAt(0).cloneRange()
+    const rect = range.getBoundingClientRect()
+
+    setSelectionToolbar(null)
+    setInlineAi({
+      isOpen: true,
+      targetText: text,
+      position: {
+        top: Math.max(20, rect.bottom + 10),
+        left: Math.max(20, Math.min(window.innerWidth - 480, rect.left))
+      },
+      range
+    })
+  }
+
+  // Open Inline AI Modal for a hovered block
+  const handleOpenAiForBlock = (element: HTMLElement, text: string) => {
+    const rect = element.getBoundingClientRect()
+    setInlineAi({
+      isOpen: true,
+      targetText: text,
+      position: {
+        top: Math.max(20, rect.bottom + 8),
+        left: Math.max(20, Math.min(window.innerWidth - 480, rect.left))
+      },
+      targetBlock: element
+    })
+  }
+
+  // Apply result from Inline AI Modal
+  const handleApplyInlineAi = (generatedText: string, action: 'replace' | 'insert-below') => {
+    pushHistorySnapshot(true)
+
+    if (inlineAi.targetBlock) {
+      const block = inlineAi.targetBlock
+      if (action === 'replace') {
+        const p = document.createElement('p')
+        p.className = 'my-1.5 text-zinc-300 leading-relaxed'
+        p.innerHTML = formatInlineHtml(generatedText, allNotes) || '<br>'
+        block.replaceWith(p)
+      } else {
+        const p = document.createElement('p')
+        p.className = 'my-1.5 text-zinc-300 leading-relaxed'
+        p.innerHTML = formatInlineHtml(generatedText, allNotes) || '<br>'
+        block.after(p)
+      }
+    } else if (inlineAi.range) {
+      const range = inlineAi.range
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(range)
+
+      if (action === 'replace') {
+        document.execCommand('insertHTML', false, formatInlineHtml(generatedText, allNotes))
+      } else {
+        range.collapse(false)
+        const p = document.createElement('p')
+        p.className = 'my-1.5 text-zinc-300 leading-relaxed'
+        p.innerHTML = formatInlineHtml(generatedText, allNotes) || '<br>'
+        const block = range.startContainer instanceof HTMLElement
+          ? range.startContainer.closest('p, div, h1, h2, h3, li')
+          : range.startContainer.parentElement?.closest('p, div, h1, h2, h3, li')
+        if (block) {
+          block.after(p)
+        } else {
+          document.execCommand('insertHTML', false, `\n\n${generatedText}`)
+        }
+      }
+    } else {
+      insertBlock(`<p class="my-1.5 text-zinc-300 leading-relaxed">${formatInlineHtml(generatedText, allNotes)}</p>`)
+    }
+
+    refreshBlocks()
+    persistContent()
+    setInlineAi({ isOpen: false, targetText: '', position: { top: 0, left: 0 } })
+  }
+
+  // AppFlowy Block Gutter Handlers
+  const handleEditorMouseMove = (e: React.MouseEvent) => {
+    if (!isEditable || inlineAi.isOpen) return
+    const container = containerRef.current
+    if (!container) return
+
+    let target = e.target as HTMLElement | null
+    while (target && target.parentElement !== container) {
+      target = target.parentElement
+    }
+
+    if (target && target !== container) {
+      const rect = target.getBoundingClientRect()
+      const containerRect = container.getBoundingClientRect()
+      setHoveredBlock({
+        element: target,
+        top: rect.top,
+        left: Math.max(8, containerRect.left - 44)
+      })
+    }
+  }
+
+  const handleEditorMouseLeave = (e: React.MouseEvent) => {
+    const related = e.relatedTarget as HTMLElement | null
+    if (!related?.closest('.appflowy-block-gutter')) {
+      setHoveredBlock(null)
+    }
+  }
+
+  const handleBlockInsertBelow = (element: HTMLElement) => {
+    pushHistorySnapshot(true)
+    const newP = document.createElement('p')
+    newP.className = 'my-1.5 text-zinc-300 leading-relaxed'
+    newP.innerHTML = '<br>'
+    element.after(newP)
+    refreshBlocks()
+    persistContent()
+
+    const sel = window.getSelection()
+    const r = document.createRange()
+    r.selectNodeContents(newP)
+    r.collapse(true)
+    sel?.removeAllRanges()
+    sel?.addRange(r)
+  }
+
+  const handleBlockDelete = (element: HTMLElement) => {
+    pushHistorySnapshot(true)
+    element.remove()
+    refreshBlocks()
+    persistContent()
+    setHoveredBlock(null)
+  }
+
+  const handleBlockDuplicate = (element: HTMLElement) => {
+    pushHistorySnapshot(true)
+    const clone = element.cloneNode(true) as HTMLElement
+    element.after(clone)
+    refreshBlocks()
+    persistContent()
+  }
+
+  const handleBlockMove = (element: HTMLElement, direction: 'up' | 'down') => {
+    pushHistorySnapshot(true)
+    if (direction === 'up' && element.previousElementSibling) {
+      element.parentElement?.insertBefore(element, element.previousElementSibling)
+    } else if (direction === 'down' && element.nextElementSibling) {
+      element.parentElement?.insertBefore(element.nextElementSibling, element)
+    }
+    refreshBlocks()
+    persistContent()
+
+    const rect = element.getBoundingClientRect()
+    const containerRect = containerRef.current?.getBoundingClientRect()
+    if (containerRect) {
+      setHoveredBlock({
+        element,
+        top: rect.top,
+        left: Math.max(8, containerRect.left - 44)
+      })
+    }
+  }
+
+  const handleBlockTransform = (element: HTMLElement, type: 'p' | 'h1' | 'h2' | 'h3' | 'task' | 'bullet' | 'number' | 'callout' | 'code') => {
+    pushHistorySnapshot(true)
+    const rawText = element.textContent?.trim() || ''
+
+    if (type === 'h1') {
+      const h1 = document.createElement('h1')
+      h1.className = 'text-2xl font-serif font-bold text-zinc-100 my-3 pb-1 border-b border-zinc-800/60 tracking-tight'
+      h1.innerHTML = formatInlineHtml(rawText, allNotes) || '<br>'
+      element.replaceWith(h1)
+    } else if (type === 'h2') {
+      const h2 = document.createElement('h2')
+      h2.className = 'text-xl font-serif font-semibold text-zinc-200 mt-6 mb-2 tracking-tight'
+      h2.innerHTML = formatInlineHtml(rawText, allNotes) || '<br>'
+      element.replaceWith(h2)
+    } else if (type === 'h3') {
+      const h3 = document.createElement('h3')
+      h3.className = 'text-lg font-serif font-medium text-zinc-200 mt-4 mb-1.5 tracking-tight'
+      h3.innerHTML = formatInlineHtml(rawText, allNotes) || '<br>'
+      element.replaceWith(h3)
+    } else if (type === 'task') {
+      const task = document.createElement('div')
+      task.className = 'task-item flex items-start gap-2.5 my-1.5 group'
+      task.setAttribute('data-type', 'task')
+      task.innerHTML = `
+        <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
+        <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">${formatInlineHtml(rawText, allNotes) || '<br>'}</span>
+      `
+      element.replaceWith(task)
+    } else if (type === 'bullet') {
+      const ul = document.createElement('ul')
+      ul.className = 'list-disc pl-5 my-1.5 space-y-0.5 text-zinc-300'
+      ul.innerHTML = `<li>${formatInlineHtml(rawText, allNotes) || '<br>'}</li>`
+      element.replaceWith(ul)
+    } else if (type === 'number') {
+      const ol = document.createElement('ol')
+      ol.className = 'list-decimal pl-5 my-1.5 space-y-0.5 text-zinc-300'
+      ol.innerHTML = `<li>${formatInlineHtml(rawText, allNotes) || '<br>'}</li>`
+      element.replaceWith(ol)
+    } else if (type === 'callout') {
+      const shell = document.createElement('div')
+      shell.innerHTML = calloutShell({ type: 'NOTE', title: '', content: rawText })
+      element.replaceWith(shell.firstElementChild || shell)
+    } else if (type === 'code') {
+      const shell = document.createElement('div')
+      shell.innerHTML = codeShell({ title: '', language: '', content: rawText })
+      element.replaceWith(shell.firstElementChild || shell)
+    } else {
+      const p = document.createElement('p')
+      p.className = 'my-1.5 text-zinc-300 leading-relaxed'
+      p.innerHTML = formatInlineHtml(rawText, allNotes) || '<br>'
+      element.replaceWith(p)
+    }
+
+    refreshBlocks()
+    persistContent()
+    setHoveredBlock(null)
+  }
+
+  const handleBlockDragStart = (e: React.DragEvent, element: HTMLElement) => {
+    e.dataTransfer.setData('text/plain', element.textContent || '')
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggedBlock(element)
+    element.classList.add('opacity-40')
+  }
+
+  const handleBlockDragEnd = () => {
+    if (draggedBlock) {
+      draggedBlock.classList.remove('opacity-40')
+      setDraggedBlock(null)
+    }
+  }
+
+  const handleEditorDragOver = (e: React.DragEvent) => {
+    if (!draggedBlock || !containerRef.current) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleEditorDrop = (e: React.DragEvent) => {
+    if (!draggedBlock || !containerRef.current) return
+    e.preventDefault()
+    draggedBlock.classList.remove('opacity-40')
+
+    const container = containerRef.current
+    let target = e.target as HTMLElement | null
+    while (target && target.parentElement !== container) {
+      target = target.parentElement
+    }
+
+    if (target && target !== container && target !== draggedBlock) {
+      pushHistorySnapshot(true)
+      const rect = target.getBoundingClientRect()
+      const isAfter = e.clientY > rect.top + rect.height / 2
+      if (isAfter) {
+        target.after(draggedBlock)
+      } else {
+        target.before(draggedBlock)
+      }
+      refreshBlocks()
+      persistContent()
+    }
+    setDraggedBlock(null)
+  }
+
   // Handle click delegation (wikilink navigation, task checkboxes, code copy)
   const handleEditorClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget && containerRef.current && isEditable) {
@@ -1758,7 +2074,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         }
       }}
     >
-      {/* The Single Unified Dynamic Content Surface (Like Notion) */}
+      {/* The Single Unified Dynamic Content Surface (Like Notion / AppFlowy) */}
       <div
         ref={containerRef}
         contentEditable={isEditable}
@@ -1770,6 +2086,15 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         onMouseUp={handleSelectionCheck}
         onKeyUp={handleSelectionCheck}
         onClick={handleEditorClick}
+        onMouseMove={handleEditorMouseMove}
+        onMouseLeave={handleEditorMouseLeave}
+        onDragOver={handleEditorDragOver}
+        onDrop={handleEditorDrop}
+        onCompositionStart={() => { isComposingRef.current = true }}
+        onCompositionEnd={() => {
+          isComposingRef.current = false
+          handleInput()
+        }}
         className={`pyrite-editor-surface w-full min-h-[400px] focus:outline-none font-sans text-zinc-300 leading-relaxed ${fontSizeClass} select-text`}
       />
 
@@ -1779,7 +2104,30 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           ? <EditableCodeBlock initial={{ content: decodeURIComponent(block.wrapper.dataset.rawCode || ''), title: decodeURIComponent(block.wrapper.dataset.codeTitle || ''), language: block.wrapper.dataset.codeLang || '' }} readOnly={!isEditable} onChange={data => updateCode(block.wrapper, data)} onDelete={() => deleteBlock(block.wrapper)} onExit={() => exitBlock(block.wrapper)} />
           : <EditableCallout initial={{ type: block.wrapper.dataset.calloutType || 'NOTE', title: decodeURIComponent(block.wrapper.dataset.calloutTitle || ''), content: decodeURIComponent(block.wrapper.dataset.rawCallout || '') }} readOnly={!isEditable} renderInline={text => formatInlineHtml(text, allNotes)} onChange={data => updateCallout(block.wrapper, data)} onDelete={() => deleteBlock(block.wrapper)} onExit={() => exitBlock(block.wrapper)} />, block.host, block.id))}
 
-      {/* Floating Notion-style Selection Popover Toolbar */}
+      {/* AppFlowy-style Block Gutter Handle (Drag handle & Block options menu) */}
+      <EditorBlockGutter
+        hoveredBlock={hoveredBlock}
+        isEditable={isEditable}
+        onInsertBelow={handleBlockInsertBelow}
+        onDeleteBlock={handleBlockDelete}
+        onDuplicateBlock={handleBlockDuplicate}
+        onMoveBlock={handleBlockMove}
+        onTransformBlock={handleBlockTransform}
+        onAskAi={handleOpenAiForBlock}
+        onDragStart={handleBlockDragStart}
+        onDragEnd={handleBlockDragEnd}
+      />
+
+      {/* AppFlowy-style Inline AI Floating Modal */}
+      <EditorInlineAiModal
+        isOpen={inlineAi.isOpen}
+        targetText={inlineAi.targetText}
+        position={inlineAi.position}
+        onApply={handleApplyInlineAi}
+        onClose={() => setInlineAi({ isOpen: false, targetText: '', position: { top: 0, left: 0 } })}
+      />
+
+      {/* Floating Notion/AppFlowy Selection Popover Toolbar */}
       {isEditable && selectionToolbar && (
         <div
           style={{
@@ -1792,6 +2140,22 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           onMouseDown={e => e.preventDefault()}
           className="editor-selection-toolbar flex items-center gap-0.5 px-2 py-1.5 bg-[#141418]/95 border border-zinc-800 rounded-xl shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80 text-xs"
         >
+          {/* Perguntar à IA / Transformar com IA Button */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleOpenAiForSelection()
+            }}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 transition-all font-medium text-[11px] cursor-pointer"
+            title="Pedir à IA para melhorar, resumir ou continuar este texto"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>IA</span>
+          </button>
+
+          <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
+
           {/* Conectar com Nota / Wikilink [[...]] Button */}
           <button
             type="button"

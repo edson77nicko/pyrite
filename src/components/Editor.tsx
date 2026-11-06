@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import type { Note, EditorDisplayMode, AppSettings, ContextRole } from '../types'
 import { LivePreviewEditor, type LivePreviewEditorHandle } from './LivePreviewEditor'
 import { DocumentOutlineRail } from './DocumentOutlineRail'
@@ -48,18 +48,47 @@ export const Editor: React.FC<EditorProps> = ({
   const [isAgentRoleMenuOpen, setIsAgentRoleMenuOpen] = useState(false)
   const liveEditorRef = useRef<LivePreviewEditorHandle>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const pendingContentRef = useRef<string | null>(null)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const noteRef = useRef(note)
+  noteRef.current = note
+
+  const flushPendingContent = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+    }
+    if (pendingContentRef.current !== null && pendingContentRef.current !== noteRef.current.content) {
+      const updated = pendingContentRef.current
+      pendingContentRef.current = null
+      onUpdateNote({ ...noteRef.current, content: updated, updatedAt: Date.now() })
+    }
+  }, [onUpdateNote])
 
   // Keep internal state in sync when note changes
   useEffect(() => {
-    setContent(note.content)
     if (previousNoteIdRef.current !== note.id) {
-      isTitleFocusedRef.current = false
+      flushPendingContent()
       previousNoteIdRef.current = note.id
+      isTitleFocusedRef.current = false
+      setContent(note.content)
       setTitle(note.title)
-    } else if (!isTitleFocusedRef.current) {
-      setTitle(note.title)
+    } else {
+      if (pendingContentRef.current === null && note.content !== content) {
+        setContent(note.content)
+      }
+      if (!isTitleFocusedRef.current && note.title !== title) {
+        setTitle(note.title)
+      }
     }
-  }, [note.id, note.content, note.title])
+  }, [note.id, note.content, note.title, flushPendingContent, content, title])
+
+  // Flush on unmount
+  useEffect(() => {
+    return () => {
+      flushPendingContent()
+    }
+  }, [flushPendingContent])
 
   const commitTitleChange = (candidateTitle?: string) => {
     const raw = candidateTitle !== undefined ? candidateTitle : title
@@ -77,11 +106,15 @@ export const Editor: React.FC<EditorProps> = ({
     setTitle(newTitle)
   }
 
-  // Handle typing inside editor
-  const handleContentChange = (newContent: string) => {
+  // Handle typing inside editor with local responsiveness and debounced persistence
+  const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent)
-    onUpdateNote({ ...note, content: newContent, updatedAt: Date.now() })
-  }
+    pendingContentRef.current = newContent
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    debounceTimerRef.current = setTimeout(() => {
+      flushPendingContent()
+    }, 800)
+  }, [flushPendingContent])
 
   // Quick formatting toolbar buttons wired to LivePreviewEditor
   const handleFormatH1 = () => liveEditorRef.current?.setBlockType('h1')
