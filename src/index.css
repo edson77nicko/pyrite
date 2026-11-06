@@ -1396,7 +1396,33 @@ html.light .dark-theme-zone .hover\:bg-white\/\[0\.14\]:hover {
   border-color: #e4e4e7 !important;
 }
 
-/* Tabela Editável Pyrite (.pyrite-table) */
+/* Tabela Editável Pyrite (.pyrite-table & .pyrite-canvas-table-wrapper) */
+.light .pyrite-canvas-table-wrapper table {
+  background: #ffffff !important;
+  color: #18181b !important;
+}
+.light .pyrite-canvas-table-wrapper th {
+  background: #f4f4f6 !important;
+  color: #18181b !important;
+  border-color: #e4e4e7 !important;
+}
+.light .pyrite-canvas-table-wrapper td {
+  border-color: #e4e4e7 !important;
+  color: #27272a !important;
+}
+.light .pyrite-canvas-table-wrapper tr:hover td {
+  background: #f8f9fa !important;
+}
+.light .pyrite-table-popover {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: #dcdde0 !important;
+  color: #18181b !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+}
+.light .pyrite-table-popover button:hover {
+  background: #f4f4f6 !important;
+  color: #18181b !important;
+}
 .light .pyrite-table {
   border: 1px solid #dcdde0 !important;
   background: #ffffff !important;
