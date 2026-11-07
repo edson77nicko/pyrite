@@ -194,7 +194,7 @@ function formatInlineHtml(text: string, allNotes: Note[] = []): string {
         ? 'wiki-link-exists text-[var(--accent)] hover:opacity-90 bg-[var(--accent-glow-subtle)] border border-[var(--accent)]/30'
         : 'wiki-link-unresolved text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
 
-      return `<span class="wiki-link ${exists ? 'wiki-link-exists' : 'wiki-link-unresolved'} inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" ${alias && alias !== destination ? `data-alias="${escapeHtml(alias)}"` : ''} title="${exists ? `Abrir nota: &quot;${destination}&quot; (Ctrl+Clique para abrir | Clique para editar)` : `Criar nota: &quot;${destination}&quot; (Ctrl+Clique para criar | Clique para editar)`}"><span class="underline ${exists ? 'decoration-[var(--accent)]/40 hover:decoration-[var(--accent)]' : 'decoration-zinc-500/50 hover:decoration-zinc-400'} underline-offset-2">${escapeHtml(displayName)}</span></span>`
+      return `<span class="wiki-link ${exists ? 'wiki-link-exists' : 'wiki-link-unresolved'} inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" ${alias && alias !== destination ? `data-alias="${escapeHtml(alias)}"` : ''} title="${exists ? `Abrir nota: &quot;${destination}&quot; (Botão direito para editar)` : `Criar nota: &quot;${destination}&quot; (Botão direito para editar)`}"><span class="underline ${exists ? 'decoration-[var(--accent)]/40 hover:decoration-[var(--accent)]' : 'decoration-zinc-500/50 hover:decoration-zinc-400'} underline-offset-2">${escapeHtml(displayName)}</span></span>`
     }
 
     // 2. Markdown Image ![alt](src)
@@ -817,13 +817,15 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     range?: Range
   } | null>(null)
 
-  // Floating Link Search/Picker Popover (for selection link button)
+  // Floating Link Search/Picker Popover (for selection link button or editing existing link)
   const [linkPickerPopover, setLinkPickerPopover] = useState<{
     isOpen: boolean
     top: number
     left: number
     selectedText: string
-    range: Range
+    alias?: string
+    range?: Range
+    targetElement?: HTMLElement
     query: string
     index: number
   } | null>(null)
@@ -1032,7 +1034,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       : 'wiki-link-unresolved text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
 
     const displayName = (alias && alias.trim() && alias !== targetTitle) ? alias : targetTitle
-    const linkHtml = `<span class="wiki-link ${exists ? 'wiki-link-exists' : 'wiki-link-unresolved'} inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(targetTitle)}" ${alias && alias !== targetTitle ? `data-alias="${escapeHtml(alias)}"` : ''} title="${exists ? `Abrir nota: &quot;${targetTitle}&quot; (Ctrl+Clique para abrir | Clique para editar)` : `Criar nota: &quot;${targetTitle}&quot; (Ctrl+Clique para criar | Clique para editar)`}"><span class="underline ${exists ? 'decoration-[var(--accent)]/40 hover:decoration-[var(--accent)]' : 'decoration-zinc-500/50 hover:decoration-zinc-400'} underline-offset-2">${escapeHtml(displayName)}</span></span>&nbsp;`
+    const linkHtml = `<span class="wiki-link ${exists ? 'wiki-link-exists' : 'wiki-link-unresolved'} inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(targetTitle)}" ${alias && alias !== targetTitle ? `data-alias="${escapeHtml(alias)}"` : ''} title="${exists ? `Abrir nota: &quot;${targetTitle}&quot; (Botão direito para editar)` : `Criar nota: &quot;${targetTitle}&quot; (Botão direito para editar)`}"><span class="underline ${exists ? 'decoration-[var(--accent)]/40 hover:decoration-[var(--accent)]' : 'decoration-zinc-500/50 hover:decoration-zinc-400'} underline-offset-2">${escapeHtml(displayName)}</span></span>&nbsp;`
     document.execCommand('insertHTML', false, linkHtml)
   }
 

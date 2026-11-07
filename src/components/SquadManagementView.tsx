@@ -1,4 +1,4 @@
-import React, { useState, useRef, useLayoutEffect } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import type { AgentProfileVersion, TeamDefinition, SquadPipelineStep } from '../types/agents'
 import {
   Users,
@@ -145,32 +145,36 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
     }))
   }
 
-  const currentPipeline = activeSquad ? getSquadPipeline(activeSquad) : []
+  const currentPipeline = useMemo(() => {
+    return activeSquad ? getSquadPipeline(activeSquad) : []
+  }, [activeSquad?.id, activeSquad?.pipeline, activeSquad?.nodes])
 
   // Filtragem dos agentes na visualização Empalme
-  const filteredPipeline = currentPipeline.filter(step => {
-    const ag = agents.find(a => a.id === step.agentId)
-    const matchesSearch =
-      !agentFilterQuery ||
-      (ag?.name || '').toLowerCase().includes(agentFilterQuery.toLowerCase()) ||
-      step.roleInSquad.toLowerCase().includes(agentFilterQuery.toLowerCase())
+  const filteredPipeline = useMemo(() => {
+    return currentPipeline.filter(step => {
+      const ag = agents.find(a => a.id === step.agentId)
+      const matchesSearch =
+        !agentFilterQuery ||
+        (ag?.name || '').toLowerCase().includes(agentFilterQuery.toLowerCase()) ||
+        (step.roleInSquad || '').toLowerCase().includes(agentFilterQuery.toLowerCase())
 
-    const isStepActive = step.enabled !== false
-    if (connectionFilter === 'active') return matchesSearch && isStepActive
-    if (connectionFilter === 'inactive') return matchesSearch && !isStepActive
-    return matchesSearch
-  })
+      const isStepActive = step.enabled !== false
+      if (connectionFilter === 'active') return matchesSearch && isStepActive
+      if (connectionFilter === 'inactive') return matchesSearch && !isStepActive
+      return matchesSearch
+    })
+  }, [currentPipeline, agents, agentFilterQuery, connectionFilter])
 
   // Dividir a lista em Coluna Esquerda e Coluna Direita (distribuição equilibrada)
   const halfCount = Math.ceil(filteredPipeline.length / 2)
-  const leftColumnSteps = filteredPipeline.slice(0, halfCount)
-  const rightColumnSteps = filteredPipeline.slice(halfCount)
+  const leftColumnSteps = useMemo(() => filteredPipeline.slice(0, halfCount), [filteredPipeline, halfCount])
+  const rightColumnSteps = useMemo(() => filteredPipeline.slice(halfCount), [filteredPipeline, halfCount])
 
   const activeCount = currentPipeline.filter(p => p.enabled !== false).length
   const inactiveCount = currentPipeline.length - activeCount
 
   // Atualizar cálculo das curvas SVG dos cabos
-  const recalculateCables = () => {
+  const recalculateCables = useCallback(() => {
     if (!lienzoRef.current || !nucleoRef.current) return
 
     const lienzoRect = lienzoRef.current.getBoundingClientRect()
@@ -228,21 +232,44 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       })
     })
 
-    setCablePaths(newPaths)
-  }
+    setCablePaths(prev => {
+      if (prev.length === newPaths.length) {
+        let isSame = true
+        for (let i = 0; i < prev.length; i++) {
+          if (
+            prev[i].id !== newPaths[i].id ||
+            prev[i].d !== newPaths[i].d ||
+            prev[i].active !== newPaths[i].active ||
+            prev[i].side !== newPaths[i].side
+          ) {
+            isSame = false
+            break
+          }
+        }
+        if (isSame) return prev
+      }
+      return newPaths
+    })
+  }, [leftColumnSteps, rightColumnSteps])
 
-  useLayoutEffect(() => {
-    recalculateCables()
-    const handleResize = () => recalculateCables()
-    window.addEventListener('resize', handleResize)
-    const observer = new ResizeObserver(() => recalculateCables())
+  useEffect(() => {
+    let rafId: number
+    const scheduleRecalc = () => {
+      cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => recalculateCables())
+    }
+
+    scheduleRecalc()
+    window.addEventListener('resize', scheduleRecalc)
+    const observer = new ResizeObserver(() => scheduleRecalc())
     if (lienzoRef.current) observer.observe(lienzoRef.current)
 
     return () => {
-      window.removeEventListener('resize', handleResize)
+      cancelAnimationFrame(rafId)
+      window.removeEventListener('resize', scheduleRecalc)
       observer.disconnect()
     }
-  }, [currentPipeline, expandedCardIds, activeSquad?.id, connectionFilter, agentFilterQuery])
+  }, [recalculateCables, expandedCardIds, activeSquad?.id])
 
   // Alternar conexão do agente (Toggle ON/OFF)
   const handleToggleStepConnection = (stepId: string) => {
