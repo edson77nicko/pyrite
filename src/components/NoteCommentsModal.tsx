@@ -5,15 +5,18 @@ import {
   RotateCcw,
   Trash2,
   X,
-  CornerDownRight
+  CornerDownRight,
+  User,
+  Star,
+  Flame,
+  AlertCircle
 } from 'lucide-react'
 import type { NoteComment } from '../types/comments'
 import {
   getNoteComments,
   toggleCommentResolved,
   deleteNoteComment,
-  formatRelativeTime,
-  getUserProfile
+  formatRelativeTime
 } from '../utils/commentsStorage'
 
 interface Props {
@@ -25,6 +28,24 @@ interface Props {
 
 type TabType = 'open' | 'resolved' | 'all'
 
+const renderCommentIcon = (iconId?: string, className: string = 'w-3.5 h-3.5') => {
+  switch (iconId) {
+    case 'message':
+      return <MessageSquare className={className} />
+    case 'star':
+      return <Star className={className} />
+    case 'flame':
+      return <Flame className={className} />
+    case 'check':
+      return <Check className={className} />
+    case 'alert':
+      return <AlertCircle className={className} />
+    case 'user':
+    default:
+      return <User className={className} />
+  }
+}
+
 export const NoteCommentsModal: React.FC<Props> = ({
   noteId,
   isOpen,
@@ -33,7 +54,6 @@ export const NoteCommentsModal: React.FC<Props> = ({
 }) => {
   const [comments, setComments] = useState<NoteComment[]>(() => getNoteComments(noteId))
   const [activeTab, setActiveTab] = useState<TabType>('open')
-  const user = getUserProfile()
 
   const reload = () => {
     setComments(getNoteComments(noteId))
@@ -76,30 +96,38 @@ export const NoteCommentsModal: React.FC<Props> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-100">
+    <div className="fixed inset-0 z-50 overflow-hidden pointer-events-none select-none">
+      {/* Semi-transparent backdrop overlay to dismiss */}
+      <div
+        onClick={onClose}
+        className="absolute inset-0 bg-black/40 backdrop-blur-xs pointer-events-auto transition-opacity animate-in fade-in duration-150"
+      />
+
+      {/* Slide-over Right Sidebar Drawer (matching Task Detail panel) */}
       <div
         onClick={e => e.stopPropagation()}
-        className="w-full max-w-md bg-[#16161b] border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] text-zinc-300 animate-in zoom-in-95 duration-150"
+        className="absolute inset-y-0 right-0 w-80 sm:w-96 bg-[#16161b] border-l border-zinc-800 shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200 text-zinc-300"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800/80 bg-zinc-900/40">
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-zinc-800/80 bg-zinc-900/40">
           <div className="flex items-center gap-2">
             <MessageSquare className="w-4 h-4 text-[var(--accent)]" />
             <span className="font-semibold text-sm text-zinc-100">Comentários da Nota</span>
-            <span className="px-1.5 py-0.5 rounded-full bg-zinc-800 text-[10px] font-mono text-zinc-400">
+            <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-[10px] font-mono text-zinc-400">
               {comments.length}
             </span>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+            className="p-1 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+            title="Fechar (Esc)"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tabs: Abertos, Resolvidos, Todos */}
-        <div className="flex items-center gap-1 px-5 pt-3 pb-2 border-b border-zinc-800/60 bg-zinc-950/20 text-xs">
+        <div className="flex items-center gap-1 px-4 pt-2.5 pb-2 border-b border-zinc-800/60 bg-zinc-950/20 text-xs">
           <button
             onClick={() => setActiveTab('open')}
             className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
@@ -109,7 +137,7 @@ export const NoteCommentsModal: React.FC<Props> = ({
             }`}
           >
             <span>Abertos</span>
-            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeTab === 'open' ? 'bg-amber-500/20 text-amber-300 font-bold' : 'bg-zinc-800 text-zinc-400'}`}>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeTab === 'open' ? 'bg-[var(--accent-glow-subtle)] text-[var(--accent)] font-bold' : 'bg-zinc-800 text-zinc-400'}`}>
               {openComments.length}
             </span>
           </button>
@@ -144,9 +172,9 @@ export const NoteCommentsModal: React.FC<Props> = ({
         </div>
 
         {/* Comment List Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-chat-scrollbar">
+        <div className="flex-1 overflow-y-auto p-3.5 space-y-2.5 custom-chat-scrollbar select-text">
           {displayedComments.length === 0 ? (
-            <div className="py-12 flex flex-col items-center justify-center text-center text-zinc-500 text-xs">
+            <div className="py-16 flex flex-col items-center justify-center text-center text-zinc-500 text-xs select-none">
               <MessageSquare className="w-8 h-8 stroke-1 text-zinc-600 mb-2" />
               <span>Nenhum comentário {activeTab === 'open' ? 'aberto' : activeTab === 'resolved' ? 'resolvido' : 'nesta nota'}.</span>
             </div>
@@ -158,29 +186,25 @@ export const NoteCommentsModal: React.FC<Props> = ({
                   onSelectComment(c)
                   onClose()
                 }}
-                className={`p-3.5 rounded-xl border transition-all cursor-pointer group ${
+                className={`p-3 rounded-xl border transition-all cursor-pointer group ${
                   c.resolved
                     ? 'border-zinc-800/60 bg-zinc-900/20 opacity-70 hover:opacity-100 hover:border-zinc-700'
                     : 'border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-800/50 shadow-sm'
                 }`}
               >
-                {/* Header line: Avatar, Author, Relative time */}
+                {/* Header line: Dot/Icon, Author, Relative time */}
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2">
                     <div
-                      className="w-6 h-6 rounded-full border-2 border-orange-500 bg-orange-500 overflow-hidden flex items-center justify-center text-white font-bold text-[10px]"
-                      style={{
-                        backgroundImage: `url(${c.avatarUrl || user.avatarUrl})`,
-                        backgroundSize: '320%',
-                        backgroundPosition: '53.5% 35.6%'
-                      }}
+                      className="w-5.5 h-5.5 rounded-full rounded-bl-xs border border-white/20 flex items-center justify-center text-white"
+                      style={{ backgroundColor: c.color || 'var(--accent)' }}
                     >
-                      {(!c.avatarUrl && !user.avatarUrl) && 'EC'}
+                      {renderCommentIcon(c.icon, "w-3 h-3")}
                     </div>
                     <span className="font-semibold text-xs text-zinc-200">{c.author}</span>
                   </div>
 
-                  <span className="text-[11px] text-zinc-500">{formatRelativeTime(c.createdAt)}</span>
+                  <span className="text-[10px] text-zinc-500">{formatRelativeTime(c.createdAt)}</span>
                 </div>
 
                 {/* Block snippet excerpt where it was added */}
@@ -197,9 +221,9 @@ export const NoteCommentsModal: React.FC<Props> = ({
                 </div>
 
                 {/* Footer buttons */}
-                <div className="flex items-center justify-between mt-3 pt-2 border-t border-zinc-800/60">
+                <div className="flex items-center justify-between mt-2.5 pt-1.5 border-t border-zinc-800/60">
                   <span className="text-[10px] text-zinc-500 group-hover:text-[var(--accent)] transition-colors flex items-center gap-1">
-                    <span>Clique para rolar até a linha</span>
+                    <span>Rolar até a linha</span>
                   </span>
 
                   <div className="flex items-center gap-1">

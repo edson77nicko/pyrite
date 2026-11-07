@@ -36,7 +36,8 @@ import {
   Strikethrough,
   Info,
   AlertTriangle,
-  MessageSquareText
+  MessageSquareText,
+  X
 } from 'lucide-react'
 import type { LiveBlock } from '../utils/markdownBlocks'
 import { renderArtifactHtml } from '../utils/artifactParser'
@@ -193,7 +194,7 @@ function formatInlineHtml(text: string, allNotes: Note[] = []): string {
         ? 'wiki-link-exists text-[var(--accent)] hover:opacity-90 bg-[var(--accent-glow-subtle)] border border-[var(--accent)]/30'
         : 'wiki-link-unresolved text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
 
-      return `<span class="wiki-link ${exists ? 'wiki-link-exists' : 'wiki-link-unresolved'} inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" title="${exists ? `Abrir nota: &quot;${destination}&quot;` : `Criar nota: &quot;${destination}&quot;`}"><span class="underline ${exists ? 'decoration-[var(--accent)]/40 hover:decoration-[var(--accent)]' : 'decoration-zinc-500/50 hover:decoration-zinc-400'} underline-offset-2">${escapeHtml(displayName)}</span></span>`
+      return `<span class="wiki-link ${exists ? 'wiki-link-exists' : 'wiki-link-unresolved'} inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" ${alias && alias !== destination ? `data-alias="${escapeHtml(alias)}"` : ''} title="${exists ? `Abrir nota: &quot;${destination}&quot; (Ctrl+Clique para abrir | Clique para editar)` : `Criar nota: &quot;${destination}&quot; (Ctrl+Clique para criar | Clique para editar)`}"><span class="underline ${exists ? 'decoration-[var(--accent)]/40 hover:decoration-[var(--accent)]' : 'decoration-zinc-500/50 hover:decoration-zinc-400'} underline-offset-2">${escapeHtml(displayName)}</span></span>`
     }
 
     // 2. Markdown Image ![alt](src)
@@ -496,7 +497,8 @@ function domToMarkdown(root: HTMLElement): string {
       // Wikilink chip
       if (el.classList.contains('wiki-link') || el.hasAttribute('data-wiki')) {
         const dest = el.getAttribute('data-wiki') || el.textContent || ''
-        return `[[${dest}]]`
+        const alias = el.getAttribute('data-alias') || ''
+        return alias && alias !== dest ? `[[${dest}|${alias}]]` : `[[${dest}]]`
       }
 
       const tag = el.tagName.toLowerCase()
@@ -815,6 +817,17 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     range?: Range
   } | null>(null)
 
+  // Floating Link Search/Picker Popover (for selection link button)
+  const [linkPickerPopover, setLinkPickerPopover] = useState<{
+    isOpen: boolean
+    top: number
+    left: number
+    selectedText: string
+    range: Range
+    query: string
+    index: number
+  } | null>(null)
+
   // AppFlowy-style Drop line indicator state when dragging blocks
   const [dropIndicator, setDropIndicator] = useState<{
     top: number
@@ -1012,13 +1025,14 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     }
   }
 
-  const insertWikiLinkHtml = (targetTitle: string) => {
+  const insertWikiLinkHtml = (targetTitle: string, alias?: string) => {
     const exists = allNotes.some(n => n.title.toLowerCase().trim() === targetTitle.toLowerCase().trim())
     const pillClass = exists
-      ? 'text-amber-300 hover:text-amber-100 bg-amber-950/30 hover:bg-amber-900/50 border border-amber-800/40'
-      : 'text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
+      ? 'wiki-link-exists text-[var(--accent)] hover:opacity-90 bg-[var(--accent-glow-subtle)] border border-[var(--accent)]/30'
+      : 'wiki-link-unresolved text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
 
-    const linkHtml = `<span class="wiki-link inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(targetTitle)}" title="${exists ? `Abrir nota: &quot;${targetTitle}&quot;` : `Criar nota: &quot;${targetTitle}&quot;`}"><span class="underline decoration-amber-500/40 hover:decoration-amber-300 underline-offset-2">${escapeHtml(targetTitle)}</span></span>&nbsp;`
+    const displayName = (alias && alias.trim() && alias !== targetTitle) ? alias : targetTitle
+    const linkHtml = `<span class="wiki-link ${exists ? 'wiki-link-exists' : 'wiki-link-unresolved'} inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(targetTitle)}" ${alias && alias !== targetTitle ? `data-alias="${escapeHtml(alias)}"` : ''} title="${exists ? `Abrir nota: &quot;${targetTitle}&quot; (Ctrl+Clique para abrir | Clique para editar)` : `Criar nota: &quot;${targetTitle}&quot; (Ctrl+Clique para criar | Clique para editar)`}"><span class="underline ${exists ? 'decoration-[var(--accent)]/40 hover:decoration-[var(--accent)]' : 'decoration-zinc-500/50 hover:decoration-zinc-400'} underline-offset-2">${escapeHtml(displayName)}</span></span>&nbsp;`
     document.execCommand('insertHTML', false, linkHtml)
   }
 
@@ -1709,13 +1723,25 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       document.execCommand('strikeThrough')
     } else if (type === 'code') {
       const selectedText = sel.toString()
-      document.execCommand('insertHTML', false, `<code class="bg-zinc-800 text-amber-300 px-1 py-0.5 rounded font-mono text-xs">${escapeHtml(selectedText)}</code>`)
+      document.execCommand('insertHTML', false, `<code class="bg-zinc-800 text-[var(--accent)] px-1 py-0.5 rounded font-mono text-xs">${escapeHtml(selectedText)}</code>`)
     } else if (type === 'highlight') {
       const selectedText = sel.toString()
-      document.execCommand('insertHTML', false, `<mark class="bg-amber-400/25 text-amber-200 px-1 py-0.5 rounded font-normal">${escapeHtml(selectedText)}</mark>`)
+      document.execCommand('insertHTML', false, `<mark class="bg-[var(--accent-glow-subtle)] text-[var(--accent)] px-1 py-0.5 rounded font-normal border border-[var(--accent)]/30">${escapeHtml(selectedText)}</mark>`)
     } else if (type === 'link') {
       const selectedText = sel.toString().trim()
-      insertWikiLinkHtml(selectedText)
+      const range = sel.getRangeAt(0).cloneRange()
+      const rect = range.getBoundingClientRect()
+      setSelectionToolbar(null)
+      setLinkPickerPopover({
+        isOpen: true,
+        top: Math.max(20, rect.bottom + 8),
+        left: Math.max(20, Math.min(window.innerWidth - 300, rect.left)),
+        selectedText,
+        range,
+        query: selectedText,
+        index: 0
+      })
+      return
     } else if (type === 'h1') {
       formatBlockSafe('h1')
     } else if (type === 'h2') {
@@ -1734,6 +1760,38 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     setSelectionToolbar(null)
     refreshBlocks()
     handleSync()
+  }
+
+  // Apply chosen wiki link from search popover
+  const handleApplyLink = (targetTitle: string) => {
+    if (!linkPickerPopover) return
+    const { range, selectedText } = linkPickerPopover
+    const sel = window.getSelection()
+    if (sel) {
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+    pushHistorySnapshot(true)
+    const alias = (selectedText && selectedText.trim() !== targetTitle.trim()) ? selectedText.trim() : undefined
+    insertWikiLinkHtml(targetTitle.trim(), alias)
+    setLinkPickerPopover(null)
+    refreshBlocks()
+    handleSync()
+  }
+
+  const handleConfirmLinkPicker = () => {
+    if (!linkPickerPopover) return
+    const q = linkPickerPopover.query.trim()
+    const matches = allNotes
+      .filter(n => !q || n.title.toLowerCase().includes(q.toLowerCase()))
+      .slice(0, 8)
+    const chosen = matches[linkPickerPopover.index]
+    const target = chosen ? chosen.title : q
+    if (target) {
+      handleApplyLink(target)
+    } else {
+      setLinkPickerPopover(null)
+    }
   }
 
   // Open Inline AI Modal for current text selection
@@ -2055,15 +2113,46 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       focusBlankEditorLine(containerRef.current, e.clientY)
       return
     }
-    // 1. Wikilink Navigation Click
-    const wikiTargetEl = (e.target as HTMLElement).closest('.wiki-link')
+    // 1. Wikilink Navigation & In-place Editing (like Obsidian)
+    const wikiTargetEl = (e.target as HTMLElement).closest('.wiki-link') as HTMLElement | null
     if (wikiTargetEl) {
+      const destination = wikiTargetEl.getAttribute('data-wiki') || ''
+      const alias = wikiTargetEl.getAttribute('data-alias') || ''
+
+      // Ctrl+Click (or Cmd+Click) or read-only mode follows the link
+      if (e.ctrlKey || e.metaKey || !isEditable) {
+        e.preventDefault()
+        e.stopPropagation()
+        if (destination && onNavigate) {
+          onNavigate(destination)
+        }
+        return
+      }
+
+      // In edit mode without Ctrl: expand into raw markdown text [[Destination|Alias]] or [[Destination]] for editing!
       e.preventDefault()
       e.stopPropagation()
-      const destination = wikiTargetEl.getAttribute('data-wiki')
-      if (destination && onNavigate) {
-        onNavigate(destination)
+      pushHistorySnapshot(true)
+
+      const rawMarkdown = (alias && alias !== destination)
+        ? `[[${destination}|${alias}]]`
+        : `[[${destination}]]`
+
+      const textNode = document.createTextNode(rawMarkdown)
+      wikiTargetEl.replaceWith(textNode)
+
+      // Place cursor right inside the [[...]] before the closing ]] so user can edit immediately
+      const sel = window.getSelection()
+      if (sel) {
+        const range = document.createRange()
+        const targetOffset = Math.max(2, rawMarkdown.length - 2)
+        range.setStart(textNode, targetOffset)
+        range.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(range)
       }
+
+      handleSync()
       return
     }
 
@@ -2236,9 +2325,9 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             width: `${dropIndicator.width}px`,
             zIndex: 9999
           }}
-          className="pointer-events-none h-[2px] bg-[#c59b27] rounded-full shadow-[0_0_8px_rgba(197,155,39,0.9)] transition-all duration-75"
+          className="pointer-events-none h-[2px] bg-[var(--accent)] rounded-full shadow-[0_0_8px_var(--accent-glow)] transition-all duration-75"
         >
-          <div className="absolute -left-1 -top-1 w-2.5 h-2.5 rounded-full bg-[#c59b27] shadow-[0_0_6px_rgba(197,155,39,0.95)]" />
+          <div className="absolute -left-1 -top-1 w-2.5 h-2.5 rounded-full bg-[var(--accent)] shadow-[0_0_6px_var(--accent-glow)]" />
         </div>
       )}
 
@@ -2264,7 +2353,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           onMouseDown={e => e.preventDefault()}
           className="editor-selection-toolbar flex items-center gap-0.5 px-2 py-1.5 bg-[#141418]/95 border border-zinc-800 rounded-xl shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80 text-xs"
         >
-          {/* Perguntar à IA / Transformar com IA Button */}
+          {/* Perguntar à IA / Transformar com IA Button (Icon-only, Cor de Destaque) */}
           <button
             type="button"
             onMouseDown={e => {
@@ -2277,24 +2366,23 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
               e.stopPropagation()
               handleOpenAiForSelection()
             }}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 transition-all font-medium text-[11px] cursor-pointer"
+            className="p-1.5 rounded-lg text-[var(--accent)] hover:text-white bg-[var(--accent-glow-subtle)] hover:bg-[var(--accent)]/30 border border-[var(--accent)]/40 transition-all cursor-pointer flex items-center justify-center"
             title="Pedir à IA para melhorar, resumir ou continuar este texto"
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>IA</span>
+            <Sparkles className="w-3.5 h-3.5" />
           </button>
 
           <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
 
-          {/* Conectar com Nota / Wikilink [[...]] Button */}
+          {/* Conectar com Nota / Wikilink [[...]] Button (Cor de Destaque) */}
           <button
             type="button"
             onMouseDown={e => {
               e.preventDefault()
               handleToolbarWrap('link')
             }}
-            className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 bg-transparent hover:bg-amber-500/10 border border-amber-500/50 transition-all shadow-sm cursor-pointer flex items-center justify-center"
-            title="Conectar com Nota / Link Bidirecional [[...]]"
+            className="p-1.5 rounded-lg text-[var(--accent)] hover:text-white bg-transparent hover:bg-[var(--accent-glow-subtle)] border border-[var(--accent)]/40 transition-all shadow-xs cursor-pointer flex items-center justify-center"
+            title="Linkar nota"
           >
             <Link2 className="w-3.5 h-3.5" />
           </button>
@@ -2364,14 +2452,14 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             <List className="w-3.5 h-3.5" />
           </button>
 
-          {/* Callout */}
+          {/* Callout (Cor de Destaque) */}
           <button
             type="button"
             onMouseDown={e => {
               e.preventDefault()
               handleToolbarWrap('callout')
             }}
-            className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-950/40 transition-colors cursor-pointer flex items-center justify-center"
+            className="p-1.5 rounded-lg text-[var(--accent)] hover:text-white hover:bg-[var(--accent-glow-subtle)] transition-colors cursor-pointer flex items-center justify-center"
             title="Inserir Callout / Caixa de Destaque"
           >
             <MessageSquareText className="w-3.5 h-3.5" />
@@ -2405,14 +2493,14 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
             <Italic className="w-3.5 h-3.5" />
           </button>
 
-          {/* Highlight Button */}
+          {/* Highlight Button (Cor de Destaque) */}
           <button
             type="button"
             onMouseDown={e => {
               e.preventDefault()
               handleToolbarWrap('highlight')
             }}
-            className="p-1.5 rounded-lg text-amber-300 hover:text-amber-100 hover:bg-amber-950/40 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-[var(--accent)] hover:text-white hover:bg-[var(--accent-glow-subtle)] transition-colors cursor-pointer"
             title="Destaque (==)"
           >
             <Highlighter className="w-3.5 h-3.5" />
@@ -2438,11 +2526,108 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
               e.preventDefault()
               handleToolbarWrap('code')
             }}
-            className="p-1.5 rounded-lg text-emerald-400 hover:text-emerald-200 hover:bg-emerald-950/40 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
             title="Código em linha (`)"
           >
             <Code className="w-3.5 h-3.5" />
           </button>
+        </div>
+      )}
+
+      {/* Floating Link Search / Picker Popover */}
+      {isEditable && linkPickerPopover && (
+        <div
+          style={{
+            position: 'fixed',
+            top: `${linkPickerPopover.top}px`,
+            left: `${linkPickerPopover.left}px`,
+            zIndex: 9999
+          }}
+          onMouseDown={e => e.stopPropagation()}
+          className="w-72 bg-[#16161b] border border-zinc-700/80 rounded-xl shadow-2xl p-2 z-50 text-xs text-zinc-200 animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
+        >
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-900 border border-zinc-750 rounded-lg mb-1.5">
+            <Link2 className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+            <input
+              autoFocus
+              type="text"
+              value={linkPickerPopover.query}
+              onChange={e => setLinkPickerPopover(prev => prev ? { ...prev, query: e.target.value, index: 0 } : null)}
+              onKeyDown={e => {
+                const matches = allNotes.filter(n => !linkPickerPopover.query || n.title.toLowerCase().includes(linkPickerPopover.query.toLowerCase())).slice(0, 8)
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  if (matches.length > 0) {
+                    setLinkPickerPopover(prev => prev ? { ...prev, index: (prev.index + 1) % matches.length } : null)
+                  }
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  if (matches.length > 0) {
+                    setLinkPickerPopover(prev => prev ? { ...prev, index: (prev.index - 1 + matches.length) % matches.length } : null)
+                  }
+                } else if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleConfirmLinkPicker()
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setLinkPickerPopover(null)
+                }
+              }}
+              placeholder="Buscar nota para linkar..."
+              className="w-full bg-transparent border-0 outline-none text-xs text-zinc-100 placeholder:text-zinc-500"
+            />
+            <button
+              type="button"
+              onClick={() => setLinkPickerPopover(null)}
+              className="p-0.5 rounded text-zinc-500 hover:text-zinc-300 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* List of matching notes */}
+          <div className="max-h-48 overflow-y-auto space-y-0.5 custom-chat-scrollbar">
+            {allNotes
+              .filter(n => !linkPickerPopover.query || n.title.toLowerCase().includes(linkPickerPopover.query.toLowerCase()))
+              .slice(0, 8)
+              .map((noteItem, idx) => {
+                const isSel = idx === linkPickerPopover.index
+                return (
+                  <button
+                    key={noteItem.id}
+                    type="button"
+                    onMouseDown={e => {
+                      e.preventDefault()
+                      handleApplyLink(noteItem.title)
+                    }}
+                    className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center justify-between transition-colors cursor-pointer ${
+                      isSel ? 'bg-[var(--accent)] text-white' : 'hover:bg-zinc-800 text-zinc-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <FileText className="w-3 h-3 shrink-0 opacity-70" />
+                      <span className="truncate">{noteItem.title}</span>
+                    </div>
+                    <span className={`text-[10px] shrink-0 ${isSel ? 'text-white/80' : 'text-zinc-500'}`}>
+                      {noteItem.folder}
+                    </span>
+                  </button>
+                )
+              })}
+
+            {linkPickerPopover.query.trim() && (
+              <button
+                type="button"
+                onMouseDown={e => {
+                  e.preventDefault()
+                  handleApplyLink(linkPickerPopover.query.trim())
+                }}
+                className="w-full text-left px-2 py-1.5 rounded-lg text-zinc-400 hover:bg-zinc-800 flex items-center gap-1.5 transition-colors cursor-pointer border-t border-zinc-800/80 mt-1"
+              >
+                <span className="text-[11px] truncate">Link para: <strong className="text-[var(--accent)]">"{linkPickerPopover.query.trim()}"</strong></span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 

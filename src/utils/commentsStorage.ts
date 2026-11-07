@@ -54,6 +54,8 @@ export const addNoteComment = (
     text: string
     author?: string
     avatarUrl?: string
+    icon?: string
+    color?: string
   }
 ): NoteComment => {
   const comments = getNoteComments(noteId)
@@ -65,6 +67,8 @@ export const addNoteComment = (
     blockSnippet: data.blockSnippet,
     author: data.author || user.name || 'Edson Cunha',
     avatarUrl: data.avatarUrl || user.avatarUrl,
+    icon: data.icon || 'user',
+    color: data.color || '',
     text: data.text.trim(),
     createdAt: Date.now(),
     resolved: false
@@ -72,6 +76,22 @@ export const addNoteComment = (
   const next = [...comments, newComment]
   saveAllNoteComments(noteId, next)
   return newComment
+}
+
+export const updateNoteComment = (
+  noteId: string,
+  commentId: string,
+  data: Partial<Pick<NoteComment, 'icon' | 'color' | 'text'>>
+): NoteComment[] => {
+  const comments = getNoteComments(noteId)
+  const next = comments.map(c => {
+    if (c.id === commentId) {
+      return { ...c, ...data }
+    }
+    return c
+  })
+  saveAllNoteComments(noteId, next)
+  return next
 }
 
 export const toggleCommentResolved = (noteId: string, commentId: string): NoteComment[] => {
