@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import type { Note, NoteType, AgentProfileVersion, MultiAgentStoreState } from '../types'
 import type { TaskItem, TaskSettings, SubTask, TaskBoard } from '../types/tasks'
 import { executeAgentRun, resolveNoteByIdOrFallback } from '../utils/multiAgentEngine'

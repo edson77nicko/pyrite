@@ -3191,17 +3191,24 @@ export async function executeAgentRun(params: {
  * - Resolve notas estritamente por noteId primeiro via resolveNoteByIdOrFallback
  */
 export function validateWorkflowDefinition(
-  workflow: WorkflowDefinition,
-  allAgents: AgentProfileVersion[],
-  allNotes: Note[]
+  workflow?: WorkflowDefinition | null,
+  allAgents: AgentProfileVersion[] = [],
+  allNotes: Note[] = []
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = []
-  const inputNodes = workflow.nodes.filter(n => n.kind === 'input')
+  if (!workflow) {
+    return { valid: false, errors: ['Nenhum fluxo selecionado.'] }
+  }
+
+  const nodes = Array.isArray(workflow.nodes) ? workflow.nodes : []
+  const edges = Array.isArray(workflow.edges) ? workflow.edges : []
+
+  const inputNodes = nodes.filter(n => n.kind === 'input')
 
   if (inputNodes.length === 0) errors.push('O fluxo precisa ter pelo menos um bloco "Gatilho".')
 
-  const validNodeIds = new Set(workflow.nodes.map(n => n.id))
-  for (const edge of workflow.edges) {
+  const validNodeIds = new Set(nodes.map(n => n.id))
+  for (const edge of edges) {
     if (!validNodeIds.has(edge.sourceNodeId) || !validNodeIds.has(edge.targetNodeId)) {
       errors.push('O fluxo contém conexão apontando para bloco inexistente.')
     }
@@ -3215,7 +3222,7 @@ export function validateWorkflowDefinition(
   let hasCycle = false
   const dfsCycle = (nodeId: string) => {
     state.set(nodeId, 'visiting')
-    for (const edge of workflow.edges) {
+    for (const edge of edges) {
       if (edge.sourceNodeId !== nodeId) continue
       const targetState = state.get(edge.targetNodeId) || 'unvisited'
       if (targetState === 'visiting') {
@@ -3226,7 +3233,7 @@ export function validateWorkflowDefinition(
     }
     state.set(nodeId, 'visited')
   }
-  for (const node of workflow.nodes) {
+  for (const node of nodes) {
     if ((state.get(node.id) || 'unvisited') === 'unvisited') {
       dfsCycle(node.id)
     }
@@ -3241,7 +3248,7 @@ export function validateWorkflowDefinition(
   for (const id of q) reachableFromInput.add(id)
   while (q.length > 0) {
     const curr = q.shift()!
-    for (const edge of workflow.edges) {
+    for (const edge of edges) {
       if (edge.sourceNodeId === curr && !reachableFromInput.has(edge.targetNodeId)) {
         reachableFromInput.add(edge.targetNodeId)
         q.push(edge.targetNodeId)
@@ -3249,49 +3256,49 @@ export function validateWorkflowDefinition(
     }
   }
 
-  for (const node of workflow.nodes) {
+  for (const node of nodes) {
     // Ignorar elementos visuais de apoio (notas adesivas e tarjas de título) na validação de grafo
     if (node.kind === 'sticky_note' || node.kind === 'text_block') continue
 
-    const hasIncoming = workflow.edges.some(e => e.targetNodeId === node.id)
-    const hasOutgoing = workflow.edges.some(e => e.sourceNodeId === node.id)
+    const hasIncoming = edges.some(e => e.targetNodeId === node.id)
+    const hasOutgoing = edges.some(e => e.sourceNodeId === node.id)
 
     if (node.kind !== 'input' && (!hasIncoming || !reachableFromInput.has(node.id))) {
-      errors.push(`O bloco "${node.label}" está desconectado do fluxo principal.`)
+      errors.push(`O bloco "${node.label || 'Etapa'}" está desconectado do fluxo principal.`)
     }
     if (node.kind === 'input' && !hasOutgoing) {
-      errors.push(`O Gatilho "${node.label}" precisa ser conectado à primeira etapa do fluxo.`)
+      errors.push(`O Gatilho "${node.label || 'Gatilho'}" precisa ser conectado à primeira etapa do fluxo.`)
     }
     if (node.kind === 'condition' && !hasOutgoing) {
-      errors.push(`O bloco de Condição "${node.label}" precisa ter pelo menos uma ramificação conectada.`)
+      errors.push(`O bloco de Condição "${node.label || 'Condição'}" precisa ter pelo menos uma ramificação conectada.`)
     }
 
     if (node.kind === 'run_agent') {
-      if (allAgents.length > 0 && node.config.agentId) {
-        const ag = allAgents.find(a => a.id === node.config.agentId)
+      if (allAgents.length > 0 && node.config?.agentId) {
+        const ag = allAgents.find(a => a.id === node.config?.agentId)
         if (!ag) {
-          errors.push(`O bloco "${node.label}" precisa selecionar um Agente válido.`)
+          errors.push(`O bloco "${node.label || 'Agente'}" precisa selecionar um Agente válido.`)
         }
       }
     }
 
     if (node.kind === 'read_note') {
-      const hasPromptText = Boolean(node.config.promptTemplate && node.config.promptTemplate.trim())
+      const hasPromptText = Boolean(node.config?.promptTemplate && node.config.promptTemplate.trim())
       if (!hasPromptText) {
         const found = resolveNoteByIdOrFallback(
           allNotes,
-          node.config.noteId,
-          node.config.noteTitle,
-          node.config.folderPath
+          node.config?.noteId,
+          node.config?.noteTitle,
+          node.config?.folderPath
         )
-        if (!found && !node.config.folderPath) {
-          errors.push(`O bloco "${node.label}" precisa conter uma instrução de Prompt ou nota selecionada do cofre.`)
+        if (!found && !node.config?.folderPath) {
+          errors.push(`O bloco "${node.label || 'Prompt'}" precisa conter uma instrução de Prompt ou nota selecionada do cofre.`)
         }
       }
     }
 
-    if (node.kind === 'deliverable' && !node.config.targetFolder) {
-      errors.push(`O bloco "${node.label}" precisa definir uma pasta de destino.`)
+    if (node.kind === 'deliverable' && !node.config?.targetFolder) {
+      errors.push(`O bloco "${node.label || 'Saída'}" precisa definir uma pasta de destino.`)
     }
   }
 

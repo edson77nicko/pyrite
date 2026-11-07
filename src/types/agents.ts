@@ -369,6 +369,7 @@ export interface WorkflowNode {
     scheduleDays?: string[]
     conditionType?: 'no_missing_fields' | 'no_price_conflicts' | 'net_total_above' | 'always' | 'contains' | 'not_contains' | 'status_equals' | 'has_approval' | 'custom' | 'ai_rule'
     conditionThreshold?: number
+    expectedValue?: string
     targetFolder?: string
     outputType?: 'note' | 'tasks' | 'mindmap' | 'draw'
     namingPattern?: string

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import type {
   AgentActionPermission,
   AgentArtifact,
@@ -31,6 +31,7 @@ import { MarkdownRenderer } from './MarkdownRenderer'
 import { SquadManagementView } from './SquadManagementView'
 import { renderDynamicIcon } from './IconPickerPopover'
 import { WorkflowCanvasEditor } from './WorkflowCanvasEditor'
+import { ErrorBoundary } from './ErrorBoundary'
 import { AiSettingsModal, type CustomAgentSkill } from './AiSettingsModal'
 import { AgentIcon, AgentIconPicker } from './AgentIcon'
 import {
@@ -3470,7 +3471,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         {/* TELA 02: FLUXO DE TRABALHO (Canvas OpenBot tela cheia — Print 02!)          */}
         {/* ========================================================================== */}
         {activeSection === 'workflows' && (
-          <WorkflowCanvasEditor
+          <ErrorBoundary fallbackTitle="Editor de Fluxos de Trabalho">
+            <WorkflowCanvasEditor
             workflows={workflows}
             agents={store.agents}
             notes={notes}
@@ -3548,14 +3550,16 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               await handleDirectApproveWorkflowRun(pausedRun)
             }}
             isExecuting={isExecuting}
-          />
+            />
+          </ErrorBoundary>
         )}
 
         {/* ========================================================================== */}
         {/* ESQUADRÕES: GESTÃO ELEGANTE DE ESQUADRÕES & ESTEIRAS                       */}
         {/* ========================================================================== */}
         {activeSection === 'squads' && (
-          <SquadManagementView
+          <ErrorBoundary fallbackTitle="Gestão de Esquadrão">
+            <SquadManagementView
             squads={teams}
             agents={store.agents}
             selectedSquadId={selectedTeamId}
@@ -3573,13 +3577,14 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               if (nextTeams[0]) setSelectedTeamId(nextTeams[0].id)
             }}
             onOpenSquadChat={squad => {
-              const leadId = squad.coordinatorAgentId || squad.pipeline?.[0]?.agentId || squad.nodes[0]?.agentId || store.agents[0]?.id || ''
+              const leadId = squad.coordinatorAgentId || squad.pipeline?.[0]?.agentId || squad.nodes?.[0]?.agentId || store.agents[0]?.id || ''
               setSelectedAgentId(leadId)
               setSelectedTeamId(squad.id)
               setUseTeamDelegation(true)
               setActiveSection('agents')
             }}
-          />
+            />
+          </ErrorBoundary>
         )}
 
         {/* ========================================================================== */}

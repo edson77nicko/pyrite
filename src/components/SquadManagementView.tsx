@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useLayoutEffect } from 'react'
+import React, { useState, useRef, useLayoutEffect } from 'react'
 import type { AgentProfileVersion, TeamDefinition, SquadPipelineStep } from '../types/agents'
 import {
   Users,
@@ -127,14 +127,15 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
   >([])
 
   // Obter pipeline do esquadrão ativo com fallback retrocompatível
-  const getSquadPipeline = (squad: TeamDefinition): SquadPipelineStep[] => {
+  const getSquadPipeline = (squad?: TeamDefinition | null): SquadPipelineStep[] => {
+    if (!squad) return []
     if (squad.pipeline && squad.pipeline.length > 0) {
       return squad.pipeline.map(p => ({
         ...p,
         enabled: p.enabled !== false
       }))
     }
-    return squad.nodes.map((n, idx) => ({
+    return (squad.nodes || []).map((n, idx) => ({
       id: `step_${n.agentId}_${idx}`,
       agentId: n.agentId,
       roleInSquad: n.roleInTeam === 'coordinator' ? 'Coordenador & Líder' : `Especialista ${idx + 1}`,

@@ -26,6 +26,7 @@ import { GraphView } from './components/GraphView'
 import { CanvasView } from './components/CanvasView'
 import { TasksView } from './components/TasksView'
 import { MyTeamView } from './components/MyTeamView'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { CommandPalette } from './components/CommandPalette'
 import { AiAssistant } from './components/AiAssistant'
 import { StatusBar } from './components/StatusBar'
@@ -2037,7 +2038,8 @@ export const App: React.FC = () => {
               )}
 
               {currentView === 'agents' && (
-                <MyTeamView
+                <ErrorBoundary fallbackTitle="Minha Equipe" fallbackMessage="Ocorreu uma falha ao renderizar a equipe ou fluxos. Clique para restaurar.">
+                  <MyTeamView
                   store={agentStore}
                   onUpdateStore={handleUpdateAgentStore}
                   notes={notes}
@@ -2062,6 +2064,7 @@ export const App: React.FC = () => {
                     })
                   }}
                 />
+                </ErrorBoundary>
               )}
             </div>
 
