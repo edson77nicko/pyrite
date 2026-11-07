@@ -8,7 +8,7 @@ export interface MarkdownTable {
 
 export const DEFAULT_TABLE = '| Coluna 1 | Coluna 2 | Coluna 3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |'
 export const TABLE_METADATA = /^<!-- (?:pyrite|pyrita)-table:(.*?) -->$/
-export const clampColumnWidth = (width: number) => Math.max(120, Math.min(640, width))
+export const clampColumnWidth = (width: number) => Math.max(48, Math.min(800, width))
 
 /** Split actual delimiters, preserving escaped pipes, wikilink aliases and code. */
 export function splitTableRow(line: string): string[] {

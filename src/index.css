@@ -1423,6 +1423,34 @@ html.light .dark-theme-zone .hover\:bg-white\/\[0\.14\]:hover {
   background: #f4f4f6 !important;
   color: #18181b !important;
 }
+.light .pyrite-table-pill {
+  background: #a1a1aa !important;
+  color: #ffffff !important;
+}
+.light .pyrite-table-pill:hover {
+  background: #71717a !important;
+}
+.light .pyrite-table-pill-selected {
+  background: #3f3f46 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 2px #71717a !important;
+}
+.light .pyrite-table-dot {
+  background: #a1a1aa !important;
+}
+.light .pyrite-table-dot:hover {
+  background: #71717a !important;
+}
+.light .pyrite-table-add-bar {
+  border-color: #d4d4d8 !important;
+  background: #f4f4f6 !important;
+  color: #71717a !important;
+}
+.light .pyrite-table-add-bar:hover {
+  border-color: #a1a1aa !important;
+  background: #e4e4e7 !important;
+  color: #18181b !important;
+}
 .light .pyrite-table {
   border: 1px solid #dcdde0 !important;
   background: #ffffff !important;

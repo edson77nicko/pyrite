@@ -62,12 +62,11 @@ export function EditableTable({
   const [selectedCol, setSelectedCol] = useState<number | null>(null)
   const [selectedRow, setSelectedRow] = useState<number | null>(null)
 
-  // Hover states for inserters and bars
+  // Hover states for inserters and bars (isolated strictly per item)
   const [hoveredCol, setHoveredCol] = useState<number | null>(null)
   const [hoveredRow, setHoveredRow] = useState<number | null>(null)
   const [isHoveringBottomAdd, setIsHoveringBottomAdd] = useState(false)
   const [isHoveringRightAdd, setIsHoveringRightAdd] = useState(false)
-  const [isHoveringTable, setIsHoveringTable] = useState(false)
 
   // UI popover & confirmation states
   const [openAlignMenu, setOpenAlignMenu] = useState(false)
@@ -317,28 +316,35 @@ export function EditableTable({
     setOpenAlignMenu(false)
   }
 
-  // Column resize handler
+  // Column resize handler with pointer capture
   const handleResize = (event: React.PointerEvent, colIndex: number) => {
     event.preventDefault()
     event.stopPropagation()
     dragCleanup.current?.()
-    const current = latest.current
     const startX = event.clientX
-    let width = current.widths[colIndex]
+    const startWidth = latest.current.widths[colIndex] || 180
+    const targetEl = event.currentTarget as HTMLElement
+    try {
+      targetEl.setPointerCapture(event.pointerId)
+    } catch {}
 
     const onMove = (e: PointerEvent) => {
-      width = clampColumnWidth(current.widths[colIndex] + e.clientX - startX)
-      setTable({
-        ...current,
-        widths: current.widths.map((w, idx) => idx === colIndex ? width : w)
-      })
+      const newWidth = clampColumnWidth(startWidth + (e.clientX - startX))
+      setTable(prev => ({
+        ...prev,
+        widths: prev.widths.map((w, idx) => idx === colIndex ? newWidth : w)
+      }))
     }
 
-    const onUp = () => {
+    const onUp = (e: PointerEvent) => {
+      try {
+        targetEl.releasePointerCapture(e.pointerId)
+      } catch {}
       cleanup()
+      const finalWidth = clampColumnWidth(startWidth + (e.clientX - startX))
       commit({
-        ...current,
-        widths: current.widths.map((w, idx) => idx === colIndex ? width : w)
+        ...latest.current,
+        widths: latest.current.widths.map((w, idx) => idx === colIndex ? finalWidth : w)
       })
     }
 
@@ -652,6 +658,7 @@ export function EditableTable({
       : 'left'
 
   const hasSelection = !readOnly && (selectedCell !== null || selectedCol !== null || selectedRow !== null)
+  const totalTableWidth = table.widths.reduce((sum, w) => sum + w, 0) + (readOnly ? 0 : 28)
 
   return (
     <div
@@ -659,16 +666,14 @@ export function EditableTable({
       className={`pyrite-canvas-table-wrapper relative group/table my-5 select-none ${readOnly ? 'is-reading' : ''}`}
       tabIndex={0}
       onKeyDown={handleContainerKeyDown}
-      onMouseEnter={() => setIsHoveringTable(true)}
       onMouseLeave={() => {
-        setIsHoveringTable(false)
         setHoveredCol(null)
         setHoveredRow(null)
         setIsHoveringBottomAdd(false)
         setIsHoveringRightAdd(false)
       }}
     >
-      {/* 1. FLOATING POPOVER TOOLBAR (Matching FigJam Canvas Toolbar) */}
+      {/* 1. FLOATING POPOVER TOOLBAR (FigJam Canvas Style in Neutral Mode Tones) */}
       {hasSelection && (
         <div className="absolute -top-12 left-1/2 -translate-x-1/2 z-40 bg-[#18181b]/95 backdrop-blur-md border border-zinc-700/80 rounded-xl shadow-2xl px-2 py-1 flex items-center gap-1 text-xs text-zinc-300 pointer-events-auto animate-in fade-in zoom-in-95 duration-100 pyrite-table-popover">
           {/* A. Text Alignment Dropdown */}
@@ -679,11 +684,11 @@ export function EditableTable({
               title="Alinhamento do texto"
             >
               {activeAlign === 'center' ? (
-                <AlignCenter className="w-3.5 h-3.5 text-sky-400" />
+                <AlignCenter className="w-3.5 h-3.5 text-zinc-200" />
               ) : activeAlign === 'right' ? (
-                <AlignRight className="w-3.5 h-3.5 text-sky-400" />
+                <AlignRight className="w-3.5 h-3.5 text-zinc-200" />
               ) : (
-                <AlignLeft className="w-3.5 h-3.5 text-sky-400" />
+                <AlignLeft className="w-3.5 h-3.5 text-zinc-200" />
               )}
               <ChevronDown className="w-2.5 h-2.5 text-zinc-400" />
             </button>
@@ -702,7 +707,7 @@ export function EditableTable({
                       key={opt.id}
                       onClick={() => setAlignment(opt.id as any)}
                       className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs ${
-                        isSel ? 'bg-sky-500/20 text-sky-400 font-medium' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                        isSel ? 'bg-zinc-700 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
                       }`}
                     >
                       <Icon className="w-3.5 h-3.5" />
@@ -720,7 +725,7 @@ export function EditableTable({
           <button
             onClick={() => toggleFormat('bold')}
             className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-              isFormatActive('bold') ? 'bg-sky-500/20 text-sky-400' : 'hover:text-white hover:bg-zinc-800'
+              isFormatActive('bold') ? 'bg-zinc-700 text-white font-semibold' : 'hover:text-white hover:bg-zinc-800'
             }`}
             title="Negrito"
           >
@@ -730,7 +735,7 @@ export function EditableTable({
           <button
             onClick={() => toggleFormat('italic')}
             className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-              isFormatActive('italic') ? 'bg-sky-500/20 text-sky-400' : 'hover:text-white hover:bg-zinc-800'
+              isFormatActive('italic') ? 'bg-zinc-700 text-white font-semibold' : 'hover:text-white hover:bg-zinc-800'
             }`}
             title="Itálico"
           >
@@ -740,7 +745,7 @@ export function EditableTable({
           <button
             onClick={() => toggleFormat('strike')}
             className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-              isFormatActive('strike') ? 'bg-sky-500/20 text-sky-400' : 'hover:text-white hover:bg-zinc-800'
+              isFormatActive('strike') ? 'bg-zinc-700 text-white font-semibold' : 'hover:text-white hover:bg-zinc-800'
             }`}
             title="Tachado"
           >
@@ -750,7 +755,7 @@ export function EditableTable({
           <button
             onClick={() => toggleFormat('code')}
             className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-              isFormatActive('code') ? 'bg-sky-500/20 text-sky-400' : 'hover:text-white hover:bg-zinc-800'
+              isFormatActive('code') ? 'bg-zinc-700 text-white font-semibold' : 'hover:text-white hover:bg-zinc-800'
             }`}
             title="Código em linha"
           >
@@ -887,16 +892,14 @@ export function EditableTable({
         </div>
       )}
 
-      {/* 2. TABLE GRID WITH TOP / LEFT FIGJAM HANDLES & RIGHT / BOTTOM HOVER BARS */}
+      {/* 2. TABLE GRID WITH CLEAN UNCLIPPED TOP/LEFT CONTROLS & DEDICATED HOVER REGIONS */}
       <div className="flex items-start">
-        <div className="flex-1 overflow-x-auto overflow-y-visible pt-5 pb-1">
-          <div className="inline-block min-w-full align-middle">
-            <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 shadow-sm overflow-hidden backdrop-blur-xs">
+        <div className="flex-1 overflow-x-auto overflow-y-visible pt-6 pb-2">
+          <div style={{ width: `${totalTableWidth}px` }} className="relative">
+            <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 shadow-sm backdrop-blur-xs">
               <table
-                className="w-full border-collapse table-fixed text-xs text-zinc-300"
-                style={{
-                  minWidth: table.widths.reduce((sum, w) => sum + w, 0) + (readOnly ? 0 : 28)
-                }}
+                className="border-collapse table-fixed text-xs text-zinc-300"
+                style={{ width: `${totalTableWidth}px` }}
               >
                 <colgroup>
                   {!readOnly && <col style={{ width: 28 }} />}
@@ -916,19 +919,36 @@ export function EditableTable({
                     {table.columns.map((colName, cIdx) => {
                       const isColSelected = selectedCol === cIdx
                       const isColHovered = hoveredCol === cIdx
-                      const showHandles = !readOnly && (isHoveringTable || isColSelected || isColHovered)
+                      // Strictly show handles ONLY when this specific column is hovered or selected
+                      const showColHandles = !readOnly && (isColSelected || isColHovered)
 
                       return (
                         <th
                           key={cIdx}
+                          onMouseEnter={() => setHoveredCol(cIdx)}
+                          onMouseLeave={() => setHoveredCol(prev => prev === cIdx ? null : prev)}
+                          onClick={(e) => {
+                            if (!readOnly && !editingCell) {
+                              e.stopPropagation()
+                              setSelectedCol(prev => prev === cIdx ? null : cIdx)
+                              setSelectedRow(null)
+                              setSelectedCell(null)
+                            }
+                          }}
+                          onDoubleClick={(e) => {
+                            if (!readOnly) {
+                              e.stopPropagation()
+                              startEditing({ row: -1, col: cIdx }, true)
+                            }
+                          }}
                           style={{ textAlign: table.alignments[cIdx] || 'left' }}
-                          className={`relative group/colheader px-3 py-2 font-semibold text-zinc-200 border-r border-zinc-800/50 transition-colors ${
-                            isColSelected ? 'bg-sky-400/15' : 'hover:bg-zinc-800/40'
+                          className={`relative group/colheader px-3 py-2 font-semibold text-zinc-200 border-r border-zinc-800/50 cursor-pointer select-text transition-colors overflow-hidden ${
+                            isColSelected ? 'bg-zinc-700/30' : 'hover:bg-zinc-800/40'
                           }`}
                         >
                           {/* Top Column Handle Pill (Horizontal stroke) + Divider Inserters */}
-                          {showHandles && (
-                            <div className="absolute -top-4 left-0 right-0 flex items-center justify-center pointer-events-auto">
+                          {showColHandles && (
+                            <div className="absolute -top-5 left-0 right-0 flex items-center justify-center pointer-events-auto z-30">
                               {/* Left Inserter Dot */}
                               <button
                                 onClick={(e) => {
@@ -936,7 +956,7 @@ export function EditableTable({
                                   insertColumn(cIdx)
                                 }}
                                 onMouseEnter={() => setHoveredCol(cIdx)}
-                                className="absolute left-0 -translate-x-1/2 w-2.5 h-2.5 rounded-full cursor-pointer bg-sky-400 hover:bg-sky-300 hover:scale-125 shadow-xs transition-all z-30"
+                                className="absolute left-0 -translate-x-1/2 w-2.5 h-2.5 rounded-full cursor-pointer bg-zinc-500 hover:bg-zinc-300 hover:scale-125 shadow-xs transition-all z-30 pyrite-table-dot"
                                 title={`Inserir coluna antes da coluna ${cIdx + 1}`}
                               />
 
@@ -950,11 +970,10 @@ export function EditableTable({
                                   setEditingCell(null)
                                 }}
                                 onMouseEnter={() => setHoveredCol(cIdx)}
-                                onMouseLeave={() => setHoveredCol(null)}
-                                className={`w-5 h-1.5 rounded-full transition-all cursor-pointer z-30 shadow-xs ${
+                                className={`w-6 h-2 rounded-full transition-all cursor-pointer z-30 shadow-xs pyrite-table-pill ${
                                   isColSelected
-                                    ? 'bg-sky-400 ring-2 ring-sky-300 scale-110'
-                                    : 'bg-sky-400/90 hover:bg-sky-300 hover:scale-125'
+                                    ? 'bg-zinc-200 text-zinc-900 ring-2 ring-zinc-400 scale-110 pyrite-table-pill-selected'
+                                    : 'bg-zinc-600 hover:bg-zinc-400 hover:scale-125'
                                 }`}
                                 title={`Selecionar coluna ${cIdx + 1}`}
                               />
@@ -967,7 +986,7 @@ export function EditableTable({
                                     insertColumn(cIdx + 1)
                                   }}
                                   onMouseEnter={() => setHoveredCol(cIdx)}
-                                  className="absolute right-0 translate-x-1/2 w-2.5 h-2.5 rounded-full cursor-pointer bg-sky-400 hover:bg-sky-300 hover:scale-125 shadow-xs transition-all z-30"
+                                  className="absolute right-0 translate-x-1/2 w-2.5 h-2.5 rounded-full cursor-pointer bg-zinc-500 hover:bg-zinc-300 hover:scale-125 shadow-xs transition-all z-30 pyrite-table-dot"
                                   title={`Inserir coluna depois da coluna ${cIdx + 1}`}
                                 />
                               )}
@@ -983,32 +1002,25 @@ export function EditableTable({
                               data-column={cIdx}
                               value={colName}
                               placeholder="Nome da coluna"
-                              className="w-full bg-transparent resize-none outline-none border-none p-0 text-inherit font-inherit leading-normal text-sky-300"
+                              className="w-full bg-transparent resize-none outline-none border-none p-0 text-inherit font-inherit leading-normal text-zinc-100"
                               style={{ textAlign: table.alignments[cIdx] || 'left' }}
                               onChange={e => handleCellChange({ row: -1, col: cIdx }, e.target.value, e.target)}
                               onKeyDown={e => handleCellKeyDown(e, { row: -1, col: cIdx })}
                               onBlur={() => setEditingCell(null)}
                             />
                           ) : (
-                            <div
-                              onClick={e => handleCellClick(e, { row: -1, col: cIdx })}
-                              onDoubleClick={() => startEditing({ row: -1, col: cIdx }, true)}
-                              className={`cursor-pointer select-text truncate py-0.5 ${
-                                selectedCell?.row === -1 && selectedCell?.col === cIdx
-                                  ? 'ring-2 ring-sky-400 ring-inset rounded px-1 text-white bg-sky-400/10'
-                                  : ''
-                              }`}
-                            >
+                            <div className="truncate py-0.5">
                               {colName || <span className="text-zinc-500 italic select-none">Coluna {cIdx + 1}</span>}
                             </div>
                           )}
 
-                          {/* Column Resize Handle */}
+                          {/* Column Resize Handle with Pointer Capture */}
                           {!readOnly && (
                             <div
                               onPointerDown={e => handleResize(e, cIdx)}
-                              className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-sky-400/60 transition-colors z-20"
-                              title="Redimensionar coluna"
+                              onClick={e => e.stopPropagation()}
+                              className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-zinc-400/80 transition-colors z-20"
+                              title="Arrastar para redimensionar coluna"
                             />
                           )}
                         </th>
@@ -1022,20 +1034,35 @@ export function EditableTable({
                   {table.rows.map((row, rIdx) => {
                     const isRowSelected = selectedRow === rIdx
                     const isRowHovered = hoveredRow === rIdx
-                    const showRowHandles = !readOnly && (isHoveringTable || isRowSelected || isRowHovered)
+                    // Strictly show handles ONLY when this specific row is hovered or selected
+                    const showRowHandles = !readOnly && (isRowSelected || isRowHovered)
 
                     return (
                       <tr
                         key={rIdx}
+                        onMouseEnter={() => setHoveredRow(rIdx)}
+                        onMouseLeave={() => setHoveredRow(prev => prev === rIdx ? null : prev)}
                         className={`border-b border-zinc-800/40 transition-colors ${
-                          isRowSelected ? 'bg-sky-400/10' : 'hover:bg-zinc-800/20'
+                          isRowSelected ? 'bg-zinc-700/20' : 'hover:bg-zinc-800/20'
                         }`}
                       >
                         {/* Left Gutter Cell with Row Pill Handle & Inserter Dots */}
                         {!readOnly && (
-                          <td className="w-7 min-w-[28px] max-w-[28px] p-0 border-r border-zinc-800/60 bg-zinc-900/30 text-center relative select-none">
+                          <td
+                            onClick={(e) => {
+                              if (!readOnly && !editingCell) {
+                                e.stopPropagation()
+                                setSelectedRow(prev => prev === rIdx ? null : rIdx)
+                                setSelectedCol(null)
+                                setSelectedCell(null)
+                              }
+                            }}
+                            className={`w-7 min-w-[28px] max-w-[28px] p-0 border-r border-zinc-800/60 bg-zinc-900/30 text-center relative select-none cursor-pointer transition-colors ${
+                              isRowSelected ? 'bg-zinc-700/30' : 'hover:bg-zinc-800/40'
+                            }`}
+                          >
                             {showRowHandles && (
-                              <div className="absolute inset-0 flex items-center justify-center pointer-events-auto">
+                              <div className="absolute inset-0 flex items-center justify-center pointer-events-auto z-30">
                                 {/* Top Inserter Dot */}
                                 <button
                                   onClick={(e) => {
@@ -1043,7 +1070,7 @@ export function EditableTable({
                                     addRow(rIdx)
                                   }}
                                   onMouseEnter={() => setHoveredRow(rIdx)}
-                                  className="absolute top-0 -translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer bg-sky-400 hover:bg-sky-300 hover:scale-125 shadow-xs transition-all z-30"
+                                  className="absolute top-0 -translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer bg-zinc-500 hover:bg-zinc-300 hover:scale-125 shadow-xs transition-all z-30 pyrite-table-dot"
                                   title={`Inserir linha antes da linha ${rIdx + 1}`}
                                 />
 
@@ -1057,11 +1084,10 @@ export function EditableTable({
                                     setEditingCell(null)
                                   }}
                                   onMouseEnter={() => setHoveredRow(rIdx)}
-                                  onMouseLeave={() => setHoveredRow(null)}
-                                  className={`w-1.5 h-5 rounded-full transition-all cursor-pointer z-30 shadow-xs ${
+                                  className={`w-2 h-6 rounded-full transition-all cursor-pointer z-30 shadow-xs pyrite-table-pill ${
                                     isRowSelected
-                                      ? 'bg-sky-400 ring-2 ring-sky-300 scale-110'
-                                      : 'bg-sky-400/90 hover:bg-sky-300 hover:scale-125'
+                                      ? 'bg-zinc-200 text-zinc-900 ring-2 ring-zinc-400 scale-110 pyrite-table-pill-selected'
+                                      : 'bg-zinc-600 hover:bg-zinc-400 hover:scale-125'
                                   }`}
                                   title={`Selecionar linha ${rIdx + 1}`}
                                 />
@@ -1074,7 +1100,7 @@ export function EditableTable({
                                       addRow(rIdx + 1)
                                     }}
                                     onMouseEnter={() => setHoveredRow(rIdx)}
-                                    className="absolute bottom-0 translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer bg-sky-400 hover:bg-sky-300 hover:scale-125 shadow-xs transition-all z-30"
+                                    className="absolute bottom-0 translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer bg-zinc-500 hover:bg-zinc-300 hover:scale-125 shadow-xs transition-all z-30 pyrite-table-dot"
                                     title={`Inserir linha depois da linha ${rIdx + 1}`}
                                   />
                                 )}
@@ -1092,13 +1118,23 @@ export function EditableTable({
                           return (
                             <td
                               key={cIdx}
+                              onMouseEnter={() => {
+                                setHoveredCol(cIdx)
+                                setHoveredRow(rIdx)
+                              }}
+                              onMouseLeave={() => {
+                                setHoveredCol(prev => prev === cIdx ? null : prev)
+                                setHoveredRow(prev => prev === rIdx ? null : prev)
+                              }}
                               style={{ textAlign: table.alignments[cIdx] || 'left' }}
-                              className={`relative px-3 py-2 border-r border-zinc-800/40 transition-colors ${
+                              className={`relative px-3 py-2 border-r border-zinc-800/40 transition-colors overflow-hidden ${
                                 isCellSelected
-                                  ? 'ring-2 ring-sky-400 ring-inset bg-sky-400/15 text-white z-10'
+                                  ? 'ring-2 ring-zinc-400 dark:ring-zinc-400 ring-inset bg-zinc-700/20 text-white z-10'
                                   : isColSelected
-                                    ? 'bg-sky-400/10'
-                                    : ''
+                                    ? 'bg-zinc-700/20'
+                                    : isRowSelected
+                                      ? 'bg-zinc-700/20'
+                                      : 'hover:bg-zinc-800/20'
                               }`}
                             >
                               {isCellEditing ? (
@@ -1142,32 +1178,38 @@ export function EditableTable({
               </table>
             </div>
 
-            {/* 3. BOTTOM BAR: Add Row (Matches Canvas FigJam Table Inserter) */}
-            {!readOnly && (isHoveringTable || isHoveringBottomAdd) && (
-              <button
-                onClick={() => addRow(table.rows.length)}
+            {/* 3. BOTTOM BAR: Add Row (Only visible when hovering near the bottom of the table) */}
+            {!readOnly && (isHoveringBottomAdd || hoveredRow === table.rows.length - 1) && (
+              <div
+                className="w-full pt-1.5"
                 onMouseEnter={() => setIsHoveringBottomAdd(true)}
                 onMouseLeave={() => setIsHoveringBottomAdd(false)}
-                className="w-full mt-1.5 h-6 rounded-lg border border-sky-400/40 bg-sky-400/15 hover:bg-sky-400/30 text-sky-400 hover:text-sky-300 flex items-center justify-center cursor-pointer transition-all duration-100 group animate-in fade-in"
-                title="Adicionar linha"
               >
-                <Plus className="w-4 h-4 stroke-[2.5] group-hover:scale-125 transition-transform" />
-              </button>
+                <button
+                  onClick={() => addRow(table.rows.length)}
+                  className="w-full h-6 rounded-lg border border-dashed border-zinc-700/80 hover:border-zinc-500 bg-zinc-800/40 hover:bg-zinc-800/80 text-zinc-400 hover:text-zinc-200 flex items-center justify-center cursor-pointer transition-all duration-100 group animate-in fade-in pyrite-table-add-bar"
+                  title="Adicionar linha"
+                >
+                  <Plus className="w-4 h-4 stroke-[2] group-hover:scale-125 transition-transform" />
+                </button>
+              </div>
             )}
           </div>
         </div>
 
-        {/* 4. RIGHT BAR: Add Column (Matches Canvas FigJam Table Inserter) */}
-        {!readOnly && (isHoveringTable || isHoveringRightAdd) && (
-          <div className="pt-5 pl-1.5 self-stretch flex items-stretch">
+        {/* 4. RIGHT BAR: Add Column (Only visible when hovering near the right of the table) */}
+        {!readOnly && (isHoveringRightAdd || hoveredCol === table.columns.length - 1) && (
+          <div
+            className="pt-6 pl-1.5 self-stretch flex items-stretch"
+            onMouseEnter={() => setIsHoveringRightAdd(true)}
+            onMouseLeave={() => setIsHoveringRightAdd(false)}
+          >
             <button
               onClick={() => insertColumn(table.columns.length)}
-              onMouseEnter={() => setIsHoveringRightAdd(true)}
-              onMouseLeave={() => setIsHoveringRightAdd(false)}
-              className="w-6 rounded-lg border border-sky-400/40 bg-sky-400/15 hover:bg-sky-400/30 text-sky-400 hover:text-sky-300 flex items-center justify-center cursor-pointer transition-all duration-100 group animate-in fade-in"
+              className="w-6 rounded-lg border border-dashed border-zinc-700/80 hover:border-zinc-500 bg-zinc-800/40 hover:bg-zinc-800/80 text-zinc-400 hover:text-zinc-200 flex items-center justify-center cursor-pointer transition-all duration-100 group animate-in fade-in pyrite-table-add-bar"
               title="Adicionar coluna"
             >
-              <Plus className="w-4 h-4 stroke-[2.5] group-hover:scale-125 transition-transform" />
+              <Plus className="w-4 h-4 stroke-[2] group-hover:scale-125 transition-transform" />
             </button>
           </div>
         )}
@@ -1183,11 +1225,11 @@ export function EditableTable({
             zIndex: 9999
           }}
           onMouseDown={e => e.preventDefault()}
-          className="pyrite-table-wiki-suggest w-72 bg-[#141418] border border-sky-400/40 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
+          className="pyrite-table-wiki-suggest w-72 bg-[#141418] border border-zinc-700/80 rounded-xl shadow-2xl p-1.5 overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none shadow-black/80"
         >
-          <div className="wiki-suggest-header px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-sky-400 border-b border-zinc-800 flex items-center justify-between">
+          <div className="wiki-suggest-header px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
             <span className="flex items-center gap-1">
-              <span className="font-mono text-sky-400">[[</span> Link para Nota
+              <span className="font-mono text-zinc-300">[[</span> Link para Nota
             </span>
             <span className="text-zinc-500 font-mono text-[10px]">↵ Inserir</span>
           </div>
@@ -1204,11 +1246,11 @@ export function EditableTable({
                   onMouseEnter={() => setWikiSuggest(prev => (prev ? { ...prev, index: nIdx } : null))}
                   className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-sky-500/20 text-sky-300 border border-sky-400/40 shadow-xs'
+                      ? 'bg-zinc-700/60 text-white border border-zinc-600 shadow-xs'
                       : 'text-zinc-300 hover:bg-zinc-800/60'
                   }`}
                 >
-                  <FileText className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <FileText className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                   <div className="truncate flex-1">
                     <div className="text-xs font-medium text-zinc-100 truncate">{targetNote.title}</div>
                     <div className="text-[10px] text-zinc-500 truncate">{targetNote.folder}</div>
