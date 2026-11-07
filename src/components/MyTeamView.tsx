@@ -1731,18 +1731,60 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     <PanelLeft className="w-3.5 h-3.5" />
                   </button>
 
-                  {selectedAgent && (
-                    <div className="flex items-center gap-1.5 bg-[#1b1b1f] border border-zinc-800/80 rounded-xl px-2 py-1">
-                      <AgentIcon
-                        variant={selectedAgent.icon}
-                        state={selectedAgent.state === 'working' ? 'executing' : selectedAgent.state === 'waiting_user' ? 'attention' : 'waiting'}
-                        size={18}
-                        className="shrink-0 rounded-md"
-                      />
-                      <span className="text-xs font-medium text-zinc-100 truncate max-w-[160px]">
-                        {selectedAgent.name}
-                      </span>
-                    </div>
+                  {useTeamDelegation ? (
+                    (() => {
+                      const curSquad = teams.find(t => t.id === selectedTeamId) || teams[0]
+                      const pipeline = curSquad?.pipeline || []
+                      return (
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center gap-2 bg-[#1b1b1f] border border-zinc-800/80 rounded-xl px-2.5 py-1">
+                            <div className="w-4 h-4 text-[var(--accent)] shrink-0 flex items-center justify-center">
+                              {renderDynamicIcon(curSquad?.icon || 'Users', 'w-3.5 h-3.5 text-[var(--accent)]')}
+                            </div>
+                            <span className="text-xs font-semibold text-zinc-100 truncate max-w-[150px]">
+                              {curSquad?.name || 'Esquadrão'}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-[var(--accent)] font-semibold">
+                              Esquadrão
+                            </span>
+                          </div>
+
+                          {/* Miniatura dos especialistas da esteira */}
+                          <div className="hidden lg:flex items-center gap-1 text-[11px] text-zinc-400">
+                            {pipeline.slice(0, 3).map((p, idx) => {
+                              const ag = store.agents.find(a => a.id === p.agentId)
+                              return (
+                                <React.Fragment key={p.id || idx}>
+                                  <span className="text-zinc-300 truncate max-w-[85px]" title={ag?.name}>
+                                    {ag?.name || 'Agente'}
+                                  </span>
+                                  {idx < Math.min(2, pipeline.length - 1) && (
+                                    <span className="text-zinc-600 text-[10px]">→</span>
+                                  )}
+                                </React.Fragment>
+                              )
+                            })}
+                            {pipeline.length > 3 && (
+                              <span className="text-zinc-500 font-mono text-[10px]">+{pipeline.length - 3}</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()
+                  ) : (
+                    selectedAgent && (
+                      <div className="flex items-center gap-1.5 bg-[#1b1b1f] border border-zinc-800/80 rounded-xl px-2 py-1">
+                        <AgentIcon
+                          variant={selectedAgent.icon}
+                          state={selectedAgent.state === 'working' ? 'executing' : selectedAgent.state === 'waiting_user' ? 'attention' : 'waiting'}
+                          size={18}
+                          className="shrink-0 rounded-md"
+                        />
+                        <span className="text-xs font-medium text-zinc-100 truncate max-w-[160px]">
+                          {selectedAgent.name}
+                        </span>
+                      </div>
+                    )
                   )}
 
                   <button
@@ -2154,26 +2196,35 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 const activeSquad = teams.find(t => t.id === selectedTeamId) || teams[0]
                 const stepCount = activeSquad?.pipeline?.length || activeSquad?.nodes.length || 0
                 return (
-                  <div className="mx-6 mt-3 px-4 py-2.5 rounded-2xl bg-blue-950/40 border border-blue-800/60 flex items-center justify-between gap-3 text-xs shadow-md">
+                  <div className="mx-6 mt-3 px-4 py-2.5 rounded-2xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 flex items-center justify-between gap-3 text-xs shadow-md">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-6 h-6 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                      <div className="w-6 h-6 rounded-lg bg-[var(--accent)]/20 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0">
                         <Sparkles className="w-3.5 h-3.5" />
                       </div>
                       <div className="truncate">
-                        <span className="font-semibold text-blue-200">Esquadrão Ativo: {activeSquad?.name}</span>
+                        <span className="font-semibold text-zinc-100">Esquadrão Ativo: {activeSquad?.name}</span>
                         <span className="text-zinc-400 text-[11px] ml-2">
-                          ({stepCount} especialistas em colaboração na esteira)
+                          ({stepCount} especialistas em esteira colaborativa)
                         </span>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setUseTeamDelegation(false)}
-                      className="text-[11px] text-blue-300 hover:text-white px-2 py-1 rounded-lg hover:bg-blue-900/40 transition-colors shrink-0 cursor-pointer"
-                      title="Voltar ao modo agente individual"
-                    >
-                      Desativar Esquadrão
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection('squads')}
+                        className="text-[11px] text-[var(--accent)] hover:underline px-2 py-1 transition-colors shrink-0 cursor-pointer"
+                      >
+                        Ver Esteira →
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUseTeamDelegation(false)}
+                        className="text-[11px] text-zinc-400 hover:text-zinc-200 px-2 py-1 rounded-lg hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
+                        title="Voltar ao modo agente individual"
+                      >
+                        Alternar para Agente
+                      </button>
+                    </div>
                   </div>
                 )
               })()}

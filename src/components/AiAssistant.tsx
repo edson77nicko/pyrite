@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react'
 import type { Note, NoteType, AgentProfileVersion, MultiAgentStoreState } from '../types'
 import type { TaskItem, TaskSettings, SubTask, TaskBoard } from '../types/tasks'
 import { executeAgentRun, resolveNoteByIdOrFallback } from '../utils/multiAgentEngine'
@@ -559,10 +559,17 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   })
   const [isRuleMenuOpen, setIsRuleMenuOpen] = useState(false)
 
-  // Selected Team Agent in Global Chat (OpenBot Agent Switcher)
+  // Selected Team Agent or Squad in Global Chat (OpenBot Agent/Squad Switcher)
   const [selectedTeamAgentId, setSelectedTeamAgentId] = useState<string>(() => {
     try {
       return localStorage.getItem('pyrite_ai_selected_team_agent_id') || ''
+    } catch {
+      return ''
+    }
+  })
+  const [selectedSquadId, setSelectedSquadId] = useState<string>(() => {
+    try {
+      return localStorage.getItem('pyrite_ai_selected_squad_id') || ''
     } catch {
       return ''
     }
@@ -572,6 +579,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const selectedTeamAgent = useMemo(
     () => teamAgents.find(a => a.id === selectedTeamAgentId) || null,
     [teamAgents, selectedTeamAgentId]
+  )
+  const selectedSquad = useMemo(
+    () => (multiAgentStore?.teams || []).find(s => s.id === selectedSquadId) || null,
+    [multiAgentStore?.teams, selectedSquadId]
   )
 
   // Feedback notifications for 1-click actions
@@ -1280,7 +1291,39 @@ ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
   (conteúdo em markdown completo aqui)
   <<<END_CREATE_NOTE>>>`
 
-        const specialtyBlock = selectedTeamAgent
+        const specialtyBlock = selectedSquad
+          ? (() => {
+              const pipeline = selectedSquad.pipeline && selectedSquad.pipeline.length > 0
+                ? selectedSquad.pipeline
+                : selectedSquad.nodes.map((n, idx) => ({
+                    id: `step_${n.agentId}`,
+                    agentId: n.agentId,
+                    roleInSquad: n.roleInTeam === 'coordinator' ? 'Coordenador & Líder' : `Especialista ${idx + 1}`,
+                    order: idx + 1,
+                    expectedOutput: n.allowedOutputTypes?.[0] || 'text',
+                    customPrompt: undefined
+                  }))
+              return `ESQUADRÃO MULTIAGENTE ATIVO (MODO ESTEIRA COLABORATIVA):
+Nome do Esquadrão: ${selectedSquad.name}
+Missão / Objetivo: ${selectedSquad.objective || selectedSquad.description}
+Total de Etapas na Esteira: ${pipeline.length}
+
+SEQUÊNCIA DA ESTEIRA DE EXECUÇÃO:
+${pipeline
+  .map(p => {
+    const ag = teamAgents.find(a => a.id === p.agentId)
+    return `Etapa ${p.order}: [${ag?.name || 'Especialista'}] — Função: ${p.roleInSquad} | Saída: ${p.expectedOutput?.toUpperCase() || 'TEXTO'}${p.customPrompt ? `\n   -> Orientação específica da IA: ${p.customPrompt}` : ''}`
+  })
+  .join('\n')}
+
+DIRETRIZ DE ORQUESTRAÇÃO DO ESQUADRÃO:
+- Você é a inteligência coordenadora deste esquadrão multiagente.
+- Processe o pedido do usuário executando o encadeamento das etapas acima para entregar um trabalho completo de ponta a ponta.
+- Se o objetivo do esquadrão ou de alguma etapa envolver criar componentes web ou interfaces, gere o código HTML responsivo moderno e visualmente incrível em blocos de código html.
+- Se o usuário pedir para gerar nota ou documento no cofre, gere o bloco <<<CREATE_NOTE>>>...<<<END_CREATE_NOTE>>>.
+- Se houver tarefas e planos de ação a desdobrar, forneça os blocos de ação de tarefa formatados em json.\n`
+            })()
+          : selectedTeamAgent
           ? `AGENTE DA EQUIPE SELECIONADO PELO USUÁRIO (MODO OPENBOT):
 Nome do Agente: ${selectedTeamAgent.name} (${selectedTeamAgent.icon || '🤖'})
 Papel / Descrição: ${selectedTeamAgent.roleDescription}
@@ -1787,33 +1830,42 @@ Diretrizes gerais:
             )}
           </div>
 
-          {/* OpenBot Team Agent Selector: Talk to any agent from Minha Equipe right inside the global chat */}
-          {teamAgents && teamAgents.length > 0 && (
-            <div ref={teamAgentMenuRef} className="relative min-w-0 max-w-[125px]">
+          {/* OpenBot Team Agent / Squad Selector: Talk to any agent or squad right inside the global chat */}
+          {((teamAgents && teamAgents.length > 0) || (multiAgentStore?.teams && multiAgentStore.teams.length > 0)) && (
+            <div ref={teamAgentMenuRef} className="relative min-w-0 max-w-[140px]">
               <button
                 type="button"
                 onClick={() => setIsTeamAgentMenuOpen(o => !o)}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-xs transition-all cursor-pointer shadow-sm max-w-[125px] overflow-hidden ${
-                  selectedTeamAgent
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs transition-all cursor-pointer shadow-sm max-w-[140px] overflow-hidden ${
+                  selectedSquad || selectedTeamAgent
                     ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-[var(--accent)] font-semibold'
                     : 'bg-zinc-900 border-zinc-700/70 hover:border-zinc-500 text-zinc-200'
                 }`}
               >
-                {selectedTeamAgent ? (
+                {selectedSquad ? (
+                  <div className="w-3.5 h-3.5 text-[var(--accent)] shrink-0 flex items-center justify-center">
+                    {renderDynamicIcon(selectedSquad.icon || 'Users', 'w-3.5 h-3.5 text-[var(--accent)]')}
+                  </div>
+                ) : selectedTeamAgent ? (
                   <AgentIcon variant={selectedTeamAgent.icon} size={15} className="shrink-0 rounded-xs" />
                 ) : (
                   <span className="text-xs leading-none">✨</span>
                 )}
                 <span className="truncate text-[11px] min-w-0 flex-1">
-                  {selectedTeamAgent ? selectedTeamAgent.name : 'Agente Geral'}
+                  {selectedSquad ? selectedSquad.name : selectedTeamAgent ? selectedTeamAgent.name : 'Agente Geral'}
                 </span>
+                {selectedSquad && (
+                  <span className="text-[9px] px-1 rounded bg-[var(--accent)]/20 text-[var(--accent)] shrink-0 font-mono">
+                    Eq
+                  </span>
+                )}
                 <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
               </button>
 
               {isTeamAgentMenuOpen && (
-                <div className="absolute top-9 left-0 z-50 w-64 bg-[#101117] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl space-y-1 animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute top-9 left-0 z-50 w-72 bg-[#101117] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl space-y-1.5 animate-in fade-in zoom-in-95 duration-100">
                   <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
-                    <span>FALAR COM AGENTE</span>
+                    <span>SELECIONAR DESTINATÁRIO</span>
                     {onOpenTeamAgentsView && (
                       <button
                         type="button"
@@ -1827,17 +1879,21 @@ Diretrizes gerais:
                       </button>
                     )}
                   </div>
+
+                  {/* 1. Assistente Geral */}
                   <button
                     type="button"
                     onClick={() => {
                       setSelectedTeamAgentId('')
+                      setSelectedSquadId('')
                       try {
                         localStorage.setItem('pyrite_ai_selected_team_agent_id', '')
+                        localStorage.setItem('pyrite_ai_selected_squad_id', '')
                       } catch {}
                       setIsTeamAgentMenuOpen(false)
                     }}
                     className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
-                      !selectedTeamAgent
+                      !selectedTeamAgent && !selectedSquad
                         ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white font-semibold'
                         : 'text-zinc-300 hover:bg-zinc-850'
                     }`}
@@ -1849,40 +1905,94 @@ Diretrizes gerais:
                         <div className="text-[9px] text-zinc-500 truncate">Especialidades & Co-Autor</div>
                       </div>
                     </div>
-                    {!selectedTeamAgent && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
+                    {!selectedTeamAgent && !selectedSquad && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
                   </button>
 
-                  <div className="max-h-56 overflow-y-auto space-y-0.5 pr-0.5">
-                    {teamAgents.map(ag => {
-                      const isCur = selectedTeamAgent?.id === ag.id
-                      return (
-                        <button
-                          key={ag.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedTeamAgentId(ag.id)
-                            try {
-                              localStorage.setItem('pyrite_ai_selected_team_agent_id', ag.id)
-                            } catch {}
-                            setIsTeamAgentMenuOpen(false)
-                          }}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
-                            isCur
-                              ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white font-semibold'
-                              : 'text-zinc-300 hover:bg-zinc-850'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <AgentIcon variant={ag.icon} size={18} className="shrink-0 rounded-xs" />
-                            <div className="min-w-0">
-                              <div className="truncate text-[11px] text-zinc-100">{ag.name}</div>
-                              <div className="truncate text-[9px] text-zinc-500">{ag.roleDescription}</div>
-                            </div>
-                          </div>
-                          {isCur && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
-                        </button>
-                      )
-                    })}
+                  <div className="max-h-64 overflow-y-auto space-y-2 pr-0.5 custom-scrollbar">
+                    {/* 2. Seção Esquadrões */}
+                    {multiAgentStore?.teams && multiAgentStore.teams.length > 0 && (
+                      <div className="space-y-0.5">
+                        <div className="px-2 pt-1 pb-0.5 text-[9.5px] font-mono uppercase text-zinc-500 tracking-wider">
+                          Esquadrões ({multiAgentStore.teams.length})
+                        </div>
+                        {multiAgentStore.teams.map(sq => {
+                          const isCur = selectedSquad?.id === sq.id
+                          const stepCount = sq.pipeline?.length || sq.nodes?.length || 0
+                          return (
+                            <button
+                              key={sq.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedSquadId(sq.id)
+                                setSelectedTeamAgentId('')
+                                try {
+                                  localStorage.setItem('pyrite_ai_selected_squad_id', sq.id)
+                                  localStorage.setItem('pyrite_ai_selected_team_agent_id', '')
+                                } catch {}
+                                setIsTeamAgentMenuOpen(false)
+                              }}
+                              className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                                isCur
+                                  ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white font-semibold'
+                                  : 'text-zinc-300 hover:bg-zinc-850'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-5 h-5 rounded-md bg-zinc-800 flex items-center justify-center text-zinc-300 shrink-0">
+                                  {renderDynamicIcon(sq.icon || 'Users', 'w-3 h-3 text-zinc-300')}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="truncate text-[11px] text-zinc-100">{sq.name}</div>
+                                  <div className="truncate text-[9px] text-zinc-500">Esteira com {stepCount} especialistas</div>
+                                </div>
+                              </div>
+                              {isCur && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* 3. Seção Agentes Individuais */}
+                    {teamAgents && teamAgents.length > 0 && (
+                      <div className="space-y-0.5">
+                        <div className="px-2 pt-1 pb-0.5 text-[9.5px] font-mono uppercase text-zinc-500 tracking-wider">
+                          Agentes Individuais ({teamAgents.length})
+                        </div>
+                        {teamAgents.map(ag => {
+                          const isCur = selectedTeamAgent?.id === ag.id && !selectedSquad
+                          return (
+                            <button
+                              key={ag.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedTeamAgentId(ag.id)
+                                setSelectedSquadId('')
+                                try {
+                                  localStorage.setItem('pyrite_ai_selected_team_agent_id', ag.id)
+                                  localStorage.setItem('pyrite_ai_selected_squad_id', '')
+                                } catch {}
+                                setIsTeamAgentMenuOpen(false)
+                              }}
+                              className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                                isCur
+                                  ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white font-semibold'
+                                  : 'text-zinc-300 hover:bg-zinc-850'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <AgentIcon variant={ag.icon} size={18} className="shrink-0 rounded-xs" />
+                                <div className="min-w-0">
+                                  <div className="truncate text-[11px] text-zinc-100">{ag.name}</div>
+                                  <div className="truncate text-[9px] text-zinc-500">{ag.roleDescription}</div>
+                                </div>
+                              </div>
+                              {isCur && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
