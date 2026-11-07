@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import type { AgentProfileVersion, TeamDefinition, SquadPipelineStep } from '../types/agents'
 import {
   Users,
@@ -11,13 +11,14 @@ import {
   Code,
   FileText,
   ListTodo,
-  ChevronRight,
   Search,
   Check,
   X,
-  Pencil
+  Pencil,
+  Sliders
 } from 'lucide-react'
 import { AgentIcon } from './AgentIcon'
+import { renderDynamicIcon, IconPickerPopover } from './IconPickerPopover'
 
 const SQUAD_AGENT_COLORS = ['#10b981', '#2563eb', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4']
 
@@ -40,11 +41,38 @@ interface SquadManagementViewProps {
   onOpenSquadChat: (squad: TeamDefinition) => void
 }
 
-const OUTPUT_TYPE_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
-  html: { label: 'Interface HTML', icon: Code, color: '#38bdf8' },
-  note: { label: 'Nota no Cofre', icon: FileText, color: '#34d399' },
-  tasks: { label: 'Tarefas no Quadro', icon: ListTodo, color: '#fbbf24' },
-  text: { label: 'Texto / Análise', icon: MessageSquare, color: '#a78bfa' }
+const OUTPUT_TYPE_CONFIG: Record<
+  string,
+  { label: string; icon: any; color: string; badge: string; desc: string }
+> = {
+  html: {
+    label: 'Interface HTML',
+    icon: Code,
+    color: '#38bdf8',
+    badge: 'HTML',
+    desc: 'Renderização visual interativa no chat'
+  },
+  note: {
+    label: 'Nota no Cofre',
+    icon: FileText,
+    color: '#34d399',
+    badge: 'NOTA',
+    desc: 'Criação ou edição de documento no cofre'
+  },
+  tasks: {
+    label: 'Tarefas no Quadro',
+    icon: ListTodo,
+    color: '#fbbf24',
+    badge: 'TAREFAS',
+    desc: 'Itens acionáveis com prazo e prioridade'
+  },
+  text: {
+    label: 'Texto / Análise',
+    icon: MessageSquare,
+    color: '#a78bfa',
+    badge: 'TEXTO',
+    desc: 'Síntese textual e parecer explicativo'
+  }
 }
 
 export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
@@ -58,25 +86,30 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
 }) => {
   const activeSquad = squads.find(s => s.id === selectedSquadId) || squads[0]
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null)
   const [isNewSquadModalOpen, setIsNewSquadModalOpen] = useState(false)
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false)
-  const [editingRoleStepId, setEditingRoleStepId] = useState<string | null>(null)
-  const [roleInput, setRoleInput] = useState('')
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
+  const [isEditingSquadName, setIsEditingSquadName] = useState(false)
+  const [squadNameInput, setSquadNameInput] = useState('')
+  const iconPickerButtonRef = useRef<HTMLButtonElement | null>(null)
 
   // Formulário de novo esquadrão
   const [newSquadName, setNewSquadName] = useState('')
   const [newSquadObjective, setNewSquadObjective] = useState('')
-  const [newSquadDescription, setNewSquadDescription] = useState('')
   const [newSquadLeadAgentId, setNewSquadLeadAgentId] = useState('')
+  const [newSquadIcon, setNewSquadIcon] = useState('Users')
 
   // Formulário de adicionar membro
   const [selectedAgentToAdd, setSelectedAgentToAdd] = useState('')
   const [newMemberRole, setNewMemberRole] = useState('')
+  const [newMemberPrompt, setNewMemberPrompt] = useState('')
   const [newMemberOutput, setNewMemberOutput] = useState<'html' | 'note' | 'tasks' | 'text'>('text')
 
-  const filteredSquads = squads.filter(s =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (s.objective || '').toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredSquads = squads.filter(
+    s =>
+      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.objective || '').toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   // Obter pipeline do esquadrão ativo ou gerar a partir dos nós existentes
@@ -96,6 +129,17 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
 
   const currentPipeline = activeSquad ? getSquadPipeline(activeSquad) : []
 
+  // Se o step selecionado não existir no pipeline atual, selecionar o primeiro ou nulo
+  useEffect(() => {
+    if (currentPipeline.length > 0 && selectedStepId) {
+      const exists = currentPipeline.some(s => s.id === selectedStepId)
+      if (!exists) setSelectedStepId(currentPipeline[0].id)
+    }
+  }, [activeSquad?.id, currentPipeline, selectedStepId])
+
+  const selectedStep = currentPipeline.find(s => s.id === selectedStepId) || null
+  const selectedStepIndex = currentPipeline.findIndex(s => s.id === selectedStepId)
+
   const handleCreateSquad = () => {
     if (!newSquadName.trim()) return
     const leadId = newSquadLeadAgentId || agents[0]?.id || 'agent-partner'
@@ -103,11 +147,11 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       id: `squad-${Date.now()}`,
       version: 1,
       name: newSquadName.trim(),
-      description: newSquadDescription.trim() || 'Esquadrão especializado para entregas coordenadas.',
+      description: 'Esquadrão especializado para entregas coordenadas.',
       objective: newSquadObjective.trim() || 'Executar demandas complexas com múltiplos especialistas no chat.',
       coordinatorAgentId: leadId,
       maxParallelSubtasks: 5,
-      color: '#3b82f6',
+      icon: newSquadIcon || 'Users',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       pipeline: [
@@ -137,7 +181,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
     setIsNewSquadModalOpen(false)
     setNewSquadName('')
     setNewSquadObjective('')
-    setNewSquadDescription('')
+    setNewSquadIcon('Users')
   }
 
   const handleMoveStep = (stepIndex: number, direction: 'up' | 'down') => {
@@ -170,6 +214,9 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       pipeline: updated,
       updatedAt: Date.now()
     })
+    if (selectedStepId === stepId) {
+      setSelectedStepId(updated[0]?.id || null)
+    }
   }
 
   const handleAddMember = () => {
@@ -180,6 +227,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       agentId: selectedAgentToAdd,
       roleInSquad: newMemberRole.trim() || `${currentPipeline.length + 1}. ${targetAgent?.name || 'Especialista'}`,
       order: currentPipeline.length + 1,
+      customPrompt: newMemberPrompt.trim() || undefined,
       expectedOutput: newMemberOutput
     }
     const updated = [...currentPipeline, newStep]
@@ -191,18 +239,32 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
     setIsAddMemberModalOpen(false)
     setSelectedAgentToAdd('')
     setNewMemberRole('')
+    setNewMemberPrompt('')
+    setSelectedStepId(newStep.id)
   }
 
-  const handleSaveStepRole = (stepId: string) => {
-    if (!activeSquad || !roleInput.trim()) return
-    const updated = currentPipeline.map(s => (s.id === stepId ? { ...s, roleInSquad: roleInput.trim() } : s))
+  const handleUpdateStep = (stepId: string, partial: Partial<SquadPipelineStep>) => {
+    if (!activeSquad) return
+    const updated = currentPipeline.map(s => (s.id === stepId ? { ...s, ...partial } : s))
     onSaveSquad({
       ...activeSquad,
       pipeline: updated,
+      coordinatorAgentId: updated[0]?.agentId || activeSquad.coordinatorAgentId,
       updatedAt: Date.now()
     })
-    setEditingRoleStepId(null)
-    setRoleInput('')
+  }
+
+  const handleSaveSquadName = () => {
+    if (!activeSquad || !squadNameInput.trim()) {
+      setIsEditingSquadName(false)
+      return
+    }
+    onSaveSquad({
+      ...activeSquad,
+      name: squadNameInput.trim(),
+      updatedAt: Date.now()
+    })
+    setIsEditingSquadName(false)
   }
 
   return (
@@ -213,8 +275,8 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       <aside className="w-80 shrink-0 h-full bg-[#101012] border-r border-zinc-800/80 flex flex-col">
         {/* Cabeçalho */}
         <div className="h-13 px-4 border-b border-zinc-800/80 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)]">
               <Users className="w-4 h-4" />
             </div>
             <div>
@@ -226,9 +288,10 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
             type="button"
             onClick={() => {
               setNewSquadLeadAgentId(agents[0]?.id || '')
+              setNewSquadIcon('Users')
               setIsNewSquadModalOpen(true)
             }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs transition-colors cursor-pointer shadow-sm"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--accent)] hover:brightness-110 text-zinc-950 font-semibold text-xs transition-all cursor-pointer shadow-sm active:scale-95"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Novo</span>
@@ -258,21 +321,29 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
               <button
                 key={sq.id}
                 type="button"
-                onClick={() => onSelectSquad(sq.id)}
+                onClick={() => {
+                  onSelectSquad(sq.id)
+                  setSelectedStepId(pipeline[0]?.id || null)
+                }}
                 className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-[#18181c] border-blue-500/40 shadow-sm'
+                    ? 'bg-[#18181c] border-[var(--accent)]/40 ring-1 ring-[var(--accent)]/20 shadow-sm'
                     : 'bg-[#131316] border-zinc-800/60 hover:bg-[#161619] hover:border-zinc-700/60'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="font-semibold text-xs text-zinc-100 truncate">{sq.name}</div>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-lg bg-zinc-800/90 border border-zinc-700/60 flex items-center justify-center text-zinc-300 shrink-0">
+                      {renderDynamicIcon(sq.icon || 'Users', 'w-3.5 h-3.5 text-zinc-300')}
+                    </div>
+                    <div className="font-semibold text-xs text-zinc-100 truncate">{sq.name}</div>
+                  </div>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-zinc-800 text-zinc-400 font-mono shrink-0">
-                    {pipeline.length} agentes
+                    {pipeline.length} especialistas
                   </span>
                 </div>
                 {sq.objective && (
-                  <p className="text-[11px] text-zinc-400 mt-1 line-clamp-2 leading-relaxed">
+                  <p className="text-[11px] text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
                     {sq.objective}
                   </p>
                 )}
@@ -292,7 +363,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                       )
                     })}
                   </div>
-                  <span className="text-[10.5px] text-zinc-500 ml-auto">
+                  <span className="text-[10.5px] text-zinc-500 ml-auto truncate max-w-[150px]">
                     Líder: {agents.find(a => a.id === sq.coordinatorAgentId)?.name || 'Principal'}
                   </span>
                 </div>
@@ -303,220 +374,403 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       </aside>
 
       {/* ==================================================================== */}
-      {/* PAINEL CENTRAL: GESTÃO DETALHADA DO ESQUADRÃO SELECIONADO            */}
+      {/* PAINEL CENTRAL & DIREITO: ESTEIRA VISUAL + PAINEL DE DETALHES         */}
       {/* ==================================================================== */}
       {activeSquad ? (
-        <main className="flex-1 flex flex-col h-full overflow-y-auto custom-chat-scrollbar">
-          {/* Topo do Esquadrão */}
-          <div className="px-8 py-6 border-b border-zinc-800/80 bg-[#101013] flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-1.5 max-w-2xl">
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-xl font-bold text-zinc-100 tracking-tight">{activeSquad.name}</h1>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 border border-blue-500/20 text-blue-400">
-                  Esquadrão Ativo
-                </span>
+        <div className="flex-1 flex overflow-hidden">
+          {/* Main: Cabeçalho Minimalista + Esteira Inspirada no Print */}
+          <main className="flex-1 flex flex-col h-full overflow-y-auto custom-chat-scrollbar">
+            {/* Topo do Esquadrão: Minimalista, limpo e direto */}
+            <div className="h-14 px-6 border-b border-zinc-800/80 bg-[#101013] flex items-center justify-between shrink-0">
+              {/* Esquerda: Ícone customizável + Nome do Esquadrão */}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="relative">
+                  <button
+                    ref={iconPickerButtonRef}
+                    type="button"
+                    onClick={() => setIsIconPickerOpen(v => !v)}
+                    className="w-8 h-8 rounded-xl bg-zinc-800/90 hover:bg-zinc-700/80 border border-zinc-700/70 flex items-center justify-center text-zinc-200 transition-colors cursor-pointer shadow-xs"
+                    title="Alterar ícone do esquadrão"
+                  >
+                    {renderDynamicIcon(activeSquad.icon || 'Users', 'w-4 h-4 text-zinc-200')}
+                  </button>
+
+                  {/* Popover de Seleção de Ícone */}
+                  {isIconPickerOpen && (
+                    <IconPickerPopover
+                      selectedIcon={activeSquad.icon}
+                      onSelectIcon={iconName => {
+                        onSaveSquad({
+                          ...activeSquad,
+                          icon: iconName,
+                          updatedAt: Date.now()
+                        })
+                        setIsIconPickerOpen(false)
+                      }}
+                      onClose={() => setIsIconPickerOpen(false)}
+                      align="left"
+                    />
+                  )}
+                </div>
+
+                {/* Nome do Esquadrão (com edição inline) */}
+                {isEditingSquadName ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={squadNameInput}
+                      onChange={e => setSquadNameInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleSaveSquadName()
+                        if (e.key === 'Escape') setIsEditingSquadName(false)
+                      }}
+                      onBlur={handleSaveSquadName}
+                      className="bg-[#18181c] border border-zinc-700 rounded-lg px-2 py-1 text-sm font-semibold text-zinc-100 focus:outline-none focus:border-[var(--accent)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveSquadName}
+                      className="p-1 rounded bg-[var(--accent)] text-zinc-950 cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingSquadName(false)}
+                      className="p-1 rounded bg-zinc-800 text-zinc-400 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 group">
+                    <h1
+                      onDoubleClick={() => {
+                        setSquadNameInput(activeSquad.name)
+                        setIsEditingSquadName(true)
+                      }}
+                      className="text-sm font-semibold text-zinc-100 tracking-tight truncate cursor-pointer hover:text-white"
+                      title="Duplo clique para renomear"
+                    >
+                      {activeSquad.name}
+                    </h1>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSquadNameInput(activeSquad.name)
+                        setIsEditingSquadName(true)
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-zinc-300 p-0.5 transition-opacity cursor-pointer"
+                      title="Renomear esquadrão"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                {activeSquad.objective || activeSquad.description}
-              </p>
+
+              {/* Direita: Ações discretas (Abrir no Chat estilo container neutro + Excluir) */}
+              <div className="flex items-center gap-2">
+                {squads.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Deseja realmente excluir o esquadrão "${activeSquad.name}"?`)) {
+                        onDeleteSquad(activeSquad.id)
+                      }
+                    }}
+                    className="p-2 rounded-xl border border-zinc-800 text-zinc-400 hover:text-rose-400 hover:bg-rose-950/20 transition-colors cursor-pointer"
+                    title="Excluir este esquadrão"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {/* Botão Abrir no Chat: Cores de contêiner discreto, sem roubar a cena */}
+                <button
+                  type="button"
+                  onClick={() => onOpenSquadChat(activeSquad)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 hover:text-white border border-zinc-700/60 font-medium text-xs transition-colors cursor-pointer shadow-xs active:scale-95"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Abrir no Chat</span>
+                </button>
+              </div>
             </div>
 
-            {/* Ações principais */}
-            <div className="flex items-center gap-2.5">
-              {squads.length > 1 && (
+            {/* Conteúdo da Esteira (Pipeline) */}
+            <div className="p-6 space-y-6 max-w-3xl">
+              {/* Box explicativo sutil com cor de destaque do tema */}
+              <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 flex items-start gap-3">
+                <div className="w-7 h-7 rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0 mt-0.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                </div>
+                <div className="space-y-0.5">
+                  <div className="text-xs font-semibold text-zinc-200">Esteira Colaborativa em Ação</div>
+                  <p className="text-[11.5px] text-zinc-400 leading-relaxed">
+                    No chat, sua mensagem é processada sequencialmente pelos especialistas na ordem abaixo.
+                    Cada agente executa seu papel orientativo, gerando código HTML interativo, notas ou tarefas de ponta a ponta.
+                  </p>
+                </div>
+              </div>
+
+              {/* Cabeçalho da Esteira */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">
+                    Esteira de Execução
+                  </h2>
+                  <span className="text-xs text-zinc-500 font-mono">({currentPipeline.length} etapas)</span>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm(`Deseja realmente excluir o esquadrão "${activeSquad.name}"?`)) {
-                      onDeleteSquad(activeSquad.id)
-                    }
+                    const available = agents.filter(a => !currentPipeline.some(p => p.agentId === a.id))
+                    setSelectedAgentToAdd(available[0]?.id || agents[0]?.id || '')
+                    setNewMemberRole('')
+                    setNewMemberPrompt('')
+                    setIsAddMemberModalOpen(true)
                   }}
-                  className="p-2 rounded-xl border border-zinc-800 text-zinc-400 hover:text-rose-400 hover:bg-rose-950/20 transition-colors cursor-pointer"
-                  title="Excluir este esquadrão"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-800/70 text-zinc-300 font-medium text-xs transition-colors cursor-pointer"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <span>Adicionar Especialista</span>
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={() => onOpenSquadChat(activeSquad)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all shadow-md active:scale-95 cursor-pointer"
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>Acionar Esquadrão no Chat</span>
-                <Sparkles className="w-3.5 h-3.5 text-blue-200" />
-              </button>
-            </div>
-          </div>
-
-          {/* Conteúdo da Esteira (Pipeline) */}
-          <div className="px-8 py-6 space-y-6 max-w-4xl">
-            {/* Box explicativo */}
-            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 flex items-start gap-3.5">
-              <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0 mt-0.5">
-                <Sparkles className="w-4 h-4" />
               </div>
-              <div className="space-y-1">
-                <div className="text-xs font-semibold text-zinc-200">Como funciona a esteira do esquadrão</div>
-                <p className="text-[11.5px] text-zinc-400 leading-relaxed">
-                  Quando você aciona o esquadrão pelo chat, a sua solicitação é processada em cadeia pelos especialistas na ordem abaixo.
-                  Cada agente adiciona a sua competência (redigir copy, construir a interface HTML responsiva, auditar regras ou criar tarefas no quadro),
-                  entregando um resultado completo de ponta a ponta.
-                </p>
-              </div>
-            </div>
 
-            {/* Cabeçalho da Esteira */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-zinc-200">Esteira de Execução</h2>
-                <span className="text-xs text-zinc-500 font-mono">({currentPipeline.length} etapas)</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const available = agents.filter(a => !currentPipeline.some(p => p.agentId === a.id))
-                  setSelectedAgentToAdd(available[0]?.id || agents[0]?.id || '')
-                  setNewMemberRole('')
-                  setIsAddMemberModalOpen(true)
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-800/70 text-zinc-300 font-medium text-xs transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5 text-blue-400" />
-                <span>Adicionar Especialista</span>
-              </button>
-            </div>
+              {/* Lista Vertical de Cards Estilo Print */}
+              <div className="space-y-0">
+                {currentPipeline.map((step, idx) => {
+                  const ag = agents.find(a => a.id === step.agentId)
+                  const outMeta = OUTPUT_TYPE_CONFIG[step.expectedOutput || 'text'] || OUTPUT_TYPE_CONFIG.text
+                  const OutIcon = outMeta.icon
+                  const isSelected = selectedStepId === step.id
 
-            {/* Lista da Pipeline com cartões e setas conectores */}
-            <div className="space-y-3">
-              {currentPipeline.map((step, idx) => {
-                const ag = agents.find(a => a.id === step.agentId)
-                const outMeta = OUTPUT_TYPE_CONFIG[step.expectedOutput || 'text'] || OUTPUT_TYPE_CONFIG.text
-                const OutIcon = outMeta.icon
-                const isEditingRole = editingRoleStepId === step.id
-
-                return (
-                  <div key={step.id} className="relative">
-                    <div className="p-4 rounded-2xl bg-[#141417] border border-zinc-800/90 shadow-sm flex items-center justify-between gap-4">
-                      {/* Lado Esquerdo: Ordem + Avatar + Dados */}
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <div className="w-6 h-6 rounded-full bg-zinc-800 text-zinc-300 text-xs font-bold flex items-center justify-center shrink-0">
-                          {idx + 1}
-                        </div>
-
-                        {/* Avatar do Agente */}
-                        <AgentIcon
-                          variant={ag?.icon}
-                          state={ag?.state === 'working' ? 'executing' : 'waiting'}
-                        />
-
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-xs text-zinc-100">{ag?.name || 'Agente'}</span>
-                            <span
-                              className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md font-medium border"
-                              style={{
-                                color: outMeta.color,
-                                backgroundColor: `${outMeta.color}15`,
-                                borderColor: `${outMeta.color}30`
-                              }}
-                            >
-                              <OutIcon className="w-3 h-3" />
-                              <span>{outMeta.label}</span>
-                            </span>
-                          </div>
-
-                          {/* Papel do Agente no Esquadrão */}
-                          {isEditingRole ? (
-                            <div className="flex items-center gap-1.5 pt-1">
-                              <input
-                                type="text"
-                                value={roleInput}
-                                onChange={e => setRoleInput(e.target.value)}
-                                className="bg-[#1b1b20] border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-100 focus:outline-none"
-                                placeholder="Defina a função específica..."
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleSaveStepRole(step.id)}
-                                className="p-1 rounded bg-blue-600 text-white cursor-pointer"
-                              >
-                                <Check className="w-3 h-3" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingRoleStepId(null)}
-                                className="p-1 rounded bg-zinc-800 text-zinc-400 cursor-pointer"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 group">
-                              <p className="text-xs text-zinc-400 truncate">{step.roleInSquad}</p>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingRoleStepId(step.id)
-                                  setRoleInput(step.roleInSquad)
-                                }}
-                                className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-zinc-300 p-0.5 transition-opacity cursor-pointer"
-                                title="Editar papel"
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Lado Direito: Ações (subir, descer, excluir) */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          disabled={idx === 0}
-                          onClick={() => handleMoveStep(idx, 'up')}
-                          className="p-1.5 rounded-lg border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 disabled:opacity-30 cursor-pointer"
-                          title="Mover etapa para cima"
-                        >
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={idx === currentPipeline.length - 1}
-                          onClick={() => handleMoveStep(idx, 'down')}
-                          className="p-1.5 rounded-lg border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 disabled:opacity-30 cursor-pointer"
-                          title="Mover etapa para baixo"
-                        >
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </button>
-                        {currentPipeline.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveStep(step.id)}
-                            className="p-1.5 rounded-lg border border-zinc-800 text-zinc-400 hover:text-rose-400 hover:bg-rose-950/20 cursor-pointer"
-                            title="Remover especialista da esteira"
+                  return (
+                    <div key={step.id} className="relative">
+                      {/* Card da Etapa */}
+                      <div
+                        onClick={() => setSelectedStepId(step.id)}
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#16161a] border-[var(--accent)]/50 ring-1 ring-[var(--accent)]/20 shadow-md'
+                            : 'bg-[#121215] border-zinc-800/80 hover:bg-[#151518] hover:border-zinc-700/80'
+                        }`}
+                      >
+                        {/* Header superior do Card: ETAPA X à esquerda; TIPO DE SAÍDA à direita */}
+                        <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-800/60">
+                          <span className="text-[10px] font-mono uppercase tracking-wider font-semibold text-zinc-500">
+                            ETAPA {step.order}
+                          </span>
+                          <span
+                            className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md font-semibold uppercase tracking-wider border"
+                            style={{
+                              color: outMeta.color,
+                              backgroundColor: `${outMeta.color}15`,
+                              borderColor: `${outMeta.color}30`
+                            }}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                            <OutIcon className="w-3 h-3" />
+                            <span>{outMeta.badge}</span>
+                          </span>
+                        </div>
 
-                    {/* Seta conector visual para a próxima etapa */}
-                    {idx < currentPipeline.length - 1 && (
-                      <div className="flex justify-center py-1">
-                        <div className="w-0.5 h-4 bg-zinc-800 flex items-center justify-center">
-                          <ChevronRight className="w-3 h-3 text-zinc-600 rotate-90" />
+                        {/* Corpo do Card: Ícone do Agente + Nome + Função */}
+                        <div className="flex items-start gap-3">
+                          <AgentIcon
+                            variant={ag?.icon}
+                            state={ag?.state === 'working' ? 'executing' : 'waiting'}
+                            size={36}
+                            className="shrink-0 rounded-xl"
+                          />
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-xs text-zinc-100 truncate">
+                                {ag?.name || 'Agente'}
+                              </span>
+                              <span className="text-[11px] text-zinc-500 shrink-0">
+                                {idx === 0 ? 'Líder da Esteira' : `Passo ${idx + 1}`}
+                              </span>
+                            </div>
+
+                            <div className="text-xs text-zinc-300 font-medium truncate mt-0.5">
+                              {step.roleInSquad}
+                            </div>
+
+                            {/* Prompt orientador prévia */}
+                            {step.customPrompt ? (
+                              <div className="mt-2 text-[11px] text-zinc-400 bg-black/25 px-2.5 py-1.5 rounded-lg border border-zinc-800/60 line-clamp-2 italic">
+                                &ldquo;{step.customPrompt}&rdquo;
+                              </div>
+                            ) : (
+                              <div className="mt-1.5 text-[10.5px] text-zinc-500 hover:text-[var(--accent)] transition-colors flex items-center gap-1">
+                                <Plus className="w-3 h-3" />
+                                <span>Adicionar orientações de prompt para a IA...</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    )}
-                  </div>
-                )
-              })}
+
+                      {/* Conector Vertical Fino entre os Cards (estilo o print) */}
+                      {idx < currentPipeline.length - 1 && (
+                        <div className="flex flex-col items-center py-1">
+                          <div className="w-px h-5 bg-zinc-800" />
+                          <div className="w-2 h-2 rounded-full border border-zinc-700 bg-zinc-900" />
+                          <div className="w-px h-5 bg-zinc-800" />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-        </main>
+          </main>
+
+          {/* ==================================================================== */}
+          {/* PAINEL LATERAL DIREITO: DETALHES DA ETAPA SELECIONADA (DETAILS)      */}
+          {/* ==================================================================== */}
+          {selectedStep && (
+            <aside className="w-84 shrink-0 h-full bg-[#101013] border-l border-zinc-800/80 flex flex-col animate-in slide-in-from-right-4 duration-200">
+              {/* Topo do Painel de Detalhes */}
+              <div className="h-14 px-4 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-[var(--accent)]" />
+                  <span className="font-semibold text-xs text-zinc-100">
+                    Detalhes da Etapa {selectedStepIndex + 1}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStepId(null)}
+                  className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 cursor-pointer"
+                  title="Fechar detalhes"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Corpo de Configurações */}
+              <div className="flex-1 overflow-y-auto custom-chat-scrollbar p-4 space-y-4 text-xs">
+                {/* 1. Agente Responsável */}
+                <div className="space-y-1.5">
+                  <label className="text-zinc-300 font-medium flex items-center justify-between">
+                    <span>Agente Especialista</span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Etapa {selectedStep.order}</span>
+                  </label>
+                  <select
+                    value={selectedStep.agentId}
+                    onChange={e => handleUpdateStep(selectedStep.id, { agentId: e.target.value })}
+                    className="w-full bg-[#161619] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-zinc-700 cursor-pointer"
+                  >
+                    {agents.map(ag => (
+                      <option key={ag.id} value={ag.id}>
+                        {ag.name} ({ag.roleDescription || ag.specialistRole})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 2. Papel / Função no Esquadrão */}
+                <div className="space-y-1.5">
+                  <label className="text-zinc-300 font-medium">Função nesta Etapa</label>
+                  <input
+                    type="text"
+                    value={selectedStep.roleInSquad}
+                    onChange={e => handleUpdateStep(selectedStep.id, { roleInSquad: e.target.value })}
+                    placeholder="Ex: Copywriter e Arquitetura de Vendas"
+                    className="w-full bg-[#161619] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-zinc-700"
+                  />
+                </div>
+
+                {/* 3. Prompt de Orientação Específico para a IA (NOVO RECURSO) */}
+                <div className="space-y-1.5">
+                  <label className="text-zinc-300 font-medium flex items-center justify-between">
+                    <span>Prompt de Orientação (IA)</span>
+                    <Sparkles className="w-3 h-3 text-[var(--accent)]" />
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={selectedStep.customPrompt || ''}
+                    onChange={e => handleUpdateStep(selectedStep.id, { customPrompt: e.target.value })}
+                    placeholder="Ex: Crie o código HTML responsivo completo com tags semânticas, classes Tailwind CSS modernas, modo escuro e interações limpas..."
+                    className="w-full bg-[#161619] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 resize-none leading-relaxed text-[11.5px]"
+                  />
+                  <p className="text-[10px] text-zinc-500 leading-relaxed">
+                    Orientações adicionais que direcionam o comportamento do modelo LLM nesta etapa específica da esteira.
+                  </p>
+                </div>
+
+                {/* 4. Tipo de Entrega Esperada */}
+                <div className="space-y-1.5">
+                  <label className="text-zinc-300 font-medium">Tipo de Entrega</label>
+                  <div className="grid grid-cols-2 gap-2 pt-0.5">
+                    {(Object.keys(OUTPUT_TYPE_CONFIG) as Array<keyof typeof OUTPUT_TYPE_CONFIG>).map(k => {
+                      const meta = OUTPUT_TYPE_CONFIG[k]
+                      const Icon = meta.icon
+                      const isSel = (selectedStep.expectedOutput || 'text') === k
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => handleUpdateStep(selectedStep.id, { expectedOutput: k as any })}
+                          className={`flex items-center gap-2 p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                            isSel
+                              ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-zinc-100 font-medium shadow-xs'
+                              : 'bg-[#161619] border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700/80'
+                          }`}
+                        >
+                          <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: meta.color }} />
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-semibold truncate">{meta.label}</div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* 5. Ações da Etapa: Subir, Descer e Excluir */}
+                <div className="pt-3 border-t border-zinc-800/70 space-y-2">
+                  <label className="text-zinc-400 text-[11px] font-medium">Ordem e Gestão</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={selectedStepIndex === 0}
+                      onClick={() => handleMoveStep(selectedStepIndex, 'up')}
+                      className="flex items-center justify-center gap-1.5 p-2 rounded-xl border border-zinc-800 text-zinc-300 hover:bg-zinc-800 disabled:opacity-30 cursor-pointer"
+                    >
+                      <ArrowUp className="w-3.5 h-3.5" />
+                      <span>Subir Etapa</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedStepIndex === currentPipeline.length - 1}
+                      onClick={() => handleMoveStep(selectedStepIndex, 'down')}
+                      className="flex items-center justify-center gap-1.5 p-2 rounded-xl border border-zinc-800 text-zinc-300 hover:bg-zinc-800 disabled:opacity-30 cursor-pointer"
+                    >
+                      <ArrowDown className="w-3.5 h-3.5" />
+                      <span>Descer Etapa</span>
+                    </button>
+                  </div>
+
+                  {currentPipeline.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveStep(selectedStep.id)}
+                      className="w-full flex items-center justify-center gap-1.5 p-2 rounded-xl border border-zinc-800 text-rose-400 hover:bg-rose-950/20 hover:border-rose-800/40 cursor-pointer transition-colors mt-2"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Remover esta Etapa</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </aside>
+          )}
+        </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-zinc-500 text-xs">
           Selecione ou crie um esquadrão para gerenciar.
@@ -528,10 +782,10 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       {/* ==================================================================== */}
       {isNewSquadModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#141417] border border-zinc-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+          <div className="bg-[#141417] border border-zinc-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-blue-400" />
+                <Users className="w-4 h-4 text-[var(--accent)]" />
                 <h3 className="font-semibold text-sm text-zinc-100">Criar Novo Esquadrão</h3>
               </div>
               <button
@@ -551,7 +805,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                   value={newSquadName}
                   onChange={e => setNewSquadName(e.target.value)}
                   placeholder="Ex: Esquadrão Criação Web & Landing Pages"
-                  className="w-full bg-[#1b1b20] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#1b1b20] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
@@ -562,7 +816,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                   onChange={e => setNewSquadObjective(e.target.value)}
                   placeholder="Ex: Criar páginas web completas com código HTML responsivo, copy persuasiva e tarefas de publicação."
                   rows={2}
-                  className="w-full bg-[#1b1b20] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full bg-[#1b1b20] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-[var(--accent)] resize-none"
                 />
               </div>
 
@@ -594,7 +848,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                 type="button"
                 disabled={!newSquadName.trim()}
                 onClick={handleCreateSquad}
-                className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-xs cursor-pointer"
+                className="px-4 py-1.5 rounded-xl bg-[var(--accent)] hover:brightness-110 disabled:opacity-40 text-zinc-950 font-semibold text-xs cursor-pointer shadow-sm transition-all"
               >
                 Criar Esquadrão
               </button>
@@ -608,10 +862,10 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       {/* ==================================================================== */}
       {isAddMemberModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#141417] border border-zinc-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+          <div className="bg-[#141417] border border-zinc-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Plus className="w-4 h-4 text-blue-400" />
+                <Plus className="w-4 h-4 text-[var(--accent)]" />
                 <h3 className="font-semibold text-sm text-zinc-100">Adicionar Especialista à Esteira</h3>
               </div>
               <button
@@ -646,7 +900,18 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                   value={newMemberRole}
                   onChange={e => setNewMemberRole(e.target.value)}
                   placeholder="Ex: Gerar código HTML e componentes interativos"
-                  className="w-full bg-[#1b1b20] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#1b1b20] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-[var(--accent)]"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-zinc-300 font-medium">Prompt de Orientação (Opcional)</label>
+                <textarea
+                  rows={2}
+                  value={newMemberPrompt}
+                  onChange={e => setNewMemberPrompt(e.target.value)}
+                  placeholder="Instruções específicas para a IA nesta etapa..."
+                  className="w-full bg-[#1b1b20] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-[var(--accent)] resize-none"
                 />
               </div>
 
@@ -664,7 +929,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                         onClick={() => setNewMemberOutput(k as any)}
                         className={`flex items-center gap-2 p-2 rounded-xl border text-left cursor-pointer transition-colors ${
                           isSel
-                            ? 'bg-blue-600/15 border-blue-500 text-blue-200'
+                            ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-zinc-100 font-semibold'
                             : 'bg-[#1b1b20] border-zinc-800 text-zinc-400 hover:text-zinc-200'
                         }`}
                       >
@@ -689,7 +954,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                 type="button"
                 disabled={!selectedAgentToAdd}
                 onClick={handleAddMember}
-                className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-xs cursor-pointer"
+                className="px-4 py-1.5 rounded-xl bg-[var(--accent)] hover:brightness-110 disabled:opacity-40 text-zinc-950 font-semibold text-xs cursor-pointer shadow-sm transition-all"
               >
                 Adicionar à Esteira
               </button>

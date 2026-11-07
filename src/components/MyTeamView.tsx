@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+﻿import React, { useState, useEffect, useRef, useMemo } from 'react'
 import type {
   AgentActionPermission,
   AgentArtifact,
@@ -29,6 +29,7 @@ import {
 } from '../utils/multiAgentEngine'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { SquadManagementView } from './SquadManagementView'
+import { renderDynamicIcon } from './IconPickerPopover'
 import { WorkflowCanvasEditor } from './WorkflowCanvasEditor'
 import { AiSettingsModal, type CustomAgentSkill } from './AiSettingsModal'
 import { AgentIcon, AgentIconPicker } from './AgentIcon'
@@ -276,6 +277,20 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const [promptInput, setPromptInput] = useState('')
 
   const [agentSearchQuery, setAgentSearchQuery] = useState('')
+  const [chatSidebarTab, setChatSidebarTab] = useState<'agents' | 'squads'>(() => {
+    try {
+      const saved = localStorage.getItem('pyrite_chat_sidebar_tab')
+      if (saved === 'squads' || saved === 'agents') return saved
+    } catch {}
+    return 'agents'
+  })
+  const [squadSearchQuery, setSquadSearchQuery] = useState('')
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pyrite_chat_sidebar_tab', chatSidebarTab)
+    } catch {}
+  }, [chatSidebarTab])
   const [extraNoteIds, setExtraNoteIds] = useState<string[]>([])
   const [useTeamDelegation, setUseTeamDelegation] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
@@ -1305,6 +1320,12 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     })
   }
 
+  const filteredSquadsForChat = teams.filter(
+    sq =>
+      sq.name.toLowerCase().includes(squadSearchQuery.toLowerCase()) ||
+      (sq.objective || '').toLowerCase().includes(squadSearchQuery.toLowerCase())
+  )
+
   const filteredAgents = store.agents.filter(
     ag =>
       ag.name.toLowerCase().includes(agentSearchQuery.toLowerCase()) ||
@@ -1504,104 +1525,195 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
           <div className="flex-1 flex overflow-hidden bg-[#111113]">
             {/* COLUNA ESQUERDA: LISTA DE AGENTES (Print 01 e Print 04) */}
             {isAgentListOpen && (
-              <aside className="w-64 shrink-0 h-full bg-[#0c0c0e] border-r border-zinc-900/90 flex flex-col">
-                {/* Topo da coluna: Setas e botão + para novo agente */}
-                <div className="h-11 px-3 flex items-center justify-between border-b border-zinc-900/80">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                    <span className="text-xs font-medium text-zinc-200">Local</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-zinc-400">
+              <aside className="w-68 shrink-0 h-full bg-[#0c0c0e] border-r border-zinc-900/90 flex flex-col">
+                {/* Topo da coluna: Seletor de Abas Agentes / Esquadrões */}
+                <div className="h-11 px-2.5 flex items-center justify-between border-b border-zinc-900/80">
+                  <div className="flex items-center p-0.5 bg-[#151518] rounded-xl border border-zinc-800/70">
                     <button
                       type="button"
                       onClick={() => {
-                        setNewAgentDraft(
-                          generateAgentDraftFromPrompt(
-                            'Agente para atividades rotineiras e propostas',
-                            notes
-                          ).draft
-                        )
-                        setIsNewAgentModalOpen(true)
+                        setChatSidebarTab('agents')
+                        setUseTeamDelegation(false)
                       }}
-                      className="p-1 rounded-lg hover:bg-zinc-800/70 hover:text-zinc-100 cursor-pointer"
-                      title="Criar novo agente"
+                      className={`px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                        chatSidebarTab === 'agents'
+                          ? 'bg-zinc-800 text-zinc-100 shadow-xs'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      Agentes
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setChatSidebarTab('squads')
+                        setUseTeamDelegation(true)
+                      }}
+                      className={`px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                        chatSidebarTab === 'squads'
+                          ? 'bg-zinc-800 text-zinc-100 shadow-xs'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      Esquadrões
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1 text-zinc-400">
+                    {chatSidebarTab === 'agents' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewAgentDraft(
+                            generateAgentDraftFromPrompt(
+                              'Agente para atividades rotineiras e propostas',
+                              notes
+                            ).draft
+                          )
+                          setIsNewAgentModalOpen(true)
+                        }}
+                        className="p-1 rounded-lg hover:bg-zinc-800/70 hover:text-zinc-100 cursor-pointer"
+                        title="Criar novo agente"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection('squads')}
+                        className="p-1 rounded-lg hover:bg-zinc-800/70 hover:text-zinc-100 cursor-pointer"
+                        title="Gerenciar esquadrões"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                {/* Campo Buscar (Idêntico ao Print 01) */}
+                {/* Campo Buscar contextual */}
                 <div className="px-2.5 pt-2.5 pb-1.5">
                   <div className="relative flex items-center">
                     <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 pointer-events-none" />
                     <input
                       type="text"
-                      value={agentSearchQuery}
-                      onChange={e => setAgentSearchQuery(e.target.value)}
-                      placeholder="Buscar"
+                      value={chatSidebarTab === 'agents' ? agentSearchQuery : squadSearchQuery}
+                      onChange={e => {
+                        if (chatSidebarTab === 'agents') {
+                          setAgentSearchQuery(e.target.value)
+                        } else {
+                          setSquadSearchQuery(e.target.value)
+                        }
+                      }}
+                      placeholder={chatSidebarTab === 'agents' ? 'Buscar agente...' : 'Buscar esquadrão...'}
                       className="w-full bg-[#161618] border border-zinc-800/60 rounded-xl pl-8 pr-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
                     />
                   </div>
                 </div>
 
-                {/* Lista de Agentes estilo OpenBot (Avatar colorido arredondado + Nome + Badge + Hora + Preview) */}
-                <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5">
-                  {filteredAgents.map(ag => {
-                    const isSelected = selectedAgent?.id === ag.id
-                    const lastRun = store.runs.find(r => r.agentId === ag.id)
-                    const previewText = lastRun
-                      ? getRunSummaryText(lastRun)
-                      : ag.roleDescription || 'No messages yet'
-                    const timeStr = lastRun
-                      ? formatTimeShort(lastRun.updatedAt || lastRun.startedAt)
-                      : formatTimeShort(ag.createdAt)
+                {/* Conteúdo: Lista de Agentes ou Lista de Esquadrões */}
+                {chatSidebarTab === 'agents' ? (
+                  <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5">
+                    {filteredAgents.map(ag => {
+                      const isSelected = !useTeamDelegation && selectedAgent?.id === ag.id
+                      const lastRun = store.runs.find(r => r.agentId === ag.id)
+                      const previewText = lastRun
+                        ? getRunSummaryText(lastRun)
+                        : ag.roleDescription || 'No messages yet'
+                      const timeStr = lastRun
+                        ? formatTimeShort(lastRun.updatedAt || lastRun.startedAt)
+                        : formatTimeShort(ag.createdAt)
 
-                    return (
-                      <button
-                        key={ag.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedAgentId(ag.id)
-                          const firstAgRun = store.runs.find(r => r.agentId === ag.id)
-                          setSelectedRunId(firstAgRun?.id || null)
-                        }}
-                        className={`w-full text-left px-2.5 py-2.5 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#1c1c20] text-zinc-100'
-                            : 'hover:bg-[#151518] text-zinc-300'
-                        }`}
-                      >
-                        {/* Avatar do agente com micro-animação discreta */}
-                        <AgentIcon
-                          variant={ag.icon}
-                          state={ag.state === 'working' ? 'executing' : ag.state === 'waiting_user' ? 'attention' : 'waiting'}
-                          size={36}
-                          className="shrink-0 rounded-xl shadow-sm"
-                        />
+                      return (
+                        <button
+                          key={ag.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedAgentId(ag.id)
+                            setUseTeamDelegation(false)
+                            const firstAgRun = store.runs.find(r => r.agentId === ag.id)
+                            setSelectedRunId(firstAgRun?.id || null)
+                          }}
+                          className={`w-full text-left px-2.5 py-2.5 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#1c1c20] text-zinc-100'
+                              : 'hover:bg-[#151518] text-zinc-300'
+                          }`}
+                        >
+                          <AgentIcon
+                            variant={ag.icon}
+                            state={ag.state === 'working' ? 'executing' : ag.state === 'waiting_user' ? 'attention' : 'waiting'}
+                            size={36}
+                            className="shrink-0 rounded-xl shadow-sm"
+                          />
 
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="text-xs font-semibold text-zinc-100 truncate">
-                                {ag.name}
-                              </span>
-                              {ag.workStyle.tone && (
-                                <span className="px-1.5 py-0.2 rounded bg-zinc-800/90 text-[10px] text-zinc-400 truncate max-w-[76px]">
-                                  {ag.workStyle.tone}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="text-xs font-semibold text-zinc-100 truncate">
+                                  {ag.name}
                                 </span>
-                              )}
+                                {ag.workStyle.tone && (
+                                  <span className="px-1.5 py-0.2 rounded bg-zinc-800/90 text-[10px] text-zinc-400 truncate max-w-[76px]">
+                                    {ag.workStyle.tone}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-zinc-500 shrink-0">{timeStr}</span>
                             </div>
-                            <span className="text-[10px] text-zinc-500 shrink-0">{timeStr}</span>
+                            <div className="text-[11px] text-zinc-500 truncate mt-0.5">
+                              {previewText}
+                            </div>
                           </div>
-                          <div className="text-[11px] text-zinc-500 truncate mt-0.5">
-                            {previewText}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto px-2 py-1 space-y-1">
+                    {filteredSquadsForChat.map(sq => {
+                      const isSelected = useTeamDelegation && selectedTeamId === sq.id
+                      const pipeline = sq.pipeline && sq.pipeline.length > 0 ? sq.pipeline : sq.nodes
+                      return (
+                        <button
+                          key={sq.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedTeamId(sq.id)
+                            setUseTeamDelegation(true)
+                            const leadId =
+                              sq.coordinatorAgentId ||
+                              sq.pipeline?.[0]?.agentId ||
+                              sq.nodes[0]?.agentId ||
+                              store.agents[0]?.id ||
+                              ''
+                            setSelectedAgentId(leadId)
+                            setSelectedRunId(null)
+                          }}
+                          className={`w-full text-left p-2.5 rounded-xl flex items-center gap-2.5 transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#1c1c20] border border-[var(--accent)]/40 text-zinc-100 shadow-sm'
+                              : 'hover:bg-[#151518] text-zinc-300 border border-transparent'
+                          }`}
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-zinc-800/90 border border-zinc-700/60 flex items-center justify-center text-zinc-200 shrink-0">
+                            {renderDynamicIcon(sq.icon || 'Users', 'w-4 h-4 text-zinc-200')}
                           </div>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-xs font-semibold text-zinc-100 truncate">{sq.name}</span>
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-mono shrink-0">
+                                {pipeline.length}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-zinc-500 truncate mt-0.5">
+                              {sq.objective || `${pipeline.length} especialistas na esteira`}
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </aside>
             )}
 

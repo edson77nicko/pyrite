@@ -256,9 +256,6 @@ export const EditorBlockComments: React.FC<Props> = ({
           }}
           className="flex items-center select-none animate-in fade-in duration-100 group/addcomment"
         >
-          {/* Hit area bridge connecting text to button */}
-          <div className="absolute -left-6 top-[-8px] bottom-[-8px] w-6 pointer-events-auto" />
-
           <button
             type="button"
             onClick={() => handleOpenAddInput(hoveredBlock.element)}

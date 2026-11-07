@@ -94,9 +94,6 @@ export const EditorBlockGutter: React.FC<EditorBlockGutterProps> = ({
       onMouseLeave={onMouseLeave}
       className="appflowy-block-gutter flex items-center gap-0.5 select-none -translate-y-0.5 group/gutter"
     >
-      {/* Invisible hover bridge connecting gutter to text container so cursor never drops hover */}
-      <div className="absolute -right-8 top-[-8px] bottom-[-8px] w-8 pointer-events-auto" />
-
       {/* + Button: Insert new line below */}
       <button
         type="button"

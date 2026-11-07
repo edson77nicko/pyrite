@@ -1823,6 +1823,9 @@ export function buildSpecialistDeliverable(params: {
   draftToReview?: string
   allProjects?: ProjectContext[]
   existingTargetNote?: Note
+  customPrompt?: string
+  roleInSquad?: string
+  expectedOutput?: string
 }): {
   title: string
   outputType: 'note' | 'tasks' | 'mindmap' | 'draw'
@@ -1839,7 +1842,10 @@ export function buildSpecialistDeliverable(params: {
     calculation,
     draftToReview,
     allProjects = [],
-    existingTargetNote
+    existingTargetNote,
+    customPrompt,
+    roleInSquad,
+    expectedOutput
   } = params
 
   const safeClient = clientName || 'Projeto Atual'
@@ -1868,6 +1874,12 @@ export function buildSpecialistDeliverable(params: {
   }
   if (extractedTopics.length === 0) {
     extractedTopics.push(`Atendimento ao pedido: ${prompt.slice(0, 100)}`)
+  }
+  if (customPrompt) {
+    extractedTopics.unshift(`[Orientação do Esquadrão - ${roleInSquad || specialist.name}]: ${customPrompt}`)
+  }
+  if (expectedOutput) {
+    extractedTopics.push(`[Formato de Entrega Solicitado]: ${expectedOutput.toUpperCase()}`)
   }
 
   if (specialist.specialistRole === 'knowledge_curator') {
@@ -2914,6 +2926,9 @@ export async function executeAgentRun(params: {
           .filter(p => p.agentId !== agent.id)
           .map(p => ({
             agentId: p.agentId,
+            roleInSquad: p.roleInSquad,
+            customPrompt: p.customPrompt,
+            expectedOutput: p.expectedOutput,
             contextScope: ['template', 'permanent_ref', 'project_context', 'request_context'] as ContextRole[],
             allowedOutputTypes: ['note', 'tasks', 'mindmap', 'draw'] as ('note' | 'tasks' | 'mindmap' | 'draw')[],
             requireUserReview: false
@@ -2997,7 +3012,10 @@ export async function executeAgentRun(params: {
         snapshots: scopedSnapshots,
         calculation: member.contextScope.includes('permanent_ref') ? calculation : undefined,
         draftToReview: latestReviewableDraft,
-        allProjects
+        allProjects,
+        customPrompt: (member as any).customPrompt,
+        roleInSquad: (member as any).roleInSquad,
+        expectedOutput: (member as any).expectedOutput
       })
 
       latestReviewableDraft = spOut.content || latestReviewableDraft
@@ -3008,13 +3026,17 @@ export async function executeAgentRun(params: {
         specialistId: sp.id,
         specialistName: sp.name,
         specialistRole: sp.specialistRole,
-        title: `${sp.name} (${sp.workStyle.tone})`,
+        title: (member as any).roleInSquad
+          ? `${sp.name} — ${(member as any).roleInSquad}`
+          : `${sp.name} (${sp.workStyle.tone})`,
         status: 'completed',
         summary: spOut.summary,
         startedAt: stepStartedAt,
         endedAt: Math.max(stepStartedAt + 1, stepEndedAt),
         outputPreview: spOut.content,
-        findings: spOut.findings
+        findings: (member as any).customPrompt
+          ? [`Orientação do esquadrão: ${(member as any).customPrompt}`, ...spOut.findings]
+          : spOut.findings
       })
 
       // Se o especialista gera entregável (ex: Mapa Mental, Diagrama, Parecer ou Tarefas) e tem permissão
