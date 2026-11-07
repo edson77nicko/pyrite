@@ -1767,18 +1767,62 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   // Apply chosen wiki link from search popover
   const handleApplyLink = (targetTitle: string) => {
     if (!linkPickerPopover) return
-    const { range, selectedText } = linkPickerPopover
-    const sel = window.getSelection()
-    if (sel) {
-      sel.removeAllRanges()
-      sel.addRange(range)
+    const { targetElement, range, selectedText } = linkPickerPopover
+
+    // 1. Editing an existing link element in-place
+    if (targetElement && containerRef.current?.contains(targetElement)) {
+      pushHistorySnapshot(true)
+      const exists = allNotes.some(n => n.title.toLowerCase().trim() === targetTitle.toLowerCase().trim())
+      const pillClass = exists
+        ? 'wiki-link-exists text-[var(--accent)] hover:opacity-90 bg-[var(--accent-glow-subtle)] border border-[var(--accent)]/30'
+        : 'wiki-link-unresolved text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
+
+      const alias = (selectedText && selectedText.trim() !== targetTitle.trim()) ? selectedText.trim() : undefined
+      const displayName = alias || targetTitle
+
+      targetElement.className = `wiki-link ${exists ? 'wiki-link-exists' : 'wiki-link-unresolved'} inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}`
+      targetElement.setAttribute('data-wiki', targetTitle.trim())
+      if (alias) {
+        targetElement.setAttribute('data-alias', alias)
+      } else {
+        targetElement.removeAttribute('data-alias')
+      }
+      targetElement.setAttribute('title', exists ? `Abrir nota: "${targetTitle.trim()}" (Botão direito para editar)` : `Criar nota: "${targetTitle.trim()}" (Botão direito para editar)`)
+      targetElement.innerHTML = `<span class="underline ${exists ? 'decoration-[var(--accent)]/40 hover:decoration-[var(--accent)]' : 'decoration-zinc-500/50 hover:decoration-zinc-400'} underline-offset-2">${escapeHtml(displayName)}</span>`
+      setLinkPickerPopover(null)
+      refreshBlocks()
+      handleSync()
+      return
     }
-    pushHistorySnapshot(true)
-    const alias = (selectedText && selectedText.trim() !== targetTitle.trim()) ? selectedText.trim() : undefined
-    insertWikiLinkHtml(targetTitle.trim(), alias)
-    setLinkPickerPopover(null)
-    refreshBlocks()
-    handleSync()
+
+    // 2. Creating a new link from selected text
+    if (range) {
+      const sel = window.getSelection()
+      if (sel) {
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+      pushHistorySnapshot(true)
+      const alias = (selectedText && selectedText.trim() !== targetTitle.trim()) ? selectedText.trim() : undefined
+      insertWikiLinkHtml(targetTitle.trim(), alias)
+      setLinkPickerPopover(null)
+      refreshBlocks()
+      handleSync()
+    }
+  }
+
+  // Remove / unlink an existing link chip
+  const handleRemoveLink = () => {
+    if (!linkPickerPopover?.targetElement) return
+    const el = linkPickerPopover.targetElement
+    if (containerRef.current?.contains(el)) {
+      pushHistorySnapshot(true)
+      const text = el.textContent || ''
+      el.replaceWith(document.createTextNode(text))
+      setLinkPickerPopover(null)
+      refreshBlocks()
+      handleSync()
+    }
   }
 
   const handleConfirmLinkPicker = () => {
@@ -2115,46 +2159,15 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       focusBlankEditorLine(containerRef.current, e.clientY)
       return
     }
-    // 1. Wikilink Navigation & In-place Editing (like Obsidian)
+    // 1. Wikilink Navigation Click (Always follows the link to open the target note)
     const wikiTargetEl = (e.target as HTMLElement).closest('.wiki-link') as HTMLElement | null
     if (wikiTargetEl) {
-      const destination = wikiTargetEl.getAttribute('data-wiki') || ''
-      const alias = wikiTargetEl.getAttribute('data-alias') || ''
-
-      // Ctrl+Click (or Cmd+Click) or read-only mode follows the link
-      if (e.ctrlKey || e.metaKey || !isEditable) {
-        e.preventDefault()
-        e.stopPropagation()
-        if (destination && onNavigate) {
-          onNavigate(destination)
-        }
-        return
-      }
-
-      // In edit mode without Ctrl: expand into raw markdown text [[Destination|Alias]] or [[Destination]] for editing!
       e.preventDefault()
       e.stopPropagation()
-      pushHistorySnapshot(true)
-
-      const rawMarkdown = (alias && alias !== destination)
-        ? `[[${destination}|${alias}]]`
-        : `[[${destination}]]`
-
-      const textNode = document.createTextNode(rawMarkdown)
-      wikiTargetEl.replaceWith(textNode)
-
-      // Place cursor right inside the [[...]] before the closing ]] so user can edit immediately
-      const sel = window.getSelection()
-      if (sel) {
-        const range = document.createRange()
-        const targetOffset = Math.max(2, rawMarkdown.length - 2)
-        range.setStart(textNode, targetOffset)
-        range.collapse(true)
-        sel.removeAllRanges()
-        sel.addRange(range)
+      const destination = wikiTargetEl.getAttribute('data-wiki')
+      if (destination && onNavigate) {
+        onNavigate(destination)
       }
-
-      handleSync()
       return
     }
 
@@ -2229,6 +2242,30 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     persistContent()
   }
 
+  // Handle right-click context menu (e.g. edit wikilink in place)
+  const handleEditorContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    const wikiTargetEl = (e.target as HTMLElement).closest('.wiki-link') as HTMLElement | null
+    if (wikiTargetEl && isEditable) {
+      e.preventDefault()
+      e.stopPropagation()
+      const targetTitle = wikiTargetEl.getAttribute('data-wiki') || ''
+      const alias = wikiTargetEl.getAttribute('data-alias') || ''
+      const rect = wikiTargetEl.getBoundingClientRect()
+      setSelectionToolbar(null)
+      setLinkPickerPopover({
+        isOpen: true,
+        top: Math.max(20, rect.bottom + 6),
+        left: Math.max(20, Math.min(window.innerWidth - 300, rect.left)),
+        selectedText: alias || targetTitle,
+        alias,
+        targetElement: wikiTargetEl,
+        query: targetTitle,
+        index: 0
+      })
+      return
+    }
+  }
+
   // Filter commands and notes for menus
   const filteredSlashCommands = SLASH_COMMANDS.filter(cmd => {
     if (!slashMenu?.query) return true
@@ -2276,6 +2313,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         onMouseUp={handleSelectionCheck}
         onKeyUp={handleSelectionCheck}
         onClick={handleEditorClick}
+        onContextMenu={handleEditorContextMenu}
         onMouseMove={handleEditorMouseMove}
         onMouseLeave={handleEditorMouseLeave}
         onDragOver={handleEditorDragOver}
@@ -2648,6 +2686,19 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                 className="w-full text-left px-2 py-1.5 rounded-lg text-zinc-400 hover:bg-zinc-800 flex items-center gap-1.5 transition-colors cursor-pointer border-t border-zinc-800/80 mt-1"
               >
                 <span className="text-[11px] truncate">Link para: <strong className="text-[var(--accent)]">"{linkPickerPopover.query.trim()}"</strong></span>
+              </button>
+            )}
+
+            {linkPickerPopover.targetElement && (
+              <button
+                type="button"
+                onMouseDown={e => {
+                  e.preventDefault()
+                  handleRemoveLink()
+                }}
+                className="w-full text-left px-2 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 flex items-center gap-1.5 transition-colors cursor-pointer border-t border-zinc-800/80 mt-1 text-[11px]"
+              >
+                <span>Desvincular (remover link)</span>
               </button>
             )}
           </div>

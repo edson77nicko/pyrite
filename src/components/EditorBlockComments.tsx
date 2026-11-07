@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   MessageSquarePlus,
   Check,
@@ -96,6 +96,7 @@ export const EditorBlockComments: React.FC<Props> = ({
 
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const hoverLeaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [pinnedPositions, setPinnedPositions] = useState<{
     comment: NoteComment
     top: number
@@ -103,6 +104,24 @@ export const EditorBlockComments: React.FC<Props> = ({
     element: HTMLElement
     isVisible: boolean
   }[]>([])
+
+  const handlePinMouseEnter = (commentId: string) => {
+    if (hoverLeaveTimeoutRef.current) {
+      clearTimeout(hoverLeaveTimeoutRef.current)
+      hoverLeaveTimeoutRef.current = null
+    }
+    setHoveredCommentId(commentId)
+  }
+
+  const handlePinMouseLeave = () => {
+    if (editingCommentId) return
+    if (hoverLeaveTimeoutRef.current) {
+      clearTimeout(hoverLeaveTimeoutRef.current)
+    }
+    hoverLeaveTimeoutRef.current = setTimeout(() => {
+      setHoveredCommentId(null)
+    }, 180)
+  }
 
   // Reload comments when noteId changes or event fires
   const reload = () => {
@@ -423,150 +442,154 @@ export const EditorBlockComments: React.FC<Props> = ({
               left: `${clampedRight}px`,
               zIndex: isHovered ? 45 : 20
             }}
-            onMouseEnter={() => setHoveredCommentId(comment.id)}
-            onMouseLeave={() => {
-              if (!isEditing) setHoveredCommentId(null)
-            }}
-            className="select-none"
+            onMouseEnter={() => handlePinMouseEnter(comment.id)}
+            onMouseLeave={handlePinMouseLeave}
+            className="relative w-7 h-7 select-none"
           >
-            {/* COLLAPSED PIN (Discrete Container Color + Translucent Mask Icon) */}
-            {!isHovered ? (
+            {/* COLLAPSED PIN (Smoothly fades & scales out when hovered, never abruptly unmounts) */}
+            <div
+              className={`absolute top-0 right-0 w-7 h-7 rounded-full rounded-bl-xs shadow-md bg-white dark:bg-[#18181c] border border-zinc-200 dark:border-zinc-700/80 flex items-center justify-center cursor-pointer transition-all duration-200 ease-out ${
+                isHovered
+                  ? 'opacity-0 scale-75 pointer-events-none'
+                  : 'opacity-100 scale-100 pointer-events-auto hover:scale-110 active:scale-95'
+              } ${comment.resolved ? 'opacity-40 hover:opacity-100' : ''}`}
+              title={`Comentário de ${comment.author}: "${comment.text}"`}
+            >
               <div
-                className={`w-7 h-7 rounded-full rounded-bl-xs shadow-md bg-white dark:bg-[#18181c] border border-zinc-200 dark:border-zinc-700/80 flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 ${
-                  comment.resolved ? 'opacity-40 hover:opacity-100' : ''
-                }`}
-                title={`Comentário de ${comment.author}: "${comment.text}"`}
+                className="w-5 h-5 rounded-full flex items-center justify-center border"
+                style={{
+                  backgroundColor: comment.color ? `${comment.color}22` : 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                  borderColor: comment.color ? `${comment.color}45` : 'var(--accent-border, rgba(197, 155, 39, 0.3))',
+                  color: comment.color || 'var(--accent, #c59b27)'
+                }}
               >
-                <div
-                  className="w-5 h-5 rounded-full flex items-center justify-center border"
-                  style={{
-                    backgroundColor: comment.color ? `${comment.color}22` : 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
-                    borderColor: comment.color ? `${comment.color}45` : 'var(--accent-border, rgba(197, 155, 39, 0.3))',
-                    color: comment.color || 'var(--accent, #c59b27)'
-                  }}
-                >
-                  {renderCommentIcon(comment.icon, "w-3 h-3")}
-                </div>
+                {renderCommentIcon(comment.icon, "w-3 h-3")}
               </div>
-            ) : (
-              /* EXPANDED COMMENT BUBBLE (Expands naturally outward from the balloon itself) */
-              <div className="absolute top-0 right-0 rounded-xl rounded-bl-xs shadow-2xl p-2.5 bg-white dark:bg-[#1c1c20] text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700/80 min-w-[240px] max-w-xs origin-top-right animate-in fade-in zoom-in-90 duration-150">
-                <div className="flex items-start gap-2.5">
-                  {/* Bonequinho dot with color & icon editor */}
-                  <div className="relative group/pinicon shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setEditingCommentId(isEditing ? null : comment.id)}
-                      className="w-7 h-7 rounded-full rounded-bl-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/80 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform"
-                      title="Clique para alterar ícone ou cor"
-                    >
-                      <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center border"
-                        style={{
-                          backgroundColor: comment.color ? `${comment.color}22` : 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
-                          borderColor: comment.color ? `${comment.color}45` : 'var(--accent-border, rgba(197, 155, 39, 0.3))',
-                          color: comment.color || 'var(--accent, #c59b27)'
-                        }}
-                      >
-                        {renderCommentIcon(comment.icon, "w-3 h-3")}
-                      </div>
-                    </button>
+            </div>
 
-                    {/* Quick Icon / Color selector popup inside bubble */}
-                    {isEditing && (
-                      <div className="absolute top-8 left-0 z-50 p-1.5 bg-zinc-900 border border-zinc-750 rounded-lg shadow-xl w-36 space-y-1.5 animate-in fade-in duration-75">
-                        <div className="flex items-center justify-between gap-1">
-                          {AVAILABLE_ICONS.map(item => {
-                            const IconComp = item.Icon
-                            const isCur = (comment.icon || 'user') === item.id
-                            return (
-                              <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => {
-                                  handleUpdateCommentMeta(comment.id, item.id, comment.color)
-                                }}
-                                className={`p-1 rounded cursor-pointer transition-colors ${
-                                  isCur ? 'bg-[var(--accent)] text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                                }`}
-                                title={item.label}
-                              >
-                                <IconComp className="w-3 h-3" />
-                              </button>
-                            )
-                          })}
-                        </div>
-                        <div className="flex items-center justify-between gap-1 pt-1 border-t border-zinc-800">
-                          {AVAILABLE_COLORS.map(c => (
+            {/* EXPANDED COMMENT BUBBLE (Expands smoothly outward from the balloon itself with no pause or stutter) */}
+            <div
+              className={`absolute top-0 right-0 rounded-xl rounded-bl-xs shadow-2xl p-2.5 bg-white dark:bg-[#1c1c20] text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700/80 min-w-[240px] max-w-xs origin-top-right transition-all duration-200 ease-out ${
+                isHovered
+                  ? 'opacity-100 scale-100 translate-y-0 visible pointer-events-auto shadow-black/60'
+                  : 'opacity-0 scale-85 -translate-y-1 invisible pointer-events-none'
+              }`}
+            >
+              <div className="flex items-start gap-2.5">
+                {/* Bonequinho dot with color & icon editor */}
+                <div className="relative group/pinicon shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setEditingCommentId(isEditing ? null : comment.id)}
+                    className="w-7 h-7 rounded-full rounded-bl-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/80 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform"
+                    title="Clique para alterar ícone ou cor"
+                  >
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center border"
+                      style={{
+                        backgroundColor: comment.color ? `${comment.color}22` : 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                        borderColor: comment.color ? `${comment.color}45` : 'var(--accent-border, rgba(197, 155, 39, 0.3))',
+                        color: comment.color || 'var(--accent, #c59b27)'
+                      }}
+                    >
+                      {renderCommentIcon(comment.icon, "w-3 h-3")}
+                    </div>
+                  </button>
+
+                  {/* Quick Icon / Color selector popup inside bubble */}
+                  {isEditing && (
+                    <div className="absolute top-8 left-0 z-50 p-1.5 bg-zinc-900 border border-zinc-750 rounded-lg shadow-xl w-36 space-y-1.5 animate-in fade-in duration-75">
+                      <div className="flex items-center justify-between gap-1">
+                        {AVAILABLE_ICONS.map(item => {
+                          const IconComp = item.Icon
+                          const isCur = (comment.icon || 'user') === item.id
+                          return (
                             <button
-                              key={c.id}
+                              key={item.id}
                               type="button"
                               onClick={() => {
-                                handleUpdateCommentMeta(comment.id, comment.icon, c.value)
-                                setEditingCommentId(null)
+                                handleUpdateCommentMeta(comment.id, item.id, comment.color)
                               }}
-                              className="w-3.5 h-3.5 rounded-full border border-black/30 hover:scale-110 cursor-pointer"
-                              style={{ backgroundColor: c.value }}
-                              title={c.label}
-                            />
-                          ))}
-                        </div>
+                              className={`p-1 rounded cursor-pointer transition-colors ${
+                                isCur ? 'bg-[var(--accent)] text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                              }`}
+                              title={item.label}
+                            >
+                              <IconComp className="w-3 h-3" />
+                            </button>
+                          )
+                        })}
                       </div>
-                    )}
+                      <div className="flex items-center justify-between gap-1 pt-1 border-t border-zinc-800">
+                        {AVAILABLE_COLORS.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              handleUpdateCommentMeta(comment.id, comment.icon, c.value)
+                              setEditingCommentId(null)
+                            }}
+                            className="w-3.5 h-3.5 rounded-full border border-black/30 hover:scale-110 cursor-pointer"
+                            style={{ backgroundColor: c.value }}
+                            title={c.label}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Header & Body */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline justify-between gap-1.5">
+                    <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate">
+                      {comment.author}
+                    </span>
+                    <span className="text-[10px] text-zinc-400 font-normal shrink-0">
+                      {formatRelativeTime(comment.createdAt)}
+                    </span>
                   </div>
 
-                  {/* Header & Body */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline justify-between gap-1.5">
-                      <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate">
-                        {comment.author}
-                      </span>
-                      <span className="text-[10px] text-zinc-400 font-normal shrink-0">
-                        {formatRelativeTime(comment.createdAt)}
-                      </span>
-                    </div>
+                  <div className="text-xs text-zinc-700 dark:text-zinc-200 mt-0.5 whitespace-pre-wrap leading-relaxed break-words">
+                    {comment.text}
+                  </div>
 
-                    <div className="text-xs text-zinc-700 dark:text-zinc-200 mt-0.5 whitespace-pre-wrap leading-relaxed break-words">
-                      {comment.text}
-                    </div>
+                  {/* Actions */}
+                  <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-zinc-100 dark:border-zinc-800/80">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleResolved(comment.id)}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                        comment.resolved
+                          ? 'text-amber-500 hover:bg-amber-500/10'
+                          : 'text-emerald-500 hover:bg-emerald-500/10'
+                      }`}
+                    >
+                      {comment.resolved ? (
+                        <>
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Reabrir</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3 h-3" />
+                          <span>Resolver</span>
+                        </>
+                      )}
+                    </button>
 
-                    {/* Actions */}
-                    <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-zinc-100 dark:border-zinc-800/80">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleResolved(comment.id)}
-                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
-                          comment.resolved
-                            ? 'text-amber-500 hover:bg-amber-500/10'
-                            : 'text-emerald-500 hover:bg-emerald-500/10'
-                        }`}
-                      >
-                        {comment.resolved ? (
-                          <>
-                            <RotateCcw className="w-3 h-3" />
-                            <span>Reabrir</span>
-                          </>
-                        ) : (
-                          <>
-                            <Check className="w-3 h-3" />
-                            <span>Resolver</span>
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteComment(comment.id)}
-                        className="p-1 rounded text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                        title="Excluir comentário"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteComment(comment.id)}
+                      className="p-1 rounded text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                      title="Excluir comentário"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
                 </div>
               </div>
-            )}
+            </div>
           </div>
         )
       })}
