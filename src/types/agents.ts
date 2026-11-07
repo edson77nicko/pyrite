@@ -307,6 +307,7 @@ export interface SquadPipelineStep {
   agentId: string
   roleInSquad: string
   order: number
+  enabled?: boolean
   customPrompt?: string
   expectedOutput?: 'html' | 'note' | 'tasks' | 'text'
 }

@@ -1293,16 +1293,18 @@ ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
 
         const specialtyBlock = selectedSquad
           ? (() => {
-              const pipeline = selectedSquad.pipeline && selectedSquad.pipeline.length > 0
+              const rawPipeline = selectedSquad.pipeline && selectedSquad.pipeline.length > 0
                 ? selectedSquad.pipeline
                 : selectedSquad.nodes.map((n, idx) => ({
                     id: `step_${n.agentId}`,
                     agentId: n.agentId,
                     roleInSquad: n.roleInTeam === 'coordinator' ? 'Coordenador & Líder' : `Especialista ${idx + 1}`,
                     order: idx + 1,
+                    enabled: true,
                     expectedOutput: n.allowedOutputTypes?.[0] || 'text',
                     customPrompt: undefined
                   }))
+              const pipeline = rawPipeline.filter(p => p.enabled !== false)
               return `ESQUADRÃO MULTIAGENTE ATIVO (MODO ESTEIRA COLABORATIVA):
 Nome do Esquadrão: ${selectedSquad.name}
 Missão / Objetivo: ${selectedSquad.objective || selectedSquad.description}

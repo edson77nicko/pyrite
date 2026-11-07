@@ -2923,7 +2923,7 @@ export async function executeAgentRun(params: {
         orderedMembers = teamDefinition.pipeline
           .slice()
           .sort((a, b) => a.order - b.order)
-          .filter(p => p.agentId !== agent.id)
+          .filter(p => p.agentId !== agent.id && p.enabled !== false)
           .map(p => ({
             agentId: p.agentId,
             roleInSquad: p.roleInSquad,

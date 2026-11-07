@@ -1,8 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react'
+﻿import React, { useState, useRef, useLayoutEffect } from 'react'
 import type { AgentProfileVersion, TeamDefinition, SquadPipelineStep } from '../types/agents'
 import {
   Users,
-  Sparkles,
   Plus,
   Trash2,
   ArrowUp,
@@ -15,21 +14,13 @@ import {
   Check,
   X,
   Pencil,
-  Sliders
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+  Activity
 } from 'lucide-react'
 import { AgentIcon } from './AgentIcon'
 import { renderDynamicIcon, IconPickerPopover } from './IconPickerPopover'
-
-const SQUAD_AGENT_COLORS = ['#10b981', '#2563eb', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4']
-
-function getAgentColor(agentId?: string): string {
-  if (!agentId) return '#10b981'
-  let hash = 0
-  for (let i = 0; i < agentId.length; i++) {
-    hash = (hash * 31 + agentId.charCodeAt(i)) >>> 0
-  }
-  return SQUAD_AGENT_COLORS[hash % SQUAD_AGENT_COLORS.length]
-}
 
 interface SquadManagementViewProps {
   squads: TeamDefinition[]
@@ -75,6 +66,14 @@ const OUTPUT_TYPE_CONFIG: Record<
   }
 }
 
+interface ActivityLogItem {
+  id: string
+  time: string
+  agentName: string
+  status: string
+  success?: boolean
+}
+
 export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
   squads,
   agents,
@@ -85,8 +84,14 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
   onOpenSquadChat
 }) => {
   const activeSquad = squads.find(s => s.id === selectedSquadId) || squads[0]
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(null)
+  const [squadSearchQuery, setSquadSearchQuery] = useState('')
+  const [agentFilterQuery, setAgentFilterQuery] = useState('')
+  const [connectionFilter, setConnectionFilter] = useState<'all' | 'active' | 'inactive'>('all')
+
+  // Estado de expansão do acordeão por card (Configurar ⌵)
+  const [expandedCardIds, setExpandedCardIds] = useState<Record<string, boolean>>({})
+
+  // Modais e edição inline
   const [isNewSquadModalOpen, setIsNewSquadModalOpen] = useState(false)
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false)
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
@@ -106,39 +111,234 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
   const [newMemberPrompt, setNewMemberPrompt] = useState('')
   const [newMemberOutput, setNewMemberOutput] = useState<'html' | 'note' | 'tasks' | 'text'>('text')
 
-  const filteredSquads = squads.filter(
-    s =>
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.objective || '').toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // Histórico de atividade em tempo real da esteira
+  const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([
+    { id: 'log-1', time: '09:40:55', agentName: 'Líder / Coordenador', status: 'ativo ✓', success: true },
+    { id: 'log-2', time: '09:41:00', agentName: 'Especialista Central', status: '18 ms', success: true },
+    { id: 'log-3', time: '09:41:07', agentName: 'Esteira Conectada', status: '200 OK', success: true }
+  ])
 
-  // Obter pipeline do esquadrão ativo ou gerar a partir dos nós existentes
+  // Refs para medição de cabos SVG
+  const lienzoRef = useRef<HTMLDivElement | null>(null)
+  const nucleoRef = useRef<HTMLDivElement | null>(null)
+  const cardSocketsRef = useRef<Record<string, HTMLDivElement | null>>({})
+  const [cablePaths, setCablePaths] = useState<
+    { id: string; d: string; active: boolean; side: 'left' | 'right' }[]
+  >([])
+
+  // Obter pipeline do esquadrão ativo com fallback retrocompatível
   const getSquadPipeline = (squad: TeamDefinition): SquadPipelineStep[] => {
     if (squad.pipeline && squad.pipeline.length > 0) {
-      return squad.pipeline
+      return squad.pipeline.map(p => ({
+        ...p,
+        enabled: p.enabled !== false
+      }))
     }
-    // Fallback retrocompatível: derivar dos nós
     return squad.nodes.map((n, idx) => ({
       id: `step_${n.agentId}_${idx}`,
       agentId: n.agentId,
       roleInSquad: n.roleInTeam === 'coordinator' ? 'Coordenador & Líder' : `Especialista ${idx + 1}`,
       order: idx + 1,
+      enabled: true,
       expectedOutput: (n.allowedOutputTypes?.[0] as any) || 'text'
     }))
   }
 
   const currentPipeline = activeSquad ? getSquadPipeline(activeSquad) : []
 
-  // Se o step selecionado não existir no pipeline atual, selecionar o primeiro ou nulo
-  useEffect(() => {
-    if (currentPipeline.length > 0 && selectedStepId) {
-      const exists = currentPipeline.some(s => s.id === selectedStepId)
-      if (!exists) setSelectedStepId(currentPipeline[0].id)
-    }
-  }, [activeSquad?.id, currentPipeline, selectedStepId])
+  // Filtragem dos agentes na visualização Empalme
+  const filteredPipeline = currentPipeline.filter(step => {
+    const ag = agents.find(a => a.id === step.agentId)
+    const matchesSearch =
+      !agentFilterQuery ||
+      (ag?.name || '').toLowerCase().includes(agentFilterQuery.toLowerCase()) ||
+      step.roleInSquad.toLowerCase().includes(agentFilterQuery.toLowerCase())
 
-  const selectedStep = currentPipeline.find(s => s.id === selectedStepId) || null
-  const selectedStepIndex = currentPipeline.findIndex(s => s.id === selectedStepId)
+    const isStepActive = step.enabled !== false
+    if (connectionFilter === 'active') return matchesSearch && isStepActive
+    if (connectionFilter === 'inactive') return matchesSearch && !isStepActive
+    return matchesSearch
+  })
+
+  // Dividir a lista em Coluna Esquerda e Coluna Direita (distribuição equilibrada)
+  const halfCount = Math.ceil(filteredPipeline.length / 2)
+  const leftColumnSteps = filteredPipeline.slice(0, halfCount)
+  const rightColumnSteps = filteredPipeline.slice(halfCount)
+
+  const activeCount = currentPipeline.filter(p => p.enabled !== false).length
+  const inactiveCount = currentPipeline.length - activeCount
+
+  // Atualizar cálculo das curvas SVG dos cabos
+  const recalculateCables = () => {
+    if (!lienzoRef.current || !nucleoRef.current) return
+
+    const lienzoRect = lienzoRef.current.getBoundingClientRect()
+    const nucleoRect = nucleoRef.current.getBoundingClientRect()
+
+    const nucleoCenterY = nucleoRect.top + nucleoRect.height / 2 - lienzoRect.top
+    const nucleoLeftX = nucleoRect.left - lienzoRect.left
+    const nucleoRightX = nucleoRect.right - lienzoRect.left
+
+    const newPaths: { id: string; d: string; active: boolean; side: 'left' | 'right' }[] = []
+
+    // Cabos da coluna esquerda
+    leftColumnSteps.forEach(step => {
+      const socketEl = cardSocketsRef.current[step.id]
+      if (!socketEl) return
+      const sRect = socketEl.getBoundingClientRect()
+      const x1 = sRect.left + sRect.width / 2 - lienzoRect.left
+      const y1 = sRect.top + sRect.height / 2 - lienzoRect.top
+      const x2 = nucleoLeftX + 4
+      const y2 = nucleoCenterY
+
+      const cp1X = x1 + (x2 - x1) * 0.55
+      const cp1Y = y1
+      const cp2X = x2 - (x2 - x1) * 0.35
+      const cp2Y = y2
+
+      newPaths.push({
+        id: step.id,
+        d: `M ${x1} ${y1} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${x2} ${y2}`,
+        active: step.enabled !== false,
+        side: 'left'
+      })
+    })
+
+    // Cabos da coluna direita
+    rightColumnSteps.forEach(step => {
+      const socketEl = cardSocketsRef.current[step.id]
+      if (!socketEl) return
+      const sRect = socketEl.getBoundingClientRect()
+      const x1 = sRect.left + sRect.width / 2 - lienzoRect.left
+      const y1 = sRect.top + sRect.height / 2 - lienzoRect.top
+      const x2 = nucleoRightX - 4
+      const y2 = nucleoCenterY
+
+      const cp1X = x1 - (x1 - x2) * 0.55
+      const cp1Y = y1
+      const cp2X = x2 + (x1 - x2) * 0.35
+      const cp2Y = y2
+
+      newPaths.push({
+        id: step.id,
+        d: `M ${x1} ${y1} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${x2} ${y2}`,
+        active: step.enabled !== false,
+        side: 'right'
+      })
+    })
+
+    setCablePaths(newPaths)
+  }
+
+  useLayoutEffect(() => {
+    recalculateCables()
+    const handleResize = () => recalculateCables()
+    window.addEventListener('resize', handleResize)
+    const observer = new ResizeObserver(() => recalculateCables())
+    if (lienzoRef.current) observer.observe(lienzoRef.current)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      observer.disconnect()
+    }
+  }, [currentPipeline, expandedCardIds, activeSquad?.id, connectionFilter, agentFilterQuery])
+
+  // Alternar conexão do agente (Toggle ON/OFF)
+  const handleToggleStepConnection = (stepId: string) => {
+    if (!activeSquad) return
+    const targetStep = currentPipeline.find(s => s.id === stepId)
+    if (!targetStep) return
+
+    const nextEnabled = targetStep.enabled === false ? true : false
+    const updated = currentPipeline.map(s => (s.id === stepId ? { ...s, enabled: nextEnabled } : s))
+
+    onSaveSquad({
+      ...activeSquad,
+      pipeline: updated,
+      updatedAt: Date.now()
+    })
+
+    // Adicionar log na caixa de atividade
+    const ag = agents.find(a => a.id === targetStep.agentId)
+    const timeStr = new Date().toTimeString().split(' ')[0]
+    setActivityLogs(prev => [
+      {
+        id: `act-${Date.now()}`,
+        time: timeStr,
+        agentName: ag?.name || 'Agente',
+        status: nextEnabled ? 'conectado ✓' : 'desconectado ✕',
+        success: nextEnabled
+      },
+      ...prev.slice(0, 4)
+    ])
+
+    setTimeout(recalculateCables, 50)
+  }
+
+  const handleUpdateStep = (stepId: string, partial: Partial<SquadPipelineStep>) => {
+    if (!activeSquad) return
+    const updated = currentPipeline.map(s => (s.id === stepId ? { ...s, ...partial } : s))
+    onSaveSquad({
+      ...activeSquad,
+      pipeline: updated,
+      updatedAt: Date.now()
+    })
+  }
+
+  const handleMoveStep = (stepIndex: number, direction: 'up' | 'down') => {
+    if (!activeSquad) return
+    const pipeline = [...currentPipeline]
+    const targetIndex = direction === 'up' ? stepIndex - 1 : stepIndex + 1
+    if (targetIndex < 0 || targetIndex >= pipeline.length) return
+
+    const temp = pipeline[stepIndex]
+    pipeline[stepIndex] = pipeline[targetIndex]
+    pipeline[targetIndex] = temp
+
+    const updated = pipeline.map((p, idx) => ({ ...p, order: idx + 1 }))
+    onSaveSquad({
+      ...activeSquad,
+      pipeline: updated,
+      coordinatorAgentId: updated[0]?.agentId || activeSquad.coordinatorAgentId,
+      updatedAt: Date.now()
+    })
+  }
+
+  const handleRemoveStep = (stepId: string) => {
+    if (!activeSquad) return
+    const updated = currentPipeline
+      .filter(s => s.id !== stepId)
+      .map((p, idx) => ({ ...p, order: idx + 1 }))
+    onSaveSquad({
+      ...activeSquad,
+      pipeline: updated,
+      updatedAt: Date.now()
+    })
+  }
+
+  const handleAddMember = () => {
+    if (!activeSquad || !selectedAgentToAdd) return
+    const targetAgent = agents.find(a => a.id === selectedAgentToAdd)
+    const newStep: SquadPipelineStep = {
+      id: `step_${selectedAgentToAdd}_${Date.now()}`,
+      agentId: selectedAgentToAdd,
+      roleInSquad: newMemberRole.trim() || `${currentPipeline.length + 1}. ${targetAgent?.name || 'Especialista'}`,
+      order: currentPipeline.length + 1,
+      enabled: true,
+      customPrompt: newMemberPrompt.trim() || undefined,
+      expectedOutput: newMemberOutput
+    }
+    const updated = [...currentPipeline, newStep]
+    onSaveSquad({
+      ...activeSquad,
+      pipeline: updated,
+      updatedAt: Date.now()
+    })
+    setIsAddMemberModalOpen(false)
+    setSelectedAgentToAdd('')
+    setNewMemberRole('')
+    setNewMemberPrompt('')
+  }
 
   const handleCreateSquad = () => {
     if (!newSquadName.trim()) return
@@ -147,10 +347,10 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       id: `squad-${Date.now()}`,
       version: 1,
       name: newSquadName.trim(),
-      description: 'Esquadrão especializado para entregas coordenadas.',
-      objective: newSquadObjective.trim() || 'Executar demandas complexas com múltiplos especialistas no chat.',
+      description: 'Esquadrão especializado com arquitetura centralizada.',
+      objective: newSquadObjective.trim() || 'Processar demandas de ponta a ponta com especialistas conectados.',
       coordinatorAgentId: leadId,
-      maxParallelSubtasks: 5,
+      maxParallelSubtasks: 6,
       icon: newSquadIcon || 'Users',
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -160,6 +360,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
           agentId: leadId,
           roleInSquad: '1. Líder & Estrategista',
           order: 1,
+          enabled: true,
           expectedOutput: 'text'
         }
       ],
@@ -184,76 +385,6 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
     setNewSquadIcon('Users')
   }
 
-  const handleMoveStep = (stepIndex: number, direction: 'up' | 'down') => {
-    if (!activeSquad) return
-    const pipeline = [...currentPipeline]
-    const targetIndex = direction === 'up' ? stepIndex - 1 : stepIndex + 1
-    if (targetIndex < 0 || targetIndex >= pipeline.length) return
-
-    const temp = pipeline[stepIndex]
-    pipeline[stepIndex] = pipeline[targetIndex]
-    pipeline[targetIndex] = temp
-
-    // Reindexar ordem
-    const updated = pipeline.map((p, idx) => ({ ...p, order: idx + 1 }))
-    onSaveSquad({
-      ...activeSquad,
-      pipeline: updated,
-      coordinatorAgentId: updated[0]?.agentId || activeSquad.coordinatorAgentId,
-      updatedAt: Date.now()
-    })
-  }
-
-  const handleRemoveStep = (stepId: string) => {
-    if (!activeSquad) return
-    const updated = currentPipeline
-      .filter(s => s.id !== stepId)
-      .map((p, idx) => ({ ...p, order: idx + 1 }))
-    onSaveSquad({
-      ...activeSquad,
-      pipeline: updated,
-      updatedAt: Date.now()
-    })
-    if (selectedStepId === stepId) {
-      setSelectedStepId(updated[0]?.id || null)
-    }
-  }
-
-  const handleAddMember = () => {
-    if (!activeSquad || !selectedAgentToAdd) return
-    const targetAgent = agents.find(a => a.id === selectedAgentToAdd)
-    const newStep: SquadPipelineStep = {
-      id: `step_${selectedAgentToAdd}_${Date.now()}`,
-      agentId: selectedAgentToAdd,
-      roleInSquad: newMemberRole.trim() || `${currentPipeline.length + 1}. ${targetAgent?.name || 'Especialista'}`,
-      order: currentPipeline.length + 1,
-      customPrompt: newMemberPrompt.trim() || undefined,
-      expectedOutput: newMemberOutput
-    }
-    const updated = [...currentPipeline, newStep]
-    onSaveSquad({
-      ...activeSquad,
-      pipeline: updated,
-      updatedAt: Date.now()
-    })
-    setIsAddMemberModalOpen(false)
-    setSelectedAgentToAdd('')
-    setNewMemberRole('')
-    setNewMemberPrompt('')
-    setSelectedStepId(newStep.id)
-  }
-
-  const handleUpdateStep = (stepId: string, partial: Partial<SquadPipelineStep>) => {
-    if (!activeSquad) return
-    const updated = currentPipeline.map(s => (s.id === stepId ? { ...s, ...partial } : s))
-    onSaveSquad({
-      ...activeSquad,
-      pipeline: updated,
-      coordinatorAgentId: updated[0]?.agentId || activeSquad.coordinatorAgentId,
-      updatedAt: Date.now()
-    })
-  }
-
   const handleSaveSquadName = () => {
     if (!activeSquad || !squadNameInput.trim()) {
       setIsEditingSquadName(false)
@@ -267,21 +398,236 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
     setIsEditingSquadName(false)
   }
 
+  // Renderizador de Card individual
+  const renderAgentCard = (step: SquadPipelineStep, side: 'left' | 'right') => {
+    const ag = agents.find(a => a.id === step.agentId)
+    const isExpanded = Boolean(expandedCardIds[step.id])
+    const isStepActive = step.enabled !== false
+    const outMeta = OUTPUT_TYPE_CONFIG[step.expectedOutput || 'text'] || OUTPUT_TYPE_CONFIG.text
+    const OutIcon = outMeta.icon
+    const stepIdx = currentPipeline.findIndex(s => s.id === step.id)
+
+    return (
+      <div
+        key={step.id}
+        className={`relative rounded-2xl border transition-all duration-200 ${
+          isStepActive
+            ? 'bg-[#141419] border-zinc-700/80 shadow-md hover:border-zinc-600'
+            : 'bg-[#101013] border-zinc-800/60 opacity-80'
+        }`}
+      >
+        {/* Ponto Conector Socket do Cabo na borda */}
+        <div
+          ref={el => {
+            cardSocketsRef.current[step.id] = el
+          }}
+          className={`absolute top-7 w-3.5 h-3.5 rounded-full border-2 border-[#101014] z-20 flex items-center justify-center transition-all ${
+            side === 'left' ? '-right-1.75' : '-left-1.75'
+          } ${
+            isStepActive
+              ? 'bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow,#38bdf8)]'
+              : 'bg-zinc-700'
+          }`}
+        >
+          <span className="w-1 h-1 rounded-full bg-white opacity-80" />
+        </div>
+
+        {/* Topo do Card: Avatar + Informações + Switch Toggle */}
+        <div className="p-3.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <AgentIcon
+                variant={ag?.icon}
+                state={isStepActive ? (ag?.state === 'working' ? 'executing' : 'waiting') : 'waiting'}
+                size={34}
+                className="shrink-0 rounded-xl"
+              />
+              <div className="min-w-0">
+                <div className="font-semibold text-xs text-zinc-100 truncate">
+                  {ag?.name || 'Agente'}
+                </div>
+                <div className="text-[11px] text-zinc-400 truncate mt-0.5">
+                  {step.roleInSquad}
+                </div>
+              </div>
+            </div>
+
+            {/* Interruptor Switch (ON / OFF) com estilo Empalme */}
+            <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+              <span className="text-[10px] text-zinc-400 font-medium">
+                {isStepActive ? 'Conectado' : 'Conectar'}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleToggleStepConnection(step.id)}
+                className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer flex items-center ${
+                  isStepActive ? 'bg-[var(--accent)]' : 'bg-zinc-800'
+                }`}
+                title={isStepActive ? 'Desconectar do núcleo' : 'Conectar ao núcleo'}
+              >
+                <div
+                  className={`w-4 h-4 rounded-full bg-white shadow-xs transition-transform transform ${
+                    isStepActive ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Rodapé do Card: Status luminoso + Badge de Saída + Botão Configurar ⌵ */}
+          <div className="flex items-center justify-between mt-3 pt-2 border-t border-zinc-800/60 text-[11px]">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    isStepActive ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'
+                  }`}
+                />
+                <span className={isStepActive ? 'text-zinc-300 font-medium' : 'text-zinc-500'}>
+                  {isStepActive ? 'Ativa' : 'Sin conectar'}
+                </span>
+              </div>
+              <span
+                className="flex items-center gap-1 text-[9.5px] px-1.5 py-0.2 rounded border font-medium"
+                style={{
+                  color: outMeta.color,
+                  borderColor: `${outMeta.color}30`,
+                  backgroundColor: `${outMeta.color}10`
+                }}
+              >
+                <OutIcon className="w-2.5 h-2.5" />
+                <span>{outMeta.badge}</span>
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setExpandedCardIds(prev => ({
+                  ...prev,
+                  [step.id]: !prev[step.id]
+                }))
+                setTimeout(recalculateCables, 50)
+              }}
+              className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+            >
+              <span>Configurar</span>
+              {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Acordeão de Configuração Sanfona (Abre embutido no Card como no vídeo) */}
+        {isExpanded && (
+          <div className="px-3.5 pb-3.5 pt-1 border-t border-zinc-800/80 space-y-3 text-xs animate-in fade-in duration-150">
+            {/* Prompt de Orientação IA */}
+            <div className="space-y-1">
+              <label className="text-zinc-300 font-medium text-[11px] flex items-center justify-between">
+                <span>Prompt de Orientação (IA)</span>
+                <Sparkles className="w-3 h-3 text-[var(--accent)]" />
+              </label>
+              <textarea
+                rows={3}
+                value={step.customPrompt || ''}
+                onChange={e => handleUpdateStep(step.id, { customPrompt: e.target.value })}
+                placeholder="Orientações específicas para direcionar este agente nesta esteira..."
+                className="w-full bg-[#18181d] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-zinc-100 placeholder-zinc-500 text-[11px] focus:outline-none focus:border-zinc-700 resize-none leading-relaxed"
+              />
+            </div>
+
+            {/* Função no Esquadrão */}
+            <div className="space-y-1">
+              <label className="text-zinc-300 font-medium text-[11px]">Função nesta Etapa</label>
+              <input
+                type="text"
+                value={step.roleInSquad}
+                onChange={e => handleUpdateStep(step.id, { roleInSquad: e.target.value })}
+                className="w-full bg-[#18181d] border border-zinc-800 rounded-xl px-2.5 py-1.5 text-zinc-100 text-[11px] focus:outline-none focus:border-zinc-700"
+              />
+            </div>
+
+            {/* Tipo de Entrega */}
+            <div className="space-y-1">
+              <label className="text-zinc-300 font-medium text-[11px]">Entrega Esperada</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(Object.keys(OUTPUT_TYPE_CONFIG) as Array<keyof typeof OUTPUT_TYPE_CONFIG>).map(k => {
+                  const meta = OUTPUT_TYPE_CONFIG[k]
+                  const Icon = meta.icon
+                  const isSel = (step.expectedOutput || 'text') === k
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => handleUpdateStep(step.id, { expectedOutput: k as any })}
+                      className={`flex items-center gap-1.5 p-1.5 rounded-lg border text-left cursor-pointer transition-all ${
+                        isSel
+                          ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-zinc-100 font-medium'
+                          : 'bg-[#18181d] border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3" style={{ color: meta.color }} />
+                      <span className="text-[10px] truncate">{meta.badge}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Gestão de Ordem e Remoção */}
+            <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={stepIdx === 0}
+                  onClick={() => handleMoveStep(stepIdx, 'up')}
+                  className="p-1 rounded-lg border border-zinc-800 text-zinc-400 hover:text-zinc-200 disabled:opacity-30 cursor-pointer"
+                  title="Mover para cima"
+                >
+                  <ArrowUp className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  disabled={stepIdx === currentPipeline.length - 1}
+                  onClick={() => handleMoveStep(stepIdx, 'down')}
+                  className="p-1 rounded-lg border border-zinc-800 text-zinc-400 hover:text-zinc-200 disabled:opacity-30 cursor-pointer"
+                  title="Mover para baixo"
+                >
+                  <ArrowDown className="w-3 h-3" />
+                </button>
+              </div>
+
+              {currentPipeline.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveStep(step.id)}
+                  className="flex items-center gap-1 text-[10.5px] text-rose-400 hover:text-rose-300 cursor-pointer"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Remover</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div className="flex-1 flex overflow-hidden bg-[#0c0c0e]">
+    <div className="flex-1 flex overflow-hidden bg-[#0a0a0c]">
       {/* ==================================================================== */}
       {/* COLUNA ESQUERDA: LISTA DE ESQUADRÕES                                 */}
       {/* ==================================================================== */}
-      <aside className="w-80 shrink-0 h-full bg-[#101012] border-r border-zinc-800/80 flex flex-col">
+      <aside className="w-72 shrink-0 h-full bg-[#0e0e11] border-r border-zinc-800/80 flex flex-col">
         {/* Cabeçalho */}
         <div className="h-13 px-4 border-b border-zinc-800/80 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)]">
               <Users className="w-4 h-4" />
             </div>
             <div>
               <div className="text-xs font-semibold text-zinc-100">Esquadrões</div>
-              <div className="text-[10px] text-zinc-500">{squads.length} equipes ativas</div>
+              <div className="text-[10px] text-zinc-500">{squads.length} equipes</div>
             </div>
           </div>
           <button
@@ -291,187 +637,282 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
               setNewSquadIcon('Users')
               setIsNewSquadModalOpen(true)
             }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--accent)] hover:brightness-110 text-zinc-950 font-semibold text-xs transition-all cursor-pointer shadow-sm active:scale-95"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--accent)] hover:brightness-110 text-zinc-950 font-semibold text-xs transition-all cursor-pointer shadow-sm active:scale-95"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Novo</span>
           </button>
         </div>
 
-        {/* Campo de Busca */}
+        {/* Busca de Esquadrões */}
         <div className="p-3 border-b border-zinc-800/60">
           <div className="relative flex items-center">
             <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 pointer-events-none" />
             <input
               type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              value={squadSearchQuery}
+              onChange={e => setSquadSearchQuery(e.target.value)}
               placeholder="Buscar esquadrão..."
-              className="w-full bg-[#161619] border border-zinc-800/80 rounded-xl pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+              className="w-full bg-[#151518] border border-zinc-800/80 rounded-xl pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
             />
           </div>
         </div>
 
-        {/* Lista de Cards */}
+        {/* Lista de Esquadrões */}
         <div className="flex-1 overflow-y-auto custom-chat-scrollbar p-2.5 space-y-1.5">
-          {filteredSquads.map(sq => {
-            const isSelected = sq.id === activeSquad?.id
-            const pipeline = getSquadPipeline(sq)
-            return (
-              <button
-                key={sq.id}
-                type="button"
-                onClick={() => {
-                  onSelectSquad(sq.id)
-                  setSelectedStepId(pipeline[0]?.id || null)
-                }}
-                className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-[#18181c] border-[var(--accent)]/40 ring-1 ring-[var(--accent)]/20 shadow-sm'
-                    : 'bg-[#131316] border-zinc-800/60 hover:bg-[#161619] hover:border-zinc-700/60'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-6 h-6 rounded-lg bg-zinc-800/90 border border-zinc-700/60 flex items-center justify-center text-zinc-300 shrink-0">
-                      {renderDynamicIcon(sq.icon || 'Users', 'w-3.5 h-3.5 text-zinc-300')}
-                    </div>
-                    <div className="font-semibold text-xs text-zinc-100 truncate">{sq.name}</div>
-                  </div>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-zinc-800 text-zinc-400 font-mono shrink-0">
-                    {pipeline.length} especialistas
-                  </span>
-                </div>
-                {sq.objective && (
-                  <p className="text-[11px] text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
-                    {sq.objective}
-                  </p>
-                )}
-                <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-zinc-800/50">
-                  <div className="flex -space-x-1.5 overflow-hidden">
-                    {pipeline.slice(0, 4).map((p, idx) => {
-                      const ag = agents.find(a => a.id === p.agentId)
-                      return (
-                        <div
-                          key={p.id || idx}
-                          className="w-5 h-5 rounded-md flex items-center justify-center text-[9px] text-white font-bold border border-[#131316] shrink-0"
-                          style={{ backgroundColor: getAgentColor(ag?.id) }}
-                          title={ag?.name}
-                        >
-                          {ag?.name?.[0] || '•'}
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <span className="text-[10.5px] text-zinc-500 ml-auto truncate max-w-[150px]">
-                    Líder: {agents.find(a => a.id === sq.coordinatorAgentId)?.name || 'Principal'}
-                  </span>
-                </div>
-              </button>
+          {squads
+            .filter(
+              s =>
+                s.name.toLowerCase().includes(squadSearchQuery.toLowerCase()) ||
+                (s.objective || '').toLowerCase().includes(squadSearchQuery.toLowerCase())
             )
-          })}
+            .map(sq => {
+              const isSelected = sq.id === activeSquad?.id
+              const pipeline = getSquadPipeline(sq)
+              const actCount = pipeline.filter(p => p.enabled !== false).length
+
+              return (
+                <button
+                  key={sq.id}
+                  type="button"
+                  onClick={() => onSelectSquad(sq.id)}
+                  className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#18181d] border-[var(--accent)]/40 ring-1 ring-[var(--accent)]/20 shadow-sm'
+                      : 'bg-[#121215] border-zinc-800/60 hover:bg-[#151519] hover:border-zinc-700/60'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-6 h-6 rounded-lg bg-zinc-800/90 border border-zinc-700/60 flex items-center justify-center text-zinc-300 shrink-0">
+                        {renderDynamicIcon(sq.icon || 'Users', 'w-3.5 h-3.5 text-zinc-300')}
+                      </div>
+                      <div className="font-semibold text-xs text-zinc-100 truncate">{sq.name}</div>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-zinc-800 text-zinc-400 font-mono shrink-0">
+                      {actCount}/{pipeline.length}
+                    </span>
+                  </div>
+                  {sq.objective && (
+                    <p className="text-[11px] text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
+                      {sq.objective}
+                    </p>
+                  )}
+                </button>
+              )
+            })}
         </div>
       </aside>
 
       {/* ==================================================================== */}
-      {/* PAINEL CENTRAL & DIREITO: ESTEIRA VISUAL + PAINEL DE DETALHES         */}
+      {/* PAINEL CENTRAL: O CANVAS DE INTEGRAÇÃO CENTRALIZADA (EMPALME)         */}
       {/* ==================================================================== */}
       {activeSquad ? (
-        <div className="flex-1 flex overflow-hidden">
-          {/* Main: Cabeçalho Minimalista + Esteira Inspirada no Print */}
-          <main className="flex-1 flex flex-col h-full overflow-y-auto custom-chat-scrollbar">
-            {/* Topo do Esquadrão: Minimalista, limpo e direto */}
-            <div className="h-14 px-6 border-b border-zinc-800/80 bg-[#101013] flex items-center justify-between shrink-0">
-              {/* Esquerda: Ícone customizável + Nome do Esquadrão */}
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="relative">
-                  <button
-                    ref={iconPickerButtonRef}
-                    type="button"
-                    onClick={() => setIsIconPickerOpen(v => !v)}
-                    className="w-8 h-8 rounded-xl bg-zinc-800/90 hover:bg-zinc-700/80 border border-zinc-700/70 flex items-center justify-center text-zinc-200 transition-colors cursor-pointer shadow-xs"
-                    title="Alterar ícone do esquadrão"
-                  >
-                    {renderDynamicIcon(activeSquad.icon || 'Users', 'w-4 h-4 text-zinc-200')}
-                  </button>
+        <main className="flex-1 overflow-y-auto custom-chat-scrollbar p-6 flex flex-col items-center">
+          {/* Card Principal Centralizado (Idêntico ao vídeo de referência) */}
+          <div
+            ref={lienzoRef}
+            className="w-full max-w-6xl rounded-3xl bg-[#0f0f13] border border-zinc-800/90 p-7 shadow-2xl relative flex flex-col min-h-[660px]"
+          >
+            {/* Camada SVG dos Cabos Conectores com Curvas de Bézier Fluidas */}
+            <svg className="absolute inset-0 pointer-events-none w-full h-full z-10 overflow-visible">
+              <defs>
+                <filter id="glow-cable" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="3" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+              </defs>
 
-                  {/* Popover de Seleção de Ícone */}
-                  {isIconPickerOpen && (
-                    <IconPickerPopover
-                      selectedIcon={activeSquad.icon}
-                      onSelectIcon={iconName => {
-                        onSaveSquad({
-                          ...activeSquad,
-                          icon: iconName,
-                          updatedAt: Date.now()
-                        })
-                        setIsIconPickerOpen(false)
-                      }}
-                      onClose={() => setIsIconPickerOpen(false)}
-                      align="left"
+              {cablePaths.map(c => {
+                if (!c.active) return null
+                return (
+                  <g key={`cable-${c.id}`}>
+                    {/* Cabo de fundo suave com glow */}
+                    <path
+                      d={c.d}
+                      fill="none"
+                      stroke="var(--accent,#38bdf8)"
+                      strokeWidth="3.5"
+                      strokeOpacity="0.4"
+                      filter="url(#glow-cable)"
                     />
+                    {/* Cabo central com cor pura */}
+                    <path
+                      d={c.d}
+                      fill="none"
+                      stroke="var(--accent,#38bdf8)"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                    {/* Pulso de energia viajando no cabo */}
+                    <circle r="2.5" fill="#ffffff">
+                      <animateMotion dur="2.4s" repeatCount="indefinite" path={c.d} />
+                    </circle>
+                  </g>
+                )
+              })}
+            </svg>
+
+            {/* Cabeçalho do Canvas: Ajustes • Conexões + Título + Filtros */}
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-zinc-800/70 z-20">
+              <div className="space-y-1 min-w-0">
+                <div className="text-[10px] font-mono tracking-wider text-zinc-500 uppercase">
+                  AJUSTES • ESQUADRÃO MULTIAGENTE
+                </div>
+                <div className="flex items-center gap-3">
+                  {/* Ícone customizável */}
+                  <div className="relative">
+                    <button
+                      ref={iconPickerButtonRef}
+                      type="button"
+                      onClick={() => setIsIconPickerOpen(v => !v)}
+                      className="w-8 h-8 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700/80 flex items-center justify-center text-zinc-200 transition-colors cursor-pointer shadow-xs"
+                      title="Alterar ícone do esquadrão"
+                    >
+                      {renderDynamicIcon(activeSquad.icon || 'Users', 'w-4 h-4 text-zinc-200')}
+                    </button>
+
+                    {isIconPickerOpen && (
+                      <IconPickerPopover
+                        selectedIcon={activeSquad.icon}
+                        onSelectIcon={iconName => {
+                          onSaveSquad({
+                            ...activeSquad,
+                            icon: iconName,
+                            updatedAt: Date.now()
+                          })
+                          setIsIconPickerOpen(false)
+                        }}
+                        onClose={() => setIsIconPickerOpen(false)}
+                        align="left"
+                      />
+                    )}
+                  </div>
+
+                  {/* Nome do Esquadrão */}
+                  {isEditingSquadName ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={squadNameInput}
+                        onChange={e => setSquadNameInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleSaveSquadName()
+                          if (e.key === 'Escape') setIsEditingSquadName(false)
+                        }}
+                        onBlur={handleSaveSquadName}
+                        className="bg-[#18181d] border border-zinc-700 rounded-lg px-2 py-1 text-base font-bold text-zinc-100 focus:outline-none focus:border-[var(--accent)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveSquadName}
+                        className="p-1 rounded bg-[var(--accent)] text-zinc-950 cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 group">
+                      <h1
+                        onDoubleClick={() => {
+                          setSquadNameInput(activeSquad.name)
+                          setIsEditingSquadName(true)
+                        }}
+                        className="text-lg font-bold text-zinc-100 tracking-tight truncate cursor-pointer hover:text-white"
+                        title="Duplo clique para renomear"
+                      >
+                        {activeSquad.name}
+                      </h1>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSquadNameInput(activeSquad.name)
+                          setIsEditingSquadName(true)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-zinc-300 p-0.5 transition-opacity cursor-pointer"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                {/* Nome do Esquadrão (com edição inline) */}
-                {isEditingSquadName ? (
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      autoFocus
-                      value={squadNameInput}
-                      onChange={e => setSquadNameInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') handleSaveSquadName()
-                        if (e.key === 'Escape') setIsEditingSquadName(false)
-                      }}
-                      onBlur={handleSaveSquadName}
-                      className="bg-[#18181c] border border-zinc-700 rounded-lg px-2 py-1 text-sm font-semibold text-zinc-100 focus:outline-none focus:border-[var(--accent)]"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveSquadName}
-                      className="p-1 rounded bg-[var(--accent)] text-zinc-950 cursor-pointer"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingSquadName(false)}
-                      className="p-1 rounded bg-zinc-800 text-zinc-400 cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 group">
-                    <h1
-                      onDoubleClick={() => {
-                        setSquadNameInput(activeSquad.name)
-                        setIsEditingSquadName(true)
-                      }}
-                      className="text-sm font-semibold text-zinc-100 tracking-tight truncate cursor-pointer hover:text-white"
-                      title="Duplo clique para renomear"
-                    >
-                      {activeSquad.name}
-                    </h1>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSquadNameInput(activeSquad.name)
-                        setIsEditingSquadName(true)
-                      }}
-                      className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-zinc-300 p-0.5 transition-opacity cursor-pointer"
-                      title="Renomear esquadrão"
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </button>
-                  </div>
-                )}
+                <div className="text-xs text-zinc-400 flex items-center gap-2">
+                  <span>{currentPipeline.length} especialistas disponíveis</span>
+                  <span>•</span>
+                  <span className="text-[var(--accent)] font-medium">{activeCount} ativas</span>
+                </div>
               </div>
 
-              {/* Direita: Ações discretas (Abrir no Chat estilo container neutro + Excluir) */}
-              <div className="flex items-center gap-2">
+              {/* Filtros em Pílulas e Ações */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Campo de Busca */}
+                <div className="relative flex items-center">
+                  <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={agentFilterQuery}
+                    onChange={e => setAgentFilterQuery(e.target.value)}
+                    placeholder="Buscar especialista..."
+                    className="w-48 bg-[#16161a] border border-zinc-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                  />
+                </div>
+
+                {/* Filtros: Todas | Activas | Sin conectar */}
+                <div className="flex items-center p-0.5 bg-[#151519] rounded-xl border border-zinc-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setConnectionFilter('all')}
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      connectionFilter === 'all'
+                        ? 'bg-zinc-800 text-zinc-100 shadow-xs'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Todas <span className="text-[10px] opacity-70 font-mono">{currentPipeline.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConnectionFilter('active')}
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      connectionFilter === 'active'
+                        ? 'bg-zinc-800 text-zinc-100 shadow-xs'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Activas <span className="text-[10px] opacity-70 font-mono">{activeCount}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConnectionFilter('inactive')}
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      connectionFilter === 'inactive'
+                        ? 'bg-zinc-800 text-zinc-100 shadow-xs'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Sin conectar <span className="text-[10px] opacity-70 font-mono">{inactiveCount}</span>
+                  </button>
+                </div>
+
+                {/* Botão Adicionar Especialista */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const available = agents.filter(a => !currentPipeline.some(p => p.agentId === a.id))
+                    setSelectedAgentToAdd(available[0]?.id || agents[0]?.id || '')
+                    setNewMemberRole('')
+                    setNewMemberPrompt('')
+                    setIsAddMemberModalOpen(true)
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-200 text-xs font-medium cursor-pointer transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <span>Especialista</span>
+                </button>
+
+                {/* Botão Excluir Esquadrão */}
                 {squads.length > 1 && (
                   <button
                     type="button"
@@ -487,11 +928,11 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                   </button>
                 )}
 
-                {/* Botão Abrir no Chat: Cores de contêiner discreto, sem roubar a cena */}
+                {/* Botão Abrir no Chat */}
                 <button
                   type="button"
                   onClick={() => onOpenSquadChat(activeSquad)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 hover:text-white border border-zinc-700/60 font-medium text-xs transition-colors cursor-pointer shadow-xs active:scale-95"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 hover:text-white border border-zinc-700/60 font-medium text-xs transition-colors cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5 text-zinc-400" />
                   <span>Abrir no Chat</span>
@@ -499,278 +940,76 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
               </div>
             </div>
 
-            {/* Conteúdo da Esteira (Pipeline) */}
-            <div className="p-6 space-y-6 max-w-3xl">
-              {/* Box explicativo sutil com cor de destaque do tema */}
-              <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 flex items-start gap-3">
-                <div className="w-7 h-7 rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0 mt-0.5">
-                  <Sparkles className="w-3.5 h-3.5" />
-                </div>
-                <div className="space-y-0.5">
-                  <div className="text-xs font-semibold text-zinc-200">Esteira Colaborativa em Ação</div>
-                  <p className="text-[11.5px] text-zinc-400 leading-relaxed">
-                    No chat, sua mensagem é processada sequencialmente pelos especialistas na ordem abaixo.
-                    Cada agente executa seu papel orientativo, gerando código HTML interativo, notas ou tarefas de ponta a ponta.
-                  </p>
-                </div>
+            {/* GRADE CENTRAL: COLUNA ESQUERDA | NÚCLEO CENTRAL | COLUNA DIREITA */}
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 pt-8 z-20 items-start">
+              {/* Coluna Esquerda de Agentes */}
+              <div className="space-y-4">
+                {leftColumnSteps.map(step => renderAgentCard(step, 'left'))}
+                {leftColumnSteps.length === 0 && (
+                  <div className="p-6 text-center text-xs text-zinc-600 border border-dashed border-zinc-800/60 rounded-2xl">
+                    Nenhum agente neste lado.
+                  </div>
+                )}
               </div>
 
-              {/* Cabeçalho da Esteira */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">
-                    Esteira de Execução
-                  </h2>
-                  <span className="text-xs text-zinc-500 font-mono">({currentPipeline.length} etapas)</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const available = agents.filter(a => !currentPipeline.some(p => p.agentId === a.id))
-                    setSelectedAgentToAdd(available[0]?.id || agents[0]?.id || '')
-                    setNewMemberRole('')
-                    setNewMemberPrompt('')
-                    setIsAddMemberModalOpen(true)
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-800/70 text-zinc-300 font-medium text-xs transition-colors cursor-pointer"
+              {/* Centro: O NÚCLEO CIRCULAR CENTRAL + CAIXA DE ATIVIDADE */}
+              <div className="flex flex-col items-center justify-center space-y-6 pt-4">
+                {/* Núcleo Central com Anéis Pulsantes */}
+                <div
+                  ref={nucleoRef}
+                  className="relative w-28 h-28 rounded-full border border-zinc-700/80 bg-[#121217] flex flex-col items-center justify-center shadow-2xl z-30 group select-none"
                 >
-                  <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
-                  <span>Adicionar Especialista</span>
-                </button>
-              </div>
+                  {/* Anel luminoso externo */}
+                  <div className="absolute -inset-2 rounded-full border border-[var(--accent)]/30 opacity-70 animate-pulse pointer-events-none" />
+                  <div className="absolute -inset-4 rounded-full border border-[var(--accent)]/15 opacity-40 pointer-events-none" />
 
-              {/* Lista Vertical de Cards Estilo Print */}
-              <div className="space-y-0">
-                {currentPipeline.map((step, idx) => {
-                  const ag = agents.find(a => a.id === step.agentId)
-                  const outMeta = OUTPUT_TYPE_CONFIG[step.expectedOutput || 'text'] || OUTPUT_TYPE_CONFIG.text
-                  const OutIcon = outMeta.icon
-                  const isSelected = selectedStepId === step.id
-
-                  return (
-                    <div key={step.id} className="relative">
-                      {/* Card da Etapa */}
-                      <div
-                        onClick={() => setSelectedStepId(step.id)}
-                        className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#16161a] border-[var(--accent)]/50 ring-1 ring-[var(--accent)]/20 shadow-md'
-                            : 'bg-[#121215] border-zinc-800/80 hover:bg-[#151518] hover:border-zinc-700/80'
-                        }`}
-                      >
-                        {/* Header superior do Card: ETAPA X à esquerda; TIPO DE SAÍDA à direita */}
-                        <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-800/60">
-                          <span className="text-[10px] font-mono uppercase tracking-wider font-semibold text-zinc-500">
-                            ETAPA {step.order}
-                          </span>
-                          <span
-                            className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md font-semibold uppercase tracking-wider border"
-                            style={{
-                              color: outMeta.color,
-                              backgroundColor: `${outMeta.color}15`,
-                              borderColor: `${outMeta.color}30`
-                            }}
-                          >
-                            <OutIcon className="w-3 h-3" />
-                            <span>{outMeta.badge}</span>
-                          </span>
-                        </div>
-
-                        {/* Corpo do Card: Ícone do Agente + Nome + Função */}
-                        <div className="flex items-start gap-3">
-                          <AgentIcon
-                            variant={ag?.icon}
-                            state={ag?.state === 'working' ? 'executing' : 'waiting'}
-                            size={36}
-                            className="shrink-0 rounded-xl"
-                          />
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-semibold text-xs text-zinc-100 truncate">
-                                {ag?.name || 'Agente'}
-                              </span>
-                              <span className="text-[11px] text-zinc-500 shrink-0">
-                                {idx === 0 ? 'Líder da Esteira' : `Passo ${idx + 1}`}
-                              </span>
-                            </div>
-
-                            <div className="text-xs text-zinc-300 font-medium truncate mt-0.5">
-                              {step.roleInSquad}
-                            </div>
-
-                            {/* Prompt orientador prévia */}
-                            {step.customPrompt ? (
-                              <div className="mt-2 text-[11px] text-zinc-400 bg-black/25 px-2.5 py-1.5 rounded-lg border border-zinc-800/60 line-clamp-2 italic">
-                                &ldquo;{step.customPrompt}&rdquo;
-                              </div>
-                            ) : (
-                              <div className="mt-1.5 text-[10.5px] text-zinc-500 hover:text-[var(--accent)] transition-colors flex items-center gap-1">
-                                <Plus className="w-3 h-3" />
-                                <span>Adicionar orientações de prompt para a IA...</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Conector Vertical Fino entre os Cards (estilo o print) */}
-                      {idx < currentPipeline.length - 1 && (
-                        <div className="flex flex-col items-center py-1">
-                          <div className="w-px h-5 bg-zinc-800" />
-                          <div className="w-2 h-2 rounded-full border border-zinc-700 bg-zinc-900" />
-                          <div className="w-px h-5 bg-zinc-800" />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </main>
-
-          {/* ==================================================================== */}
-          {/* PAINEL LATERAL DIREITO: DETALHES DA ETAPA SELECIONADA (DETAILS)      */}
-          {/* ==================================================================== */}
-          {selectedStep && (
-            <aside className="w-84 shrink-0 h-full bg-[#101013] border-l border-zinc-800/80 flex flex-col animate-in slide-in-from-right-4 duration-200">
-              {/* Topo do Painel de Detalhes */}
-              <div className="h-14 px-4 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-[var(--accent)]" />
-                  <span className="font-semibold text-xs text-zinc-100">
-                    Detalhes da Etapa {selectedStepIndex + 1}
+                  {/* Ícone e Nome do Núcleo */}
+                  <div className="w-8 h-8 rounded-xl bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] mb-1">
+                    {renderDynamicIcon(activeSquad.icon || 'Zap', 'w-4 h-4 text-[var(--accent)]')}
+                  </div>
+                  <span className="text-[11px] font-semibold text-zinc-100 tracking-tight">Núcleo</span>
+                  <span className="text-[10px] text-[var(--accent)] font-mono">
+                    {activeCount} activas
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedStepId(null)}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 cursor-pointer"
-                  title="Fechar detalhes"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
 
-              {/* Corpo de Configurações */}
-              <div className="flex-1 overflow-y-auto custom-chat-scrollbar p-4 space-y-4 text-xs">
-                {/* 1. Agente Responsável */}
-                <div className="space-y-1.5">
-                  <label className="text-zinc-300 font-medium flex items-center justify-between">
-                    <span>Agente Especialista</span>
-                    <span className="text-[10px] text-zinc-500 font-mono">Etapa {selectedStep.order}</span>
-                  </label>
-                  <select
-                    value={selectedStep.agentId}
-                    onChange={e => handleUpdateStep(selectedStep.id, { agentId: e.target.value })}
-                    className="w-full bg-[#161619] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-zinc-700 cursor-pointer"
-                  >
-                    {agents.map(ag => (
-                      <option key={ag.id} value={ag.id}>
-                        {ag.name} ({ag.roleDescription || ag.specialistRole})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* 2. Papel / Função no Esquadrão */}
-                <div className="space-y-1.5">
-                  <label className="text-zinc-300 font-medium">Função nesta Etapa</label>
-                  <input
-                    type="text"
-                    value={selectedStep.roleInSquad}
-                    onChange={e => handleUpdateStep(selectedStep.id, { roleInSquad: e.target.value })}
-                    placeholder="Ex: Copywriter e Arquitetura de Vendas"
-                    className="w-full bg-[#161619] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-zinc-700"
-                  />
-                </div>
-
-                {/* 3. Prompt de Orientação Específico para a IA (NOVO RECURSO) */}
-                <div className="space-y-1.5">
-                  <label className="text-zinc-300 font-medium flex items-center justify-between">
-                    <span>Prompt de Orientação (IA)</span>
-                    <Sparkles className="w-3 h-3 text-[var(--accent)]" />
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={selectedStep.customPrompt || ''}
-                    onChange={e => handleUpdateStep(selectedStep.id, { customPrompt: e.target.value })}
-                    placeholder="Ex: Crie o código HTML responsivo completo com tags semânticas, classes Tailwind CSS modernas, modo escuro e interações limpas..."
-                    className="w-full bg-[#161619] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 resize-none leading-relaxed text-[11.5px]"
-                  />
-                  <p className="text-[10px] text-zinc-500 leading-relaxed">
-                    Orientações adicionais que direcionam o comportamento do modelo LLM nesta etapa específica da esteira.
-                  </p>
-                </div>
-
-                {/* 4. Tipo de Entrega Esperada */}
-                <div className="space-y-1.5">
-                  <label className="text-zinc-300 font-medium">Tipo de Entrega</label>
-                  <div className="grid grid-cols-2 gap-2 pt-0.5">
-                    {(Object.keys(OUTPUT_TYPE_CONFIG) as Array<keyof typeof OUTPUT_TYPE_CONFIG>).map(k => {
-                      const meta = OUTPUT_TYPE_CONFIG[k]
-                      const Icon = meta.icon
-                      const isSel = (selectedStep.expectedOutput || 'text') === k
-                      return (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => handleUpdateStep(selectedStep.id, { expectedOutput: k as any })}
-                          className={`flex items-center gap-2 p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                            isSel
-                              ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-zinc-100 font-medium shadow-xs'
-                              : 'bg-[#161619] border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700/80'
-                          }`}
+                {/* Caixa de Atividade (Log Terminal no Estilo Moxen / Empalme) */}
+                <div className="w-68 rounded-2xl bg-black/60 border border-zinc-800/80 p-3 shadow-inner space-y-1.5 font-mono text-[10px]">
+                  <div className="flex items-center justify-between text-zinc-500 uppercase tracking-wider text-[9px] pb-1 border-b border-zinc-900">
+                    <div className="flex items-center gap-1.5">
+                      <Activity className="w-3 h-3 text-[var(--accent)]" />
+                      <span>ACTIVIDAD</span>
+                    </div>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  </div>
+                  <div className="space-y-1">
+                    {activityLogs.map(log => (
+                      <div key={log.id} className="flex items-center justify-between gap-2 text-zinc-400">
+                        <span className="text-zinc-600">{log.time}</span>
+                        <span className="truncate text-zinc-300">{log.agentName}</span>
+                        <span
+                          className={log.success ? 'text-[var(--accent)]' : 'text-zinc-500'}
                         >
-                          <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: meta.color }} />
-                          <div className="min-w-0">
-                            <div className="text-[11px] font-semibold truncate">{meta.label}</div>
-                          </div>
-                        </button>
-                      )
-                    })}
+                          {log.status}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                </div>
-
-                {/* 5. Ações da Etapa: Subir, Descer e Excluir */}
-                <div className="pt-3 border-t border-zinc-800/70 space-y-2">
-                  <label className="text-zinc-400 text-[11px] font-medium">Ordem e Gestão</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={selectedStepIndex === 0}
-                      onClick={() => handleMoveStep(selectedStepIndex, 'up')}
-                      className="flex items-center justify-center gap-1.5 p-2 rounded-xl border border-zinc-800 text-zinc-300 hover:bg-zinc-800 disabled:opacity-30 cursor-pointer"
-                    >
-                      <ArrowUp className="w-3.5 h-3.5" />
-                      <span>Subir Etapa</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={selectedStepIndex === currentPipeline.length - 1}
-                      onClick={() => handleMoveStep(selectedStepIndex, 'down')}
-                      className="flex items-center justify-center gap-1.5 p-2 rounded-xl border border-zinc-800 text-zinc-300 hover:bg-zinc-800 disabled:opacity-30 cursor-pointer"
-                    >
-                      <ArrowDown className="w-3.5 h-3.5" />
-                      <span>Descer Etapa</span>
-                    </button>
-                  </div>
-
-                  {currentPipeline.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveStep(selectedStep.id)}
-                      className="w-full flex items-center justify-center gap-1.5 p-2 rounded-xl border border-zinc-800 text-rose-400 hover:bg-rose-950/20 hover:border-rose-800/40 cursor-pointer transition-colors mt-2"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Remover esta Etapa</span>
-                    </button>
-                  )}
                 </div>
               </div>
-            </aside>
-          )}
-        </div>
+
+              {/* Coluna Direita de Agentes */}
+              <div className="space-y-4">
+                {rightColumnSteps.map(step => renderAgentCard(step, 'right'))}
+                {rightColumnSteps.length === 0 && (
+                  <div className="p-6 text-center text-xs text-zinc-600 border border-dashed border-zinc-800/60 rounded-2xl">
+                    Nenhum agente neste lado.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </main>
       ) : (
         <div className="flex-1 flex items-center justify-center text-zinc-500 text-xs">
           Selecione ou crie um esquadrão para gerenciar.
@@ -956,7 +1195,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                 onClick={handleAddMember}
                 className="px-4 py-1.5 rounded-xl bg-[var(--accent)] hover:brightness-110 disabled:opacity-40 text-zinc-950 font-semibold text-xs cursor-pointer shadow-sm transition-all"
               >
-                Adicionar à Esteira
+                Adicionar ao Esquadrão
               </button>
             </div>
           </div>
