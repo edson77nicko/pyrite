@@ -11,6 +11,7 @@ import { EditableCodeBlock } from './EditableCodeBlock'
 import { EditableCallout } from './EditableCallout'
 import { EditorInlineAiModal } from './EditorInlineAiModal'
 import { EditorBlockGutter } from './EditorBlockGutter'
+import { EditorBlockComments } from './EditorBlockComments'
 import { parseCodeInfo, serializeCodeBlock, serializeCallout } from '../utils/editorBlocks'
 import type { CodeBlockData, CalloutData } from '../utils/editorBlocks'
 import { ensureEditorLandingZones, exitEditorBlock, focusBlankEditorLine, insertEditorBlock } from '../utils/editorSurface'
@@ -49,6 +50,7 @@ export interface LivePreviewEditorHandle {
   insertCallout: (type: string) => void
   insertTable: () => void
   focus?: () => void
+  scrollToBlock?: (blockIndex: number, snippet?: string) => void
 }
 
 export interface LivePreviewEditorProps {
@@ -825,7 +827,9 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     element: HTMLElement
     top: number
     left: number
+    right: number
   } | null>(null)
+  const gutterLeaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [draggedBlock, setDraggedBlock] = useState<HTMLElement | null>(null)
 
@@ -1071,6 +1075,25 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     },
     focus: () => {
       containerRef.current?.focus()
+    },
+    scrollToBlock: (blockIndex: number, snippet?: string) => {
+      const container = containerRef.current
+      if (!container) return
+      const children = Array.from(container.children) as HTMLElement[]
+      let target = children[blockIndex]
+      if (!target || (snippet && !target.innerText?.includes(snippet.slice(0, 20)))) {
+        if (snippet) {
+          const found = children.find(c => c.innerText?.includes(snippet.slice(0, 25)))
+          if (found) target = found
+        }
+      }
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        target.classList.add('pyrite-block-pulse-highlight')
+        setTimeout(() => {
+          target.classList.remove('pyrite-block-pulse-highlight')
+        }, 2200)
+      }
     }
   }))
 
@@ -1803,7 +1826,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     setInlineAi({ isOpen: false, targetText: '', position: { top: 0, left: 0 } })
   }
 
-  // AppFlowy Block Gutter Handlers
+  // AppFlowy Block Gutter & Comments Handlers
   const handleEditorMouseMove = (e: React.MouseEvent) => {
     if (!isEditable || inlineAi.isOpen) return
     const container = containerRef.current
@@ -1815,21 +1838,33 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     }
 
     if (target && target !== container) {
+      if (gutterLeaveTimeoutRef.current) {
+        clearTimeout(gutterLeaveTimeoutRef.current)
+        gutterLeaveTimeoutRef.current = null
+      }
       const rect = target.getBoundingClientRect()
       const containerRect = container.getBoundingClientRect()
       setHoveredBlock({
         element: target,
         top: rect.top,
-        left: Math.max(8, containerRect.left - 44)
+        left: Math.max(8, containerRect.left - 48),
+        right: containerRect.right
       })
     }
   }
 
   const handleEditorMouseLeave = (e: React.MouseEvent) => {
-    const related = e.relatedTarget as HTMLElement | null
-    if (!related?.closest('.appflowy-block-gutter')) {
-      setHoveredBlock(null)
+    if (gutterLeaveTimeoutRef.current) {
+      clearTimeout(gutterLeaveTimeoutRef.current)
     }
+    const related = e.relatedTarget as HTMLElement | null
+    if (related?.closest('.appflowy-block-gutter') || related?.closest('.group\\/addcomment')) {
+      return
+    }
+    // Give 300ms grace period so moving towards gutter or comment button is smooth and never flickers
+    gutterLeaveTimeoutRef.current = setTimeout(() => {
+      setHoveredBlock(null)
+    }, 300)
     setDropIndicator(null)
   }
 
@@ -1882,7 +1917,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       setHoveredBlock({
         element,
         top: rect.top,
-        left: Math.max(8, containerRect.left - 44)
+        left: Math.max(8, containerRect.left - 48),
+        right: containerRect.right
       })
     }
   }
@@ -2161,6 +2197,17 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       <EditorBlockGutter
         hoveredBlock={hoveredBlock}
         isEditable={isEditable}
+        onMouseEnter={() => {
+          if (gutterLeaveTimeoutRef.current) {
+            clearTimeout(gutterLeaveTimeoutRef.current)
+            gutterLeaveTimeoutRef.current = null
+          }
+        }}
+        onMouseLeave={() => {
+          gutterLeaveTimeoutRef.current = setTimeout(() => {
+            setHoveredBlock(null)
+          }, 300)
+        }}
         onInsertBelow={handleBlockInsertBelow}
         onDeleteBlock={handleBlockDelete}
         onDuplicateBlock={handleBlockDuplicate}
@@ -2169,6 +2216,14 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         onAskAi={handleOpenAiForBlock}
         onDragStart={handleBlockDragStart}
         onDragEnd={handleBlockDragEnd}
+      />
+
+      {/* Right-Side Block Comments (+ Icon on Hover, Pinned Avatar Speech Bubble & Expanding Card) */}
+      <EditorBlockComments
+        noteId={note.id}
+        hoveredBlock={hoveredBlock}
+        containerRef={containerRef}
+        isEditable={isEditable}
       />
 
       {/* AppFlowy-style Drop Line Indicator */}

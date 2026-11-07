@@ -25,6 +25,8 @@ export interface EditorBlockGutterProps {
     left: number
   } | null
   isEditable: boolean
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
   onInsertBelow: (element: HTMLElement) => void
   onDeleteBlock: (element: HTMLElement) => void
   onDuplicateBlock: (element: HTMLElement) => void
@@ -38,6 +40,8 @@ export interface EditorBlockGutterProps {
 export const EditorBlockGutter: React.FC<EditorBlockGutterProps> = ({
   hoveredBlock,
   isEditable,
+  onMouseEnter,
+  onMouseLeave,
   onInsertBelow,
   onDeleteBlock,
   onDuplicateBlock,
@@ -86,13 +90,18 @@ export const EditorBlockGutter: React.FC<EditorBlockGutterProps> = ({
         left: `${hoveredBlock.left}px`,
         zIndex: 50
       }}
-      className="appflowy-block-gutter flex items-center gap-0.5 select-none -translate-y-0.5"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className="appflowy-block-gutter flex items-center gap-0.5 select-none -translate-y-0.5 group/gutter"
     >
+      {/* Invisible hover bridge connecting gutter to text container so cursor never drops hover */}
+      <div className="absolute -right-8 top-[-8px] bottom-[-8px] w-8 pointer-events-auto" />
+
       {/* + Button: Insert new line below */}
       <button
         type="button"
         onClick={() => onInsertBelow(hoveredBlock.element)}
-        className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors cursor-pointer"
+        className="w-6 h-6 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors cursor-pointer"
         title="Adicionar bloco abaixo (AppFlowy style)"
       >
         <Plus className="w-3.5 h-3.5" />
@@ -104,7 +113,7 @@ export const EditorBlockGutter: React.FC<EditorBlockGutterProps> = ({
         onDragStart={(e) => onDragStart(e, hoveredBlock.element)}
         onDragEnd={onDragEnd}
         onClick={handleOpenMenu}
-        className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-amber-400 hover:bg-zinc-800/80 transition-colors cursor-grab active:cursor-grabbing"
+        className="w-6 h-6 flex items-center justify-center rounded text-zinc-400 hover:text-amber-400 hover:bg-zinc-800/80 transition-colors cursor-grab active:cursor-grabbing"
         title="Arraste para mover linha ou clique para opções do bloco"
       >
         <GripVertical className="w-3.5 h-3.5" />

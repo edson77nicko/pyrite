@@ -262,6 +262,17 @@ input[type="checkbox"]:focus-visible,
 .pyrite-editor-surface > .editor-gap { min-height: 12px; margin: 0; }
 .pyrite-editor-surface[contenteditable="false"] > .editor-gap { display: none; }
 
+/* Comment block pulse animation when navigated from comments modal */
+@keyframes pyrite-block-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(197, 155, 39, 0.7); background-color: rgba(197, 155, 39, 0.15); }
+  50% { box-shadow: 0 0 0 4px rgba(197, 155, 39, 0.4); background-color: rgba(197, 155, 39, 0.2); }
+  100% { box-shadow: 0 0 0 0 rgba(197, 155, 39, 0); background-color: transparent; }
+}
+.pyrite-block-pulse-highlight {
+  animation: pyrite-block-pulse 2s ease-in-out forwards;
+  border-radius: 6px;
+}
+
 /* Pyrite Rich Editor Typography (ensures H1-H4, lists, blockquotes render styled inside contenteditable) */
 .pyrite-editor-surface h1 {
   font-size: 1.625rem;

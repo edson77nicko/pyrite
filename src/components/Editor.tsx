@@ -15,8 +15,12 @@ import {
   Folder,
   Table,
   PanelRight,
-  Users
+  Users,
+  MessageSquare
 } from 'lucide-react'
+import { NoteCommentsModal } from './NoteCommentsModal'
+import { getNoteComments } from '../utils/commentsStorage'
+import type { NoteComment } from '../types/comments'
 
 interface EditorProps {
   note: Note
@@ -46,6 +50,29 @@ export const Editor: React.FC<EditorProps> = ({
   const isTitleFocusedRef = useRef(false)
   const previousNoteIdRef = useRef(note.id)
   const [isAgentRoleMenuOpen, setIsAgentRoleMenuOpen] = useState(false)
+  const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false)
+  const [openCommentsCount, setOpenCommentsCount] = useState<number>(() => {
+    return getNoteComments(note.id).filter(c => !c.resolved).length
+  })
+
+  // Keep open comments count updated
+  useEffect(() => {
+    const updateCount = () => {
+      setOpenCommentsCount(getNoteComments(note.id).filter(c => !c.resolved).length)
+    }
+    updateCount()
+    const handleUpdate = (e: any) => {
+      if (!e.detail?.noteId || e.detail.noteId === note.id) {
+        updateCount()
+      }
+    }
+    window.addEventListener('pyrite_comments_updated', handleUpdate)
+    return () => window.removeEventListener('pyrite_comments_updated', handleUpdate)
+  }, [note.id])
+
+  const handleSelectComment = (comment: NoteComment) => {
+    liveEditorRef.current?.scrollToBlock?.(comment.blockIndex, comment.blockSnippet)
+  }
   const liveEditorRef = useRef<LivePreviewEditorHandle>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pendingContentRef = useRef<string | null>(null)
@@ -234,6 +261,26 @@ export const Editor: React.FC<EditorProps> = ({
             </div>
           )}
 
+          {/* Note Comments Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setIsCommentsModalOpen(v => !v)}
+            className={`relative p-1.5 rounded-lg border transition-all cursor-pointer ${
+              isCommentsModalOpen
+                ? 'border-zinc-700 bg-zinc-800 text-white shadow-sm'
+                : 'border-zinc-800/80 bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+            }`}
+            style={isCommentsModalOpen || openCommentsCount > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+            title={`Comentários da nota (${openCommentsCount} abertos)`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            {openCommentsCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-[var(--accent)] text-[9px] font-bold text-white flex items-center justify-center shadow-xs">
+                {openCommentsCount}
+              </span>
+            )}
+          </button>
+
           {/* Right Sidebar Toggle (Sumário, Links, Backlinks) */}
           {onToggleRightSidebar && (
             <button
@@ -330,6 +377,14 @@ export const Editor: React.FC<EditorProps> = ({
           </div>
         )}
       </div>
+
+      {/* Note Comments Modal (Abertos, Resolvidos, Todos) */}
+      <NoteCommentsModal
+        noteId={note.id}
+        isOpen={isCommentsModalOpen}
+        onClose={() => setIsCommentsModalOpen(false)}
+        onSelectComment={handleSelectComment}
+      />
     </div>
   )
 }
