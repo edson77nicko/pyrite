@@ -31,6 +31,8 @@ interface Props {
   } | null
   containerRef: React.RefObject<HTMLDivElement | null>
   isEditable: boolean
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
   onCommentChange?: () => void
 }
 
@@ -75,6 +77,8 @@ export const EditorBlockComments: React.FC<Props> = ({
   hoveredBlock,
   containerRef,
   isEditable,
+  onMouseEnter,
+  onMouseLeave,
   onCommentChange
 }) => {
   const [comments, setComments] = useState<NoteComment[]>(() => getNoteComments(noteId))
@@ -125,7 +129,6 @@ export const EditorBlockComments: React.FC<Props> = ({
     const containerRect = container.getBoundingClientRect()
     const children = Array.from(container.children) as HTMLElement[]
 
-    // Get the scroll container boundary to avoid leaking above sticky headers
     const scrollParent = (container.closest('.custom-chat-scrollbar, .overflow-y-auto, .app-editor-pane') || container.parentElement) as HTMLElement | null
     const scrollRect = scrollParent?.getBoundingClientRect()
 
@@ -138,7 +141,6 @@ export const EditorBlockComments: React.FC<Props> = ({
     }[] = []
 
     comments.forEach(comm => {
-      // Find element by index or snippet matching
       let el = children[comm.blockIndex]
       if (!el || (comm.blockSnippet && !el.innerText?.includes(comm.blockSnippet.slice(0, 20)))) {
         const found = children.find(c => c.innerText?.includes(comm.blockSnippet.slice(0, 25)))
@@ -147,7 +149,6 @@ export const EditorBlockComments: React.FC<Props> = ({
 
       if (el) {
         const rect = el.getBoundingClientRect()
-        // Must be within scroll viewport (so it never floats over top breadcrumb/header)
         const isVisible = scrollRect
           ? (rect.top >= scrollRect.top && rect.top <= scrollRect.bottom - 20)
           : true
@@ -254,10 +255,14 @@ export const EditorBlockComments: React.FC<Props> = ({
             left: `${Math.min(hoveredBlock.right + 10, window.innerWidth - 44)}px`,
             zIndex: 25
           }}
+          onMouseEnter={onMouseEnter}
+          onMouseLeave={onMouseLeave}
           className="flex items-center select-none animate-in fade-in duration-100 group/addcomment"
         >
           <button
             type="button"
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
             onClick={() => handleOpenAddInput(hoveredBlock.element)}
             className="w-5.5 h-5.5 rounded-full border border-zinc-700/80 bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 flex items-center justify-center cursor-pointer shadow-sm transition-all hover:scale-110 active:scale-95"
             title="Adicionar comentário nesta linha"
@@ -284,11 +289,18 @@ export const EditorBlockComments: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => setShowColorPicker(v => !v)}
-                className="w-5 h-5 rounded-full border border-white/20 flex items-center justify-center text-white cursor-pointer hover:scale-105 transition-transform"
-                style={{ backgroundColor: selectedColor }}
+                className="w-5.5 h-5.5 rounded-full border border-zinc-700 bg-zinc-800 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform"
                 title="Trocar ícone e cor"
               >
-                {renderCommentIcon(selectedIcon, "w-3 h-3")}
+                <div
+                  className="w-4 h-4 rounded-full flex items-center justify-center"
+                  style={{
+                    backgroundColor: selectedColor === 'var(--accent)' ? 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.15))' : `${selectedColor}25`,
+                    color: selectedColor || 'var(--accent)'
+                  }}
+                >
+                  {renderCommentIcon(selectedIcon, "w-2.5 h-2.5")}
+                </div>
               </button>
               <span className="text-[10px] text-zinc-400 font-medium">Comentário</span>
             </div>
@@ -368,7 +380,7 @@ export const EditorBlockComments: React.FC<Props> = ({
             className="w-full bg-zinc-900/60 border border-zinc-700/60 rounded-lg p-1.5 text-zinc-100 text-xs resize-none outline-none focus:border-[var(--accent)] leading-snug placeholder:text-zinc-500"
           />
 
-          {/* Minimalist Icon-only Actions (no verbose text) */}
+          {/* Minimalist Icon-only Actions */}
           <div className="flex items-center justify-between mt-1 px-0.5">
             <span className="text-[9px] text-zinc-500">Enter para salvar</span>
             <div className="flex items-center gap-1">
@@ -401,7 +413,6 @@ export const EditorBlockComments: React.FC<Props> = ({
         const isHovered = hoveredCommentId === comment.id
         const isEditing = editingCommentId === comment.id
         const clampedRight = Math.min(right, window.innerWidth - 38)
-        const bubbleLeft = Math.max(16, Math.min(right, window.innerWidth - 290))
 
         return (
           <div
@@ -409,42 +420,56 @@ export const EditorBlockComments: React.FC<Props> = ({
             style={{
               position: 'fixed',
               top: `${top}px`,
-              left: isHovered ? `${bubbleLeft}px` : `${clampedRight}px`,
+              left: `${clampedRight}px`,
               zIndex: isHovered ? 45 : 20
             }}
             onMouseEnter={() => setHoveredCommentId(comment.id)}
             onMouseLeave={() => {
               if (!isEditing) setHoveredCommentId(null)
             }}
-            className="select-none transition-all duration-100"
+            className="select-none"
           >
-            {/* COLLAPSED PIN (Bonequinho Icon with Defined Detail / Accent Color) */}
+            {/* COLLAPSED PIN (Discrete Container Color + Translucent Mask Icon) */}
             {!isHovered ? (
               <div
-                className={`w-7 h-7 rounded-full rounded-bl-xs shadow-md border border-white/20 flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 ${
+                className={`w-7 h-7 rounded-full rounded-bl-xs shadow-md bg-white dark:bg-[#18181c] border border-zinc-200 dark:border-zinc-700/80 flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 ${
                   comment.resolved ? 'opacity-40 hover:opacity-100' : ''
                 }`}
-                style={{ backgroundColor: comment.color || 'var(--accent)' }}
                 title={`Comentário de ${comment.author}: "${comment.text}"`}
               >
-                <div className="w-5 h-5 rounded-full flex items-center justify-center text-white">
-                  {renderCommentIcon(comment.icon, "w-3.5 h-3.5")}
+                <div
+                  className="w-5 h-5 rounded-full flex items-center justify-center border"
+                  style={{
+                    backgroundColor: comment.color ? `${comment.color}22` : 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                    borderColor: comment.color ? `${comment.color}45` : 'var(--accent-border, rgba(197, 155, 39, 0.3))',
+                    color: comment.color || 'var(--accent, #c59b27)'
+                  }}
+                >
+                  {renderCommentIcon(comment.icon, "w-3 h-3")}
                 </div>
               </div>
             ) : (
-              /* EXPANDED COMMENT BUBBLE */
-              <div className="rounded-xl rounded-bl-xs shadow-2xl p-2.5 bg-white dark:bg-[#1c1c20] text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700/80 min-w-[220px] max-w-xs animate-in fade-in zoom-in-95 duration-100">
+              /* EXPANDED COMMENT BUBBLE (Expands naturally outward from the balloon itself) */
+              <div className="absolute top-0 right-0 rounded-xl rounded-bl-xs shadow-2xl p-2.5 bg-white dark:bg-[#1c1c20] text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700/80 min-w-[240px] max-w-xs origin-top-right animate-in fade-in zoom-in-90 duration-150">
                 <div className="flex items-start gap-2.5">
                   {/* Bonequinho dot with color & icon editor */}
                   <div className="relative group/pinicon shrink-0">
                     <button
                       type="button"
                       onClick={() => setEditingCommentId(isEditing ? null : comment.id)}
-                      className="w-7 h-7 rounded-full rounded-bl-xs border border-white/20 flex items-center justify-center text-white cursor-pointer hover:scale-105 transition-transform"
-                      style={{ backgroundColor: comment.color || 'var(--accent)' }}
+                      className="w-7 h-7 rounded-full rounded-bl-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/80 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform"
                       title="Clique para alterar ícone ou cor"
                     >
-                      {renderCommentIcon(comment.icon, "w-3.5 h-3.5")}
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center border"
+                        style={{
+                          backgroundColor: comment.color ? `${comment.color}22` : 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                          borderColor: comment.color ? `${comment.color}45` : 'var(--accent-border, rgba(197, 155, 39, 0.3))',
+                          color: comment.color || 'var(--accent, #c59b27)'
+                        }}
+                      >
+                        {renderCommentIcon(comment.icon, "w-3 h-3")}
+                      </div>
                     </button>
 
                     {/* Quick Icon / Color selector popup inside bubble */}

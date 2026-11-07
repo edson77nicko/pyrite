@@ -270,7 +270,6 @@ export const Editor: React.FC<EditorProps> = ({
                 ? 'border-zinc-700 bg-zinc-800 text-white shadow-sm'
                 : 'border-zinc-800/80 bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
             }`}
-            style={isCommentsModalOpen || openCommentsCount > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
             title={`Comentários da nota (${openCommentsCount} abertos)`}
           >
             <MessageSquare className="w-3.5 h-3.5" />
@@ -300,60 +299,72 @@ export const Editor: React.FC<EditorProps> = ({
         </div>
       </div>
 
-      {/* 3. Editor Surface (In-place WYSIWYG Live Preview matching Obsidian screenshot) */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 py-6 flex justify-center custom-chat-scrollbar">
-        <div className={`w-full ${widthClasses} flex flex-col`}>
-          {/* Note Title Input */}
-          <div className="pb-4 mb-2 border-b border-zinc-800/60">
-            {displayMode === 'live' ? (
-              <input
-                type="text"
-                value={title}
-                onFocus={() => { isTitleFocusedRef.current = true }}
-                onBlur={() => {
-                  isTitleFocusedRef.current = false
-                  commitTitleChange(title)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
+      {/* 3. Editor Surface & Sidebars area (Below Header Toolbar) */}
+      <div className="flex-1 flex overflow-hidden relative">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 py-6 flex justify-center custom-chat-scrollbar">
+          <div className={`w-full ${widthClasses} flex flex-col`}>
+            {/* Note Title Input */}
+            <div className="pb-4 mb-2 border-b border-zinc-800/60">
+              {displayMode === 'live' ? (
+                <input
+                  type="text"
+                  value={title}
+                  onFocus={() => { isTitleFocusedRef.current = true }}
+                  onBlur={() => {
                     isTitleFocusedRef.current = false
                     commitTitleChange(title)
-                    liveEditorRef.current?.focus?.()
-                  }
-                }}
-                onChange={(e) => handleTitleChange(e.target.value)}
-                placeholder="Título da Nota..."
-                className="w-full text-3xl font-serif font-bold bg-transparent text-zinc-100 placeholder-zinc-700 focus:outline-none tracking-tight"
-              />
-            ) : (
-              <h1 className="text-3xl font-serif font-bold text-zinc-100 tracking-tight">
-                {title || 'Sem título'}
-              </h1>
-            )}
-          </div>
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      isTitleFocusedRef.current = false
+                      commitTitleChange(title)
+                      liveEditorRef.current?.focus?.()
+                    }
+                  }}
+                  onChange={(e) => handleTitleChange(e.target.value)}
+                  placeholder="Título da Nota..."
+                  className="w-full text-3xl font-serif font-bold bg-transparent text-zinc-100 placeholder-zinc-700 focus:outline-none tracking-tight"
+                />
+              ) : (
+                <h1 className="text-3xl font-serif font-bold text-zinc-100 tracking-tight">
+                  {title || 'Sem título'}
+                </h1>
+              )}
+            </div>
 
-          {/* In-place WYSIWYG Content Area */}
-          <div className="flex-1 relative">
-            <LivePreviewEditor
-              editorRef={liveEditorRef}
-              note={note}
-              allNotes={allNotes}
-              displayMode={displayMode}
-              onUpdateContent={handleContentChange}
-              onNavigate={onNavigate}
-              fontSizeClass={fontClasses}
-            />
+            {/* In-place WYSIWYG Content Area */}
+            <div className="flex-1 relative">
+              <LivePreviewEditor
+                editorRef={liveEditorRef}
+                note={note}
+                allNotes={allNotes}
+                displayMode={displayMode}
+                onUpdateContent={handleContentChange}
+                onNavigate={onNavigate}
+                fontSizeClass={fontClasses}
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* In-page Minimap / Floating Outline Scroller (Dashboard Heading Rail) */}
-      <DocumentOutlineRail
-        content={content}
-        noteTitle={title}
-        scrollContainerRef={scrollContainerRef}
-      />
+        {/* In-page Minimap / Floating Outline Scroller (Dashboard Heading Rail) */}
+        <DocumentOutlineRail
+          content={content}
+          noteTitle={title}
+          scrollContainerRef={scrollContainerRef}
+        />
+
+        {/* Note Comments Sidebar (Sidebar estilo Task Details, abaixo dos headers, sem escurecer o conteúdo) */}
+        {isCommentsModalOpen && (
+          <NoteCommentsModal
+            noteId={note.id}
+            isOpen={isCommentsModalOpen}
+            onClose={() => setIsCommentsModalOpen(false)}
+            onSelectComment={handleSelectComment}
+          />
+        )}
+      </div>
 
       {/* 4. Bottom Footer Info Bar */}
       <div className="app-editor-footer flex items-center justify-between px-6 py-1.5 bg-[#0c0c0e] border-t border-zinc-800/80 text-[11px] text-zinc-500 shrink-0">
@@ -377,14 +388,6 @@ export const Editor: React.FC<EditorProps> = ({
           </div>
         )}
       </div>
-
-      {/* Note Comments Modal (Abertos, Resolvidos, Todos) */}
-      <NoteCommentsModal
-        noteId={note.id}
-        isOpen={isCommentsModalOpen}
-        onClose={() => setIsCommentsModalOpen(false)}
-        onSelectComment={handleSelectComment}
-      />
     </div>
   )
 }

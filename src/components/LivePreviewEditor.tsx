@@ -1919,10 +1919,10 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     if (related?.closest('.appflowy-block-gutter') || related?.closest('.group\\/addcomment')) {
       return
     }
-    // Give 300ms grace period so moving towards gutter or comment button is smooth and never flickers
+    // Give 600ms grace period so moving towards gutter or comment button is smooth and never flickers
     gutterLeaveTimeoutRef.current = setTimeout(() => {
       setHoveredBlock(null)
-    }, 300)
+    }, 600)
     setDropIndicator(null)
   }
 
@@ -2246,6 +2246,16 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   return (
     <div
       className="w-full min-h-[500px] relative pb-28"
+      onMouseMove={(e) => {
+        // If mouse is moving in the horizontal corridor of the active block row, maintain hover
+        if (gutterLeaveTimeoutRef.current && hoveredBlock) {
+          const rect = hoveredBlock.element.getBoundingClientRect()
+          if (e.clientY >= rect.top - 12 && e.clientY <= rect.bottom + 12) {
+            clearTimeout(gutterLeaveTimeoutRef.current)
+            gutterLeaveTimeoutRef.current = null
+          }
+        }
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget && containerRef.current && isEditable) {
           focusBlankEditorLine(containerRef.current, e.clientY)
@@ -2313,6 +2323,17 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         hoveredBlock={hoveredBlock}
         containerRef={containerRef}
         isEditable={isEditable}
+        onMouseEnter={() => {
+          if (gutterLeaveTimeoutRef.current) {
+            clearTimeout(gutterLeaveTimeoutRef.current)
+            gutterLeaveTimeoutRef.current = null
+          }
+        }}
+        onMouseLeave={() => {
+          gutterLeaveTimeoutRef.current = setTimeout(() => {
+            setHoveredBlock(null)
+          }, 600)
+        }}
       />
 
       {/* AppFlowy-style Drop Line Indicator */}
