@@ -1939,6 +1939,41 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                                 <span>{activeWorkflow.active !== false ? 'Agendado' : 'Pausado'}</span>
                               </button>
                             </div>
+
+                            {/* Sugestão Inteligente se escolheu horário da madrugada (ex: 04:10 em vez de 16:10) */}
+                            {(() => {
+                              const [hPart = '09', mPart = '00'] = (node.config.scheduleTime || '09:00').split(':')
+                              const hNum = parseInt(hPart, 10)
+                              if (hNum >= 1 && hNum <= 11) {
+                                const pmH = hNum + 12
+                                const pmTime = `${String(pmH).padStart(2, '0')}:${mPart}`
+                                return (
+                                  <div className="flex items-center justify-between gap-1.5 text-[10.5px] text-amber-300 bg-amber-950/40 border border-amber-800/50 rounded-xl p-2 mt-1">
+                                    <span className="truncate">
+                                      <strong>{node.config.scheduleTime}</strong> é de madrugada. Quis <strong>{pmTime} ({hNum}h tarde)</strong>?
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const nextIso = computeWorkflowNextRunISO(
+                                          node.config.scheduleFrequency || 'daily',
+                                          pmTime,
+                                          node.config.scheduleDays
+                                        )
+                                        handleUpdateNodeById(node.id, {
+                                          config: { ...node.config, scheduleTime: pmTime, nextRunAt: nextIso }
+                                        })
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-amber-500/25 hover:bg-amber-500/40 text-amber-100 font-semibold cursor-pointer shrink-0 transition-colors"
+                                      title={`Alternar para ${pmTime} (tarde)`}
+                                    >
+                                      Mudar para {pmTime}
+                                    </button>
+                                  </div>
+                                )
+                              }
+                              return null
+                            })()}
                           </div>
                         )}
 
@@ -2997,6 +3032,41 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                             </strong>
                           </span>
                         </div>
+
+                        {/* Sugestão Inteligente se escolheu horário da madrugada */}
+                        {(() => {
+                          const [hPart = '09', mPart = '00'] = (selectedNode.config.scheduleTime || '09:00').split(':')
+                          const hNum = parseInt(hPart, 10)
+                          if (hNum >= 1 && hNum <= 11) {
+                            const pmH = hNum + 12
+                            const pmTime = `${String(pmH).padStart(2, '0')}:${mPart}`
+                            return (
+                              <div className="flex items-center justify-between gap-1.5 text-[10.5px] text-amber-300 bg-amber-950/40 border border-amber-800/50 rounded-xl p-2 mt-1">
+                                <span className="truncate">
+                                  <strong>{selectedNode.config.scheduleTime}</strong> é de madrugada. Quis <strong>{pmTime} ({hNum}h tarde)</strong>?
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nextIso = computeWorkflowNextRunISO(
+                                      selectedNode.config.scheduleFrequency || 'daily',
+                                      pmTime,
+                                      selectedNode.config.scheduleDays
+                                    )
+                                    handleUpdateSelectedNode({
+                                      config: { ...selectedNode.config, scheduleTime: pmTime, nextRunAt: nextIso }
+                                    })
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-amber-500/25 hover:bg-amber-500/40 text-amber-100 font-semibold cursor-pointer shrink-0 transition-colors"
+                                  title={`Alternar para ${pmTime} (tarde)`}
+                                >
+                                  Mudar para {pmTime}
+                                </button>
+                              </div>
+                            )
+                          }
+                          return null
+                        })()}
                       </div>
                     )}
                   </div>

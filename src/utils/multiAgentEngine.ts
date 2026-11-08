@@ -3456,17 +3456,25 @@ export function formatWorkflowNextRun(isoString?: string, timeZone: string = get
     dateParts.day === tomorrowCivil.getUTCDate()
 
   const timePart = `${String(dateParts.hour).padStart(2, '0')}:${String(dateParts.minute).padStart(2, '0')}`
+  const period =
+    dateParts.hour < 6
+      ? 'madrugada'
+      : dateParts.hour < 12
+      ? 'manhã'
+      : dateParts.hour < 18
+      ? 'tarde'
+      : 'noite'
 
   if (isToday) {
-    return `hoje às ${timePart}`
+    return `hoje às ${timePart} (${period})`
   }
   if (isTomorrow) {
-    return `amanhã às ${timePart}`
+    return `amanhã às ${timePart} (${period})`
   }
 
   const weekdayNames = ['dom.', 'seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.']
   const monthNames = ['', 'jan.', 'fev.', 'mar.', 'abr.', 'maio', 'jun.', 'jul.', 'ago.', 'set.', 'out.', 'nov.', 'dez.']
-  return `${weekdayNames[dateParts.dayOfWeek]}, ${dateParts.day} de ${monthNames[dateParts.month]}, ${timePart}`
+  return `${weekdayNames[dateParts.dayOfWeek]}, ${dateParts.day} de ${monthNames[dateParts.month]}, ${timePart} (${period})`
 }
 
 const clip = (text: string, max = 6000) => (text.length > max ? `${text.slice(0, max)}\n[...]` : text)
