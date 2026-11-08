@@ -37,15 +37,21 @@ import {
   Info,
   AlertTriangle,
   MessageSquareText,
+  Palette,
   X
 } from 'lucide-react'
 import type { LiveBlock } from '../utils/markdownBlocks'
 import { renderArtifactHtml } from '../utils/artifactParser'
+import { NotionColorPicker } from './NotionColorPicker'
 
 export interface LivePreviewEditorHandle {
-  setBlockType: (type: LiveBlock['type']) => void
+  setBlockType: (type: LiveBlock['type'] | 'p') => void
   toggleBold: () => void
   toggleItalic: () => void
+  toggleStrike?: () => void
+  toggleHighlight?: () => void
+  applyTextColor?: (color: string) => void
+  applyBgColor?: (color: string) => void
   insertWikiLink: (target: string) => void
   insertCodeBlock: () => void
   insertCallout: (type: string) => void
@@ -176,11 +182,16 @@ function escapeHtml(str: string): string {
 function formatInlineHtml(text: string, allNotes: Note[] = []): string {
   if (!text) return ''
 
-  const tokenRegex = /(\[\[[^\[\]\r\n]+\]\]|!\[[^\]\r\n]*\]\([^\)\r\n]+\)|\[[^\[\]\r\n]+\]\([^\)\r\n]+\)|\*\*[^\*\r\n]+\*\*|==[^=\r\n]+==|~~[^~\r\n]+~~|`[^`\r\n]+`|\*[^\*\r\n]+\*)/g
+  const tokenRegex = /(<span style="[^"]*">[^<]*<\/span>|\[\[[^\[\]\r\n]+\]\]|!\[[^\]\r\n]*\]\([^\)\r\n]+\)|\[[^\[\]\r\n]+\]\([^\)\r\n]+\)|\*\*[^\*\r\n]+\*\*|==[^=\r\n]+==|~~[^~\r\n]+~~|`[^`\r\n]+`|\*[^\*\r\n]+\*)/g
   const parts = text.split(tokenRegex)
 
   return parts.map(part => {
     if (!part) return ''
+
+    // 0. Notion custom styled span (color / background)
+    if (part.startsWith('<span style=') && part.endsWith('</span>')) {
+      return part
+    }
 
     // 1. Wikilinks [[Target]] or [[Target|Alias]]
     if (part.startsWith('[[') && part.endsWith(']]') && part.length >= 4) {
@@ -523,9 +534,16 @@ function domToMarkdown(root: HTMLElement): string {
       }
 
       const style = el.getAttribute('style') || ''
+
+      // Custom styled Notion text/background span
+      if (tag === 'span' && style && (/color/i.test(style) || /background/i.test(style))) {
+        const inner = Array.from(el.childNodes).map(serializeInline).join('')
+        return `<span style="${escapeHtml(style)}">${inner}</span>`
+      }
+
       const isBold = tag === 'strong' || tag === 'b' || /font-weight:\s*(bold|[6-9]00)/i.test(style)
       const isItalic = tag === 'em' || tag === 'i' || /font-style:\s*italic/i.test(style)
-      const isMark = tag === 'mark' || /background-color/i.test(style)
+      const isMark = tag === 'mark' || (/background-color/i.test(style) && tag !== 'span')
       const isStrike = tag === 'del' || tag === 's' || tag === 'strike' || /line-through/i.test(style)
       const isCode = tag === 'code'
 
@@ -816,6 +834,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     text?: string
     range?: Range
   } | null>(null)
+  const [isSelectionColorPickerOpen, setIsSelectionColorPickerOpen] = useState(false)
+  const selectionColorBtnRef = useRef<HTMLButtonElement>(null)
 
   // Floating Link Search/Picker Popover (for selection link button or editing existing link)
   const [linkPickerPopover, setLinkPickerPopover] = useState<{
@@ -1031,6 +1051,45 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
   const formatBlockSafe = (tag: string) => {
     containerRef.current?.focus()
+    const targetTag = tag.toLowerCase()
+
+    // 1. Direct DOM Block Transformation (Cleanest for H1-H6 <-> P <-> Blockquote)
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount) {
+      const anchorNode = sel.anchorNode
+      const currentBlock = (anchorNode instanceof HTMLElement ? anchorNode : anchorNode?.parentElement)?.closest('h1, h2, h3, h4, h5, h6, blockquote, p') as HTMLElement | null
+
+      if (currentBlock && containerRef.current?.contains(currentBlock)) {
+        const newEl = document.createElement(targetTag)
+
+        if (targetTag === 'p') {
+          newEl.className = 'my-0.5 text-zinc-300 leading-[1.5]'
+        } else if (targetTag === 'h1') {
+          newEl.className = 'text-2xl font-serif font-bold text-zinc-100 my-3 pb-1 border-b border-zinc-800/60 tracking-tight'
+        } else if (targetTag === 'h2') {
+          newEl.className = 'text-xl font-serif font-semibold text-zinc-200 mt-6 mb-2 tracking-tight'
+        } else if (targetTag === 'h3') {
+          newEl.className = 'text-lg font-serif font-medium text-zinc-200 mt-4 mb-1.5 tracking-tight'
+        } else if (targetTag === 'blockquote') {
+          newEl.className = 'my-3 pl-4 border-l-2 border-amber-500/80 italic text-zinc-400 text-xs py-0.5'
+        }
+
+        newEl.innerHTML = currentBlock.innerHTML || '<br>'
+        currentBlock.replaceWith(newEl)
+
+        const range = document.createRange()
+        range.selectNodeContents(newEl)
+        range.collapse(false)
+        sel.removeAllRanges()
+        sel.addRange(range)
+
+        refreshBlocks()
+        handleSync()
+        return
+      }
+    }
+
+    // 2. Fallback to execCommand
     let ok = false
     try {
       ok = document.execCommand('formatBlock', false, `<${tag.toUpperCase()}>`)
@@ -1049,6 +1108,64 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         document.execCommand('formatBlock', false, tag)
       } catch {}
     }
+    refreshBlocks()
+    handleSync()
+  }
+
+  const applyTextColor = (color: string) => {
+    pushHistorySnapshot(true)
+    containerRef.current?.focus()
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed) return
+    const range = sel.getRangeAt(0)
+    const selectedText = range.toString()
+    if (!selectedText) return
+
+    if (color === 'inherit' || color === 'default') {
+      document.execCommand('removeFormat')
+    } else {
+      const span = document.createElement('span')
+      span.style.color = color
+      span.textContent = selectedText
+      range.deleteContents()
+      range.insertNode(span)
+
+      const newRange = document.createRange()
+      newRange.selectNodeContents(span)
+      sel.removeAllRanges()
+      sel.addRange(newRange)
+    }
+    refreshBlocks()
+    handleSync()
+  }
+
+  const applyBgColor = (bgColor: string) => {
+    pushHistorySnapshot(true)
+    containerRef.current?.focus()
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed) return
+    const range = sel.getRangeAt(0)
+    const selectedText = range.toString()
+    if (!selectedText) return
+
+    if (bgColor === 'transparent' || bgColor === 'default') {
+      document.execCommand('removeFormat')
+    } else {
+      const span = document.createElement('span')
+      span.style.backgroundColor = bgColor
+      span.style.borderRadius = '3px'
+      span.style.padding = '0.1em 0.3em'
+      span.textContent = selectedText
+      range.deleteContents()
+      range.insertNode(span)
+
+      const newRange = document.createRange()
+      newRange.selectNodeContents(span)
+      sel.removeAllRanges()
+      sel.addRange(newRange)
+    }
+    refreshBlocks()
+    handleSync()
   }
 
   const insertWikiLinkHtml = (targetTitle: string, alias?: string) => {
@@ -1064,7 +1181,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
   // Expose formatting commands to top toolbar via ref
   useImperativeHandle(editorRef, () => ({
-    setBlockType: (type: LiveBlock['type']) => {
+    setBlockType: (type: LiveBlock['type'] | 'p') => {
       pushHistorySnapshot(true)
       containerRef.current?.focus()
       if (type === 'h1') formatBlockSafe('h1')
@@ -1096,6 +1213,17 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       document.execCommand('italic')
       handleSync()
     },
+    toggleStrike: () => {
+      pushHistorySnapshot(true)
+      document.execCommand('strikeThrough')
+      handleSync()
+    },
+    toggleHighlight: () => {
+      pushHistorySnapshot(true)
+      handleToolbarWrap('highlight')
+    },
+    applyTextColor,
+    applyBgColor,
     insertWikiLink: (target: string) => {
       pushHistorySnapshot(true)
       insertWikiLinkHtml(target)
@@ -1736,7 +1864,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   }, [])
 
   // Floating Toolbar Formatting Actions
-  const handleToolbarWrap = (type: 'bold' | 'italic' | 'strike' | 'highlight' | 'code' | 'link' | 'h1' | 'h2' | 'h3' | 'task' | 'bullet' | 'callout') => {
+  const handleToolbarWrap = (type: 'bold' | 'italic' | 'strike' | 'highlight' | 'code' | 'link' | 'h1' | 'h2' | 'h3' | 'p' | 'task' | 'bullet' | 'callout') => {
     const sel = window.getSelection()
     if (!sel || sel.isCollapsed) return
     pushHistorySnapshot(true)
@@ -1774,6 +1902,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       formatBlockSafe('h2')
     } else if (type === 'h3') {
       formatBlockSafe('h3')
+    } else if (type === 'p') {
+      formatBlockSafe('p')
     } else if (type === 'bullet') {
       document.execCommand('insertUnorderedList')
     } else if (type === 'task') {
@@ -2474,6 +2604,19 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
           <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
 
+          {/* Texto Normal (Parágrafo) */}
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              handleToolbarWrap('p')
+            }}
+            className="px-2 py-1 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer font-medium text-[11px]"
+            title="Texto normal (parágrafo)"
+          >
+            Texto
+          </button>
+
           {/* Tamanhos de títulos (H1, H2, H3) */}
           <button
             type="button"
@@ -2603,6 +2746,33 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           >
             <Strikethrough className="w-3.5 h-3.5" />
           </button>
+
+          {/* Notion Colors (Texto e Fundo) */}
+          <div className="relative">
+            <button
+              ref={selectionColorBtnRef}
+              type="button"
+              onMouseDown={e => {
+                e.preventDefault()
+                setIsSelectionColorPickerOpen(v => !v)
+              }}
+              className="p-1.5 rounded-lg text-[var(--accent)] hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer flex items-center justify-center"
+              title="Cores de texto e fundo (estilo Notion)"
+            >
+              <Palette className="w-3.5 h-3.5" />
+            </button>
+            <NotionColorPicker
+              isOpen={isSelectionColorPickerOpen}
+              onClose={() => setIsSelectionColorPickerOpen(false)}
+              onSelectColor={(type, color) => {
+                if (type === 'text') applyTextColor(color)
+                else applyBgColor(color)
+                setSelectionToolbar(null)
+              }}
+              anchorRef={selectionColorBtnRef}
+              align="center"
+            />
+          </div>
 
           {/* Code Button */}
           <button

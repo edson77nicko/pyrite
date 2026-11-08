@@ -3,21 +3,23 @@ import type { Note, EditorDisplayMode, AppSettings, ContextRole } from '../types
 import { LivePreviewEditor, type LivePreviewEditorHandle } from './LivePreviewEditor'
 import { DocumentOutlineRail } from './DocumentOutlineRail'
 import {
-  Heading1,
-  Heading2,
   Bold,
   Italic,
+  Strikethrough,
   ListTodo,
+  List,
+  Quote,
   Code,
   Link2,
   Clock,
   Tag,
-  Folder,
   Table,
   PanelRight,
   Users,
-  MessageSquare
+  MessageSquare,
+  Palette
 } from 'lucide-react'
+import { NotionColorPicker } from './NotionColorPicker'
 import { NoteCommentsModal } from './NoteCommentsModal'
 import { getNoteComments } from '../utils/commentsStorage'
 import type { NoteComment } from '../types/comments'
@@ -51,6 +53,8 @@ export const Editor: React.FC<EditorProps> = ({
   const previousNoteIdRef = useRef(note.id)
   const [isAgentRoleMenuOpen, setIsAgentRoleMenuOpen] = useState(false)
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false)
+  const [isHeaderColorOpen, setIsHeaderColorOpen] = useState(false)
+  const headerColorBtnRef = useRef<HTMLButtonElement>(null)
   const [openCommentsCount, setOpenCommentsCount] = useState<number>(() => {
     return getNoteComments(note.id).filter(c => !c.resolved).length
   })
@@ -177,43 +181,147 @@ export const Editor: React.FC<EditorProps> = ({
     <div className="app-editor-pane flex flex-col h-full bg-[#121215] overflow-hidden relative">
       {/* Top Editor Toolbar (Breadcrumb + In-editor formatting tools) */}
       <div className="app-editor-toolbar relative z-30 flex items-center justify-between px-6 py-2 bg-[#121215] border-b border-zinc-800/60 text-xs text-zinc-400 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-zinc-300 font-medium">
-            <Folder className="w-3.5 h-3.5 shrink-0 editor-folder-icon" style={{ color: 'var(--accent)' }} />
-            <span>{note.folder}</span>
-          </div>
-          <span className="text-zinc-700">/</span>
-          <div className="flex items-center gap-1.5 text-zinc-400 truncate max-w-xs">
-            <span className="truncate">{title || 'Sem título'}</span>
-          </div>
+        {/* Note title only, truncated with ellipsis, no folder/path pushing content */}
+        <div className="flex items-center min-w-0 max-w-[160px] sm:max-w-[220px] md:max-w-xs truncate text-zinc-300 font-medium text-xs shrink">
+          <span className="truncate" title={title || 'Sem título'}>{title || 'Sem título'}</span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Quick formatting toolbar */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Quick formatting toolbar - sem cor de fundo de caixa, integrado perfeitamente ao header */}
           {displayMode === 'live' && (
-            <div className="flex items-center gap-1 bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60 shadow-inner">
-              <button onClick={handleFormatH1} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H1">
-                <Heading1 className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-0.5 text-zinc-400">
+              <button
+                type="button"
+                onClick={() => liveEditorRef.current?.setBlockType('paragraph')}
+                className="px-2 py-1 hover:text-zinc-100 hover:bg-zinc-800/60 rounded text-[11px] font-medium transition-colors cursor-pointer"
+                title="Texto normal (parágrafo)"
+              >
+                Texto
               </button>
-              <button onClick={handleFormatH2} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Título H2">
-                <Heading2 className="w-3.5 h-3.5" />
+              <button
+                type="button"
+                onClick={handleFormatH1}
+                className="px-1.5 py-1 hover:text-zinc-100 hover:bg-zinc-800/60 rounded text-[11px] font-bold transition-colors cursor-pointer"
+                title="Título H1"
+              >
+                H1
               </button>
-              <button onClick={handleFormatBold} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Negrito">
+              <button
+                type="button"
+                onClick={handleFormatH2}
+                className="px-1.5 py-1 hover:text-zinc-100 hover:bg-zinc-800/60 rounded text-[11px] font-bold transition-colors cursor-pointer"
+                title="Título H2"
+              >
+                H2
+              </button>
+              <button
+                type="button"
+                onClick={() => liveEditorRef.current?.setBlockType('h3')}
+                className="px-1.5 py-1 hover:text-zinc-100 hover:bg-zinc-800/60 rounded text-[11px] font-bold transition-colors cursor-pointer"
+                title="Título H3"
+              >
+                H3
+              </button>
+
+              <div className="w-[1px] h-3.5 bg-zinc-800 mx-1" />
+
+              <button
+                type="button"
+                onClick={handleFormatBold}
+                className="p-1.5 hover:text-zinc-100 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+                title="Negrito (**)"
+              >
                 <Bold className="w-3.5 h-3.5" />
               </button>
-              <button onClick={handleFormatItalic} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Itálico">
+              <button
+                type="button"
+                onClick={handleFormatItalic}
+                className="p-1.5 hover:text-zinc-100 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+                title="Itálico (*)"
+              >
                 <Italic className="w-3.5 h-3.5" />
               </button>
-              <button onClick={handleFormatLink} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Link Bidirecional [[...]]">
+              <button
+                type="button"
+                onClick={() => liveEditorRef.current?.toggleStrike?.()}
+                className="p-1.5 hover:text-zinc-100 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+                title="Tachado (~~)"
+              >
+                <Strikethrough className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Notion Colors (Texto e Fundo) */}
+              <div className="relative">
+                <button
+                  ref={headerColorBtnRef}
+                  type="button"
+                  onClick={() => setIsHeaderColorOpen(v => !v)}
+                  className="p-1.5 hover:text-zinc-100 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer flex items-center justify-center text-[var(--accent)]"
+                  title="Cores de texto e fundo (estilo Notion)"
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                </button>
+                <NotionColorPicker
+                  isOpen={isHeaderColorOpen}
+                  onClose={() => setIsHeaderColorOpen(false)}
+                  onSelectColor={(type, color) => {
+                    if (type === 'text') liveEditorRef.current?.applyTextColor?.(color)
+                    else liveEditorRef.current?.applyBgColor?.(color)
+                  }}
+                  anchorRef={headerColorBtnRef}
+                  align="center"
+                />
+              </div>
+
+              <div className="w-[1px] h-3.5 bg-zinc-800 mx-1" />
+
+              <button
+                type="button"
+                onClick={handleFormatLink}
+                className="p-1.5 hover:text-zinc-100 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+                title="Link Bidirecional [[...]]"
+              >
                 <Link2 className="w-3.5 h-3.5" />
               </button>
-              <button onClick={handleFormatTask} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Lista de Tarefas">
+              <button
+                type="button"
+                onClick={handleFormatTask}
+                className="p-1.5 hover:text-zinc-100 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+                title="Lista de Tarefas"
+              >
                 <ListTodo className="w-3.5 h-3.5" />
               </button>
-              <button onMouseDown={event => event.preventDefault()} onClick={handleFormatTable} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Inserir tabela">
+              <button
+                type="button"
+                onClick={() => liveEditorRef.current?.setBlockType('bullet')}
+                className="p-1.5 hover:text-zinc-100 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+                title="Lista com Marcadores"
+              >
+                <List className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => liveEditorRef.current?.setBlockType('quote')}
+                className="p-1.5 hover:text-zinc-100 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+                title="Citação"
+              >
+                <Quote className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onMouseDown={event => event.preventDefault()}
+                onClick={handleFormatTable}
+                className="p-1.5 hover:text-zinc-100 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+                title="Inserir tabela"
+              >
                 <Table className="w-3.5 h-3.5" />
               </button>
-              <button onClick={handleFormatCode} className="p-1.5 hover:text-zinc-100 hover:bg-zinc-700 rounded transition-colors" title="Bloco de Código">
+              <button
+                type="button"
+                onClick={handleFormatCode}
+                className="p-1.5 hover:text-zinc-100 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+                title="Bloco de Código"
+              >
                 <Code className="w-3.5 h-3.5" />
               </button>
             </div>
