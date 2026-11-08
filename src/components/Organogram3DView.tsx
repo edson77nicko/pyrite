@@ -1,8 +1,9 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react'
+import * as THREE from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import {
   Building2,
   Users,
-  ShieldCheck,
   Plus,
   X,
   Check,
@@ -14,7 +15,6 @@ import {
   Minimize2,
   ChevronRight,
   MessageSquare,
-  Layers,
   CheckCircle2
 } from 'lucide-react'
 import type {
@@ -41,15 +41,32 @@ export interface Organogram3DViewProps {
   onOpenCreateSquadModal?: () => void
 }
 
-// Habilidades e integrações disponíveis para seleção rápida no drawer
 const AVAILABLE_INTEGRATIONS = [
-  { id: 'zendesk', label: 'Zendesk', color: '#10b981' },
-  { id: 'slack', label: 'Slack', color: '#ec4899' },
-  { id: 'vault', label: 'Cofre Local', color: '#f59e0b' },
+  { id: 'vault', label: 'Cofre Local (.md)', color: '#c59b27' },
   { id: 'web', label: 'Busca Web', color: '#38bdf8' },
-  { id: 'code', label: 'Execução de Código', color: '#8b5cf6' },
+  { id: 'code', label: 'Execução de Código', color: '#a855f7' },
+  { id: 'slack', label: 'Slack', color: '#ec4899' },
+  { id: 'zendesk', label: 'Zendesk', color: '#10b981' },
   { id: 'files', label: 'Análise de Arquivos', color: '#06b6d4' }
 ]
+
+// Paleta de Cores Oficial do Pyrite
+const PYRITE_GOLD = 0xc59b27
+const PYRITE_DARK_TITANIUM = 0x14151b
+
+interface ProjectedTag {
+  id: string
+  type: 'agent' | 'squad' | 'hub'
+  name: string
+  subtitle?: string
+  icon?: string
+  screenX: number
+  screenY: number
+  visible: boolean
+  agentId?: string
+  squadId?: string
+  squad?: TeamDefinition
+}
 
 export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   squads,
@@ -62,19 +79,17 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   onOpenAgentChat,
   onOpenCreateSquadModal
 }) => {
-  // Estado de Navegação da Câmera (Pan, Zoom, Perspectiva 3D)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const [zoom, setZoom] = useState(1.0)
-  const [is3D, setIs3D] = useState(true)
-  const [isDragging, setIsDragging] = useState(false)
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const containerRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  // Drawer Lateral do Agente Selecionado
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
-  // Seleção de Agente para o Drawer Lateral
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
-  const [isTurntableSpinning, setIsTurntableSpinning] = useState(true)
+  // Tags 2D projetadas sobre a cena 3D (para ficarem 100% nítidas e horizontais)
+  const [projectedTags, setProjectedTags] = useState<ProjectedTag[]>([])
 
-  // Estado do formulário no Drawer
+  // Formulário do Agente
   const [formName, setFormName] = useState('')
   const [formSquadId, setFormSquadId] = useState('')
   const [formTask, setFormTask] = useState('')
@@ -86,40 +101,42 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   const [formAutonomous, setFormAutonomous] = useState(true)
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false)
 
-  const containerRef = useRef<HTMLDivElement>(null)
+  // Referência para controles e objetos 3D
+  const controlsRef = useRef<OrbitControls | null>(null)
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
+  const deskMeshesRef = useRef<Map<string, THREE.Object3D>>(new Map())
+  const pulseSpheresRef = useRef<{ mesh: THREE.Mesh; curve: THREE.CatmullRomCurve3; speed: number; progress: number }[]>([])
+  const crystalRef = useRef<THREE.Mesh | null>(null)
+  const orbitRingsRef = useRef<THREE.Group | null>(null)
 
-  // Mapeamento de agentes e esquadrões
   const selectedAgent = useMemo(() => {
     if (!selectedAgentId) return null
     return agents.find(a => a.id === selectedAgentId) || null
   }, [agents, selectedAgentId])
 
-  // Esquadrão ao qual o agente selecionado pertence atualmente
   const selectedAgentCurrentSquad = useMemo(() => {
     if (!selectedAgentId) return null
-    return squads.find(sq =>
-      (sq.pipeline || []).some(p => p.agentId === selectedAgentId) ||
-      (sq.nodes || []).some(n => n.agentId === selectedAgentId)
-    ) || null
+    return (
+      squads.find(sq =>
+        (sq.pipeline || []).some(p => p.agentId === selectedAgentId) ||
+        (sq.nodes || []).some(n => n.agentId === selectedAgentId)
+      ) || null
+    )
   }, [squads, selectedAgentId])
 
-  // Carregar dados no formulário quando o agente selecionado mudar
   useEffect(() => {
     if (selectedAgent) {
       setFormName(selectedAgent.name || '')
       setFormSquadId(selectedAgentCurrentSquad?.id || '')
-      setFormTask(selectedAgent.roleDescription || selectedAgent.specialistRole || 'Tier-1 Ticketing')
+      setFormTask(selectedAgent.roleDescription || selectedAgent.specialistRole || 'Especialista Operacional')
 
-      // Integrations
       const currentSkills = selectedAgent.skills || []
       const initialIntegrations = AVAILABLE_INTEGRATIONS.map(i => i.id).filter(id =>
         currentSkills.some(s => s.toLowerCase().includes(id)) ||
-        (id === 'vault' && (selectedAgent.knowledgeBindings || []).length > 0) ||
-        (id === 'web' && currentSkills.some(s => s.includes('web')))
+        (id === 'vault' && (selectedAgent.knowledgeBindings || []).length > 0)
       )
-      setFormIntegrations(initialIntegrations.length > 0 ? initialIntegrations : ['zendesk', 'slack'])
+      setFormIntegrations(initialIntegrations.length > 0 ? initialIntegrations : ['vault', 'web'])
 
-      // Permissões
       const actions = selectedAgent.allowedActions || []
       setFormCanReadVault(actions.includes('read_context'))
       setFormCanWriteVault(actions.includes('prepare_draft') || actions.includes('propose_patch'))
@@ -129,138 +146,643 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     }
   }, [selectedAgent, selectedAgentCurrentSquad])
 
-  // Manipulação de Mouse Pan e Zoom
-  const handleMouseDown = (e: React.MouseEvent) => {
-    // Apenas se o clique for direto no fundo (não em botões ou drawer)
-    if ((e.target as HTMLElement).closest('.prevent-canvas-drag')) return
-    setIsDragging(true)
-    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
-  }
+  // =========================================================================
+  // MONTAGEM DO CENÁRIO THREE.JS (CANVAS 3D REAL, MATERIAIS PYRITE, SOMBRAS)
+  // =========================================================================
+  useEffect(() => {
+    const container = containerRef.current
+    const canvas = canvasRef.current
+    if (!container || !canvas) return
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return
-    setPan({
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y
+    let width = container.clientWidth
+    let height = container.clientHeight
+
+    // 1. Scene, Camera, Renderer
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color(0x09090b)
+    scene.fog = new THREE.FogExp2(0x09090b, 0.0008)
+
+    const camera = new THREE.PerspectiveCamera(36, width / height, 1, 3500)
+    // Ângulo isométrico elegante
+    camera.position.set(0, 420, 680)
+    camera.lookAt(0, 0, 0)
+    cameraRef.current = camera
+
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      powerPreference: 'high-performance'
     })
+    renderer.setSize(width, height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap
+
+    // 2. Controles Orbitais Suaves
+    const controls = new OrbitControls(camera, renderer.domElement)
+    controls.enableDamping = true
+    controls.dampingFactor = 0.06
+    controls.maxPolarAngle = Math.PI / 2 - 0.05 // Não passar por baixo do piso
+    controls.minDistance = 250
+    controls.maxDistance = 1500
+    controls.target.set(0, 0, 0)
+    controlsRef.current = controls
+
+    // 3. Iluminação do Cenário (Ambiente escuro com pontos de destaque Dourados)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.85)
+    scene.add(ambientLight)
+
+    const dirLight = new THREE.DirectionalLight(0xfffbeb, 1.3)
+    dirLight.position.set(200, 450, 300)
+    dirLight.castShadow = true
+    dirLight.shadow.mapSize.width = 2048
+    dirLight.shadow.mapSize.height = 2048
+    dirLight.shadow.camera.near = 10
+    dirLight.shadow.camera.far = 1500
+    dirLight.shadow.camera.left = -600
+    dirLight.shadow.camera.right = 600
+    dirLight.shadow.camera.top = 600
+    dirLight.shadow.camera.bottom = -600
+    scene.add(dirLight)
+
+    // Ponto de luz no núcleo do Cofre Central
+    const vaultPointLight = new THREE.PointLight(PYRITE_GOLD, 3.2, 550)
+    vaultPointLight.position.set(0, 35, 0)
+    scene.add(vaultPointLight)
+
+    // 4. Piso Infinito com Grid Dourado & Reflexão
+    const floorSize = 2400
+    const gridHelper = new THREE.GridHelper(floorSize, 80, PYRITE_GOLD, 0x1f2129)
+    gridHelper.position.y = -0.5
+    // @ts-ignore
+    gridHelper.material.opacity = 0.25
+    // @ts-ignore
+    gridHelper.material.transparent = true
+    scene.add(gridHelper)
+
+    const floorPlaneGeo = new THREE.PlaneGeometry(floorSize, floorSize)
+    const floorPlaneMat = new THREE.MeshStandardMaterial({
+      color: 0x090a0f,
+      roughness: 0.85,
+      metalness: 0.2
+    })
+    const floorMesh = new THREE.Mesh(floorPlaneGeo, floorPlaneMat)
+    floorMesh.rotation.x = -Math.PI / 2
+    floorMesh.position.y = -1
+    floorMesh.receiveShadow = true
+    scene.add(floorMesh)
+
+    // =======================================================================
+    // 5. CENTRO: O COFRE CORPORATIVO (PEDESTAL CILÍNDRICO METÁLICO 3D + CRISTAL)
+    // =======================================================================
+    const hubGroup = new THREE.Group()
+    hubGroup.position.set(0, 0, 0)
+
+    // Base inferior (disco escuro biselado)
+    const baseCylGeo = new THREE.CylinderGeometry(85, 95, 14, 48)
+    const baseCylMat = new THREE.MeshStandardMaterial({
+      color: PYRITE_DARK_TITANIUM,
+      roughness: 0.35,
+      metalness: 0.8
+    })
+    const baseCyl = new THREE.Mesh(baseCylGeo, baseCylMat)
+    baseCyl.position.y = 7
+    baseCyl.castShadow = true
+    baseCyl.receiveShadow = true
+    hubGroup.add(baseCyl)
+
+    // Anel de Neon Dourado Pyrite
+    const goldRingGeo = new THREE.TorusGeometry(86, 2.5, 16, 64)
+    const goldRingMat = new THREE.MeshStandardMaterial({
+      color: PYRITE_GOLD,
+      emissive: PYRITE_GOLD,
+      emissiveIntensity: 2.2,
+      roughness: 0.2,
+      metalness: 0.9
+    })
+    const goldRing = new THREE.Mesh(goldRingGeo, goldRingMat)
+    goldRing.rotation.x = Math.PI / 2
+    goldRing.position.y = 13.5
+    hubGroup.add(goldRing)
+
+    // Platô superior biselado
+    const topPlateGeo = new THREE.CylinderGeometry(78, 78, 6, 48)
+    const topPlateMat = new THREE.MeshStandardMaterial({
+      color: 0x181a22,
+      roughness: 0.4,
+      metalness: 0.7
+    })
+    const topPlate = new THREE.Mesh(topPlateGeo, topPlateMat)
+    topPlate.position.y = 16
+    topPlate.receiveShadow = true
+    hubGroup.add(topPlate)
+
+    // Cristal Holográfico Dourado Flutuante no centro
+    const crystalGeo = new THREE.OctahedronGeometry(15, 0)
+    const crystalMat = new THREE.MeshStandardMaterial({
+      color: PYRITE_GOLD,
+      emissive: PYRITE_GOLD,
+      emissiveIntensity: 1.4,
+      roughness: 0.15,
+      metalness: 0.9,
+      wireframe: false
+    })
+    const crystal = new THREE.Mesh(crystalGeo, crystalMat)
+    crystal.position.y = 36
+    crystal.castShadow = true
+    hubGroup.add(crystal)
+    crystalRef.current = crystal
+
+    // Anéis orbitais finos giratórios
+    const ringsGroup = new THREE.Group()
+    ringsGroup.position.y = 36
+    const ring1Geo = new THREE.TorusGeometry(26, 0.8, 12, 48)
+    const ring1Mat = new THREE.MeshStandardMaterial({ color: PYRITE_GOLD, emissive: PYRITE_GOLD, emissiveIntensity: 0.8 })
+    const ring1 = new THREE.Mesh(ring1Geo, ring1Mat)
+    ring1.rotation.x = Math.PI / 3
+    ringsGroup.add(ring1)
+
+    const ring2Geo = new THREE.TorusGeometry(32, 0.6, 12, 48)
+    const ring2Mat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.4, metalness: 0.8 })
+    const ring2 = new THREE.Mesh(ring2Geo, ring2Mat)
+    ring2.rotation.y = Math.PI / 4
+    ringsGroup.add(ring2)
+
+    hubGroup.add(ringsGroup)
+    orbitRingsRef.current = ringsGroup
+
+    scene.add(hubGroup)
+
+    // =======================================================================
+    // 6. PLATAFORMAS DOS DEPARTAMENTOS & ESTAÇÕES DE TRABALHO 3D
+    // =======================================================================
+    const totalSquads = squads.length
+    deskMeshesRef.current.clear()
+    pulseSpheresRef.current = []
+
+    // Distribuição espacial equilibrada sem sobreposição com o centro
+    const computeSquadCoords = (idx: number, total: number) => {
+      if (total === 1) return { x: 0, z: -280 }
+      if (total === 2) {
+        // Exatamente como no print de referência: um esquadrão à esquerda e outro à direita
+        return idx === 0 ? { x: -350, z: -20 } : { x: 350, z: -20 }
+      }
+      if (total === 3) {
+        if (idx === 0) return { x: -360, z: -140 }
+        if (idx === 1) return { x: 360, z: -140 }
+        return { x: 0, z: 270 }
+      }
+      if (total === 4) {
+        if (idx === 0) return { x: -360, z: -160 }
+        if (idx === 1) return { x: 360, z: -160 }
+        if (idx === 2) return { x: -360, z: 180 }
+        return { x: 360, z: 180 }
+      }
+      // Mais esquadrões: distribuição elíptica segura
+      const angle = (idx / total) * Math.PI * 2 - Math.PI / 2
+      return {
+        x: Math.round(Math.cos(angle) * 480),
+        z: Math.round(Math.sin(angle) * 320)
+      }
+    }
+
+    squads.forEach((sq, sIdx) => {
+      const { x: sqX, z: sqZ } = computeSquadCoords(sIdx, totalSquads)
+      const pipeline = sq.pipeline || []
+      const squadAgents = pipeline
+        .map(p => agents.find(a => a.id === p.agentId))
+        .filter(Boolean) as AgentProfileVersion[]
+
+      const platformGroup = new THREE.Group()
+      platformGroup.position.set(sqX, 0, sqZ)
+
+      // Tamanho da plataforma baseado na quantidade de agentes
+      const platWidth = 270
+      const platDepth = 175
+      const platHeight = 12
+
+      // Base da plataforma (Box com bordas arredondadas / chanfradas)
+      const platGeo = new THREE.BoxGeometry(platWidth, platHeight, platDepth)
+      const platMat = new THREE.MeshStandardMaterial({
+        color: PYRITE_DARK_TITANIUM,
+        roughness: 0.45,
+        metalness: 0.75
+      })
+      const platMesh = new THREE.Mesh(platGeo, platMat)
+      platMesh.position.y = platHeight / 2
+      platMesh.castShadow = true
+      platMesh.receiveShadow = true
+      platformGroup.add(platMesh)
+
+      // Moldura Luminosa Dourada na Borda Superior da Plataforma
+      const edgeGeo = new THREE.BoxGeometry(platWidth + 2, 2, platDepth + 2)
+      const edgeMat = new THREE.MeshStandardMaterial({
+        color: PYRITE_GOLD,
+        emissive: PYRITE_GOLD,
+        emissiveIntensity: 1.6,
+        roughness: 0.2,
+        metalness: 0.9
+      })
+      const edgeMesh = new THREE.Mesh(edgeGeo, edgeMat)
+      edgeMesh.position.y = platHeight + 1
+      platformGroup.add(edgeMesh)
+
+      // =====================================================================
+      // 7. MESAS DE TRABALHO 3D (DESK + DUAL MONITORS + CHAIR + AGENT)
+      // =====================================================================
+      const cols = 3
+      const deskSpacingX = 75
+      const deskSpacingZ = 65
+
+      squadAgents.forEach((ag, agIdx) => {
+        const col = agIdx % cols
+        const row = Math.floor(agIdx / cols)
+
+        const deskX = (col - (cols - 1) / 2) * deskSpacingX
+        const deskZ = (row - 0.5) * deskSpacingZ
+
+        const workstation = new THREE.Group()
+        workstation.position.set(deskX, platHeight + 1, deskZ)
+        workstation.userData = { agentId: ag.id, squadId: sq.id }
+
+        // A. Tampo da Mesa 3D
+        const deskTopGeo = new THREE.BoxGeometry(36, 2.5, 20)
+        const deskTopMat = new THREE.MeshStandardMaterial({
+          color: 0x1c1e26,
+          roughness: 0.5,
+          metalness: 0.6
+        })
+        const deskTop = new THREE.Mesh(deskTopGeo, deskTopMat)
+        deskTop.position.y = 11
+        deskTop.castShadow = true
+        deskTop.receiveShadow = true
+        workstation.add(deskTop)
+
+        // B. Pernas da Mesa (Tubulares Metálicas)
+        const legGeo = new THREE.CylinderGeometry(1, 1, 11, 12)
+        const legMat = new THREE.MeshStandardMaterial({ color: 0x3f3f46, metalness: 0.9, roughness: 0.2 })
+        const legPositions = [
+          [-16, 5.5, -8],
+          [16, 5.5, -8],
+          [-16, 5.5, 8],
+          [16, 5.5, 8]
+        ]
+        legPositions.forEach(([lx, ly, lz]) => {
+          const leg = new THREE.Mesh(legGeo, legMat)
+          leg.position.set(lx, ly, lz)
+          leg.castShadow = true
+          workstation.add(leg)
+        })
+
+        // C. Monitores Duplos Angulados com Telas Luminosas
+        const monitorGeo = new THREE.BoxGeometry(12, 7.5, 1)
+
+        // Tela Esquerda (Código Dourado Pyrite)
+        const leftScreenMat = new THREE.MeshStandardMaterial({
+          color: PYRITE_GOLD,
+          emissive: PYRITE_GOLD,
+          emissiveIntensity: 1.5,
+          roughness: 0.1
+        })
+        const leftMon = new THREE.Mesh(monitorGeo, leftScreenMat)
+        leftMon.position.set(-7, 16.5, -4)
+        leftMon.rotation.y = 0.25
+        leftMon.castShadow = true
+        workstation.add(leftMon)
+
+        // Tela Direita (Dados / Gráficos)
+        const rightScreenMat = new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          emissive: 0x0284c7,
+          emissiveIntensity: 1.3,
+          roughness: 0.1
+        })
+        const rightMon = new THREE.Mesh(monitorGeo, rightScreenMat)
+        rightMon.position.set(7, 16.5, -4)
+        rightMon.rotation.y = -0.25
+        rightMon.castShadow = true
+        workstation.add(rightMon)
+
+        // D. Cadeira de Escritório 3D
+        const chairGroup = new THREE.Group()
+        chairGroup.position.set(0, 0, 9)
+
+        // Assento da cadeira
+        const seatGeo = new THREE.BoxGeometry(12, 2, 12)
+        const chairMat = new THREE.MeshStandardMaterial({ color: 0x111216, roughness: 0.8 })
+        const seat = new THREE.Mesh(seatGeo, chairMat)
+        seat.position.y = 8
+        chairGroup.add(seat)
+
+        // Encosto ergonômico
+        const backGeo = new THREE.BoxGeometry(12, 14, 2)
+        const back = new THREE.Mesh(backGeo, chairMat)
+        back.position.set(0, 16, 5)
+        chairGroup.add(back)
+
+        // Base da cadeira
+        const basePoleGeo = new THREE.CylinderGeometry(1.2, 1.2, 8, 12)
+        const basePole = new THREE.Mesh(basePoleGeo, legMat)
+        basePole.position.y = 4
+        chairGroup.add(basePole)
+
+        workstation.add(chairGroup)
+
+        // E. Silhueta do Especialista 3D
+        const bodyGeo = new THREE.BoxGeometry(9, 11, 6)
+        const agentBodyMat = new THREE.MeshStandardMaterial({ color: 0x1e2029, roughness: 0.5, metalness: 0.5 })
+        const body = new THREE.Mesh(bodyGeo, agentBodyMat)
+        body.position.set(0, 14, 7)
+        body.castShadow = true
+        workstation.add(body)
+
+        // Cabeça com Visor Dourado Luminoso
+        const headGeo = new THREE.SphereGeometry(4, 16, 16)
+        const head = new THREE.Mesh(headGeo, agentBodyMat)
+        head.position.set(0, 22, 7)
+        workstation.add(head)
+
+        const visorGeo = new THREE.BoxGeometry(5.5, 1.6, 2)
+        const visorMat = new THREE.MeshStandardMaterial({
+          color: PYRITE_GOLD,
+          emissive: PYRITE_GOLD,
+          emissiveIntensity: 2.5
+        })
+        const visor = new THREE.Mesh(visorGeo, visorMat)
+        visor.position.set(0, 22, 4)
+        workstation.add(visor)
+
+        // Hitbox invisível maior para facilitar cliques
+        const hitGeo = new THREE.BoxGeometry(45, 30, 35)
+        const hitMat = new THREE.MeshBasicMaterial({ visible: false })
+        const hitMesh = new THREE.Mesh(hitGeo, hitMat)
+        hitMesh.position.y = 15
+        workstation.add(hitMesh)
+
+        platformGroup.add(workstation)
+        deskMeshesRef.current.set(ag.id, workstation)
+      })
+
+      scene.add(platformGroup)
+
+      // =======================================================================
+      // 8. CONDUÍTES 3D REAIS (TUBOS CURVOS DE VIDRO + FIBRA DOURADA + PULSOS)
+      // =======================================================================
+      // Ângulo de saída do cilindro central
+      const angle = Math.atan2(sqZ, sqX)
+      const hubRadius = 88
+      const startX = Math.cos(angle) * hubRadius
+      const startZ = Math.sin(angle) * hubRadius
+
+      // Ponto de chegada na plataforma
+      let endX = sqX
+      let endZ = sqZ
+      if (sqX < 0) {
+        endX = sqX + platWidth / 2 - 5
+      } else if (sqX > 0) {
+        endX = sqX - platWidth / 2 + 5
+      }
+
+      // Curva 3D Bézier contínua no chão
+      const mid1X = startX + Math.cos(angle) * 90
+      const mid1Z = startZ + Math.sin(angle) * 90
+      const mid2X = endX - (sqX > 0 ? 80 : -80)
+      const mid2Z = endZ
+
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(startX, 8, startZ),
+        new THREE.Vector3(mid1X, 5, mid1Z),
+        new THREE.Vector3(mid2X, 5, mid2Z),
+        new THREE.Vector3(endX, 8, endZ)
+      ])
+
+      // Tubo de Vidro Externo
+      const glassTubeGeo = new THREE.TubeGeometry(curve, 32, 3.5, 12, false)
+      const glassTubeMat = new THREE.MeshStandardMaterial({
+        color: 0x222634,
+        roughness: 0.1,
+        metalness: 0.9,
+        transparent: true,
+        opacity: 0.35
+      })
+      const glassTube = new THREE.Mesh(glassTubeGeo, glassTubeMat)
+      scene.add(glassTube)
+
+      // Linha Central de Fibra Dourada Luminosa
+      const coreTubeGeo = new THREE.TubeGeometry(curve, 32, 1.2, 8, false)
+      const coreTubeMat = new THREE.MeshStandardMaterial({
+        color: PYRITE_GOLD,
+        emissive: PYRITE_GOLD,
+        emissiveIntensity: 2.2,
+        roughness: 0.2
+      })
+      const coreTube = new THREE.Mesh(coreTubeGeo, coreTubeMat)
+      scene.add(coreTube)
+
+      // Esfera de Pulso de Dados que viaja pela curva
+      const pulseGeo = new THREE.SphereGeometry(3, 16, 16)
+      const pulseMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: PYRITE_GOLD,
+        emissiveIntensity: 3.5
+      })
+      const pulseMesh = new THREE.Mesh(pulseGeo, pulseMat)
+      scene.add(pulseMesh)
+
+      pulseSpheresRef.current.push({
+        mesh: pulseMesh,
+        curve,
+        speed: 0.003 + (sIdx % 3) * 0.001,
+        progress: sIdx * 0.3
+      })
+    })
+
+    // =======================================================================
+    // 9. LOOP DE ANIMAÇÃO & PROJEÇÃO DE TAGS 2D NA TELA
+    // =======================================================================
+    let animId: number
+    const tempVec = new THREE.Vector3()
+
+    const animate = () => {
+      animId = requestAnimationFrame(animate)
+
+      // Atualizar controles orbitais
+      controls.update()
+
+      // Rotação sutil do cristal central e dos anéis
+      if (crystalRef.current) {
+        crystalRef.current.rotation.y += 0.012
+        crystalRef.current.rotation.x += 0.006
+      }
+      if (orbitRingsRef.current) {
+        orbitRingsRef.current.rotation.z += 0.008
+        orbitRingsRef.current.rotation.y -= 0.004
+      }
+
+      // Movimentar pulsos de dados pelos conduítes
+      pulseSpheresRef.current.forEach(p => {
+        p.progress = (p.progress + p.speed) % 1
+        const pos = p.curve.getPointAt(p.progress)
+        p.mesh.position.copy(pos)
+      })
+
+      // Renderizar WebGL
+      renderer.render(scene, camera)
+
+      // Projeção das tags na tela (calcula coordenadas X, Y 2D perfeitas)
+      const tags: ProjectedTag[] = []
+
+      // 1. Tag do Cofre Central
+      tempVec.set(0, 60, 0)
+      tempVec.project(camera)
+      if (tempVec.z < 1) {
+        const sx = (tempVec.x * 0.5 + 0.5) * width
+        const sy = (-tempVec.y * 0.5 + 0.5) * height
+        tags.push({
+          id: 'hub-tag',
+          type: 'hub',
+          name: vaultName,
+          subtitle: 'Corporate HQ • Governança Central',
+          screenX: sx,
+          screenY: sy,
+          visible: true
+        })
+      }
+
+      // 2. Tags dos Esquadrões
+      squads.forEach((sq, sIdx) => {
+        const { x: sqX, z: sqZ } = computeSquadCoords(sIdx, totalSquads)
+        tempVec.set(sqX, 22, sqZ + 95)
+        tempVec.project(camera)
+        if (tempVec.z < 1) {
+          const sx = (tempVec.x * 0.5 + 0.5) * width
+          const sy = (-tempVec.y * 0.5 + 0.5) * height
+          const count = (sq.pipeline || []).length
+          tags.push({
+            id: `squad-tag-${sq.id}`,
+            type: 'squad',
+            name: sq.name,
+            subtitle: `(${count} ${count === 1 ? 'Agente' : 'Agentes'})`,
+            icon: sq.icon,
+            squadId: sq.id,
+            squad: sq,
+            screenX: sx,
+            screenY: sy,
+            visible: true
+          })
+        }
+
+        // 3. Tags de cada Agente sobre suas respectivas estações
+        const pipeline = sq.pipeline || []
+        pipeline.forEach(p => {
+          const desk = deskMeshesRef.current.get(p.agentId)
+          if (desk) {
+            desk.getWorldPosition(tempVec)
+            tempVec.y += 28 // Acima da cabeça do agente
+            tempVec.project(camera)
+            if (tempVec.z < 1) {
+              const sx = (tempVec.x * 0.5 + 0.5) * width
+              const sy = (-tempVec.y * 0.5 + 0.5) * height
+              const ag = agents.find(a => a.id === p.agentId)
+              if (ag) {
+                tags.push({
+                  id: `agent-tag-${ag.id}`,
+                  type: 'agent',
+                  name: ag.name,
+                  icon: ag.icon,
+                  agentId: ag.id,
+                  screenX: sx,
+                  screenY: sy,
+                  visible: true
+                })
+              }
+            }
+          }
+        })
+      })
+
+      setProjectedTags(tags)
+    }
+
+    animate()
+
+    // Redimensionamento
+    const handleResize = () => {
+      if (!container) return
+      width = container.clientWidth
+      height = container.clientHeight
+      camera.aspect = width / height
+      camera.updateProjectionMatrix()
+      renderer.setSize(width, height)
+    }
+    window.addEventListener('resize', handleResize)
+
+    // Raycasting para clique nas mesas 3D
+    const raycaster = new THREE.Raycaster()
+    const mouse = new THREE.Vector2()
+
+    const handleCanvasClick = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+
+      raycaster.setFromCamera(mouse, camera)
+      const allDesks = Array.from(deskMeshesRef.current.values())
+      const intersects = raycaster.intersectObjects(allDesks, true)
+
+      if (intersects.length > 0) {
+        // Encontrar o grupo da estação correspondente
+        let curr: THREE.Object3D | null = intersects[0].object
+        while (curr && !curr.userData.agentId && curr.parent) {
+          curr = curr.parent
+        }
+        if (curr && curr.userData.agentId) {
+          setSelectedAgentId(curr.userData.agentId)
+        }
+      }
+    }
+
+    canvas.addEventListener('click', handleCanvasClick)
+
+    return () => {
+      cancelAnimationFrame(animId)
+      window.removeEventListener('resize', handleResize)
+      canvas.removeEventListener('click', handleCanvasClick)
+      controls.dispose()
+      renderer.dispose()
+    }
+  }, [squads, agents, vaultName])
+
+  // Resetar câmera para posição isométrica perfeita
+  const handleResetCamera = () => {
+    if (!cameraRef.current || !controlsRef.current) return
+    cameraRef.current.position.set(0, 420, 680)
+    controlsRef.current.target.set(0, 0, 0)
+    controlsRef.current.update()
   }
 
-  const handleMouseUp = () => {
-    setIsDragging(false)
+  const handleZoom = (delta: number) => {
+    if (!cameraRef.current) return
+    const factor = delta > 0 ? 0.85 : 1.15
+    cameraRef.current.position.multiplyScalar(factor)
+    controlsRef.current?.update()
   }
 
-  const handleWheel = (e: React.WheelEvent) => {
-    if ((e.target as HTMLElement).closest('.prevent-canvas-zoom')) return
-    e.preventDefault()
-    const zoomFactor = -e.deltaY * 0.001
-    setZoom(prev => Math.max(0.45, Math.min(1.85, prev + zoomFactor)))
-  }
-
-  const handleResetView = () => {
-    setPan({ x: 0, y: 0 })
-    setZoom(1.0)
-    setIs3D(true)
-  }
-
-  // Toggle de tela cheia
   const handleToggleFullscreen = () => {
     if (!containerRef.current) return
     if (!isFullscreen) {
-      if (containerRef.current.requestFullscreen) {
-        containerRef.current.requestFullscreen().catch(() => {})
-      }
+      containerRef.current.requestFullscreen?.().catch(() => {})
       setIsFullscreen(true)
     } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {})
-      }
+      document.exitFullscreen?.().catch(() => {})
       setIsFullscreen(false)
     }
   }
 
-  // Layout geométrico dos Esquadrões na cena 3D (Cofre no Centro 0,0)
-  const squadPositions = useMemo(() => {
-    const total = squads.length
-    if (total === 0) return []
-
-    if (total === 1) {
-      return [{ squad: squads[0], x: 0, y: -240 }]
-    }
-
-    if (total === 2) {
-      // Idêntico ao print de referência: Customer Support na esquerda, Engineering na direita
-      return [
-        { squad: squads[0], x: -440, y: -160 },
-        { squad: squads[1], x: 440, y: -160 }
-      ]
-    }
-
-    if (total === 3) {
-      return [
-        { squad: squads[0], x: -450, y: -170 },
-        { squad: squads[1], x: 450, y: -170 },
-        { squad: squads[2], x: 0, y: 260 }
-      ]
-    }
-
-    if (total === 4) {
-      return [
-        { squad: squads[0], x: -450, y: -180 },
-        { squad: squads[1], x: 450, y: -180 },
-        { squad: squads[2], x: -450, y: 200 },
-        { squad: squads[3], x: 450, y: 200 }
-      ]
-    }
-
-    // Para 5 ou mais esquadrões: distribuição elíptica ao redor do cofre central
-    return squads.map((squad, i) => {
-      const angle = (i / total) * (2 * Math.PI) - Math.PI / 2
-      const x = Math.round(Math.cos(angle) * 520)
-      const y = Math.round(Math.sin(angle) * 320)
-      return { squad, x, y }
-    })
-  }, [squads])
-
-  // Geração das rotas dos cabos/conduítes cybernéticos (do Cofre até cada Esquadrão)
-  const conduitPaths = useMemo(() => {
-    const hubRadius = 115
-
-    return squadPositions.map(pos => {
-      const { squad, x, y } = pos
-      const angle = Math.atan2(y, x)
-      const startX = Math.round(Math.cos(angle) * hubRadius)
-      const startY = Math.round(Math.sin(angle) * hubRadius)
-
-      // Ponto de entrada na plataforma do departamento
-      let targetX = x
-      let targetY = y
-      if (x < 0) {
-        targetX = x + 160
-        targetY = y + 40
-      } else if (x > 0) {
-        targetX = x - 160
-        targetY = y + 40
-      } else {
-        targetY = y > 0 ? y - 100 : y + 100
-      }
-
-      // Pontos de controle para curvas Bézier cibernéticas suaves
-      const deltaX = targetX - startX
-      const cp1X = Math.round(startX + Math.cos(angle) * 120)
-      const cp1Y = Math.round(startY + Math.sin(angle) * 80)
-      const cp2X = Math.round(targetX - (deltaX > 0 ? 100 : -100))
-      const cp2Y = targetY
-
-      const pathData = `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${targetX} ${targetY}`
-      return { id: squad.id, pathData, squad }
-    })
-  }, [squadPositions])
-
-  // Salvar alterações da configuração do agente
+  // Salvar Configuração no Drawer
   const handleSaveConfig = () => {
     if (!selectedAgent) return
 
-    // 1. Montar permissões de ação
     const actions: AgentActionPermission[] = []
     if (formCanReadVault) actions.push('read_context')
     if (formCanWriteVault) {
@@ -269,7 +791,6 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     }
     if (formAutonomous) actions.push('create_tasks')
 
-    // 2. Atualizar Agente
     const updatedAgent: AgentProfileVersion = {
       ...selectedAgent,
       name: formName || selectedAgent.name,
@@ -284,9 +805,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       onSaveAgent(updatedAgent)
     }
 
-    // 3. Se mudou de esquadrão, atualizar as definições de esquadrões
     if (formSquadId !== (selectedAgentCurrentSquad?.id || '')) {
-      // Remover do antigo
       if (selectedAgentCurrentSquad) {
         const nextPipeline = (selectedAgentCurrentSquad.pipeline || []).filter(
           p => p.agentId !== selectedAgent.id
@@ -301,7 +820,6 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
         })
       }
 
-      // Adicionar ao novo
       if (formSquadId) {
         const targetSquad = squads.find(s => s.id === formSquadId)
         if (targetSquad) {
@@ -322,12 +840,10 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       }
     }
 
-    // Feedback visual
     setSaveSuccessNotice(true)
     setTimeout(() => setSaveSuccessNotice(false), 2200)
   }
 
-  // Agentes únicos em toda a empresa
   const totalUniqueAgents = useMemo(() => {
     const ids = new Set<string>()
     squads.forEach(sq => {
@@ -340,28 +856,22 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   return (
     <div
       ref={containerRef}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onWheel={handleWheel}
-      className={`relative w-full h-full overflow-hidden select-none bg-[#07090e] ${
-        isDragging ? 'cursor-grabbing' : 'cursor-grab'
-      }`}
+      className="relative w-full h-full overflow-hidden select-none bg-[#09090b]"
     >
       {/* =========================================================================
-          1. CABEÇALHO SUPERIOR ELEGANTE (TRANSLÚCIDO)
+          1. HEADER SUPERIOR (CORES DA PLATAFORMA PYRITE)
           ========================================================================= */}
-      <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-6 py-4 bg-gradient-to-b from-[#07090e]/95 via-[#07090e]/75 to-transparent pointer-events-none">
+      <header className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-6 py-4 bg-gradient-to-b from-[#09090b]/95 via-[#09090b]/75 to-transparent pointer-events-none">
         <div className="flex items-center gap-3 pointer-events-auto">
-          <div className="w-9 h-9 rounded-xl bg-cyan-950/40 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)]">
-            <Building2 className="w-5 h-5 text-cyan-400" />
+          <div className="w-9 h-9 rounded-xl bg-[var(--accent)]/15 border border-[var(--accent)]/40 flex items-center justify-center text-[var(--accent)] shadow-md">
+            <Building2 className="w-5 h-5 text-[var(--accent)]" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold text-zinc-100 tracking-tight">
                 {vaultName}
               </h1>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-mono font-medium">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-[var(--accent)] font-mono font-medium">
                 ORGANOGRAMA 3D
               </span>
             </div>
@@ -372,8 +882,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
         </div>
 
         <div className="flex items-center gap-3 pointer-events-auto">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0f131d]/90 border border-zinc-800/80 text-xs text-zinc-300 shadow-lg backdrop-blur-md">
-            <Users className="w-3.5 h-3.5 text-cyan-400" />
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#14151b]/90 border border-zinc-800 text-xs text-zinc-300 shadow-lg backdrop-blur-md">
+            <Users className="w-3.5 h-3.5 text-[var(--accent)]" />
             <span>
               <strong className="text-zinc-100">{squads.length}</strong> Departamentos
             </span>
@@ -387,7 +897,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
             <button
               type="button"
               onClick={onOpenCreateSquadModal}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-semibold text-xs transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] hover:brightness-110 text-zinc-950 font-semibold text-xs transition-all shadow-md active:scale-95 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Novo Departamento</span>
@@ -397,379 +907,129 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       </header>
 
       {/* =========================================================================
-          2. ESTÁGIO 3D ISOMÉTRICO (CANVAS 3D)
+          2. CANVAS THREE.JS (RENDERIZAÇÃO REAL 3D WEBGL)
           ========================================================================= */}
-      <div
-        className="w-full h-full flex items-center justify-center transition-transform duration-75"
-        style={{
-          perspective: '1400px',
-          perspectiveOrigin: '50% 50%'
-        }}
-      >
-        <div
-          className="relative transition-all duration-300 ease-out"
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) ${
-              is3D ? 'rotateX(54deg) rotateZ(-18deg)' : 'rotateX(0deg) rotateZ(0deg)'
-            }`,
-            transformStyle: 'preserve-3d',
-            width: '1200px',
-            height: '800px'
-          }}
-        >
-          {/* Piso Cibernético: Grid de Blueprint com profundidade */}
-          <div
-            className="absolute -inset-[1400px] pointer-events-none"
-            style={{
-              backgroundImage: `
-                radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.08) 0%, transparent 60%),
-                linear-gradient(to right, rgba(56, 189, 248, 0.05) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(56, 189, 248, 0.05) 1px, transparent 1px)
-              `,
-              backgroundSize: '100% 100%, 60px 60px, 60px 60px',
-              backgroundPosition: 'center, center, center',
-              transform: 'translateZ(-1px)'
-            }}
-          />
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full block cursor-grab active:cursor-grabbing outline-none"
+      />
 
-          {/* SVG dos Cabos / Conduítes Cybernéticos Luminosos */}
-          <svg
-            className="absolute inset-0 w-full h-full pointer-events-none overflow-visible"
-            style={{ transform: 'translateZ(2px)' }}
-          >
-            <defs>
-              <filter id="glow-conduit" x="-30%" y="-30%" width="160%" height="160%">
-                <feGaussianBlur stdDeviation="4" result="blur" />
-                <feComposite in="SourceGraphic" in2="blur" operator="over" />
-              </filter>
-            </defs>
+      {/* =========================================================================
+          3. TAGS 2D PROJETADAS EM COORDENADAS REAIS DA CÂMERA (NÍTIDAS & HORIZONTAIS)
+          ========================================================================= */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-10">
+        {projectedTags.map(tag => {
+          if (!tag.visible) return null
 
-            {conduitPaths.map(({ id, pathData }) => (
-              <g key={`conduit-${id}`}>
-                {/* Tubo de vidro externo translúcido com brilho */}
-                <path
-                  d={pathData}
-                  fill="none"
-                  stroke="rgba(56, 189, 248, 0.15)"
-                  strokeWidth="14"
-                  strokeLinecap="round"
-                  filter="url(#glow-conduit)"
-                />
-                {/* Trilhos do conduíte */}
-                <path
-                  d={pathData}
-                  fill="none"
-                  stroke="rgba(56, 189, 248, 0.4)"
-                  strokeWidth="3.5"
-                  strokeLinecap="round"
-                />
-                {/* Linha central neon com fluxo animado de dados */}
-                <path
-                  d={pathData}
-                  fill="none"
-                  stroke="#38bdf8"
-                  strokeWidth="2"
-                  strokeDasharray="10 18"
-                  strokeLinecap="round"
-                  className="animate-conduit-flow"
-                />
-              </g>
-            ))}
-          </svg>
-
-          {/* =====================================================================
-              CENTRO: O PEDESTAL CIBERNÉTICO DO COFRE (CORPORATE HQ / CEO)
-              ===================================================================== */}
-          <div
-            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center cursor-pointer group"
-            style={{ transformStyle: 'preserve-3d', transform: 'translate(-50%, -50%) translateZ(10px)' }}
-          >
-            {/* Sombra de profundidade no chão */}
-            <div
-              className="absolute w-72 h-72 rounded-full bg-cyan-500/10 blur-2xl pointer-events-none"
-              style={{ transform: 'translateZ(-8px)' }}
-            />
-
-            {/* Pedestal Cilíndrico 3D com Bordas Metálicas e Anel Luminoso */}
-            <div
-              className="relative w-56 h-56 rounded-full bg-gradient-to-b from-[#1c2333] via-[#0f1420] to-[#090c14] border-4 border-cyan-400/80 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9),0_0_40px_rgba(56,189,248,0.4)] flex flex-col items-center justify-center transition-transform group-hover:scale-105 duration-300"
-              style={{
-                boxShadow:
-                  '0 30px 60px rgba(0,0,0,0.95), 0 0 45px rgba(56, 189, 248, 0.45), inset 0 0 25px rgba(56, 189, 248, 0.25)'
-              }}
-            >
-              {/* Anéis orbitais concêntricos com rotação contínua */}
-              <div className="absolute -inset-4 rounded-full border border-cyan-500/30 animate-orbit-spin pointer-events-none">
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#38bdf8]" />
-              </div>
-              <div className="absolute -inset-8 rounded-full border border-cyan-500/15 border-dashed animate-orbit-spin-rev pointer-events-none" />
-
-              {/* Anel de Neon com Pulso */}
-              <div className="absolute inset-2 rounded-full border-2 border-cyan-400/50 animate-cyber-core pointer-events-none" />
-
-              {/* Ícone do Cofre / Emblema Central */}
-              <div className="w-16 h-16 rounded-2xl bg-cyan-950/60 border border-cyan-400/60 flex items-center justify-center mb-1 shadow-[0_0_20px_rgba(56,189,248,0.3)]">
-                <ShieldCheck className="w-9 h-9 text-cyan-300 drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]" />
-              </div>
-
-              {/* Título do Cofre */}
-              <div className="text-center px-3 max-w-[190px]">
-                <div className="text-xs font-black text-white tracking-wider uppercase truncate drop-shadow">
-                  {vaultName}
-                </div>
-                <div className="text-[10px] text-cyan-400 font-mono font-semibold tracking-wider uppercase mt-0.5">
-                  CORPORATE HQ
-                </div>
-              </div>
-            </div>
-
-            {/* Placa / Tag Flutuante do Cofre (Billboarded para frente) */}
-            <div
-              className="mt-6 px-3.5 py-1.5 rounded-full bg-[#0c101c]/90 border border-cyan-500/40 text-center shadow-xl backdrop-blur-md"
-              style={{
-                transform: is3D ? 'rotateZ(18deg) rotateX(-54deg)' : 'none',
-                transformStyle: 'preserve-3d'
-              }}
-            >
-              <div className="text-[11px] font-bold text-zinc-100 flex items-center justify-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" />
-                <span>Corporate HQ &bull; Governança Central</span>
-              </div>
-            </div>
-          </div>
-
-          {/* =====================================================================
-              PLATAFORMAS DOS DEPARTAMENTOS / ESQUADRÕES COM AS ESTAÇÕES DE TRABALHO
-              ===================================================================== */}
-          {squadPositions.map(({ squad, x, y }) => {
-            const pipeline = squad.pipeline || []
-            const squadAgents = pipeline
-              .map(p => agents.find(a => a.id === p.agentId))
-              .filter(Boolean) as AgentProfileVersion[]
-
+          // Tag do Cofre Central
+          if (tag.type === 'hub') {
             return (
               <div
-                key={`platform-squad-${squad.id}`}
-                className="absolute flex flex-col items-center"
-                style={{
-                  left: `calc(50% + ${x}px)`,
-                  top: `calc(50% + ${y}px)`,
-                  transform: 'translate(-50%, -50%) translateZ(12px)',
-                  transformStyle: 'preserve-3d'
-                }}
+                key={tag.id}
+                className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
+                style={{ left: `${tag.screenX}px`, top: `${tag.screenY}px` }}
               >
-                {/* Plataforma 3D do Departamento */}
-                <div
-                  className="relative p-5 rounded-3xl bg-[#0d121c]/90 border-2 border-cyan-500/30 hover:border-cyan-400 transition-all duration-300 shadow-[0_20px_50px_rgba(0,0,0,0.85),0_0_30px_rgba(56,189,248,0.15)] group"
-                  style={{
-                    minWidth: '340px',
-                    boxShadow:
-                      '0 25px 50px rgba(0,0,0,0.9), 0 0 30px rgba(56, 189, 248, 0.15), inset 0 0 20px rgba(56, 189, 248, 0.05)'
-                  }}
-                >
-                  {/* Grid de Estações de Trabalho (Mesas dos Agentes) */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pb-3">
-                    {squadAgents.map(ag => {
-                      const isSelected = selectedAgentId === ag.id
-
-                      return (
-                        <div
-                          key={`ws-${squad.id}-${ag.id}`}
-                          onClick={e => {
-                            e.stopPropagation()
-                            setSelectedAgentId(ag.id)
-                          }}
-                          className={`relative flex flex-col items-center cursor-pointer transition-all duration-200 group/ws ${
-                            isSelected ? 'scale-105' : 'hover:-translate-y-1'
-                          }`}
-                        >
-                          {/* Tag de Avatar Flutuante (Billboarded upright para fácil leitura!) */}
-                          <div
-                            className={`mb-1 px-2 py-0.5 rounded-full border text-[10px] font-medium flex items-center gap-1.5 transition-all shadow-md ${
-                              isSelected
-                                ? 'bg-cyan-500 border-cyan-300 text-zinc-950 font-bold scale-105'
-                                : 'bg-[#121724]/90 border-zinc-700/80 text-zinc-200 group-hover/ws:border-cyan-400'
-                            }`}
-                            style={{
-                              transform: is3D ? 'rotateZ(18deg) rotateX(-54deg)' : 'none',
-                              transformStyle: 'preserve-3d'
-                            }}
-                          >
-                            <AgentIcon variant={ag.icon} size={14} className="shrink-0 rounded-full" />
-                            <span className="truncate max-w-[85px]">{ag.name}</span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
-                          </div>
-
-                          {/* Estação de Trabalho Isométrica em SVG (Mesa + Monitores duplos + Cadeira + Agente) */}
-                          <div className="relative">
-                            <svg viewBox="0 0 140 100" className="w-24 h-18 overflow-visible">
-                              {/* Sombra da Mesa no chão */}
-                              <ellipse
-                                cx="70"
-                                cy="78"
-                                rx="45"
-                                ry="16"
-                                fill={isSelected ? 'rgba(56, 189, 248, 0.35)' : 'rgba(0,0,0,0.5)'}
-                                filter="blur(4px)"
-                              />
-
-                              {/* Anel de seleção em volta da estação */}
-                              {isSelected && (
-                                <ellipse
-                                  cx="70"
-                                  cy="78"
-                                  rx="48"
-                                  ry="18"
-                                  fill="none"
-                                  stroke="#38bdf8"
-                                  strokeWidth="2"
-                                  strokeDasharray="4 4"
-                                  className="animate-spin"
-                                />
-                              )}
-
-                              {/* Pernas da Mesa */}
-                              <line x1="32" y1="52" x2="32" y2="74" stroke="#27272a" strokeWidth="3" />
-                              <line x1="108" y1="52" x2="108" y2="74" stroke="#27272a" strokeWidth="3" />
-
-                              {/* Superfície da Mesa (Diamante Isométrico) */}
-                              <polygon
-                                points="30,48 70,28 110,48 70,68"
-                                fill={isSelected ? '#1e293b' : '#18181b'}
-                                stroke={isSelected ? '#38bdf8' : '#3f3f46'}
-                                strokeWidth="1.5"
-                              />
-
-                              {/* Cadeira de Escritório */}
-                              <polygon
-                                points="62,64 78,64 76,74 64,74"
-                                fill="#111827"
-                                stroke="#374151"
-                                strokeWidth="1"
-                              />
-
-                              {/* Silhueta do Especialista sentado */}
-                              <circle cx="70" cy="44" r="7" fill="#38bdf8" fillOpacity="0.85" />
-                              <path
-                                d="M 64 51 Q 70 48 76 51 L 78 64 L 62 64 Z"
-                                fill="#1e293b"
-                                stroke="#38bdf8"
-                                strokeWidth="0.8"
-                              />
-
-                              {/* Monitor Esquerdo (em ângulo) com telas com scanlines de código */}
-                              <polygon
-                                points="46,30 62,22 62,38 46,46"
-                                fill="#09090b"
-                                stroke="#38bdf8"
-                                strokeWidth="1"
-                              />
-                              <polygon
-                                points="48,32 60,25 60,37 48,44"
-                                fill="#0284c7"
-                                fillOpacity="0.85"
-                              />
-                              <line x1="50" y1="36" x2="58" y2="32" stroke="#e0f2fe" strokeWidth="1" />
-                              <line x1="50" y1="40" x2="56" y2="37" stroke="#e0f2fe" strokeWidth="1" />
-
-                              {/* Monitor Direito (em ângulo) */}
-                              <polygon
-                                points="68,22 84,30 84,46 68,38"
-                                fill="#09090b"
-                                stroke="#38bdf8"
-                                strokeWidth="1"
-                              />
-                              <polygon
-                                points="70,25 82,32 82,44 70,37"
-                                fill="#0284c7"
-                                fillOpacity="0.85"
-                              />
-                              <line x1="72" y1="32" x2="80" y2="36" stroke="#e0f2fe" strokeWidth="1" />
-                              <line x1="74" y1="36" x2="80" y2="39" stroke="#e0f2fe" strokeWidth="1" />
-
-                              {/* Teclado e Mouse */}
-                              <polygon
-                                points="65,54 75,49 80,52 70,57"
-                                fill="#27272a"
-                                stroke="#52525b"
-                                strokeWidth="0.5"
-                              />
-                            </svg>
-                          </div>
-                        </div>
-                      )
-                    })}
-
-                    {squadAgents.length === 0 && (
-                      <div className="col-span-2 py-4 px-6 text-center text-xs text-zinc-500 border border-dashed border-zinc-800 rounded-xl">
-                        Nenhum especialista atribuído.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Rótulo do Departamento na Frente da Plataforma (Billboarded) */}
-                  <div
-                    className="mt-2 pt-2 border-t border-zinc-800/80 flex items-center justify-between gap-3 text-center"
-                    style={{
-                      transform: is3D ? 'rotateZ(18deg) rotateX(-54deg)' : 'none',
-                      transformStyle: 'preserve-3d'
-                    }}
-                  >
-                    <div className="text-left min-w-0">
-                      <div className="font-bold text-xs text-zinc-100 truncate flex items-center gap-1.5">
-                        <span className="text-cyan-400">
-                          {renderDynamicIcon(squad.icon || 'Users', 'w-3.5 h-3.5 text-cyan-400')}
-                        </span>
-                        <span>{squad.name}</span>
-                      </div>
-                      <div className="text-[10px] text-zinc-400 font-mono mt-0.5">
-                        ({squadAgents.length} {squadAgents.length === 1 ? 'Agente' : 'Agentes'})
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={e => {
-                          e.stopPropagation()
-                          onOpenSquadChat(squad)
-                        }}
-                        className="p-1.5 rounded-lg bg-zinc-800/90 hover:bg-cyan-500 hover:text-zinc-950 text-zinc-400 transition-all cursor-pointer"
-                        title={`Conversar com Esquadrão ${squad.name}`}
-                      >
-                        <MessageSquare className="w-3 h-3" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={e => {
-                          e.stopPropagation()
-                          onSelectSquad(squad.id)
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-cyan-500 hover:text-zinc-950 text-zinc-300 text-[10.5px] font-medium flex items-center gap-1 transition-all cursor-pointer shrink-0"
-                      >
-                        <span>Gerenciar</span>
-                        <ChevronRight className="w-3 h-3" />
-                      </button>
-                    </div>
+                <div className="px-3.5 py-1 rounded-full bg-[#14151b]/95 border border-[var(--accent)]/50 text-center shadow-2xl backdrop-blur-md">
+                  <div className="text-[11px] font-bold text-zinc-100 flex items-center justify-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[var(--accent)] shadow-[0_0_8px_#c59b27] animate-pulse" />
+                    <span>{tag.name}</span>
+                    <span className="text-[9.5px] font-mono text-[var(--accent)] uppercase">&bull; HQ</span>
                   </div>
                 </div>
               </div>
             )
-          })}
-        </div>
+          }
+
+          // Tag do Departamento (Placa Frontal da Plataforma)
+          if (tag.type === 'squad') {
+            return (
+              <div
+                key={tag.id}
+                className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
+                style={{ left: `${tag.screenX}px`, top: `${tag.screenY}px` }}
+              >
+                <div className="px-3 py-1.5 rounded-2xl bg-[#14151b]/95 border border-zinc-800 hover:border-[var(--accent)]/60 text-center shadow-xl backdrop-blur-md flex items-center gap-2.5 transition-all">
+                  <div className="w-6 h-6 rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0">
+                    {renderDynamicIcon(tag.icon || 'Users', 'w-3.5 h-3.5 text-[var(--accent)]')}
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
+                      <span>{tag.name}</span>
+                      <span className="text-[10px] text-zinc-400 font-mono font-normal">
+                        {tag.subtitle}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 ml-1">
+                    {tag.squad && onOpenSquadChat && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenSquadChat(tag.squad!)}
+                        className="p-1 rounded-lg bg-zinc-800 hover:bg-[var(--accent)] hover:text-zinc-950 text-zinc-300 transition-colors cursor-pointer"
+                        title={`Conversar com ${tag.name}`}
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                      </button>
+                    )}
+                    {tag.squadId && (
+                      <button
+                        type="button"
+                        onClick={() => onSelectSquad(tag.squadId!)}
+                        className="px-2 py-0.5 rounded-lg bg-zinc-800 hover:bg-[var(--accent)] hover:text-zinc-950 text-zinc-200 text-[10.5px] font-medium flex items-center gap-0.5 transition-colors cursor-pointer"
+                      >
+                        <span>Gerenciar</span>
+                        <ChevronRight className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
+          // Tag Flutuante do Agente (Sobre a mesa 3D)
+          if (tag.type === 'agent') {
+            const isSelected = selectedAgentId === tag.agentId
+
+            return (
+              <div
+                key={tag.id}
+                onClick={() => tag.agentId && setSelectedAgentId(tag.agentId)}
+                className={`absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-pointer transition-all duration-150 ${
+                  isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'
+                }`}
+                style={{ left: `${tag.screenX}px`, top: `${tag.screenY}px` }}
+              >
+                <div
+                  className={`px-2 py-0.5 rounded-full border text-[10.5px] font-medium flex items-center gap-1.5 shadow-lg backdrop-blur-md ${
+                    isSelected
+                      ? 'bg-[var(--accent)] border-[var(--accent)] text-zinc-950 font-bold shadow-[0_0_12px_rgba(197,155,39,0.5)]'
+                      : 'bg-[#12131a]/95 border-zinc-700/80 text-zinc-200 hover:border-[var(--accent)]'
+                  }`}
+                >
+                  <AgentIcon variant={tag.icon} size={14} className="shrink-0 rounded-full" />
+                  <span className="truncate max-w-[95px]">{tag.name}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
+                </div>
+              </div>
+            )
+          }
+
+          return null
+        })}
       </div>
 
       {/* =========================================================================
-          3. BARRA DE CONTROLES INFERIOR (ZOOM, PAN, 3D TILT, RESET)
+          4. BARRA DE CONTROLES INFERIOR (ZOOM, RESET, FULLSCREEN)
           ========================================================================= */}
       <nav
-        aria-label="Controles de visualização do organograma"
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-[#0f1422]/90 border border-zinc-800/90 shadow-2xl backdrop-blur-xl pointer-events-auto prevent-canvas-drag"
+        aria-label="Controles de visualização 3D"
+        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-[#14151b]/95 border border-zinc-800 shadow-2xl backdrop-blur-xl pointer-events-auto"
       >
         <button
           type="button"
-          onClick={() => setZoom(prev => Math.min(1.85, prev + 0.15))}
+          onClick={() => handleZoom(1)}
           className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
           title="Aproximar (Zoom In)"
         >
@@ -778,7 +1038,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
         <button
           type="button"
-          onClick={() => setZoom(prev => Math.max(0.45, prev - 0.15))}
+          onClick={() => handleZoom(-1)}
           className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
           title="Afastar (Zoom Out)"
         >
@@ -789,25 +1049,11 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
         <button
           type="button"
-          onClick={handleResetView}
+          onClick={handleResetCamera}
           className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
-          title="Centralizar Visão"
+          title="Resetar Câmera para Visão Isométrica Inicial"
         >
           <RotateCcw className="w-4 h-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setIs3D(prev => !prev)}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-            is3D
-              ? 'bg-cyan-500/20 border border-cyan-500/40 text-cyan-300'
-              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
-          }`}
-          title="Alternar entre Perspectiva 3D e Visão 2D Superior"
-        >
-          <Layers className="w-3.5 h-3.5" />
-          <span>{is3D ? '3D Isométrico' : '2D Plano'}</span>
         </button>
 
         <div className="w-px h-4 bg-zinc-800 mx-1" />
@@ -823,18 +1069,17 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       </nav>
 
       {/* =========================================================================
-          4. DRAWER LATERAL DIREITO: "AGENT CONFIGURATION" (IDÊNTICO AO PRINT!)
+          5. DRAWER LATERAL: "AGENT CONFIGURATION" (ESTILO DA PLATAFORMA PYRITE)
           ========================================================================= */}
       {selectedAgent && (
         <aside
           role="region"
           aria-label="Configuração do Agente"
-          className="absolute top-0 right-0 bottom-0 w-96 bg-[#0c101c]/95 border-l border-zinc-800/90 shadow-2xl z-40 flex flex-col backdrop-blur-2xl animate-in slide-in-from-right duration-200 prevent-canvas-drag prevent-canvas-zoom"
+          className="absolute top-0 right-0 bottom-0 w-96 bg-[#101117]/95 border-l border-zinc-800 shadow-2xl z-30 flex flex-col backdrop-blur-2xl animate-in slide-in-from-right duration-200"
         >
-          {/* Header do Drawer */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800/80">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
             <div>
-              <span className="text-[10px] font-mono tracking-wider text-cyan-400 uppercase font-semibold">
+              <span className="text-[10px] font-mono tracking-wider text-[var(--accent)] uppercase font-semibold">
                 AGENT CONFIGURATION
               </span>
               <h2 className="text-sm font-bold text-zinc-100 truncate mt-0.5">
@@ -844,115 +1089,37 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
             <button
               type="button"
               onClick={() => setSelectedAgentId(null)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Conteúdo do Drawer com Scroll Suave */}
           <div className="flex-1 overflow-y-auto custom-chat-scrollbar p-5 space-y-5">
-            {/* 1. Hero 3D da Estação de Trabalho do Agente com Giratório Turntable */}
-            <div className="relative rounded-2xl bg-gradient-to-b from-[#141b2d] to-[#0b101d] border border-cyan-500/30 p-4 flex flex-col items-center justify-center overflow-hidden shadow-inner">
+            {/* 1. Preview da Estação de Trabalho 3D Turntable */}
+            <div className="relative rounded-2xl bg-gradient-to-b from-[#181a24] to-[#12131a] border border-[var(--accent)]/30 p-4 flex flex-col items-center justify-center shadow-inner">
               <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-300 font-medium font-mono">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
                 <span>ONLINE</span>
               </div>
 
-              {/* Workstation 3D com anel de rotação turntable */}
-              <div className="relative my-2">
-                <div className={`transition-transform duration-300 ${isTurntableSpinning ? 'animate-turntable-3d' : ''}`}>
-                  <svg viewBox="0 0 160 120" className="w-40 h-28 overflow-visible">
-                    {/* Anel de órbita 3D turntable */}
-                    <ellipse
-                      cx="80"
-                      cy="95"
-                      rx="65"
-                      ry="22"
-                      fill="none"
-                      stroke="#38bdf8"
-                      strokeWidth="1.5"
-                      strokeDasharray="6 6"
-                      strokeOpacity="0.7"
-                    />
-
-                    {/* Sombra da mesa */}
-                    <ellipse cx="80" cy="92" rx="50" ry="18" fill="rgba(0,0,0,0.6)" filter="blur(6px)" />
-
-                    {/* Pernas da mesa */}
-                    <line x1="38" y1="62" x2="38" y2="88" stroke="#3f3f46" strokeWidth="3" />
-                    <line x1="122" y1="62" x2="122" y2="88" stroke="#3f3f46" strokeWidth="3" />
-
-                    {/* Tampo da Mesa */}
-                    <polygon
-                      points="35,58 80,34 125,58 80,82"
-                      fill="#1e293b"
-                      stroke="#38bdf8"
-                      strokeWidth="1.5"
-                    />
-
-                    {/* Cadeira de Escritório */}
-                    <polygon
-                      points="70,76 90,76 87,90 73,90"
-                      fill="#0f172a"
-                      stroke="#334155"
-                      strokeWidth="1"
-                    />
-
-                    {/* Especialista sentado */}
-                    <circle cx="80" cy="52" r="8" fill="#38bdf8" fillOpacity="0.9" />
-                    <path
-                      d="M 72 61 Q 80 57 88 61 L 90 78 L 70 78 Z"
-                      fill="#0f172a"
-                      stroke="#38bdf8"
-                      strokeWidth="1"
-                    />
-
-                    {/* Monitores Duplos Luminosos */}
-                    <polygon
-                      points="52,38 72,28 72,48 52,58"
-                      fill="#09090b"
-                      stroke="#38bdf8"
-                      strokeWidth="1.2"
-                    />
-                    <polygon
-                      points="55,41 69,32 69,46 55,54"
-                      fill="#0284c7"
-                      fillOpacity="0.85"
-                    />
-                    <line x1="57" y1="46" x2="67" y2="40" stroke="#e0f2fe" strokeWidth="1" />
-                    <line x1="57" y1="50" x2="65" y2="46" stroke="#e0f2fe" strokeWidth="1" />
-
-                    <polygon
-                      points="80,28 100,38 100,58 80,48"
-                      fill="#09090b"
-                      stroke="#38bdf8"
-                      strokeWidth="1.2"
-                    />
-                    <polygon
-                      points="83,32 97,41 97,54 83,46"
-                      fill="#0284c7"
-                      fillOpacity="0.85"
-                    />
-                    <line x1="85" y1="40" x2="95" y2="46" stroke="#e0f2fe" strokeWidth="1" />
-                    <line x1="87" y1="46" x2="95" y2="50" stroke="#e0f2fe" strokeWidth="1" />
-                  </svg>
+              {/* Ícone e dados do Agente */}
+              <div className="my-3 flex flex-col items-center">
+                <div className="w-16 h-16 rounded-2xl bg-[var(--accent)]/15 border-2 border-[var(--accent)]/50 flex items-center justify-center text-[var(--accent)] shadow-[0_0_20px_rgba(197,155,39,0.3)] mb-2">
+                  <AgentIcon variant={selectedAgent.icon} size={36} />
+                </div>
+                <div className="text-xs font-bold text-zinc-100">{selectedAgent.name}</div>
+                <div className="text-[10.5px] text-[var(--accent)] font-mono mt-0.5">
+                  {selectedAgentCurrentSquad ? selectedAgentCurrentSquad.name : 'Especialista Livre'}
                 </div>
               </div>
 
-              <div className="flex items-center justify-between w-full pt-1 border-t border-zinc-800/60 text-[10px] text-zinc-400">
-                <span className="font-mono text-cyan-300">Workstation Turntable</span>
-                <button
-                  type="button"
-                  onClick={() => setIsTurntableSpinning(prev => !prev)}
-                  className="text-zinc-500 hover:text-cyan-400 transition-colors cursor-pointer"
-                >
-                  {isTurntableSpinning ? 'Pausar rotação' : 'Girar 3D'}
-                </button>
+              <div className="w-full pt-2 border-t border-zinc-800 text-center text-[10.5px] text-zinc-400">
+                Estação de Trabalho 3D conectada ao Cofre
               </div>
             </div>
 
-            {/* 2. Nome do Agente com ícone de edição */}
+            {/* 2. Nome do Especialista */}
             <div>
               <label className="block text-[11px] font-medium text-zinc-400 mb-1.5">
                 Nome do Especialista
@@ -963,7 +1130,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                   value={formName}
                   onChange={e => setFormName(e.target.value)}
                   placeholder="Nome do agente..."
-                  className="w-full bg-[#131929] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-[#161720] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[var(--accent)]"
                 />
                 <Pencil className="w-3.5 h-3.5 text-zinc-500 absolute right-3 pointer-events-none" />
               </div>
@@ -977,7 +1144,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
               <select
                 value={formSquadId}
                 onChange={e => setFormSquadId(e.target.value)}
-                className="w-full bg-[#131929] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                className="w-full bg-[#161720] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-[var(--accent)] cursor-pointer"
               >
                 <option value="">Sem Departamento (Livre)</option>
                 {squads.map(sq => (
@@ -988,7 +1155,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
               </select>
             </div>
 
-            {/* 4. Assigned Task / Função Principal */}
+            {/* 4. Função Principal (Assigned Task) */}
             <div>
               <label className="block text-[11px] font-medium text-zinc-400 mb-1.5">
                 Função Principal (Assigned Task)
@@ -998,7 +1165,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                 value={formTask}
                 onChange={e => setFormTask(e.target.value)}
                 placeholder="Ex: Tier-1 Ticketing, Redação, Análise..."
-                className="w-full bg-[#131929] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-cyan-500"
+                className="w-full bg-[#161720] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[var(--accent)]"
               />
             </div>
 
@@ -1018,8 +1185,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                       onClick={() => setFormAccessLevel(lvl)}
                       className={`py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                         isSel
-                          ? 'bg-cyan-500 text-zinc-950 font-bold shadow-sm'
-                          : 'bg-[#131929] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-zinc-800'
+                          ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
+                          : 'bg-[#161720] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-zinc-800'
                       }`}
                     >
                       {labels[lvl]}
@@ -1050,8 +1217,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                       }}
                       className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer flex items-center gap-1.5 ${
                         isActive
-                          ? 'bg-cyan-950/60 border-cyan-500/60 text-cyan-200'
-                          : 'bg-[#131929] border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                          ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-[var(--accent)]'
+                          : 'bg-[#161720] border-zinc-800 text-zinc-500 hover:text-zinc-300'
                       }`}
                     >
                       <span
@@ -1066,14 +1233,14 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
             </div>
 
             {/* 7. Chaves / Toggles de Atuação */}
-            <div className="space-y-3 pt-2 border-t border-zinc-800/80">
+            <div className="space-y-3 pt-2 border-t border-zinc-800">
               <label className="flex items-center justify-between cursor-pointer">
                 <span className="text-xs text-zinc-300">Especialista Ativo no Esquadrão</span>
                 <input
                   type="checkbox"
                   checked={formIsActive}
                   onChange={e => setFormIsActive(e.target.checked)}
-                  className="w-4 h-4 rounded text-cyan-500 focus:ring-0 cursor-pointer"
+                  className="w-4 h-4 rounded text-[var(--accent)] focus:ring-0 cursor-pointer accent-[var(--accent)]"
                 />
               </label>
 
@@ -1083,7 +1250,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                   type="checkbox"
                   checked={formCanReadVault}
                   onChange={e => setFormCanReadVault(e.target.checked)}
-                  className="w-4 h-4 rounded text-cyan-500 focus:ring-0 cursor-pointer"
+                  className="w-4 h-4 rounded text-[var(--accent)] focus:ring-0 cursor-pointer accent-[var(--accent)]"
                 />
               </label>
 
@@ -1093,7 +1260,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                   type="checkbox"
                   checked={formCanWriteVault}
                   onChange={e => setFormCanWriteVault(e.target.checked)}
-                  className="w-4 h-4 rounded text-cyan-500 focus:ring-0 cursor-pointer"
+                  className="w-4 h-4 rounded text-[var(--accent)] focus:ring-0 cursor-pointer accent-[var(--accent)]"
                 />
               </label>
 
@@ -1103,14 +1270,14 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                   type="checkbox"
                   checked={formAutonomous}
                   onChange={e => setFormAutonomous(e.target.checked)}
-                  className="w-4 h-4 rounded text-cyan-500 focus:ring-0 cursor-pointer"
+                  className="w-4 h-4 rounded text-[var(--accent)] focus:ring-0 cursor-pointer accent-[var(--accent)]"
                 />
               </label>
             </div>
           </div>
 
-          {/* Rodapé de Ações do Drawer */}
-          <div className="p-4 border-t border-zinc-800/80 space-y-2 bg-[#0a0d16]">
+          {/* Rodapé do Drawer */}
+          <div className="p-4 border-t border-zinc-800 space-y-2 bg-[#0d0e14]">
             {saveSuccessNotice && (
               <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs flex items-center justify-center gap-1.5 animate-in fade-in duration-150">
                 <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1122,20 +1289,20 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
               <button
                 type="button"
                 onClick={handleSaveConfig}
-                className="w-full py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-bold text-xs transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)] active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                className="w-full py-2 rounded-xl bg-[var(--accent)] hover:brightness-110 text-zinc-950 font-bold text-xs transition-all shadow-md active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Save Config</span>
+                <span>Salvar Config</span>
               </button>
 
               {onOpenAgentChat && (
                 <button
                   type="button"
                   onClick={() => onOpenAgentChat(selectedAgent.id)}
-                  className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all shadow-md active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                  className="w-full py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-semibold text-xs transition-all shadow-sm active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Deploy</span>
+                  <span>Conversar</span>
                 </button>
               )}
             </div>
@@ -1144,7 +1311,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectSquad(selectedAgentCurrentSquad.id)}
-                className="w-full py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 text-zinc-300 text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                className="w-full py-1.5 rounded-xl bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <span>Ver no Esquadrão ({selectedAgentCurrentSquad.name})</span>
                 <ChevronRight className="w-3.5 h-3.5" />
