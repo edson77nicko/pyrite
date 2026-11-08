@@ -91,7 +91,8 @@ export const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
       {isOpen && (
         <div
           data-no-pan="true"
-          className="absolute top-full mt-1.5 left-0 w-52 bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl p-2.5 z-50 space-y-2.5 text-xs animate-in fade-in zoom-in-95 duration-100"
+          onWheel={e => e.stopPropagation()}
+          className="absolute top-full mt-1.5 left-0 w-52 bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl p-2.5 z-50 space-y-2.5 text-xs animate-in fade-in zoom-in-95 duration-100 overscroll-contain"
         >
           <div className="flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-wider text-zinc-400 border-b border-zinc-800 pb-1.5">
             <span className="flex items-center gap-1">
@@ -105,7 +106,10 @@ export const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <span className="text-[10px] text-zinc-500 block mb-1">Hora</span>
-              <div className="max-h-32 overflow-y-auto space-y-0.5 custom-chat-scrollbar pr-1">
+              <div
+                onWheel={e => e.stopPropagation()}
+                className="max-h-32 overflow-y-auto space-y-0.5 custom-chat-scrollbar pr-1 overscroll-contain"
+              >
                 {Array.from({ length: 24 }).map((_, idx) => {
                   const isSel = idx === currentHour
                   return (
@@ -128,7 +132,10 @@ export const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
 
             <div>
               <span className="text-[10px] text-zinc-500 block mb-1">Minuto</span>
-              <div className="max-h-32 overflow-y-auto space-y-0.5 custom-chat-scrollbar pr-1">
+              <div
+                onWheel={e => e.stopPropagation()}
+                className="max-h-32 overflow-y-auto space-y-0.5 custom-chat-scrollbar pr-1 overscroll-contain"
+              >
                 {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(min => {
                   const isSel = min === currentMinute
                   return (

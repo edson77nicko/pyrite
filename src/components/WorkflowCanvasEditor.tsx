@@ -15,8 +15,10 @@ import {
   validateWorkflowDefinition,
   computeWorkflowNextRunISO,
   formatWorkflowNextRun,
-  executeWorkflowSingleNode
+  executeWorkflowSingleNode,
+  type WorkflowCommitTasksFn
 } from '../utils/multiAgentEngine'
+import { AgentIcon } from './AgentIcon'
 import {
   snapDiagramCoord,
   diagramEdgePath,
@@ -87,6 +89,7 @@ interface WorkflowCanvasEditorProps {
   onResumeWorkflowRun?: (run: AgentRun) => Promise<void> | void
   onOpenNote?: (noteId: string) => void
   isExecuting: boolean
+  commitTasks?: WorkflowCommitTasksFn
 }
 
 /**
@@ -173,7 +176,10 @@ const ResultField: React.FC<{
             </div>
           </div>
         ) : (
-          <div className="bg-[#141416] border border-zinc-800/80 rounded-lg p-2 text-zinc-300 leading-relaxed max-h-36 overflow-y-auto custom-chat-scrollbar text-[11px] whitespace-pre-wrap select-text mt-1.5">
+          <div
+            onWheel={e => e.stopPropagation()}
+            className="bg-[#141416] border border-zinc-800/80 rounded-lg p-2 text-zinc-300 leading-relaxed max-h-36 overflow-y-auto custom-chat-scrollbar text-[11px] whitespace-pre-wrap select-text mt-1.5 overscroll-contain"
+          >
             {output}
           </div>
         )
@@ -248,8 +254,6 @@ const NODE_META: Record<
   }
 }
 
-const AGENT_COLORS = ['#10b981', '#2563eb', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4']
-
 export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   workflows,
   agents,
@@ -266,7 +270,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   onRunWorkflow,
   onResumeWorkflowRun,
   onOpenNote,
-  isExecuting
+  isExecuting,
+  commitTasks
 }) => {
   const activeWorkflow = workflows.find(w => w.id === selectedWorkflowId) || workflows[0]
   // Só mostramos o estado de execução quando a execução pertence ao fluxo aberto
@@ -418,6 +423,23 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     }, 60)
     return () => clearTimeout(timer)
   }, [selectedWorkflowId])
+
+  // Limpeza silenciosa de conexões órfãs apontando para nós que já foram removidos
+  useEffect(() => {
+    if (!activeWorkflow) return
+    const validNodeIds = new Set(activeWorkflow.nodes.map(n => n.id))
+    const orphanEdges = activeWorkflow.edges.filter(
+      e => !validNodeIds.has(e.sourceNodeId) || !validNodeIds.has(e.targetNodeId)
+    )
+    if (orphanEdges.length > 0) {
+      onSaveWorkflow({
+        ...activeWorkflow,
+        edges: activeWorkflow.edges.filter(
+          e => validNodeIds.has(e.sourceNodeId) && validNodeIds.has(e.targetNodeId)
+        )
+      })
+    }
+  }, [activeWorkflow?.id, activeWorkflow?.nodes.length])
 
   if (!activeWorkflow) return null
 
@@ -599,8 +621,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       let hoveredTargetId: string | null = null
       for (const n of activeWorkflow.nodes) {
         if (n.id === wireDraft.fromNodeId || n.kind === 'input' || n.kind === 'sticky_note' || n.kind === 'text_block') continue
-        const inPort = getNodeInputPort(n)
-        if (Math.hypot(world.x - inPort.x, world.y - inPort.y) < 42) {
+        const inPort = getNodeInputPort(n, cardHeights[n.id])
+        if (Math.hypot(world.x - inPort.x, world.y - inPort.y) < 48) {
           hoveredTargetId = n.id
           break
         }
@@ -608,7 +630,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       setWireDraft({
         ...wireDraft,
         toWorld: hoveredTargetId
-          ? getNodeInputPort(activeWorkflow.nodes.find(n => n.id === hoveredTargetId)!)
+          ? getNodeInputPort(activeWorkflow.nodes.find(n => n.id === hoveredTargetId)!, cardHeights[hoveredTargetId])
           : world,
         hoveredTargetId
       })
@@ -677,13 +699,26 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       }
     })
     try {
+      // Se este nó tem conexões de entrada, utiliza a saída/prompt deles como contexto dinâmico
+      const incomingEdges = activeWorkflow.edges.filter(e => e.targetNodeId === node.id)
+      const inputOutputs = incomingEdges
+        .map(e => activeWorkflow.nodes.find(n => n.id === e.sourceNodeId))
+        .filter(Boolean)
+        .map(n => n?.config.lastOutput || n?.config.promptTemplate || n?.config.content || '')
+        .filter(t => t.trim().length > 0)
+
+      const contextualPrompt = inputOutputs.length > 0
+        ? inputOutputs.join('\n\n')
+        : (node.config.approvalMessage || node.config.promptTemplate || node.config.content || 'Executar etapa')
+
       const res = await executeWorkflowSingleNode({
         node,
         workflow: activeWorkflow,
         allAgents: agents,
         allNotes: notes,
         allProjects,
-        prompt: node.config.approvalMessage || node.config.promptTemplate || 'Executar etapa'
+        prompt: contextualPrompt,
+        commitTasks
       })
       handleUpdateNodeById(node.id, {
         config: {
@@ -832,7 +867,10 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           </div>
 
           {/* Lista com rolagem de Fluxos */}
-          <div className="flex-1 overflow-y-auto custom-chat-scrollbar p-2 space-y-1">
+          <div
+            onWheel={e => e.stopPropagation()}
+            className="flex-1 overflow-y-auto custom-chat-scrollbar p-2 space-y-1 overscroll-contain"
+          >
             {filteredWorkflows.map(wf => {
               const isSelected = wf.id === activeWorkflow.id
               const realNodesCount = wf.nodes.filter(n => n.kind !== 'sticky_note' && n.kind !== 'text_block').length
@@ -1097,7 +1135,10 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               </div>
 
               {!isRunPanelCollapsed && (
-                <div className="overflow-y-auto custom-chat-scrollbar p-2 space-y-1.5">
+                <div
+                  onWheel={e => e.stopPropagation()}
+                  className="overflow-y-auto custom-chat-scrollbar p-2 space-y-1.5 overscroll-contain"
+                >
                 {run.error && (
                   <div className="text-[11px] text-rose-300 bg-rose-950/30 border border-rose-900/50 rounded-lg p-2 leading-relaxed">
                     {run.error}
@@ -1156,7 +1197,10 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         <ChevronDown className={`w-3 h-3 text-zinc-500 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
                       </button>
                       {open && (
-                        <div className="px-2 pb-2 text-[11px] text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto custom-chat-scrollbar select-text">
+                        <div
+                          onWheel={e => e.stopPropagation()}
+                          className="px-2 pb-2 text-[11px] text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto custom-chat-scrollbar select-text overscroll-contain"
+                        >
                           {s.output || s.outputSummary || 'Sem saída registrada.'}
                         </div>
                       )}
@@ -1492,7 +1536,14 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       ) : node.kind === 'llm' ? (
                         <Sparkles className="w-3 h-3 text-purple-400" />
                       ) : node.kind === 'run_agent' ? (
-                        <Bot className="w-3 h-3 text-emerald-400" />
+                        (() => {
+                          const curAg = agents.find(a => a.id === node.config?.agentId)
+                          return curAg?.icon ? (
+                            <AgentIcon variant={curAg.icon} size={13} className="text-emerald-400 shrink-0" />
+                          ) : (
+                            <Bot className="w-3 h-3 text-emerald-400" />
+                          )
+                        })()
                       ) : node.kind === 'approval' ? (
                         <ShieldCheck className="w-3 h-3 text-orange-400" />
                       ) : node.kind === 'condition' ? (
@@ -1562,7 +1613,24 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     {/* PORTA DE ENTRADA CENTRALIZADA À ESQUERDA NO CORPO DO CARD */}
                     {node.kind !== 'input' && (
                       <div
-                        className={`absolute -left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center transition-all z-20 ${
+                        data-handle="input"
+                        onPointerUp={e => {
+                          if (wireDraft && wireDraft.fromNodeId !== node.id) {
+                            e.stopPropagation()
+                            completeWireConnection(wireDraft.fromNodeId, node.id)
+                            setWireDraft(null)
+                          }
+                        }}
+                        onPointerEnter={() => {
+                          if (wireDraft && wireDraft.fromNodeId !== node.id) {
+                            setWireDraft(prev => prev ? {
+                              ...prev,
+                              hoveredTargetId: node.id,
+                              toWorld: getNodeInputPort(node, cardHeights[node.id])
+                            } : null)
+                          }
+                        }}
+                        className={`absolute -left-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center transition-all z-20 cursor-pointer ${
                           isDropTarget
                             ? 'bg-emerald-500 ring-4 ring-emerald-500/40 scale-125 border-white'
                             : 'bg-[#141416] border border-zinc-700 hover:border-emerald-400 group-hover:scale-110 shadow-md'
@@ -1856,10 +1924,10 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                                   config: { ...node.config, agentId: chosenId }
                                 })
                               }}
-                              options={agents.map((ag, idx) => ({
+                              options={agents.map(ag => ({
                                 value: ag.id,
                                 label: ag.name,
-                                color: AGENT_COLORS[idx % AGENT_COLORS.length]
+                                icon: <AgentIcon variant={ag.icon} size={15} />
                               }))}
                               size="xs"
                               className="w-full"
@@ -2234,12 +2302,15 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <div>
                             <label className="text-[10px] text-zinc-400 font-medium mb-1 block">Quadro ou Projeto de Destino:</label>
                             <CustomSelect
-                              value={node.config.targetBoardId || node.config.boardId || 'default'}
+                              value={node.config.targetBoardId || node.config.boardId || (taskBoards[0]?.id || 'default')}
                               onChange={chosenBoard => handleUpdateNodeById(node.id, { config: { ...node.config, targetBoardId: chosenBoard, boardId: chosenBoard } })}
-                              options={taskBoards.map(b => ({
-                                value: b.id,
-                                label: b.category === 'project' ? `📁 Projeto: ${b.name}` : `📋 Quadro: ${b.name}`
-                              }))}
+                              options={[
+                                ...(taskBoards.length > 0 ? [] : [{ value: 'default', label: '📋 Quadro Geral' }]),
+                                ...taskBoards.map(b => ({
+                                  value: b.id,
+                                  label: b.category === 'project' ? `📁 Projeto: ${b.name}` : `📋 Quadro: ${b.name}`
+                                }))
+                              ]}
                               size="xs"
                               className="w-full"
                             />
@@ -2460,7 +2531,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             <div
               ref={addMenuRef}
               onPointerDown={e => e.stopPropagation()}
-              className="absolute left-1/2 bottom-20 -translate-x-1/2 w-56 bg-[#141416]/98 backdrop-blur-xl border border-zinc-800/90 rounded-2xl shadow-2xl p-2 z-40 animate-in fade-in zoom-in-95 duration-100"
+              onWheel={e => e.stopPropagation()}
+              className="absolute left-1/2 bottom-20 -translate-x-1/2 w-56 bg-[#141416]/98 backdrop-blur-xl border border-zinc-800/90 rounded-2xl shadow-2xl p-2 z-40 animate-in fade-in zoom-in-95 duration-100 overscroll-contain"
             >
               <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-zinc-800/80 mb-1">
                 <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
@@ -2474,7 +2546,10 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 />
               </div>
 
-              <div className="space-y-2 max-h-72 overflow-y-auto py-1 custom-chat-scrollbar">
+              <div
+                onWheel={e => e.stopPropagation()}
+                className="space-y-2 max-h-72 overflow-y-auto py-1 custom-chat-scrollbar overscroll-contain"
+              >
                 {addMenuGroups.map(group => {
                   const filtered = group.items.filter(it =>
                     it.label.toLowerCase().includes(addMenuSearch.toLowerCase())
@@ -2620,7 +2695,10 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
         </div>
 {/* 6. INSPETOR LATERAL DEDICADO DO NÓ OU FLUXO */}
         {inspectorOpen && (
-          <aside className="w-80 bg-[#111113] border-l border-zinc-800/80 p-4 overflow-y-auto space-y-4 shrink-0 z-30 custom-chat-scrollbar">
+          <aside
+            onWheel={e => e.stopPropagation()}
+            className="w-80 bg-[#111113] border-l border-zinc-800/80 p-4 overflow-y-auto space-y-4 shrink-0 z-30 custom-chat-scrollbar overscroll-contain"
+          >
             <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
               <span className="text-xs font-semibold text-zinc-200">
                 {selectedNode ? `Configurações da Etapa: ${NODE_META[selectedNode.kind]?.label || 'Nó'}` : 'Configurações do Fluxo'}
@@ -2721,7 +2799,11 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                             config: { ...selectedNode.config, agentId: chosenId }
                           })
                         }}
-                        options={agents.map(ag => ({ value: ag.id, label: ag.name }))}
+                        options={agents.map(ag => ({
+                          value: ag.id,
+                          label: ag.name,
+                          icon: <AgentIcon variant={ag.icon} size={15} />
+                        }))}
                         size="sm"
                       />
                     </div>
@@ -2811,6 +2893,105 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         rows={3}
                         className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none resize-none leading-relaxed"
                         placeholder="Mensagem exibida ao usuário..."
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Campos Específicos: Gerenciador de Tarefas & Propriedades */}
+                {(selectedNode.kind === 'create_task' || (selectedNode.kind as string) === 'manage_properties') && (
+                  <div className="space-y-3 pt-2 border-t border-zinc-800/70">
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Quadro ou Projeto de Destino</label>
+                      <CustomSelect
+                        value={selectedNode.config.targetBoardId || selectedNode.config.boardId || (taskBoards[0]?.id || 'default')}
+                        onChange={chosenBoard => handleUpdateSelectedNode({ config: { ...selectedNode.config, targetBoardId: chosenBoard, boardId: chosenBoard } })}
+                        options={[
+                          ...(taskBoards.length > 0 ? [] : [{ value: 'default', label: '📋 Quadro Geral' }]),
+                          ...taskBoards.map(b => ({
+                            value: b.id,
+                            label: b.category === 'project' ? `📁 Projeto: ${b.name}` : `📋 Quadro: ${b.name}`
+                          }))
+                        ]}
+                        size="sm"
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Modo de Operação</label>
+                      <CustomSelect
+                        value={selectedNode.config.taskMode || 'auto_ai'}
+                        onChange={mode => handleUpdateSelectedNode({ config: { ...selectedNode.config, taskMode: mode as any } })}
+                        options={[
+                          { value: 'auto_ai', label: 'IA Completa (Criar Tarefas & Metadados)' },
+                          { value: 'extract_checklist', label: 'Extrair Apenas Checklist de Tarefas' },
+                          { value: 'single', label: 'Criar Tarefa Única Manual' },
+                          { value: 'properties_only', label: 'Apenas Extrair / Criar Propriedades' }
+                        ]}
+                        size="sm"
+                        className="w-full"
+                      />
+                    </div>
+
+                    {selectedNode.config.taskMode === 'single' && (
+                      <div>
+                        <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Título da Tarefa</label>
+                        <input
+                          type="text"
+                          value={selectedNode.config.taskTitleTemplate || ''}
+                          onChange={e => handleUpdateSelectedNode({ config: { ...selectedNode.config, taskTitleTemplate: e.target.value } })}
+                          placeholder="Ex: Executar plano com a equipe..."
+                          className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none"
+                        />
+                      </div>
+                    )}
+
+                    {selectedNode.config.taskMode !== 'properties_only' && (
+                      <div>
+                        <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Prioridade Padrão</label>
+                        <CustomSelect
+                          value={selectedNode.config.taskPriority || 'normal'}
+                          onChange={p => handleUpdateSelectedNode({ config: { ...selectedNode.config, taskPriority: p } })}
+                          options={[
+                            { value: 'urgent', label: '🔴 Urgente' },
+                            { value: 'high', label: '🟠 Alta' },
+                            { value: 'normal', label: '🟡 Normal' },
+                            { value: 'low', label: '🔵 Baixa' }
+                          ]}
+                          size="sm"
+                          className="w-full"
+                        />
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-zinc-800/60 space-y-2">
+                      <label className="block text-[11px] text-pink-300 font-medium">Propriedade Customizada (Opcional)</label>
+                      <input
+                        type="text"
+                        value={selectedNode.config.propertyName || ''}
+                        onChange={e => handleUpdateSelectedNode({ config: { ...selectedNode.config, propertyName: e.target.value } })}
+                        placeholder="Nome da propriedade (ex: Prazo, Valor)"
+                        className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none"
+                      />
+                      <CustomSelect
+                        value={selectedNode.config.propertyType || 'text'}
+                        onChange={t => handleUpdateSelectedNode({ config: { ...selectedNode.config, propertyType: t } })}
+                        options={[
+                          { value: 'text', label: 'Texto' },
+                          { value: 'number', label: 'Número' },
+                          { value: 'date', label: 'Data' },
+                          { value: 'select', label: 'Seleção' }
+                        ]}
+                        size="sm"
+                        className="w-full"
+                      />
+                      <input
+                        type="text"
+                        value={selectedNode.config.propertyPrompt || ''}
+                        onChange={e => handleUpdateSelectedNode({ config: { ...selectedNode.config, propertyPrompt: e.target.value } })}
+                        placeholder="Instrução para a IA (ex: extrair data em AAAA-MM-DD)..."
+                        className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-300 focus:outline-none"
                       />
                     </div>
                   </div>

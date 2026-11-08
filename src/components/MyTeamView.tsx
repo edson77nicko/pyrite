@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type {
   AgentActionPermission,
   AgentArtifact,
@@ -19,6 +19,8 @@ import {
   executeAgentRun,
   executeWorkflowRun,
   type WorkflowCommitNoteFn,
+  type WorkflowCommitTasksFn,
+  registerWorkflowCommitTasks,
   resumeWorkflowRun,
   formatCentsBRL,
   generateAgentDraftFromPrompt,
@@ -623,6 +625,54 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     }
   }
 
+  // Grava de verdade as tarefas geradas pelo fluxo no quadro/projeto
+  const workflowCommitTasks: WorkflowCommitTasksFn = useCallback(async ({ boardId, tasks: tasksList }: Parameters<WorkflowCommitTasksFn>[0]) => {
+    try {
+      const createdIds: string[] = []
+      let effectiveBoardId = boardId
+      if (!effectiveBoardId || effectiveBoardId === 'default') {
+        effectiveBoardId = taskBoards.find(b => b.category === 'project')?.id || taskBoards[0]?.id || 'default'
+      } else {
+        const found = taskBoards.find(b => b.id === effectiveBoardId)
+        if (!found && taskBoards[0]) {
+          effectiveBoardId = taskBoards[0].id
+        }
+      }
+
+      for (const t of tasksList) {
+        const item = onCreateTask(t.title, {
+          boardId: effectiveBoardId,
+          description: t.description || '',
+          priority: (t.priority as any) || 'medium',
+          statusId: t.statusId || 'todo',
+          customValues: t.customValues || {}
+        })
+        if (item?.id) {
+          createdIds.push(item.id)
+        }
+      }
+
+      return {
+        success: true,
+        createdCount: createdIds.length,
+        taskIds: createdIds
+      }
+    } catch (err: any) {
+      console.error('Erro ao gravar tarefas no quadro:', err)
+      return {
+        success: false,
+        createdCount: 0,
+        taskIds: [],
+        error: err?.message || 'Falha ao salvar tarefas no quadro'
+      }
+    }
+  }, [onCreateTask, taskBoards])
+
+  useEffect(() => {
+    registerWorkflowCommitTasks(workflowCommitTasks)
+    return () => registerWorkflowCommitTasks(null)
+  }, [workflowCommitTasks])
+
   // Salva a execução do fluxo na store e registra as entregas gravadas
   const persistWorkflowRun = async (run: AgentRun, mode: 'prepend' | 'replace') => {
     const knownArtifactIds = new Set(store.artifacts.map(a => a.id))
@@ -647,7 +697,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         allAgents: store.agents,
         allNotes: notes,
         allProjects: allUnifiedAsProjects,
-        commitNote: workflowCommitNote
+        commitNote: workflowCommitNote,
+        commitTasks: workflowCommitTasks
       })
       await persistWorkflowRun(resumed, 'replace')
       setSelectedRunId(resumed.id)
@@ -3527,7 +3578,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   projectContext: proj,
                   explicitClientName: proj?.clientName,
                   isTestRun: isTest,
-                  commitNote: workflowCommitNote
+                  commitNote: workflowCommitNote,
+                  commitTasks: workflowCommitTasks
                 })
                 await persistWorkflowRun(wfRun, 'prepend')
                 setSelectedRunId(wfRun.id)
@@ -3556,6 +3608,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               await handleDirectApproveWorkflowRun(pausedRun)
             }}
             isExecuting={isExecuting}
+            commitTasks={workflowCommitTasks}
             />
           </ErrorBoundary>
         )}

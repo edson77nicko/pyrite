@@ -150,9 +150,10 @@ export function CustomSelect<T extends string = string>({
       {isOpen && (
         <div
           data-no-pan="true"
+          onWheel={e => e.stopPropagation()}
           className={`absolute ${
             openUpwards ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-          } left-0 w-full min-w-[170px] max-w-xs bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl p-1 z-50 flex flex-col text-xs animate-in fade-in zoom-in-95 duration-100 ${dropdownClassName}`}
+          } left-0 w-full min-w-[170px] max-w-xs bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl p-1 z-50 flex flex-col text-xs animate-in fade-in zoom-in-95 duration-100 overscroll-contain ${dropdownClassName}`}
           style={{ maxHeight: 260 }}
         >
           {(searchable || options.length > 7) && (
@@ -179,7 +180,10 @@ export function CustomSelect<T extends string = string>({
             </div>
           )}
 
-          <div className="overflow-y-auto space-y-0.5 custom-chat-scrollbar max-h-52 pr-0.5">
+          <div
+            onWheel={e => e.stopPropagation()}
+            className="overflow-y-auto space-y-0.5 custom-chat-scrollbar max-h-52 pr-0.5 overscroll-contain"
+          >
             {filteredOptions.length === 0 ? (
               <div className="text-[11px] text-zinc-500 py-2 text-center">
                 Nenhum resultado

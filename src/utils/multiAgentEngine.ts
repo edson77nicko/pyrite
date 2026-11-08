@@ -3203,15 +3203,20 @@ export function validateWorkflowDefinition(
   const nodes = Array.isArray(workflow.nodes) ? workflow.nodes : []
   const edges = Array.isArray(workflow.edges) ? workflow.edges : []
 
-  const inputNodes = nodes.filter(n => n.kind === 'input')
-
-  if (inputNodes.length === 0) errors.push('O fluxo precisa ter pelo menos um bloco "Gatilho".')
+  // Filtra nós funcionais (ignora notas adesivas e tarjas de título)
+  const functionalNodes = nodes.filter(n => n.kind !== 'sticky_note' && n.kind !== 'text_block')
+  if (functionalNodes.length === 0) {
+    return { valid: false, errors: ['Adicione ao menos uma etapa funcional ao fluxo.'] }
+  }
 
   const validNodeIds = new Set(nodes.map(n => n.id))
-  for (const edge of edges) {
-    if (!validNodeIds.has(edge.sourceNodeId) || !validNodeIds.has(edge.targetNodeId)) {
-      errors.push('O fluxo contém conexão apontando para bloco inexistente.')
-    }
+
+  // Considerar apenas conexões entre nós que de fato existem no canvas
+  const activeEdges = edges.filter(
+    e => validNodeIds.has(e.sourceNodeId) && validNodeIds.has(e.targetNodeId)
+  )
+
+  for (const edge of activeEdges) {
     if (edge.sourceNodeId === edge.targetNodeId) {
       errors.push('O fluxo contém um ciclo inválido (auto-conexão).')
     }
@@ -3222,7 +3227,7 @@ export function validateWorkflowDefinition(
   let hasCycle = false
   const dfsCycle = (nodeId: string) => {
     state.set(nodeId, 'visiting')
-    for (const edge of edges) {
+    for (const edge of activeEdges) {
       if (edge.sourceNodeId !== nodeId) continue
       const targetState = state.get(edge.targetNodeId) || 'unvisited'
       if (targetState === 'visiting') {
@@ -3233,7 +3238,7 @@ export function validateWorkflowDefinition(
     }
     state.set(nodeId, 'visited')
   }
-  for (const node of nodes) {
+  for (const node of functionalNodes) {
     if ((state.get(node.id) || 'unvisited') === 'unvisited') {
       dfsCycle(node.id)
     }
@@ -3242,35 +3247,19 @@ export function validateWorkflowDefinition(
     errors.push('O fluxo contém um ciclo inválido entre blocos.')
   }
 
-  // Alcançabilidade a partir de input
-  const reachableFromInput = new Set<string>()
-  const q = inputNodes.map(n => n.id)
-  for (const id of q) reachableFromInput.add(id)
-  while (q.length > 0) {
-    const curr = q.shift()!
-    for (const edge of edges) {
-      if (edge.sourceNodeId === curr && !reachableFromInput.has(edge.targetNodeId)) {
-        reachableFromInput.add(edge.targetNodeId)
-        q.push(edge.targetNodeId)
-      }
+  for (const node of functionalNodes) {
+    const hasIncoming = activeEdges.some(e => e.targetNodeId === node.id)
+    const hasOutgoing = activeEdges.some(e => e.sourceNodeId === node.id)
+
+    // Se o fluxo tem múltiplos blocos e este bloco está totalmente isolado (sem conexões)
+    if (functionalNodes.length > 1 && !hasIncoming && !hasOutgoing) {
+      errors.push(`O bloco "${node.label || 'Etapa'}" está solto (sem conexões de entrada ou saída).`)
     }
-  }
-
-  for (const node of nodes) {
-    // Ignorar elementos visuais de apoio (notas adesivas e tarjas de título) na validação de grafo
-    if (node.kind === 'sticky_note' || node.kind === 'text_block') continue
-
-    const hasIncoming = edges.some(e => e.targetNodeId === node.id)
-    const hasOutgoing = edges.some(e => e.sourceNodeId === node.id)
-
-    if (node.kind !== 'input' && (!hasIncoming || !reachableFromInput.has(node.id))) {
-      errors.push(`O bloco "${node.label || 'Etapa'}" está desconectado do fluxo principal.`)
-    }
-    if (node.kind === 'input' && !hasOutgoing) {
+    if (node.kind === 'input' && functionalNodes.length > 1 && !hasOutgoing) {
       errors.push(`O Gatilho "${node.label || 'Gatilho'}" precisa ser conectado à primeira etapa do fluxo.`)
     }
-    if (node.kind === 'condition' && !hasOutgoing) {
-      errors.push(`O bloco de Condição "${node.label || 'Condição'}" precisa ter pelo menos uma ramificação conectada.`)
+    if (node.kind === 'condition' && functionalNodes.length > 1 && !hasOutgoing) {
+      errors.push(`O bloco de Condição "${node.label || 'Condição'}" precisa ter ao menos uma ramificação conectada.`)
     }
 
     if (node.kind === 'run_agent') {
@@ -3712,8 +3701,38 @@ async function traverseWorkflowGraph(params: {
       }
     }
   } else {
-    for (const n of workflow.nodes.filter(item => item.kind === 'input')) {
-      activeQueue.push(n.id)
+    // Nós raízes (sem conexões de entrada): se houver 'input', começa por eles;
+    // se não houver 'input', começa por todas as etapas raízes funcionais
+    const inputNodes = workflow.nodes.filter(item => item.kind === 'input')
+    if (inputNodes.length > 0) {
+      for (const n of inputNodes) {
+        activeQueue.push(n.id)
+      }
+      // Também adiciona nós raízes do tipo read_note (prompts e templates que alimentam o fluxo)
+      for (const n of workflow.nodes) {
+        if (
+          n.kind === 'read_note' &&
+          !workflow.edges.some(e => e.targetNodeId === n.id) &&
+          !activeQueue.includes(n.id)
+        ) {
+          activeQueue.push(n.id)
+        }
+      }
+    } else {
+      // Se não há bloco 'input' explícito, todas as raízes funcionais iniciam o fluxo
+      const rootNodes = workflow.nodes.filter(n =>
+        n.kind !== 'sticky_note' &&
+        n.kind !== 'text_block' &&
+        !workflow.edges.some(e => e.targetNodeId === n.id)
+      )
+      if (rootNodes.length > 0) {
+        for (const r of rootNodes) {
+          activeQueue.push(r.id)
+        }
+      } else if (workflow.nodes.length > 0) {
+        const first = workflow.nodes.find(n => n.kind !== 'sticky_note' && n.kind !== 'text_block')
+        if (first) activeQueue.push(first.id)
+      }
     }
   }
 
@@ -4241,7 +4260,16 @@ Responda com o valor direto e sucinto da propriedade (por exemplo, se for data: 
         customValues?: Record<string, any>
       }> = []
 
-      if (taskMode === 'auto_ai') {
+      if (taskMode === 'single') {
+        const title = node.config.taskTitleTemplate?.trim() || `Tarefa do Fluxo: ${workflow.name}`
+        tasksToCreate = [{
+          title,
+          description: clip(prevContent, 2000),
+          priority: defaultPriority,
+          statusId: 'todo',
+          customValues: { ...workflowContext.properties }
+        }]
+      } else if (taskMode === 'auto_ai' || taskMode === 'extract_checklist') {
         const extractPrompt = `Você é um assistente de gestão de projetos.
 Analise a entrada a seguir e extraia as tarefas / itens de ação acionáveis.
 Responda APENAS com um array JSON estrito no seguinte formato:
@@ -4498,6 +4526,7 @@ export async function executeWorkflowSingleNode(params: {
   allNotes: Note[]
   allProjects: ProjectContext[]
   prompt?: string
+  commitTasks?: WorkflowCommitTasksFn
 }): Promise<{ output: string; branchTaken?: 'yes' | 'no' }> {
   const { node, allAgents, allNotes, allProjects, prompt = '' } = params
 
@@ -4665,34 +4694,87 @@ Responda com o valor direto, conciso, sem markdown ou explicações adicionais.`
       }
     }
 
-    let tasksExtracted: Array<{ title: string; priority: string }> = []
+    let tasksExtracted: Array<{ title: string; priority: string; description?: string }> = []
 
-    if (taskMode === 'auto_ai' && prompt) {
-      const extractPrompt = `Analise a entrada e extraia itens de ação/tarefas em JSON estrito: [{"title": "...", "priority": "high"|"normal"|"low"}]. Responda APENAS com o JSON.\n\n--- entrada ---\n${clip(prompt, 4000)}`
-      const aiRes = await callWorkflowAi({ system: 'Você extrai tarefas em JSON estrito.', user: extractPrompt })
-      if (aiRes.success && aiRes.text) {
-        try {
-          const raw = aiRes.text.trim()
-          const jsonMatch = raw.match(/\[\s*\{[\s\S]*\}\s*\]/)
-          const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw)
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            tasksExtracted = parsed.map(t => ({
-              title: String(t.title || 'Nova Tarefa').trim(),
-              priority: ['urgent', 'high', 'normal', 'low'].includes(t.priority) ? t.priority : defaultPriority
-            }))
-          }
-        } catch {}
+    if (taskMode === 'single') {
+      const singleTitle = node.config.taskTitleTemplate?.trim() || (prompt ? clip(prompt, 80) : 'Nova Tarefa')
+      tasksExtracted = [{
+        title: singleTitle,
+        description: prompt ? clip(prompt, 1000) : '',
+        priority: defaultPriority
+      }]
+    } else if (taskMode === 'auto_ai' || taskMode === 'extract_checklist') {
+      if (prompt) {
+        const extractPrompt = `Analise a entrada e extraia itens de ação/tarefas em JSON estrito: [{"title": "...", "description": "...", "priority": "urgent"|"high"|"normal"|"low"}]. Responda APENAS com o JSON.\n\n--- entrada ---\n${clip(prompt, 4000)}`
+        const aiRes = await callWorkflowAi({ system: 'Você extrai tarefas em JSON estrito.', user: extractPrompt })
+        if (aiRes.success && aiRes.text) {
+          try {
+            const raw = aiRes.text.trim()
+            const jsonMatch = raw.match(/\[\s*\{[\s\S]*\}\s*\]/)
+            const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw)
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              tasksExtracted = parsed.map(t => ({
+                title: String(t.title || 'Nova Tarefa').trim(),
+                description: t.description ? String(t.description).trim() : '',
+                priority: ['urgent', 'high', 'normal', 'low'].includes(t.priority) ? t.priority : defaultPriority
+              }))
+            }
+          } catch {}
+        }
+      }
+      if (tasksExtracted.length === 0) {
+        tasksExtracted = [{
+          title: node.config.taskTitleTemplate?.trim() || 'Nova Tarefa do Fluxo',
+          description: prompt ? clip(prompt, 1000) : '',
+          priority: defaultPriority
+        }]
       }
     }
 
-    if (tasksExtracted.length === 0) {
-      tasksExtracted = [{
-        title: node.config.taskTitleTemplate || 'Nova Tarefa do Fluxo',
-        priority: defaultPriority
-      }]
+    // Gravação real no quadro / projeto via commitTasks
+    const effectiveCommitTasks = params.commitTasks || registeredWorkflowCommitTasks
+    let createdCount = 0
+    let commitError = ''
+
+    if (effectiveCommitTasks) {
+      try {
+        const res = await effectiveCommitTasks({
+          boardId: targetBoard,
+          tasks: tasksExtracted.map(t => ({
+            title: t.title,
+            description: t.description || (prompt ? clip(prompt, 1000) : ''),
+            priority: t.priority,
+            statusId: 'todo',
+            customValues: propName && val ? { [propName]: val } : {}
+          })),
+          propertiesToEnsure: (node.config.autoCreateProperty && propName)
+            ? [{ name: propName, type: propType }]
+            : []
+        })
+        if (res.success) {
+          createdCount = res.createdCount
+        } else if (res.error) {
+          commitError = res.error
+        }
+      } catch (err: any) {
+        commitError = err?.message || 'Falha ao salvar tarefas no quadro'
+      }
     }
 
-    let out = `Teste do Gerenciador de Tarefas:\n` + tasksExtracted.map(t => `• [${t.priority}] ${t.title}`).join('\n') + `\n\nQuadro/Projeto de Destino: ${targetBoard}`
+    let out = ''
+    if (createdCount > 0) {
+      out = `✅ ${createdCount} tarefa(s) criada(s) com sucesso no projeto/quadro:\n` +
+        tasksExtracted.map(t => `• [${t.priority}] ${t.title}`).join('\n') +
+        `\n\nQuadro/Projeto de Destino: ${targetBoard}`
+    } else if (commitError) {
+      out = `⚠️ Tarefas identificadas, mas ocorreu erro ao salvar (${commitError}):\n` +
+        tasksExtracted.map(t => `• [${t.priority}] ${t.title}`).join('\n')
+    } else {
+      out = `Tarefas identificadas:\n` +
+        tasksExtracted.map(t => `• [${t.priority}] ${t.title}`).join('\n') +
+        `\n\nQuadro/Projeto de Destino: ${targetBoard}`
+    }
+
     if (propName) {
       out += `\n\nPropriedade gerenciada:\n• ${propName}: ${val}`
     }

@@ -104,7 +104,8 @@ export const CustomNotePicker: React.FC<CustomNotePickerProps> = ({
       {isOpen && (
         <div
           data-no-pan="true"
-          className="absolute top-full mt-1.5 left-0 w-full min-w-[240px] max-w-sm bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl p-1.5 z-50 flex flex-col text-xs animate-in fade-in zoom-in-95 duration-100"
+          onWheel={e => e.stopPropagation()}
+          className="absolute top-full mt-1.5 left-0 w-full min-w-[240px] max-w-sm bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl p-1.5 z-50 flex flex-col text-xs animate-in fade-in zoom-in-95 duration-100 overscroll-contain"
           style={{ maxHeight: 280 }}
         >
           {/* Campo de Busca Rápida */}
@@ -147,7 +148,10 @@ export const CustomNotePicker: React.FC<CustomNotePickerProps> = ({
           )}
 
           {/* Lista de Notas */}
-          <div className="overflow-y-auto space-y-0.5 custom-chat-scrollbar max-h-52 pr-0.5">
+          <div
+            onWheel={e => e.stopPropagation()}
+            className="overflow-y-auto space-y-0.5 custom-chat-scrollbar max-h-52 pr-0.5 overscroll-contain"
+          >
             {filteredNotes.length === 0 ? (
               <div className="text-[11px] text-zinc-500 py-3 text-center">
                 Nenhuma nota encontrada
