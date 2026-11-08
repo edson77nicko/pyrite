@@ -3739,6 +3739,14 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 setUseTeamDelegation(true)
                 setActiveSection('agents')
               }}
+              onSaveAgent={async updatedAgent => {
+                const nextAgents = (store.agents || []).map(a => a.id === updatedAgent.id ? updatedAgent : a)
+                await onUpdateStore({ ...store, agents: nextAgents })
+              }}
+              onOpenAgentChat={agentId => {
+                setSelectedAgentId(agentId)
+                setActiveSection('agents')
+              }}
             />
           </ErrorBoundary>
         )}

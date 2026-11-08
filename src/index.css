@@ -2337,6 +2337,90 @@ body {
   background-color: #ededf2 !important;
 }
 
+/* =========================================================================
+   3D ORGANOGRAMA CYBERNETIC COMMAND CENTER ANIMATIONS
+   ========================================================================= */
+@keyframes conduitFlow {
+  from {
+    stroke-dashoffset: 80;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes cyberCorePulse {
+  0%, 100% {
+    box-shadow: 0 0 25px rgba(56, 189, 248, 0.4), inset 0 0 15px rgba(56, 189, 248, 0.2);
+    border-color: rgba(56, 189, 248, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 45px rgba(56, 189, 248, 0.75), inset 0 0 25px rgba(56, 189, 248, 0.4);
+    border-color: rgba(56, 189, 248, 1);
+  }
+}
+
+@keyframes turntable3d {
+  0% {
+    transform: perspective(600px) rotateX(16deg) rotateY(0deg);
+  }
+  100% {
+    transform: perspective(600px) rotateX(16deg) rotateY(360deg);
+  }
+}
+
+@keyframes cyberOrbitSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cyberOrbitSpinRev {
+  0% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes cyberFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.animate-conduit-flow {
+  animation: conduitFlow 2s linear infinite;
+}
+
+.animate-cyber-core {
+  animation: cyberCorePulse 3s ease-in-out infinite;
+}
+
+.animate-turntable-3d {
+  animation: turntable3d 18s linear infinite;
+}
+
+.animate-orbit-spin {
+  animation: cyberOrbitSpin 28s linear infinite;
+}
+
+.animate-orbit-spin-rev {
+  animation: cyberOrbitSpinRev 42s linear infinite;
+}
+
+.animate-cyber-float {
+  animation: cyberFloat 4s ease-in-out infinite;
+}
+
+
 
 
 

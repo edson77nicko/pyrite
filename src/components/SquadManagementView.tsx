@@ -18,12 +18,11 @@ import {
   ChevronUp,
   Sparkles,
   Building2,
-  ShieldCheck,
-  ArrowLeft,
-  ChevronRight
+  ArrowLeft
 } from 'lucide-react'
 import { AgentIcon } from './AgentIcon'
 import { renderDynamicIcon, IconPickerPopover } from './IconPickerPopover'
+import { Organogram3DView } from './Organogram3DView'
 
 interface SquadManagementViewProps {
   squads: TeamDefinition[]
@@ -34,6 +33,8 @@ interface SquadManagementViewProps {
   onSaveSquad: (squad: TeamDefinition) => void
   onDeleteSquad: (squadId: string) => void
   onOpenSquadChat: (squad: TeamDefinition) => void
+  onSaveAgent?: (agent: AgentProfileVersion) => void
+  onOpenAgentChat?: (agentId: string) => void
 }
 
 const OUTPUT_TYPE_CONFIG: Record<
@@ -159,7 +160,9 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
   onSelectSquad,
   onSaveSquad,
   onDeleteSquad,
-  onOpenSquadChat
+  onOpenSquadChat,
+  onSaveAgent,
+  onOpenAgentChat
 }) => {
   // Identifica se estamos na visão de Organograma Geral ou em um Esquadrão específico
   const isOverview = selectedSquadId === 'overview' || !selectedSquadId
@@ -200,15 +203,6 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
   const cardSocketsRef = useRef<Record<string, HTMLDivElement | null>>({})
   const [cablePaths, setCablePaths] = useState<
     { id: string; d: string; active: boolean; side: 'left' | 'right' }[]
-  >([])
-
-  // Refs para cabos SVG do Organograma do Cofre
-  const organoContainerRef = useRef<HTMLDivElement | null>(null)
-  const vaultHubRef = useRef<HTMLDivElement | null>(null)
-  const squadNodesRef = useRef<Record<string, HTMLDivElement | null>>({})
-  const agentChipsRef = useRef<Record<string, HTMLDivElement | null>>({})
-  const [organoCables, setOrganoCables] = useState<
-    { id: string; d: string; color: string; isPulse?: boolean }[]
   >([])
 
   // Obter pipeline do esquadrão ativo com fallback retrocompatível
@@ -358,108 +352,6 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       observer.disconnect()
     }
   }, [recalculateCables, expandedCardIds, activeSquad?.id, isOverview])
-
-  // ====================================================================
-  // 2. CÁLCULO DOS CABOS SVG DO ORGANOGRAMA GERAL (CEO -> SQUADS -> AGENTS)
-  // ====================================================================
-  const recalculateOrganoCables = useCallback(() => {
-    if (!organoContainerRef.current || !vaultHubRef.current) return
-
-    const containerRect = organoContainerRef.current.getBoundingClientRect()
-    const vaultRect = vaultHubRef.current.getBoundingClientRect()
-
-    const vCenterX = vaultRect.left + vaultRect.width / 2 - containerRect.left
-    const vCenterY = vaultRect.top + vaultRect.height / 2 - containerRect.top
-    const vLeftX = vaultRect.left - containerRect.left
-    const vRightX = vaultRect.right - containerRect.left
-
-    const paths: { id: string; d: string; color: string; isPulse?: boolean }[] = []
-
-    squads.forEach(sq => {
-      const sqEl = squadNodesRef.current[sq.id]
-      if (!sqEl) return
-      const sqRect = sqEl.getBoundingClientRect()
-      const sqCenterX = sqRect.left + sqRect.width / 2 - containerRect.left
-      const sqCenterY = sqRect.top + sqRect.height / 2 - containerRect.top
-
-      // Conexão Cofre (CEO) -> Esquadrão
-      const isLeft = sqCenterX < vCenterX
-      const startX = isLeft ? vLeftX + 6 : vRightX - 6
-      const startY = vCenterY
-      const targetX = isLeft ? sqRect.right - containerRect.left - 4 : sqRect.left - containerRect.left + 4
-      const targetY = sqCenterY
-
-      const cp1X = startX + (targetX - startX) * 0.5
-      const cp1Y = startY
-      const cp2X = targetX - (targetX - startX) * 0.3
-      const cp2Y = targetY
-
-      paths.push({
-        id: `vault-to-${sq.id}`,
-        d: `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${targetX} ${targetY}`,
-        color: 'var(--accent, #fbbf24)',
-        isPulse: true
-      })
-
-      // Conexão Esquadrão -> Agentes membros
-      const pipeline = getSquadPipeline(sq)
-      pipeline.forEach(step => {
-        const agEl = agentChipsRef.current[`${sq.id}_${step.agentId}`]
-        if (!agEl) return
-        const agRect = agEl.getBoundingClientRect()
-
-        const agPortX = isLeft
-          ? agRect.right - containerRect.left
-          : agRect.left - containerRect.left
-        const agPortY = agRect.top + agRect.height / 2 - containerRect.top
-
-        const squadPortX = isLeft
-          ? sqRect.left - containerRect.left + 6
-          : sqRect.right - containerRect.left - 6
-        const squadPortY = sqCenterY
-
-        const acp1X = squadPortX + (agPortX - squadPortX) * 0.45
-        const acp1Y = squadPortY
-        const acp2X = agPortX - (agPortX - squadPortX) * 0.45
-        const acp2Y = agPortY
-
-        paths.push({
-          id: `squad-${sq.id}-to-agent-${step.agentId}`,
-          d: `M ${squadPortX} ${squadPortY} C ${acp1X} ${acp1Y}, ${acp2X} ${acp2Y}, ${agPortX} ${agPortY}`,
-          color: step.enabled !== false ? 'var(--accent, #38bdf8)' : '#52525b',
-          isPulse: step.enabled !== false
-        })
-      })
-    })
-
-    setOrganoCables(paths)
-  }, [squads, getSquadPipeline])
-
-  useEffect(() => {
-    if (!isOverview) return
-
-    let rafId: number
-    const scheduleRecalc = () => {
-      cancelAnimationFrame(rafId)
-      rafId = requestAnimationFrame(() => recalculateOrganoCables())
-    }
-
-    scheduleRecalc()
-    const timer1 = setTimeout(scheduleRecalc, 80)
-    const timer2 = setTimeout(scheduleRecalc, 250)
-
-    window.addEventListener('resize', scheduleRecalc)
-    const observer = new ResizeObserver(() => scheduleRecalc())
-    if (organoContainerRef.current) observer.observe(organoContainerRef.current)
-
-    return () => {
-      cancelAnimationFrame(rafId)
-      clearTimeout(timer1)
-      clearTimeout(timer2)
-      window.removeEventListener('resize', scheduleRecalc)
-      observer.disconnect()
-    }
-  }, [recalculateOrganoCables, isOverview, squads])
 
   // Alternar conexão do agente (Toggle ON/OFF)
   const handleToggleStepConnection = (stepId: string) => {
@@ -821,294 +713,6 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
           </div>
         )}
       </div>
-    )
-  }
-
-  // ====================================================================
-  // 4. RENDERIZADOR DO ORGANOGRAMA DO COFRE (PÁGINA INTERNA INICIAL)
-  // ====================================================================
-  const renderOrganograma = () => {
-    // Dividir esquadrões de forma simétrica entre esquerda e direita
-    const leftSquads = squads.filter((_, idx) => idx % 2 === 0)
-    const rightSquads = squads.filter((_, idx) => idx % 2 === 1)
-
-    const totalUniqueAgents = new Set(
-      squads.flatMap(sq => getSquadPipeline(sq).map(p => p.agentId))
-    ).size
-
-    return (
-      <main className="flex-1 overflow-y-auto custom-chat-scrollbar p-6 pb-20 flex flex-col items-center justify-start min-h-full">
-        <div
-          ref={organoContainerRef}
-          className="w-full max-w-6xl rounded-3xl bg-[#0f0f13] border border-zinc-800/90 p-8 shadow-2xl relative flex flex-col min-h-fit shrink-0"
-        >
-          {/* Camada SVG dos Cabos do Organograma */}
-          <svg className="absolute inset-0 pointer-events-none w-full h-full z-10 overflow-visible">
-            <defs>
-              <filter id="glow-organo" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="3" result="blur" />
-                <feComposite in="SourceGraphic" in2="blur" operator="over" />
-              </filter>
-            </defs>
-
-            {organoCables.map(c => (
-              <g key={`organo-cable-${c.id}`}>
-                <path
-                  d={c.d}
-                  fill="none"
-                  stroke={c.color}
-                  strokeWidth="3.5"
-                  strokeOpacity="0.25"
-                  filter="url(#glow-organo)"
-                />
-                <path
-                  d={c.d}
-                  fill="none"
-                  stroke={c.color}
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-                {c.isPulse && (
-                  <circle r="2.5" fill="#ffffff">
-                    <animateMotion dur="2.8s" repeatCount="indefinite" path={c.d} />
-                  </circle>
-                )}
-              </g>
-            ))}
-          </svg>
-
-          {/* Cabeçalho do Organograma */}
-          <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-zinc-800/70 z-20">
-            <div className="space-y-1">
-              <div className="text-[10px] font-mono tracking-wider text-zinc-500 uppercase flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-[var(--accent)]" />
-                <span>GOVERNANÇA CORPORATIVA • ORGANOGRAMA DO COFRE</span>
-              </div>
-              <h1 className="text-xl font-bold text-zinc-100 tracking-tight flex items-center gap-2">
-                <span>{vaultName}</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-[var(--accent)] font-medium">
-                  CEO / Governança
-                </span>
-              </h1>
-              <p className="text-xs text-zinc-400">
-                Visão global da estrutura operacional conectando o Cofre aos Departamentos e seus Especialistas.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#16161a] border border-zinc-800 text-xs text-zinc-300">
-                <Users className="w-3.5 h-3.5 text-[var(--accent)]" />
-                <span>
-                  <strong className="text-zinc-100">{squads.length}</strong> Departamentos
-                </span>
-                <span className="text-zinc-600">•</span>
-                <span>
-                  <strong className="text-zinc-100">{totalUniqueAgents}</strong> Especialistas
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setNewSquadLeadAgentId(agents[0]?.id || '')
-                  setNewSquadIcon('Users')
-                  setIsNewSquadModalOpen(true)
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--accent)] hover:brightness-110 text-zinc-950 font-semibold text-xs transition-all cursor-pointer shadow-sm active:scale-95"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Novo Esquadrão</span>
-              </button>
-            </div>
-          </div>
-
-          {/* ESTRUTURA DO ORGANOGRAMA (COLUNA ESQUERDA | COFRE NO CENTRO | COLUNA DIREITA) */}
-          <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 pt-10 z-20 items-center">
-            {/* 1. Departamentos da Esquerda */}
-            <div className="space-y-6">
-              {leftSquads.map(sq => {
-                const pipeline = getSquadPipeline(sq)
-                const actCount = pipeline.filter(p => p.enabled !== false).length
-
-                return (
-                  <div
-                    key={`org-sq-${sq.id}`}
-                    ref={el => {
-                      squadNodesRef.current[sq.id] = el
-                    }}
-                    className="p-4 rounded-2xl bg-[#141418] border border-zinc-800 hover:border-[var(--accent)]/50 transition-all shadow-lg group relative"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-9 h-9 rounded-xl bg-zinc-800/90 border border-zinc-700/60 flex items-center justify-center text-zinc-200 shrink-0">
-                          {renderDynamicIcon(sq.icon || 'Users', 'w-4 h-4 text-[var(--accent)]')}
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="font-semibold text-xs text-zinc-100 truncate group-hover:text-white">
-                            {sq.name}
-                          </h3>
-                          <div className="text-[10.5px] text-zinc-400 truncate mt-0.5">
-                            {actCount}/{pipeline.length} especialistas ativos
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => onSelectSquad(sq.id)}
-                        className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10.5px] font-medium flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                      >
-                        <span>Gerenciar</span>
-                        <ChevronRight className="w-3 h-3 text-[var(--accent)]" />
-                      </button>
-                    </div>
-
-                    {/* Chips dos Especialistas deste Esquadrão */}
-                    <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex flex-wrap gap-1.5">
-                      {pipeline.map(step => {
-                        const ag = agents.find(a => a.id === step.agentId)
-                        const isStepActive = step.enabled !== false
-                        return (
-                          <div
-                            key={`org-chip-${sq.id}-${step.agentId}`}
-                            ref={el => {
-                              agentChipsRef.current[`${sq.id}_${step.agentId}`] = el
-                            }}
-                            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10.5px] ${
-                              isStepActive
-                                ? 'bg-zinc-900/90 border-zinc-700/70 text-zinc-200'
-                                : 'bg-zinc-900/40 border-zinc-800 text-zinc-500 opacity-60'
-                            }`}
-                          >
-                            <AgentIcon variant={ag?.icon} size={16} className="shrink-0 rounded-sm" />
-                            <span className="truncate max-w-[90px]">{ag?.name || 'Agente'}</span>
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                isStepActive ? 'bg-emerald-400' : 'bg-zinc-600'
-                              }`}
-                            />
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-
-              {leftSquads.length === 0 && (
-                <div className="p-6 text-center text-xs text-zinc-600 border border-dashed border-zinc-800/60 rounded-2xl">
-                  Nenhum departamento alocado deste lado.
-                </div>
-              )}
-            </div>
-
-            {/* 2. O COFRE NO CENTRO (CEO DO NEGÓCIO) */}
-            <div className="flex flex-col items-center justify-center p-2">
-              <div
-                ref={vaultHubRef}
-                className="relative w-40 h-40 rounded-full border-2 border-[var(--accent)]/50 bg-[#121217] flex flex-col items-center justify-center shadow-2xl z-30 group select-none transition-transform hover:scale-105"
-              >
-                {/* Anéis luminosos de Governança / CEO */}
-                <div className="absolute -inset-3 rounded-full border border-[var(--accent)]/30 opacity-70 animate-pulse pointer-events-none" />
-                <div className="absolute -inset-6 rounded-full border border-[var(--accent)]/15 opacity-40 pointer-events-none" />
-
-                <div className="w-12 h-12 rounded-2xl bg-[var(--accent)]/15 border border-[var(--accent)]/40 flex items-center justify-center text-[var(--accent)] mb-1.5 shadow-md">
-                  <ShieldCheck className="w-6 h-6 text-[var(--accent)]" />
-                </div>
-                <span className="text-xs font-bold text-zinc-100 tracking-tight text-center px-2 truncate max-w-[140px]">
-                  {vaultName}
-                </span>
-                <span className="text-[10px] text-[var(--accent)] font-semibold tracking-wide uppercase mt-0.5">
-                  CEO / Cofre
-                </span>
-                <span className="text-[9.5px] text-zinc-400 font-mono mt-0.5">
-                  {squads.length} departamentos
-                </span>
-              </div>
-            </div>
-
-            {/* 3. Departamentos da Direita */}
-            <div className="space-y-6">
-              {rightSquads.map(sq => {
-                const pipeline = getSquadPipeline(sq)
-                const actCount = pipeline.filter(p => p.enabled !== false).length
-
-                return (
-                  <div
-                    key={`org-sq-${sq.id}`}
-                    ref={el => {
-                      squadNodesRef.current[sq.id] = el
-                    }}
-                    className="p-4 rounded-2xl bg-[#141418] border border-zinc-800 hover:border-[var(--accent)]/50 transition-all shadow-lg group relative"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-9 h-9 rounded-xl bg-zinc-800/90 border border-zinc-700/60 flex items-center justify-center text-zinc-200 shrink-0">
-                          {renderDynamicIcon(sq.icon || 'Users', 'w-4 h-4 text-[var(--accent)]')}
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="font-semibold text-xs text-zinc-100 truncate group-hover:text-white">
-                            {sq.name}
-                          </h3>
-                          <div className="text-[10.5px] text-zinc-400 truncate mt-0.5">
-                            {actCount}/{pipeline.length} especialistas ativos
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => onSelectSquad(sq.id)}
-                        className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10.5px] font-medium flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                      >
-                        <span>Gerenciar</span>
-                        <ChevronRight className="w-3 h-3 text-[var(--accent)]" />
-                      </button>
-                    </div>
-
-                    {/* Chips dos Especialistas deste Esquadrão */}
-                    <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex flex-wrap gap-1.5">
-                      {pipeline.map(step => {
-                        const ag = agents.find(a => a.id === step.agentId)
-                        const isStepActive = step.enabled !== false
-                        return (
-                          <div
-                            key={`org-chip-${sq.id}-${step.agentId}`}
-                            ref={el => {
-                              agentChipsRef.current[`${sq.id}_${step.agentId}`] = el
-                            }}
-                            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10.5px] ${
-                              isStepActive
-                                ? 'bg-zinc-900/90 border-zinc-700/70 text-zinc-200'
-                                : 'bg-zinc-900/40 border-zinc-800 text-zinc-500 opacity-60'
-                            }`}
-                          >
-                            <AgentIcon variant={ag?.icon} size={16} className="shrink-0 rounded-sm" />
-                            <span className="truncate max-w-[90px]">{ag?.name || 'Agente'}</span>
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                isStepActive ? 'bg-emerald-400' : 'bg-zinc-600'
-                              }`}
-                            />
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-
-              {rightSquads.length === 0 && (
-                <div className="p-6 text-center text-xs text-zinc-600 border border-dashed border-zinc-800/60 rounded-2xl">
-                  {leftSquads.length > 0
-                    ? 'Crie novos departamentos para balancear a estrutura.'
-                    : 'Nenhum departamento cadastrado no cofre.'}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </main>
     )
   }
 
@@ -1522,7 +1126,26 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       {/* ==================================================================== */}
       {/* PAINEL CENTRAL: ORGANOGRAMA DO COFRE OU DETALHE DO ESQUADRÃO         */}
       {/* ==================================================================== */}
-      {isOverview ? renderOrganograma() : renderSquadDetail()}
+      {isOverview ? (
+        <Organogram3DView
+          squads={squads}
+          agents={agents}
+          vaultName={vaultName}
+          onSelectSquad={onSelectSquad}
+          onSaveSquad={onSaveSquad}
+          onDeleteSquad={onDeleteSquad}
+          onOpenSquadChat={onOpenSquadChat}
+          onSaveAgent={onSaveAgent}
+          onOpenAgentChat={onOpenAgentChat}
+          onOpenCreateSquadModal={() => {
+            setNewSquadLeadAgentId(agents[0]?.id || '')
+            setNewSquadIcon('Users')
+            setIsNewSquadModalOpen(true)
+          }}
+        />
+      ) : (
+        renderSquadDetail()
+      )}
 
       {/* ==================================================================== */}
       {/* MODAL: NOVO ESQUADRÃO (Com Seletor de Agentes Customizado do Projeto)*/}
