@@ -3690,7 +3690,15 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               }
             }}
             onStopWorkflow={handleCancelActiveExecution}
-            onClearExecution={() => setSelectedRunId(null)}
+            onClearExecution={async () => {
+              setSelectedRunId(null)
+              if (selectedWorkflowId) {
+                const nextRuns = (store.runs || []).map(r =>
+                  r.workflowId === selectedWorkflowId ? { ...r, workflowId: undefined } : r
+                )
+                await onUpdateStore({ ...store, runs: nextRuns })
+              }
+            }}
             onOpenNote={onOpenNote}
             onResumeWorkflowRun={async pausedRun => {
               await handleDirectApproveWorkflowRun(pausedRun)

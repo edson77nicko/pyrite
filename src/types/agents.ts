@@ -416,6 +416,7 @@ export interface WorkflowDefinition {
   active?: boolean
   nextRunAt?: string
   lastTriggeredAt?: number
+  lastClearedAt?: number
   name: string
   description: string
   nodes: WorkflowNode[]

@@ -280,7 +280,10 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 }) => {
   const activeWorkflow = workflows.find(w => w.id === selectedWorkflowId) || workflows[0]
   const [clearedRunId, setClearedRunId] = useState<string | null>(null)
-  const isCurrentRunCleared = Boolean(clearedRunId && activeRun && clearedRunId === activeRun.id)
+  const isCurrentRunCleared = Boolean(
+    (clearedRunId && activeRun && clearedRunId === activeRun.id) ||
+    (activeRun && activeWorkflow?.lastClearedAt && activeRun.startedAt && activeRun.startedAt <= activeWorkflow.lastClearedAt)
+  )
   // Só mostramos o estado de execução quando a execução pertence ao fluxo aberto e não foi limpa
   const runForThisWorkflow =
     !isCurrentRunCleared && activeRun && activeWorkflow && activeRun.workflowId === activeWorkflow.id
@@ -809,6 +812,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     // Limpa os resultados de testes de etapa anteriores: a partir daqui só vale o resultado desta execução
     const cleaned: WorkflowDefinition = {
       ...activeWorkflow,
+      lastClearedAt: undefined,
       nodes: activeWorkflow.nodes.map(n =>
         n.config.lastOutput || n.config.lastExecutedAt || n.config.branchTaken
           ? { ...n, config: { ...n.config, lastOutput: undefined, lastExecutedAt: undefined, branchTaken: undefined } }
@@ -824,6 +828,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   }
 
   const handleClearExecution = () => {
+    const now = Date.now()
     if (activeRun?.id) {
       setClearedRunId(activeRun.id)
     }
@@ -833,6 +838,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
     const cleaned: WorkflowDefinition = {
       ...activeWorkflow,
+      lastClearedAt: now,
       nodes: activeWorkflow.nodes.map(n => ({
         ...n,
         config: {
@@ -842,7 +848,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           branchTaken: undefined
         }
       })),
-      updatedAt: Date.now()
+      updatedAt: now
     }
     onSaveWorkflow(cleaned)
     onClearExecution?.()
