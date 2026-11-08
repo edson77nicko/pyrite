@@ -1894,6 +1894,7 @@ export const App: React.FC = () => {
             onOpenTasks={handleOpenTasks}
             teamAgents={agentStore.agents}
             multiAgentStore={agentStore}
+            onUpdateAgentStore={handleUpdateAgentStore}
             onOpenTeamAgentsView={() => handleChangeView('agents')}
             isConversationsOpen={isAiConversationsOpen}
             onToggleConversations={() => setIsAiConversationsOpen(o => !o)}

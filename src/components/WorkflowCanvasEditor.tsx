@@ -456,38 +456,53 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   }
 
   const handleCreateWorkflow = () => {
-    const firstAgent = agents[0]
     const nInId = `wn_in_${Date.now()}`
-    const nAgId = `wn_ag_${Date.now()}`
+    const nLlmId = `wn_llm_${Date.now()}`
+    const nOutId = `wn_out_${Date.now()}`
 
     const newWf: WorkflowDefinition = {
       id: `wf_${Date.now()}`,
       version: 1,
       status: 'draft',
       name: `Fluxo de trabalho sem título ${workflows.length + 1}`,
-      description: 'Fluxo visual em estilo OpenBot.',
+      description: 'Fluxo visual customizado.',
       nodes: [
         {
           id: nInId,
           kind: 'input',
-          label: 'Gatilho',
-          position: { x: 140, y: 160 },
+          label: 'Gatilho Manual',
+          position: { x: 140, y: 180 },
           config: {
-            triggerType: 'schedule',
-            scheduleFrequency: 'daily',
-            scheduleTime: '09:00'
+            triggerType: 'manual',
+            content: ''
           }
         },
         {
-          id: nAgId,
-          kind: 'run_agent',
-          label: firstAgent?.name || 'Agente',
-          position: { x: 540, y: 160 },
-          config: { agentId: firstAgent?.id }
+          id: nLlmId,
+          kind: 'llm',
+          label: 'Processamento por IA',
+          position: { x: 500, y: 180 },
+          config: {
+            model: 'gpt-4o',
+            promptTemplate: 'Com base na entrada, elabore o conteúdo solicitado com detalhes e qualidade profissional.',
+            systemPrompt: 'Você é um assistente inteligente executando uma etapa de automação no Pyrite. Responda em português com clareza e objetividade.'
+          }
+        },
+        {
+          id: nOutId,
+          kind: 'deliverable',
+          label: 'Gravar Nota no Cofre',
+          position: { x: 860, y: 180 },
+          config: {
+            targetFolder: 'Entregas',
+            namingPattern: '{fluxo} - {data}',
+            outputType: 'note'
+          }
         }
       ],
       edges: [
-        { id: `we_1_${Date.now()}`, sourceNodeId: nInId, targetNodeId: nAgId, branch: 'default' }
+        { id: `we_1_${Date.now()}`, sourceNodeId: nInId, targetNodeId: nLlmId, branch: 'default' },
+        { id: `we_2_${Date.now()}`, sourceNodeId: nLlmId, targetNodeId: nOutId, branch: 'default' }
       ],
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -518,6 +533,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       }
     }
 
+    const defaultAgent = agents.find(a => a.specialistRole !== 'proposal_specialist') || agents[0]
+
     const newNode: WorkflowNode = {
       id: `wn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       kind,
@@ -529,7 +546,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           : kind === 'text_block'
           ? {}
           : kind === 'run_agent'
-          ? { agentId: agents[0]?.id }
+          ? { agentId: defaultAgent?.id }
           : kind === 'llm'
           ? { model: 'gpt-4o', reasoning: 'low', promptTemplate: '' }
           : kind === 'read_note'
@@ -541,7 +558,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           : kind === 'create_task'
           ? { targetBoardId: 'default', taskMode: 'auto_ai', taskPriority: 'normal', autoCreateProperty: true }
           : kind === 'deliverable'
-          ? { targetFolder: 'Propostas', outputType: 'note' }
+          ? { targetFolder: 'Entregas', namingPattern: 'Entrega - {fluxo} - {data}', outputType: 'note' }
           : { triggerType: 'manual' }
     }
     onSaveWorkflow({
@@ -2454,13 +2471,13 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <div className="bg-[#1c1c1f] border border-zinc-800/80 rounded-xl p-2.5 text-xs text-zinc-300 space-y-1.5">
                             <label className="text-[10.5px] text-zinc-400 font-medium">Pasta de Destino no Cofre:</label>
                             <CustomSelect
-                              value={node.config.targetFolder || 'Propostas'}
+                              value={node.config.targetFolder || 'Entregas'}
                               onChange={folder =>
                                 handleUpdateNodeById(node.id, {
                                   config: { ...node.config, targetFolder: folder }
                                 })
                               }
-                              options={Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => ({
+                              options={Array.from(new Set(['Entregas', 'Notas', 'Planos', 'Projetos', 'Propostas', ...folders])).map(f => ({
                                 value: f,
                                 label: f,
                                 icon: <Folder className="w-3 h-3 text-zinc-400" />
@@ -2492,7 +2509,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           {isTestDelivery && (
                             <div className="text-[10.5px] text-sky-300/90 bg-sky-950/20 border border-sky-900/40 rounded-xl p-2.5 flex items-center gap-2">
                               <FlaskConical className="w-3.5 h-3.5 shrink-0 text-sky-400" />
-                              <span>Modo teste — nenhuma nota foi criada. Destino: <b>{node.config.targetFolder || 'Propostas'}</b></span>
+                              <span>Modo teste — nenhuma nota foi criada. Destino: <b>{node.config.targetFolder || 'Entregas'}</b></span>
                             </div>
                           )}
 
@@ -3003,9 +3020,9 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     <div>
                       <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Pasta de Destino no Cofre</label>
                       <CustomSelect
-                        value={selectedNode.config.targetFolder || 'Propostas'}
+                        value={selectedNode.config.targetFolder || 'Entregas'}
                         onChange={folder => handleUpdateSelectedNode({ config: { ...selectedNode.config, targetFolder: folder } })}
-                        options={Array.from(new Set(['Propostas', 'Escopos', 'Tarefas', 'Clientes', ...folders])).map(f => ({
+                        options={Array.from(new Set(['Entregas', 'Notas', 'Planos', 'Projetos', 'Propostas', ...folders])).map(f => ({
                           value: f,
                           label: f,
                           icon: <Folder className="w-3 h-3 text-zinc-400" />
@@ -3013,6 +3030,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         size="sm"
                         className="w-full"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Padrão de Nome da Nota</label>
+                      <input
+                        type="text"
+                        value={selectedNode.config.namingPattern || ''}
+                        onChange={e => handleUpdateSelectedNode({ config: { ...selectedNode.config, namingPattern: e.target.value } })}
+                        placeholder="Entrega - {fluxo} - {data}"
+                        className="w-full bg-[#18181b] border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                      />
+                      <span className="text-[10px] text-zinc-500 mt-1 block">Variáveis disponíveis: {'{fluxo}'}, {'{data}'}, {'{hora}'}, {'{cliente}'}</span>
                     </div>
                   </div>
                 )}

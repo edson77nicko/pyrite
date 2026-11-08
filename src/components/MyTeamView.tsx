@@ -272,6 +272,21 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   }, [selectedRoutineId])
 
   useEffect(() => {
+    const handleOpenItem = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail
+      if (!detail) return
+      if (detail.section && ['agents', 'squads', 'workflows', 'activity'].includes(detail.section)) {
+        setActiveSection(detail.section)
+      }
+      if (detail.agentId) setSelectedAgentId(detail.agentId)
+      if (detail.workflowId) setSelectedWorkflowId(detail.workflowId)
+      if (detail.teamId) setSelectedTeamId(detail.teamId)
+    }
+    window.addEventListener('pyrite-open-team-item', handleOpenItem)
+    return () => window.removeEventListener('pyrite-open-team-item', handleOpenItem)
+  }, [])
+
+  useEffect(() => {
     if (workflows.length > 0 && !workflows.some(w => w.id === selectedWorkflowId)) {
       setSelectedWorkflowId(workflows[0].id)
     }

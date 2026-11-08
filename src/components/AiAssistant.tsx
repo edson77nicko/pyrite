@@ -1,7 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import type { Note, NoteType, AgentProfileVersion, MultiAgentStoreState } from '../types'
+import type {
+  AgentSpecialistRole,
+  WorkflowDefinition,
+  WorkflowNode,
+  WorkflowEdge,
+  WorkflowNodeKind,
+  TeamDefinition,
+  TeamMemberNode,
+  TeamEdge,
+  SquadPipelineStep
+} from '../types/agents'
 import type { TaskItem, TaskSettings, SubTask, TaskBoard } from '../types/tasks'
-import { executeAgentRun, resolveNoteByIdOrFallback } from '../utils/multiAgentEngine'
+import { executeAgentRun, resolveNoteByIdOrFallback, updateAgentProfileWithVersion } from '../utils/multiAgentEngine'
 import { mindMapToMarkdownOutline, parseMindMapDocument, serializeMindMapDocument, isMindMapContent, cleanNodeTitle } from '../utils/mindMapUtils'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { AiSettingsModal } from './AiSettingsModal'
@@ -37,7 +48,10 @@ import {
   Clock,
   CheckCircle2,
   ListTodo,
-  FilePlus
+  FilePlus,
+  Workflow,
+  Users,
+  ArrowRight
 } from 'lucide-react'
 
 export type AgentRuleMode = 'analyst' | 'editor'
@@ -130,6 +144,179 @@ export function parseMessageTaskActions(text: string): { displayText: string; ac
 
   const displayText = text.replace(/```task-action\s*[\s\S]*?\s*```/g, '').trim()
   return { displayText, actions }
+}
+
+export interface ParsedAgentAction {
+  action: 'create' | 'update'
+  id?: string
+  name: string
+  icon?: string
+  color?: string
+  specialistRole?: AgentSpecialistRole
+  roleDescription?: string
+  systemDirective?: string
+  tone?: string
+  rules?: string[]
+}
+
+export interface ParsedWorkflowAction {
+  action: 'create' | 'update'
+  id?: string
+  name: string
+  description?: string
+  nodes?: Array<{
+    id?: string
+    kind?: string
+    label?: string
+    config?: Record<string, any>
+  }>
+  edges?: Array<{
+    id?: string
+    sourceNodeId?: string
+    targetNodeId?: string
+    branch?: string
+    label?: string
+  }>
+}
+
+export interface ParsedSquadAction {
+  action: 'create' | 'update'
+  id?: string
+  name: string
+  description?: string
+  objective?: string
+  coordinatorAgentId?: string
+  pipeline?: Array<{
+    agentId: string
+    roleInSquad?: string
+    customPrompt?: string
+    expectedOutput?: 'note' | 'tasks' | 'html' | 'text'
+  }>
+}
+
+export function parseMasterActions(text: string): {
+  displayText: string
+  taskActions: ParsedTaskAction[]
+  agentActions: ParsedAgentAction[]
+  workflowActions: ParsedWorkflowAction[]
+  squadActions: ParsedSquadAction[]
+} {
+  const taskActions: ParsedTaskAction[] = []
+  const agentActions: ParsedAgentAction[] = []
+  const workflowActions: ParsedWorkflowAction[] = []
+  const squadActions: ParsedSquadAction[] = []
+
+  if (!text) {
+    return { displayText: '', taskActions, agentActions, workflowActions, squadActions }
+  }
+
+  // Parse task-action
+  if (text.includes('```task-action')) {
+    const regex = /```task-action\s*([\s\S]*?)\s*```/g
+    let match
+    while ((match = regex.exec(text)) !== null) {
+      try {
+        const parsed = JSON.parse(match[1])
+        if (parsed && parsed.title) {
+          taskActions.push({
+            action: parsed.action || 'create',
+            title: parsed.title,
+            priority: parsed.priority || 'medium',
+            deadline: parsed.deadline,
+            tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+            subtasks: Array.isArray(parsed.subtasks) ? parsed.subtasks : [],
+            description: parsed.description || '',
+            boardId: parsed.boardId || undefined
+          })
+        }
+      } catch (e) {
+        console.warn('Falha ao processar bloco task-action:', e)
+      }
+    }
+  }
+
+  // Parse agent-action
+  if (text.includes('```agent-action')) {
+    const regex = /```agent-action\s*([\s\S]*?)\s*```/g
+    let match
+    while ((match = regex.exec(text)) !== null) {
+      try {
+        const parsed = JSON.parse(match[1])
+        if (parsed && parsed.name) {
+          agentActions.push({
+            action: parsed.action || 'create',
+            id: parsed.id,
+            name: parsed.name,
+            icon: parsed.icon || '🤖',
+            color: parsed.color || '#6366f1',
+            specialistRole: parsed.specialistRole || 'custom',
+            roleDescription: parsed.roleDescription || '',
+            systemDirective: parsed.systemDirective || '',
+            tone: parsed.tone || '',
+            rules: Array.isArray(parsed.rules) ? parsed.rules : []
+          })
+        }
+      } catch (e) {
+        console.warn('Falha ao processar bloco agent-action:', e)
+      }
+    }
+  }
+
+  // Parse workflow-action
+  if (text.includes('```workflow-action')) {
+    const regex = /```workflow-action\s*([\s\S]*?)\s*```/g
+    let match
+    while ((match = regex.exec(text)) !== null) {
+      try {
+        const parsed = JSON.parse(match[1])
+        if (parsed && parsed.name) {
+          workflowActions.push({
+            action: parsed.action || 'create',
+            id: parsed.id,
+            name: parsed.name,
+            description: parsed.description || '',
+            nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
+            edges: Array.isArray(parsed.edges) ? parsed.edges : []
+          })
+        }
+      } catch (e) {
+        console.warn('Falha ao processar bloco workflow-action:', e)
+      }
+    }
+  }
+
+  // Parse squad-action
+  if (text.includes('```squad-action')) {
+    const regex = /```squad-action\s*([\s\S]*?)\s*```/g
+    let match
+    while ((match = regex.exec(text)) !== null) {
+      try {
+        const parsed = JSON.parse(match[1])
+        if (parsed && parsed.name) {
+          squadActions.push({
+            action: parsed.action || 'create',
+            id: parsed.id,
+            name: parsed.name,
+            description: parsed.description || '',
+            objective: parsed.objective || parsed.description || '',
+            coordinatorAgentId: parsed.coordinatorAgentId,
+            pipeline: Array.isArray(parsed.pipeline) ? parsed.pipeline : []
+          })
+        }
+      } catch (e) {
+        console.warn('Falha ao processar bloco squad-action:', e)
+      }
+    }
+  }
+
+  const displayText = text
+    .replace(/```task-action\s*[\s\S]*?\s*```/g, '')
+    .replace(/```agent-action\s*[\s\S]*?\s*```/g, '')
+    .replace(/```workflow-action\s*[\s\S]*?\s*```/g, '')
+    .replace(/```squad-action\s*[\s\S]*?\s*```/g, '')
+    .trim()
+
+  return { displayText, taskActions, agentActions, workflowActions, squadActions }
 }
 
 export function parseThoughtBlocks(text: string): { thoughts: string[]; cleanText: string } {
@@ -314,6 +501,258 @@ export const TaskActionsCollapsible: React.FC<TaskActionsCollapsibleProps> = ({
   )
 }
 
+export const AgentActionsCollapsible: React.FC<{
+  actions: ParsedAgentAction[]
+  onOpenAgent: (agentId?: string) => void
+}> = ({ actions, onOpenAgent }) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const total = actions.length
+  if (total === 0) return null
+
+  const first = actions[0]
+
+  return (
+    <div className="mt-2 rounded-xl border border-indigo-500/30 bg-[#12131a] overflow-hidden text-xs shadow-xs">
+      <div className="flex items-center justify-between px-3 py-2 bg-indigo-950/20 hover:bg-indigo-950/30 transition-colors">
+        <button
+          type="button"
+          onClick={() => setIsOpen(o => !o)}
+          className="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer min-w-0 flex-1 text-left"
+        >
+          <div className="w-5 h-5 rounded-md bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0 text-xs">
+            {first.icon || '🤖'}
+          </div>
+          <span className="font-semibold text-xs truncate">
+            {total === 1 ? `Agente "${first.name}" criado na sua equipe` : `${total} agentes criados na sua equipe`}
+          </span>
+          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onOpenAgent(first.id)}
+          className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1 shrink-0 ml-2 shadow-xs"
+        >
+          <span>Abrir na Equipe</span>
+          <ArrowRight className="w-3 h-3" />
+        </button>
+      </div>
+
+      {isOpen && (
+        <div className="p-3 bg-black/40 border-t border-zinc-800/80 space-y-2">
+          {actions.map((act, idx) => (
+            <div key={idx} className="p-2.5 rounded-lg bg-zinc-900/70 border border-zinc-800/60 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{act.icon || '🤖'}</span>
+                  <span className="font-semibold text-zinc-200">{act.name}</span>
+                  {act.specialistRole && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-800 text-zinc-400 border border-zinc-700/60">
+                      {act.specialistRole}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onOpenAgent(act.id)}
+                  className="text-[10px] text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+                >
+                  Ver Perfil
+                </button>
+              </div>
+
+              {act.roleDescription && (
+                <p className="text-zinc-400 text-[11px] leading-relaxed">{act.roleDescription}</p>
+              )}
+
+              {act.tone && (
+                <div className="text-[10px] text-zinc-500">
+                  <strong className="text-zinc-400">Tom:</strong> {act.tone}
+                </div>
+              )}
+
+              {act.rules && act.rules.length > 0 && (
+                <div className="pt-1 border-t border-zinc-800/50">
+                  <div className="text-[10px] font-medium text-zinc-400 mb-1">Regras & Diretrizes:</div>
+                  <ul className="list-disc list-inside space-y-0.5 text-[10px] text-zinc-400 pl-1">
+                    {act.rules.map((r, ri) => (
+                      <li key={ri} className="truncate">{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export const WorkflowActionsCollapsible: React.FC<{
+  actions: ParsedWorkflowAction[]
+  onOpenWorkflow: (workflowId?: string) => void
+}> = ({ actions, onOpenWorkflow }) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const total = actions.length
+  if (total === 0) return null
+
+  const first = actions[0]
+  const stagesCount = first.nodes?.length || 0
+
+  return (
+    <div className="mt-2 rounded-xl border border-emerald-500/30 bg-[#101714] overflow-hidden text-xs shadow-xs">
+      <div className="flex items-center justify-between px-3 py-2 bg-emerald-950/20 hover:bg-emerald-950/30 transition-colors">
+        <button
+          type="button"
+          onClick={() => setIsOpen(o => !o)}
+          className="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer min-w-0 flex-1 text-left"
+        >
+          <Workflow className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="font-semibold text-xs truncate">
+            {total === 1
+              ? `Fluxo "${first.name}" criado (${stagesCount} etapas conectadas)`
+              : `${total} fluxos criados no Flow Canvas`}
+          </span>
+          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onOpenWorkflow(first.id)}
+          className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1 shrink-0 ml-2 shadow-xs"
+        >
+          <span>Abrir no Flow</span>
+          <ArrowRight className="w-3 h-3" />
+        </button>
+      </div>
+
+      {isOpen && (
+        <div className="p-3 bg-black/40 border-t border-zinc-800/80 space-y-2">
+          {actions.map((wf, idx) => (
+            <div key={idx} className="p-2.5 rounded-lg bg-zinc-900/70 border border-zinc-800/60 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-zinc-200">{wf.name}</span>
+                <button
+                  type="button"
+                  onClick={() => onOpenWorkflow(wf.id)}
+                  className="text-[10px] text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
+                >
+                  Abrir Canvas
+                </button>
+              </div>
+
+              {wf.description && (
+                <p className="text-zinc-400 text-[11px]">{wf.description}</p>
+              )}
+
+              {wf.nodes && wf.nodes.length > 0 && (
+                <div className="pt-1.5 border-t border-zinc-800/50">
+                  <div className="text-[10px] font-medium text-zinc-400 mb-1.5">Etapas do Pipeline:</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {wf.nodes.map((node, ni) => (
+                      <React.Fragment key={ni}>
+                        <div className="px-2 py-1 rounded-md bg-zinc-800/80 border border-zinc-700/60 text-[10px] text-zinc-200 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          <span>{node.label || node.kind || `Nó ${ni + 1}`}</span>
+                        </div>
+                        {ni < (wf.nodes?.length || 0) - 1 && (
+                          <span className="text-zinc-600 text-xs">→</span>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export const SquadActionsCollapsible: React.FC<{
+  actions: ParsedSquadAction[]
+  onOpenSquad: (squadId?: string) => void
+}> = ({ actions, onOpenSquad }) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const total = actions.length
+  if (total === 0) return null
+
+  const first = actions[0]
+  const membersCount = first.pipeline?.length || 0
+
+  return (
+    <div className="mt-2 rounded-xl border border-amber-500/30 bg-[#181510] overflow-hidden text-xs shadow-xs">
+      <div className="flex items-center justify-between px-3 py-2 bg-amber-950/20 hover:bg-amber-950/30 transition-colors">
+        <button
+          type="button"
+          onClick={() => setIsOpen(o => !o)}
+          className="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer min-w-0 flex-1 text-left"
+        >
+          <Users className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="font-semibold text-xs truncate">
+            {total === 1
+              ? `Squad "${first.name}" criado (${membersCount} especialistas)`
+              : `${total} squads criados na sua equipe`}
+          </span>
+          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onOpenSquad(first.id)}
+          className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1 shrink-0 ml-2 shadow-xs"
+        >
+          <span>Abrir Squads</span>
+          <ArrowRight className="w-3 h-3" />
+        </button>
+      </div>
+
+      {isOpen && (
+        <div className="p-3 bg-black/40 border-t border-zinc-800/80 space-y-2">
+          {actions.map((sq, idx) => (
+            <div key={idx} className="p-2.5 rounded-lg bg-zinc-900/70 border border-zinc-800/60 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-zinc-200">{sq.name}</span>
+                <button
+                  type="button"
+                  onClick={() => onOpenSquad(sq.id)}
+                  className="text-[10px] text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                >
+                  Ver Squad
+                </button>
+              </div>
+
+              {sq.description && (
+                <p className="text-zinc-400 text-[11px]">{sq.description}</p>
+              )}
+
+              {sq.pipeline && sq.pipeline.length > 0 && (
+                <div className="pt-1.5 border-t border-zinc-800/50 space-y-1">
+                  <div className="text-[10px] font-medium text-zinc-400">Especialistas & Funções:</div>
+                  <div className="space-y-1">
+                    {sq.pipeline.map((step, si) => (
+                      <div key={si} className="flex items-center gap-2 text-[10px] text-zinc-300 bg-zinc-800/50 px-2 py-1 rounded">
+                        <span className="text-amber-400 font-mono">#{si + 1}</span>
+                        <span className="font-medium">{step.roleInSquad || step.agentId}</span>
+                        {step.expectedOutput && (
+                          <span className="ml-auto text-[9px] text-zinc-500 font-mono">saída: {step.expectedOutput}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export const AGENT_SPECIALTIES: AgentSpecialty[] = [
   {
     id: 'none',
@@ -465,6 +904,7 @@ interface AiAssistantProps {
   onOpenTasks?: () => void
   teamAgents?: AgentProfileVersion[]
   multiAgentStore?: MultiAgentStoreState
+  onUpdateAgentStore?: (nextStore: MultiAgentStoreState) => void
   onOpenTeamAgentsView?: () => void
   isConversationsOpen?: boolean
   onToggleConversations?: () => void
@@ -490,6 +930,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   onOpenTasks,
   teamAgents = [],
   multiAgentStore,
+  onUpdateAgentStore,
   onOpenTeamAgentsView,
   isConversationsOpen: externalConversationsOpen,
   onToggleConversations,
@@ -590,6 +1031,30 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const [copiedNotice, setCopiedNotice] = useState<string | null>(null)
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [executedTaskActions, setExecutedTaskActions] = useState<Record<string, boolean>>({})
+
+  const navigateToTeamSection = (section: 'agents' | 'squads' | 'workflows', targetId?: string) => {
+    try {
+      localStorage.setItem('pyrite_myteam_active_section', section)
+      if (section === 'agents' && targetId) {
+        localStorage.setItem('pyrite_myteam_selected_agent_id', targetId)
+      } else if (section === 'workflows' && targetId) {
+        localStorage.setItem('pyrite_myteam_selected_workflow_id', targetId)
+      } else if (section === 'squads' && targetId) {
+        localStorage.setItem('pyrite_myteam_selected_team_id', targetId)
+      }
+      window.dispatchEvent(
+        new CustomEvent('pyrite-open-team-item', {
+          detail: {
+            section,
+            agentId: section === 'agents' ? targetId : undefined,
+            workflowId: section === 'workflows' ? targetId : undefined,
+            teamId: section === 'squads' ? targetId : undefined
+          }
+        })
+      )
+    } catch {}
+    onOpenTeamAgentsView?.()
+  }
 
   const handleExecuteTaskAction = (act: ParsedTaskAction, key: string) => {
     if (act.action === 'delete' && onDeleteTask) {
@@ -1402,7 +1867,117 @@ ${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList
   * NUNCA misture traço com hashtag (ex: NUNCA escreva '- ### Título').
   * NUNCA use asteriscos ('**', '***') para indicar etapas ou níveis de profundidade, e NUNCA envolva títulos em negrito ('**Título**'). Use apenas texto limpo precedido de traço '-' e indentação correta. O motor gráfico cuida de todo o design e peso visual dos nós.`
 
+        const currentAgentsList = (multiAgentStore?.agents || []).map(
+          a => `- ${a.icon || '🤖'} **${a.name}** (id: "${a.id}", função: "${a.specialistRole}"): ${a.roleDescription || a.workStyle?.tone || ''}`
+        ).join('\n')
+
+        const currentSquadsList = (multiAgentStore?.teams || []).map(
+          t => `- 👥 **${t.name}** (id: "${t.id}"): ${t.description || t.objective || ''} (${t.pipeline?.length || t.nodes?.length || 0} membros)`
+        ).join('\n')
+
+        const currentWorkflowsList = (multiAgentStore?.workflows || []).map(
+          w => `- ⚡ **${w.name}** (id: "${w.id}", status: "${w.status}"): ${w.description || ''} (${w.nodes?.length || 0} etapas)`
+        ).join('\n')
+
+        const ecosystemDirective = `PODERES DE MESTRE DO ASSISTENTE PYRITE (ORQUESTRADOR SUPREMO):
+Você é o Assistente Mestre do Pyrite. Você tem visão e comando total sobre TODOS os recursos da ferramenta:
+1. Notas e Documentos: notas markdown, mapas mentais interativos, diagramas/canvas e arquivos HTML nativos.
+2. Projetos e Tarefas: tarefas, prazos, prioridades, tags e subtarefas em quadros kanban/listas.
+3. Agentes Especialistas da Minha Equipe: você conhece todos os agentes, pode usar seus conhecimentos ou CRIAR NOVOS AGENTES especialistas sob demanda!
+4. Squads / Equipes: você pode orquestrar e CRIAR novos squads colaborativos encadeando agentes em pipeline.
+5. Workflows Visuais (Flow): você pode desenhar e CRIAR fluxos de trabalho visuais completos com nós interligados no canvas (entradas, agentes, chamadas diretas de IA, condições, aprovações humanas, criação de tarefas e entregáveis no cofre).
+
+ECOSSISTEMA ATUAL CADASTRADO NO COFRE DO USUÁRIO:
+[Agentes da Equipe]:
+${currentAgentsList || 'Nenhum agente cadastrado ainda.'}
+
+[Squads / Equipes de Agentes]:
+${currentSquadsList || 'Nenhum squad cadastrado ainda.'}
+
+[Fluxos de Trabalho / Workflows no Flow]:
+${currentWorkflowsList || 'Nenhum workflow cadastrado ainda.'}
+
+COMO CRIAR OU EDITAR RECURSOS VIA PROMPT:
+Quando o usuário pedir para criar ou configurar um AGENTE ESPECIALISTA:
+\`\`\`agent-action
+{
+  "action": "create",
+  "name": "Nome Elegante do Agente",
+  "icon": "🎯",
+  "color": "#6366f1",
+  "specialistRole": "proposal_specialist" | "knowledge_curator" | "project_planner" | "cartographer" | "diagram_designer" | "reviewer" | "coordinator" | "custom",
+  "roleDescription": "Descrição das responsabilidades do agente",
+  "systemDirective": "Instruções comportamentais detalhadas e diretivas de sistema do agente",
+  "tone": "Profissional, analítico...",
+  "rules": ["Regra 1", "Regra 2"]
+}
+\`\`\`
+
+Quando o usuário pedir para criar um FLUXO DE TRABALHO (WORKFLOW) no Flow:
+\`\`\`workflow-action
+{
+  "action": "create",
+  "name": "Nome do Fluxo",
+  "description": "Objetivo do fluxo...",
+  "nodes": [
+    {
+      "id": "node_1",
+      "kind": "input",
+      "label": "Gatilho de Entrada",
+      "config": { "triggerType": "manual" }
+    },
+    {
+      "id": "node_2",
+      "kind": "run_agent",
+      "label": "Análise por Agente",
+      "config": { "agentId": "id_do_agente_aqui" }
+    },
+    {
+      "id": "node_3",
+      "kind": "deliverable",
+      "label": "Salvar Entrega",
+      "config": {}
+    }
+  ],
+  "edges": [
+    { "sourceNodeId": "node_1", "targetNodeId": "node_2" },
+    { "sourceNodeId": "node_2", "targetNodeId": "node_3" }
+  ]
+}
+\`\`\`
+(Kinds válidos de nós: input, read_note, run_agent, llm, condition, approval, create_task, manage_properties, deliverable, finish)
+
+Quando o usuário pedir para criar um SQUAD (TIME DE AGENTES):
+\`\`\`squad-action
+{
+  "action": "create",
+  "name": "Nome do Squad",
+  "description": "Objetivo do squad colaborativo",
+  "coordinatorAgentId": "id_do_coordenador",
+  "pipeline": [
+    {
+      "agentId": "id_do_agente_1",
+      "roleInSquad": "Papel inicial",
+      "customPrompt": "Instruções específicas para a etapa 1",
+      "expectedOutput": "note"
+    },
+    {
+      "agentId": "id_do_agente_2",
+      "roleInSquad": "Revisão e Aprimoramento",
+      "customPrompt": "Instruções específicas para a etapa 2",
+      "expectedOutput": "note"
+    }
+  ]
+}
+\`\`\`
+
+REGRA DE APRESENTAÇÃO LIMPA (PADRÃO GEMINI / ANTIGRAVITY):
+O Pyrite executa e cadastra esses agentes, fluxos e squads AUTOMATICAMENTE e exibe cards recolhíveis elegantes de uma linha com botões de navegação direta.
+Portanto, NUNCA repita os dados em tabelas massivas ou blocos de código redundantes no texto markdown. Seja conciso, executivo e acolhedor (1 a 4 frases), informando o que você criou e configurou e convidando o usuário a explorar no painel.`
+
         const systemPrompt = `Você é o Agente de IA do Pyrite, assistente de alto nível para gestão de conhecimento e pensamento (estilo Obsidian) com foco em produtividade e pensamento em rede.
+
+${ecosystemDirective}
 
 ${specialtyBlock}
 ${ruleDirective}
@@ -1586,7 +2161,7 @@ Diretrizes gerais:
           }
 
           const newAiId = `ai_${Date.now()}`
-          const { actions: autoActions } = parseMessageTaskActions(responseText)
+          const { taskActions: autoActions, agentActions: autoAgentActions, workflowActions: autoWfActions, squadActions: autoSquadActions } = parseMasterActions(responseText)
           if (autoActions.length > 0 && onCreateTask) {
             const targetBoardId = autoActions[0].boardId || activeConversation?.linkedBoardId || activeBoardId || 'default'
             const boardObj = taskBoards.find(b => b.id === targetBoardId)
@@ -1599,6 +2174,172 @@ Diretrizes gerais:
 
             setToastNotice(`✨ ${autoActions.length} ${autoActions.length === 1 ? 'tarefa criada' : 'tarefas criadas'} em "${targetBoardName}"!`)
             setTimeout(() => setToastNotice(null), 4000)
+          }
+
+          if (multiAgentStore && onUpdateAgentStore && (autoAgentActions.length > 0 || autoWfActions.length > 0 || autoSquadActions.length > 0)) {
+            let nextStore = { ...multiAgentStore }
+
+            // 1. Process agent actions
+            for (const act of autoAgentActions) {
+              const agentId = act.id || `agent-${act.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || Date.now()}`
+              const existingAgent = nextStore.agents.find(a => a.id === agentId)
+              const newAgent: AgentProfileVersion = {
+                id: agentId,
+                version: existingAgent ? existingAgent.version + 1 : 1,
+                name: act.name,
+                icon: act.icon || '🤖',
+                color: act.color || '#6366f1',
+                specialistRole: act.specialistRole || 'custom',
+                roleDescription: act.roleDescription || `Especialista em ${act.name}`,
+                workStyle: {
+                  tone: act.tone || 'Profissional, objetivo e analítico',
+                  rules: act.rules && act.rules.length > 0 ? act.rules : ['Operar com foco em resultados e qualidade máxima.'],
+                  requiredQuestions: [],
+                  guardrails: []
+                },
+                knowledgeBindings: existingAgent?.knowledgeBindings || [],
+                allowedActions: ['read_context', 'prepare_draft', 'propose_patch', 'create_tasks'],
+                deliverables: existingAgent?.deliverables || {
+                  targetFolder: 'Agentes',
+                  namingPattern: '{agente} - {data}',
+                  outputTypes: ['note', 'tasks', 'mindmap', 'draw'],
+                  requireApprovalForExisting: false
+                },
+                aiConfig: existingAgent?.aiConfig || { useDefault: true },
+                limits: existingAgent?.limits || {
+                  maxDurationSec: 180,
+                  maxSteps: 10,
+                  maxSubtasks: 6,
+                  maxDelegationDepth: 2,
+                  allowDelegation: true
+                },
+                triggerMode: 'on_demand',
+                state: 'available',
+                createdAt: existingAgent?.createdAt || Date.now(),
+                updatedAt: Date.now()
+              }
+              nextStore = updateAgentProfileWithVersion(nextStore, newAgent)
+              act.id = agentId
+            }
+
+            // 2. Process workflow actions
+            for (const act of autoWfActions) {
+              const wfId = act.id || `wf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
+              const rawNodes = act.nodes || []
+              const nodes: WorkflowNode[] = rawNodes.length > 0
+                ? rawNodes.map((n, idx) => ({
+                    id: n.id || `node_${idx + 1}`,
+                    kind: (n.kind as WorkflowNodeKind) || (idx === 0 ? 'input' : idx === rawNodes.length - 1 ? 'deliverable' : 'run_agent'),
+                    label: n.label || `Etapa ${idx + 1}`,
+                    position: { x: 80 + idx * 260, y: 220 },
+                    config: n.config || {}
+                  }))
+                : [
+                    { id: 'n1', kind: 'input', label: 'Início', position: { x: 80, y: 220 }, config: { triggerType: 'manual' } },
+                    { id: 'n2', kind: 'run_agent', label: 'Executar Agente', position: { x: 340, y: 220 }, config: {} },
+                    { id: 'n3', kind: 'deliverable', label: 'Saída', position: { x: 600, y: 220 }, config: {} }
+                  ]
+
+              let edges: WorkflowEdge[] = act.edges && act.edges.length > 0
+                ? act.edges.map((e, idx) => ({
+                    id: e.id || `edge_${idx + 1}`,
+                    sourceNodeId: e.sourceNodeId || nodes[Math.max(0, idx)]?.id || '',
+                    targetNodeId: e.targetNodeId || nodes[Math.min(nodes.length - 1, idx + 1)]?.id || '',
+                    branch: (e.branch as any) || 'default',
+                    label: e.label
+                  }))
+                : nodes.slice(0, -1).map((curr, idx) => ({
+                    id: `edge_${idx + 1}`,
+                    sourceNodeId: curr.id,
+                    targetNodeId: nodes[idx + 1].id,
+                    branch: 'default'
+                  }))
+
+              const currentWfs = nextStore.workflows || []
+              const existingWf = currentWfs.find(w => w.id === wfId)
+              const newWf: WorkflowDefinition = {
+                id: wfId,
+                version: existingWf ? existingWf.version + 1 : 1,
+                status: 'published',
+                active: true,
+                name: act.name,
+                description: act.description || '',
+                nodes,
+                edges,
+                createdAt: existingWf?.createdAt || Date.now(),
+                updatedAt: Date.now()
+              }
+
+              const nextWorkflows = existingWf
+                ? currentWfs.map(w => w.id === wfId ? newWf : w)
+                : [newWf, ...currentWfs]
+              nextStore = { ...nextStore, workflows: nextWorkflows }
+              act.id = wfId
+            }
+
+            // 3. Process squad actions
+            for (const act of autoSquadActions) {
+              const squadId = act.id || `squad_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
+              const pipeline: SquadPipelineStep[] = (act.pipeline || []).map((step, idx) => ({
+                id: `step_${idx + 1}`,
+                agentId: step.agentId || nextStore.agents[0]?.id || 'agent-proposal-specialist',
+                roleInSquad: step.roleInSquad || `Etapa ${idx + 1}`,
+                order: idx,
+                enabled: true,
+                customPrompt: step.customPrompt || '',
+                expectedOutput: step.expectedOutput || 'note'
+              }))
+
+              const coordinatorId = act.coordinatorAgentId || pipeline[0]?.agentId || nextStore.agents[0]?.id || 'agent-team-coordinator'
+
+              const nodes: TeamMemberNode[] = pipeline.map((step, idx) => ({
+                id: `member_${idx + 1}`,
+                agentId: step.agentId,
+                position: { x: 100 + idx * 260, y: 200 },
+                roleInTeam: idx === 0 ? 'coordinator' : 'specialist',
+                contextScope: ['request_context', 'project_context'],
+                allowedOutputTypes: ['note', 'tasks']
+              }))
+
+              const edges: TeamEdge[] = nodes.slice(0, -1).map((curr, idx) => ({
+                id: `edge_${idx + 1}`,
+                sourceNodeId: curr.id,
+                targetNodeId: nodes[idx + 1].id,
+                relation: 'delegates_to'
+              }))
+
+              const currentTeams = nextStore.teams || []
+              const existingTeam = currentTeams.find(t => t.id === squadId)
+              const newTeam: TeamDefinition = {
+                id: squadId,
+                version: existingTeam ? existingTeam.version + 1 : 1,
+                name: act.name,
+                description: act.description || '',
+                objective: act.objective || act.description || '',
+                coordinatorAgentId: coordinatorId,
+                nodes,
+                edges,
+                pipeline,
+                maxParallelSubtasks: 3,
+                createdAt: existingTeam?.createdAt || Date.now(),
+                updatedAt: Date.now()
+              }
+
+              const nextTeams = existingTeam
+                ? currentTeams.map(t => t.id === squadId ? newTeam : t)
+                : [newTeam, ...currentTeams]
+              nextStore = { ...nextStore, teams: nextTeams }
+              act.id = squadId
+            }
+
+            onUpdateAgentStore(nextStore)
+
+            const createdParts: string[] = []
+            if (autoAgentActions.length > 0) createdParts.push(`${autoAgentActions.length} ${autoAgentActions.length === 1 ? 'agente' : 'agentes'}`)
+            if (autoWfActions.length > 0) createdParts.push(`${autoWfActions.length} ${autoWfActions.length === 1 ? 'fluxo' : 'fluxos'}`)
+            if (autoSquadActions.length > 0) createdParts.push(`${autoSquadActions.length} ${autoSquadActions.length === 1 ? 'squad' : 'squads'}`)
+            setToastNotice(`✨ Ecossistema atualizado: ${createdParts.join(', ')} criados com sucesso!`)
+            setTimeout(() => setToastNotice(null), 4500)
           }
 
           setMessages(prev => [...prev, { id: newAiId, sender: 'ai', text: responseText }])
@@ -2253,7 +2994,7 @@ Diretrizes gerais:
               ) : (
                 (() => {
                   const { thoughts, cleanText: thoughtFreeText } = parseThoughtBlocks(m.text)
-                  const { displayText, actions: taskActions } = parseMessageTaskActions(thoughtFreeText)
+                  const { displayText, taskActions, agentActions, workflowActions, squadActions } = parseMasterActions(thoughtFreeText)
 
                   return (
                     <div className="w-full text-zinc-200 px-1 py-1 space-y-2">
@@ -2286,6 +3027,27 @@ Diretrizes gerais:
                               onOpenTasks={onOpenTasks}
                               taskBoards={taskBoards}
                               defaultBoardId={effectiveBoardId}
+                            />
+                          )}
+
+                          {agentActions.length > 0 && (
+                            <AgentActionsCollapsible
+                              actions={agentActions}
+                              onOpenAgent={(id) => navigateToTeamSection('agents', id)}
+                            />
+                          )}
+
+                          {workflowActions.length > 0 && (
+                            <WorkflowActionsCollapsible
+                              actions={workflowActions}
+                              onOpenWorkflow={(id) => navigateToTeamSection('workflows', id)}
+                            />
+                          )}
+
+                          {squadActions.length > 0 && (
+                            <SquadActionsCollapsible
+                              actions={squadActions}
+                              onOpenSquad={(id) => navigateToTeamSection('squads', id)}
                             />
                           )}
                         </>
