@@ -1030,10 +1030,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
   }
 
   return (
-    <div className="w-full h-full flex overflow-hidden">
-      <div className="app-tasks-pane flex-1 min-w-0 h-full flex flex-col bg-[#121215] text-zinc-100 select-none overflow-hidden">
-        {/* 1. Header Toolbar - Seamless with Notes and Agent */}
-      <div className="app-tasks-header h-12 px-5 bg-[#0e0e11] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0">
+    <div className="w-full h-full flex flex-col bg-[#121215] text-zinc-100 select-none overflow-hidden">
+      {/* 1. Header Toolbar - Full width, seamless across entire Tasks pane */}
+      <div className="app-tasks-header h-12 px-5 bg-[#0e0e11] border-b border-zinc-800/60 flex items-center justify-between gap-4 shrink-0 w-full z-10">
         {/* Left: Title & Counters */}
         <div className="flex items-center gap-2.5">
           <div className="relative">
@@ -1232,8 +1231,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Main Content: Lista, Kanban ou Gantt */}
-      {viewMode === 'list' && (
+      {/* 2. Body Area (Views + TaskDetailSidebar) below the header */}
+      <div className="flex-1 min-w-0 w-full flex overflow-hidden relative">
+        <div className="app-tasks-pane flex-1 min-w-0 h-full flex flex-col bg-[#121215] text-zinc-100 select-none overflow-hidden relative">
+          {/* 2. Main Content: Lista, Kanban ou Gantt */}
+          {viewMode === 'list' && (
         /* LIST / TABLE VIEW - Refined, subtle selection & expandable subtasks */
         <div className="flex-1 overflow-x-auto overflow-y-auto custom-chat-scrollbar p-0 bg-[#121215] rounded-bl-2xl">
           <table className="w-max min-w-full text-left text-xs border-separate border-spacing-0 table-fixed">
@@ -2547,6 +2549,25 @@ export const TasksView: React.FC<TasksViewProps> = ({
           </div>
         </div>
       )}
+        </div>
+
+        {/* 4. Task Detail Drawer when in 'sidebar' (recuada) mode - Opens below the header */}
+        {selectedTask && taskDetailMode === 'sidebar' && (
+          <TaskDetailSidebar
+            task={selectedTask}
+            settings={settings}
+            allNotes={allNotes}
+            taskBoards={taskBoards}
+            activeBoard={currentBoard}
+            onSelectTaskBoard={onSelectTaskBoard}
+            onUpdateTask={onUpdateTask}
+            onDeleteTask={onDeleteTask}
+            onOpenNote={onOpenNote}
+            onClose={() => onSelectTask(null)}
+            onToggleFullView={() => setTaskDetailMode('full')}
+          />
+        )}
+      </div>
 
       {/* 3. Settings Modal */}
       <TaskSettingsModal
@@ -2557,24 +2578,6 @@ export const TasksView: React.FC<TasksViewProps> = ({
         activeBoardId={activeBoardId}
         activeBoard={currentBoard}
       />
-      </div>
-
-      {/* 4. Task Detail Drawer when in 'sidebar' (recuada) mode */}
-      {selectedTask && taskDetailMode === 'sidebar' && (
-        <TaskDetailSidebar
-          task={selectedTask}
-          settings={settings}
-          allNotes={allNotes}
-          taskBoards={taskBoards}
-          activeBoard={currentBoard}
-          onSelectTaskBoard={onSelectTaskBoard}
-          onUpdateTask={onUpdateTask}
-          onDeleteTask={onDeleteTask}
-          onOpenNote={onOpenNote}
-          onClose={() => onSelectTask(null)}
-          onToggleFullView={() => setTaskDetailMode('full')}
-        />
-      )}
 
       {/* 5. Inline Context (Nota) Picker */}
       {inlineContextTaskId && (
