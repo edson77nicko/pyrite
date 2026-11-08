@@ -347,8 +347,12 @@ export const EditorBlockComments: React.FC<Props> = ({
                       key={item.id}
                       type="button"
                       onClick={() => setSelectedIcon(item.id)}
+                      style={isCur ? {
+                        backgroundColor: 'var(--accent)',
+                        color: 'var(--accent-contrast, #09090b)'
+                      } : undefined}
                       className={`p-1 rounded cursor-pointer transition-colors ${
-                        isCur ? 'bg-[var(--accent)] text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                        isCur ? 'shadow-sm font-medium' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
                       }`}
                       title={item.label}
                     >
@@ -415,10 +419,14 @@ export const EditorBlockComments: React.FC<Props> = ({
                 type="button"
                 disabled={!draftText.trim()}
                 onClick={handleSubmitComment}
-                className="p-1 rounded-md bg-[var(--accent)] hover:opacity-90 disabled:opacity-40 text-white shadow-xs transition-all cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--accent)',
+                  color: 'var(--accent-contrast, #09090b)'
+                }}
+                className="p-1 rounded-md hover:opacity-90 disabled:opacity-40 shadow-xs transition-all cursor-pointer flex items-center justify-center"
                 title="Salvar comentário (Enter)"
               >
-                <Check className="w-3.5 h-3.5" />
+                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
             </div>
           </div>
@@ -510,8 +518,12 @@ export const EditorBlockComments: React.FC<Props> = ({
                               onClick={() => {
                                 handleUpdateCommentMeta(comment.id, item.id, comment.color)
                               }}
+                              style={isCur ? {
+                                backgroundColor: 'var(--accent)',
+                                color: 'var(--accent-contrast, #09090b)'
+                              } : undefined}
                               className={`p-1 rounded cursor-pointer transition-colors ${
-                                isCur ? 'bg-[var(--accent)] text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                                isCur ? 'shadow-sm font-medium' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
                               }`}
                               title={item.label}
                             >

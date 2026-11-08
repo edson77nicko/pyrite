@@ -869,6 +869,30 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     if (slashMenu) document.querySelector('.editor-command-item[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [slashMenu])
 
+  const linkPickerRef = useRef<HTMLDivElement>(null)
+
+  // Close link picker popover when clicking anywhere outside
+  useEffect(() => {
+    if (!linkPickerPopover) return
+
+    const handlePointerDownOutside = (e: MouseEvent | PointerEvent) => {
+      const target = e.target as Node | null
+      if (!target) return
+      if (linkPickerRef.current && !linkPickerRef.current.contains(target)) {
+        // Don't immediately close if clicking on another wiki-link
+        if (target instanceof Element && target.closest('.wiki-link')) {
+          return
+        }
+        setLinkPickerPopover(null)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDownOutside, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDownOutside, true)
+    }
+  }, [linkPickerPopover])
+
   // Debounced Markdown Synchronization to parent state (smooth 450ms debounce)
   const handleSync = useCallback(() => {
     if (!containerRef.current) return
@@ -2598,6 +2622,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       {/* Floating Link Search / Picker Popover */}
       {isEditable && linkPickerPopover && (
         <div
+          ref={linkPickerRef}
           style={{
             position: 'fixed',
             top: `${linkPickerPopover.top}px`,
@@ -2661,15 +2686,24 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
                       e.preventDefault()
                       handleApplyLink(noteItem.title)
                     }}
+                    style={isSel ? {
+                      backgroundColor: 'var(--accent)',
+                      color: 'var(--accent-contrast, #09090b)'
+                    } : undefined}
                     className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center justify-between transition-colors cursor-pointer ${
-                      isSel ? 'bg-[var(--accent)] text-white' : 'hover:bg-zinc-800 text-zinc-300'
+                      isSel ? 'shadow-sm font-medium' : 'hover:bg-zinc-800 text-zinc-300'
                     }`}
                   >
                     <div className="flex items-center gap-1.5 truncate">
                       <FileText className="w-3 h-3 shrink-0 opacity-70" />
                       <span className="truncate">{noteItem.title}</span>
                     </div>
-                    <span className={`text-[10px] shrink-0 ${isSel ? 'text-white/80' : 'text-zinc-500'}`}>
+                    <span 
+                      className="text-[10px] shrink-0"
+                      style={isSel ? {
+                        color: 'var(--accent-contrast-muted, rgba(9,9,11,0.70))'
+                      } : undefined}
+                    >
                       {noteItem.folder}
                     </span>
                   </button>

@@ -18,7 +18,9 @@
   --accent-subtle: rgba(197, 155, 39, 0.10);
   --accent-btn-bg: var(--accent);
   --accent-btn-hover: var(--accent);
-  --accent-btn-text: #ffffff;
+  --accent-contrast: #09090b;
+  --accent-contrast-muted: rgba(9, 9, 11, 0.70);
+  --accent-btn-text: var(--accent-contrast, #09090b);
   --accent-glow: rgba(197, 155, 39, 0.20);
   --accent-glow-subtle: rgba(197, 155, 39, 0.10);
   --accent-tick-glow: 0 0 8px var(--accent);
@@ -885,12 +887,19 @@ html.light {
 .light .text-accent {
   color: var(--accent-text) !important;
 }
+.btn-accent,
+button.bg-\[var\(--accent\)\],
+button.bg-accent,
+.bg-accent {
+  color: var(--accent-contrast, #09090b) !important;
+}
+
 .light .btn-accent,
 .light button.bg-\[var\(--accent\)\],
 .light button.bg-accent,
 .light .bg-accent {
   background-color: var(--accent-btn-bg) !important;
-  color: var(--accent-btn-text, #ffffff) !important;
+  color: var(--accent-btn-text, var(--accent-contrast, #09090b)) !important;
 }
 .light .btn-accent:hover,
 .light button.bg-\[var\(--accent\)\]:hover,

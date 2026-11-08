@@ -635,11 +635,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const unassignedNotes = filteredNotes.filter(n => isVaultRoot(n.folder))
 
   // Recursive Tree Node Renderer - High Density & Compact Indentation
-  const renderFolderNode = (node: TreeNode) => {
+  const renderFolderNode = (node: TreeNode, depth = 0) => {
     const isCollapsed = collapsedFolders[node.fullPath] ?? true
     const totalSubNotes = node.notes.length + node.children.reduce((acc, c) => acc + c.notes.length, 0)
-    // Keep each nesting step small so deep folder trees remain readable.
-    const indentPadding = 'ml-0.5 pl-0.5'
+    // Keep each nesting step aligned cleanly under the parent
+    const indentPadding = 'ml-2.5 pl-1.5'
     const isBeingDragged =
       (draggedItem?.type === 'folder' && normPath(draggedItem.fullPath) === normPath(node.fullPath)) ||
       (draggedItemRef.current?.type === 'folder' && normPath(draggedItemRef.current.fullPath) === normPath(node.fullPath))
@@ -663,7 +663,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             toggleFolder(node.fullPath)
           }}
           title={node.fullPath}
-          className={`flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] font-medium group transition-colors cursor-pointer select-none ${
+          className={`flex items-center justify-between ${depth === 0 ? 'px-2.5' : 'px-2'} py-1 rounded-lg text-[13px] font-medium group transition-colors cursor-pointer select-none ${
             isBeingDragged
               ? 'opacity-40 border border-dashed border-zinc-600'
               : isTargetFolder
@@ -672,11 +672,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }`}
           style={{ WebkitUserDrag: !isRootNode ? 'element' : 'none' } as React.CSSProperties}
         >
-          <div className="flex items-center gap-1.5 truncate min-w-0">
+          <div className="flex items-center gap-2 truncate min-w-0">
             {isCollapsed ? (
-              <Folder className="w-3.5 h-3.5 opacity-80 shrink-0 folder-icon-common" style={isTargetFolder ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
+              <Folder className="w-4 h-4 opacity-80 shrink-0 folder-icon-common" style={isTargetFolder ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
             ) : (
-              <FolderOpen className="w-3.5 h-3.5 shrink-0 folder-icon-common" style={isTargetFolder ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
+              <FolderOpen className="w-4 h-4 shrink-0 folder-icon-common" style={isTargetFolder ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
             )}
             <span className="truncate">{node.name}</span>
           </div>
@@ -817,7 +817,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onSelectNote(note.id)
                   }}
                   title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : isHtml ? 'Arquivo HTML' : 'Nota'})`}
-                  className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border select-none ${
+                  className={`group flex items-center justify-between px-2 py-1 rounded-lg text-[13px] cursor-pointer transition-colors border select-none ${
                     isNoteDragged
                       ? 'opacity-40 border-dashed border-zinc-600'
                       : isActive
@@ -829,9 +829,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     ...(isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : {})
                   } as React.CSSProperties}
                 >
-                  <div className="flex items-center gap-1.5 truncate min-w-0">
+                  <div className="flex items-center gap-2 truncate min-w-0">
                     <NoteIcon
-                      className="w-3.5 h-3.5 shrink-0"
+                      className="w-4 h-4 shrink-0"
                       style={
                         isHtml
                           ? { color: '#f97316' }
@@ -876,7 +876,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             })}
 
             {/* Nested Subfolders */}
-            {node.children.map(child => renderFolderNode(child))}
+            {node.children.map(child => renderFolderNode(child, depth + 1))}
           </div>
         )}
       </div>
@@ -1322,7 +1322,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onClick={() => {
                         onSelectTaskBoard ? onSelectTaskBoard(b.id) : onOpenTasks?.()
                       }}
-                      className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors border ${
+                      className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] cursor-pointer transition-colors border ${
                         isBoardActive
                           ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
                           : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'
@@ -1570,7 +1570,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => {
                       onSelectTaskBoard ? onSelectTaskBoard(b.id) : onOpenTasks?.()
                     }}
-                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors border ${
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] cursor-pointer transition-colors border ${
                       isBoardActive
                         ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
                         : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'

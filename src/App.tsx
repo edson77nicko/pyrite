@@ -334,19 +334,30 @@ export const App: React.FC = () => {
     const accentBtnBgLight = `hsl(${h}, ${Math.round(s * 100)}%, ${Math.round(btnLightL * 100)}%)`
     const accentBtnHoverLight = `hsl(${h}, ${Math.round(s * 100)}%, ${Math.round(btnLightHoverL * 100)}%)`
 
+    // 4. Contraste Inteligente (Fórmula de Luminância Perceptual):
+    // Da metade para cima (> 0.5 = tons claros/médios): texto escuro (#09090b)
+    // Da metade para baixo (<= 0.5 = tons escuros): texto claro (#ffffff)
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    const isLightAccent = luminance > 0.5
+    const accentContrast = isLightAccent ? '#09090b' : '#ffffff'
+    const accentContrastMuted = isLightAccent ? 'rgba(9, 9, 11, 0.70)' : 'rgba(255, 255, 255, 0.80)'
+
     // Set dynamic properties on documentElement
     document.documentElement.style.setProperty('--accent-rgb', `${r}, ${g}, ${b}`)
     document.documentElement.style.setProperty('--accent-glow', glow)
     document.documentElement.style.setProperty('--accent-glow-subtle', subtleBg)
     document.documentElement.style.setProperty('--accent-subtle', subtleBg)
     document.documentElement.style.setProperty('--accent-subtle-hover', subtleHover)
+    document.documentElement.style.setProperty('--accent-contrast', accentContrast)
+    document.documentElement.style.setProperty('--accent-contrast-muted', accentContrastMuted)
+    document.documentElement.style.setProperty('--accent-btn-text', accentContrast)
 
     // Derived light mode variables
     document.documentElement.style.setProperty('--accent-text-light', accentTextLight)
     document.documentElement.style.setProperty('--accent-icon-light', accentIconLight)
     document.documentElement.style.setProperty('--accent-btn-bg-light', accentBtnBgLight)
     document.documentElement.style.setProperty('--accent-btn-hover-light', accentBtnHoverLight)
-    document.documentElement.style.setProperty('--accent-btn-text-light', '#ffffff')
+    document.documentElement.style.setProperty('--accent-btn-text-light', accentContrast)
   }
 
   const applyTypography = (size: AppSettings['fontSize'], family?: AppSettings['fontFamily']) => {
