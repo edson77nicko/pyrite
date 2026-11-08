@@ -3352,83 +3352,110 @@ export function validateWorkflowDefinition(
 }
 
 /**
+ * Retorna o fuso horário configurado no ambiente do usuário (ex: 'America/Sao_Paulo').
+ * Se o fuso for desconhecido ou UTC genérico, adota 'America/Sao_Paulo' como padrão confiável.
+ */
+export function getUserTimeZone(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (tz && tz !== 'UTC') return tz
+  } catch {}
+  return 'America/Sao_Paulo'
+}
+
+/**
  * Calcula a próxima data/hora ISO para agendamento de fluxos de trabalho (Local e Background)
- * de forma 100% dinâmica sem dados mockados.
+ * de forma 100% dinâmica, ciente do fuso horário civil do usuário (America/Sao_Paulo).
+ * Se o horário de hoje ainda não passou, agenda com precisão para HOJE ("hoje às HH:mm").
  */
 export function computeWorkflowNextRunISO(
   frequency: 'daily' | 'weekdays' | 'weekly' | 'monthly' = 'daily',
   timeStr: string = '09:00',
   scheduleDays?: string[],
-  referenceDate: Date = new Date()
+  referenceDate: Date = new Date(),
+  timeZone: string = getUserTimeZone()
 ): string {
   const [hourStr = '09', minuteStr = '00'] = (timeStr || '09:00').split(':')
-  const targetHour = parseInt(hourStr, 10) || 9
-  const targetMinute = parseInt(minuteStr, 10) || 0
+  const parsedH = parseInt(hourStr, 10)
+  const targetHour = isNaN(parsedH) ? 9 : Math.max(0, Math.min(23, parsedH))
+  const parsedM = parseInt(minuteStr, 10)
+  const targetMinute = isNaN(parsedM) ? 0 : Math.max(0, Math.min(59, parsedM))
 
-  const candidate = new Date(referenceDate)
-  candidate.setHours(targetHour, targetMinute, 0, 0)
+  const nowParts = getZonedParts(referenceDate, timeZone)
 
-  // Se o horário de hoje já passou, avançar 1 dia como base inicial
-  if (candidate.getTime() <= referenceDate.getTime()) {
-    candidate.setDate(candidate.getDate() + 1)
-  }
+  // O horário de hoje ainda é válido se for posterior à hora atual,
+  // ou no mesmo minuto ("hoje ainda é tempo")
+  const targetHasPassedToday =
+    nowParts.hour > targetHour ||
+    (nowParts.hour === targetHour && nowParts.minute > targetMinute)
 
-  if (frequency === 'daily') {
-    return candidate.toISOString()
-  }
+  let dayOffset = targetHasPassedToday ? 1 : 0
 
   if (frequency === 'weekdays') {
     // 0 = Domingo, 6 = Sábado
-    while (candidate.getDay() === 0 || candidate.getDay() === 6) {
-      candidate.setDate(candidate.getDate() + 1)
+    while (true) {
+      const checkDate = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day + dayOffset, 12, 0, 0))
+      const dow = checkDate.getUTCDay()
+      if (dow !== 0 && dow !== 6) break
+      dayOffset++
     }
-    return candidate.toISOString()
-  }
-
-  if (frequency === 'weekly') {
+  } else if (frequency === 'weekly') {
     if (scheduleDays && scheduleDays.length > 0) {
       const dayMap: Record<string, number> = { dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6, sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }
       const targetDays = scheduleDays.map(d => dayMap[d.toLowerCase()] ?? 1)
       for (let i = 0; i < 7; i++) {
-        if (targetDays.includes(candidate.getDay())) {
-          return candidate.toISOString()
-        }
-        candidate.setDate(candidate.getDate() + 1)
+        const checkDate = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day + dayOffset, 12, 0, 0))
+        if (targetDays.includes(checkDate.getUTCDay())) break
+        dayOffset++
       }
     }
-    return candidate.toISOString()
   }
 
-  if (frequency === 'monthly') {
-    return candidate.toISOString()
-  }
+  const targetCivilDate = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day + dayOffset, 12, 0, 0))
+  const targetYear = targetCivilDate.getUTCFullYear()
+  const targetMonth = targetCivilDate.getUTCMonth() + 1
+  const targetDay = targetCivilDate.getUTCDate()
 
+  // Converte a data civil alvo na timezone especificada para o momento exato em ISO UTC
+  const approxUtc = Date.UTC(targetYear, targetMonth - 1, targetDay, targetHour, targetMinute, 0, 0)
+  let candidate = new Date(approxUtc)
+  for (let i = 0; i < 3; i++) {
+    const cParts = getZonedParts(candidate, timeZone)
+    const cAsUtc = Date.UTC(cParts.year, cParts.month - 1, cParts.day, cParts.hour, cParts.minute, 0, 0)
+    const desiredAsUtc = Date.UTC(targetYear, targetMonth - 1, targetDay, targetHour, targetMinute, 0, 0)
+    const deltaMs = desiredAsUtc - cAsUtc
+    if (deltaMs === 0) break
+    candidate = new Date(candidate.getTime() + deltaMs)
+  }
   return candidate.toISOString()
 }
 
 /**
  * Formata a data ISO da próxima execução em pt-BR de forma elegante idêntica ao OpenBot
- * (Ex: "hoje às 15:30", "amanhã às 09:00", "seg., 9 de nov., 09:00").
+ * (Ex: "hoje às 15:30", "amanhã às 09:00", "seg., 9 de nov., 09:00"),
+ * comparando as datas civis estritamente dentro da timezone do usuário.
  */
-export function formatWorkflowNextRun(isoString?: string): string {
+export function formatWorkflowNextRun(isoString?: string, timeZone: string = getUserTimeZone()): string {
   if (!isoString) return 'Não agendado'
   const date = new Date(isoString)
   if (isNaN(date.getTime())) return 'Horário inválido'
 
   const now = new Date()
+  const nowParts = getZonedParts(now, timeZone)
+  const dateParts = getZonedParts(date, timeZone)
+
   const isToday =
-    date.getDate() === now.getDate() &&
-    date.getMonth() === now.getMonth() &&
-    date.getFullYear() === now.getFullYear()
+    dateParts.year === nowParts.year &&
+    dateParts.month === nowParts.month &&
+    dateParts.day === nowParts.day
 
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1)
+  const tomorrowCivil = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day + 1, 12, 0, 0))
   const isTomorrow =
-    date.getDate() === tomorrow.getDate() &&
-    date.getMonth() === tomorrow.getMonth() &&
-    date.getFullYear() === tomorrow.getFullYear()
+    dateParts.year === tomorrowCivil.getUTCFullYear() &&
+    dateParts.month === (tomorrowCivil.getUTCMonth() + 1) &&
+    dateParts.day === tomorrowCivil.getUTCDate()
 
-  const timePart = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  const timePart = `${String(dateParts.hour).padStart(2, '0')}:${String(dateParts.minute).padStart(2, '0')}`
 
   if (isToday) {
     return `hoje às ${timePart}`
@@ -3437,10 +3464,9 @@ export function formatWorkflowNextRun(isoString?: string): string {
     return `amanhã às ${timePart}`
   }
 
-  const weekday = date.toLocaleDateString('pt-BR', { weekday: 'short' })
-  const day = date.getDate()
-  const month = date.toLocaleDateString('pt-BR', { month: 'short' })
-  return `${weekday}, ${day} de ${month}, ${timePart}`
+  const weekdayNames = ['dom.', 'seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.']
+  const monthNames = ['', 'jan.', 'fev.', 'mar.', 'abr.', 'maio', 'jun.', 'jul.', 'ago.', 'set.', 'out.', 'nov.', 'dez.']
+  return `${weekdayNames[dateParts.dayOfWeek]}, ${dateParts.day} de ${monthNames[dateParts.month]}, ${timePart}`
 }
 
 const clip = (text: string, max = 6000) => (text.length > max ? `${text.slice(0, max)}\n[...]` : text)

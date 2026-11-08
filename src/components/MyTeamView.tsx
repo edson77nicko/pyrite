@@ -898,7 +898,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   storeRef.current = store
 
   const selectedAgent = store.agents.find(a => a.id === selectedAgentId) || store.agents[0]
-  const activeRun = store.runs.find(r => r.id === selectedRunId) || store.runs[0] || null
+  const activeRun = selectedRunId ? (store.runs.find(r => r.id === selectedRunId) || null) : null
 
   const getAgentColor = (agentId?: string) => {
     const ag = store.agents.find(a => a.id === agentId)
@@ -3552,7 +3552,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             folders={folders}
             selectedWorkflowId={selectedWorkflowId}
             latestNodeStates={activeRun?.workflowNodeStates}
-            activeRun={activeRun}
+            activeRun={activeRun || undefined}
             allProjects={allUnifiedAsProjects}
             taskBoards={taskBoards}
             onSelectWorkflow={setSelectedWorkflowId}
@@ -3690,6 +3690,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               }
             }}
             onStopWorkflow={handleCancelActiveExecution}
+            onClearExecution={() => setSelectedRunId(null)}
             onOpenNote={onOpenNote}
             onResumeWorkflowRun={async pausedRun => {
               await handleDirectApproveWorkflowRun(pausedRun)

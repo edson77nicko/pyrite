@@ -80,7 +80,7 @@ interface WorkflowCanvasEditorProps {
   folders: string[]
   selectedWorkflowId: string
   latestNodeStates?: WorkflowNodeExecution[]
-  activeRun?: AgentRun
+  activeRun?: AgentRun | null
   allProjects?: ProjectContext[]
   taskBoards?: TaskBoard[]
   onSelectWorkflow: (workflowId: string) => void
@@ -88,6 +88,7 @@ interface WorkflowCanvasEditorProps {
   onDeleteWorkflow: (workflowId: string) => void
   onRunWorkflow: (workflow: WorkflowDefinition, isTest: boolean, prompt: string) => void
   onStopWorkflow?: () => void
+  onClearExecution?: () => void
   onResumeWorkflowRun?: (run: AgentRun) => Promise<void> | void
   onOpenNote?: (noteId: string) => void
   isExecuting: boolean
@@ -271,15 +272,20 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   onDeleteWorkflow,
   onRunWorkflow,
   onStopWorkflow,
+  onClearExecution,
   onResumeWorkflowRun,
   onOpenNote,
   isExecuting,
   commitTasks
 }) => {
   const activeWorkflow = workflows.find(w => w.id === selectedWorkflowId) || workflows[0]
-  // Só mostramos o estado de execução quando a execução pertence ao fluxo aberto
+  const [clearedRunId, setClearedRunId] = useState<string | null>(null)
+  const isCurrentRunCleared = Boolean(clearedRunId && activeRun && clearedRunId === activeRun.id)
+  // Só mostramos o estado de execução quando a execução pertence ao fluxo aberto e não foi limpa
   const runForThisWorkflow =
-    activeRun && activeWorkflow && activeRun.workflowId === activeWorkflow.id ? activeRun : undefined
+    !isCurrentRunCleared && activeRun && activeWorkflow && activeRun.workflowId === activeWorkflow.id
+      ? activeRun
+      : undefined
   const runStates = runForThisWorkflow?.workflowNodeStates
   const [dismissedRunId, setDismissedRunId] = useState<string | null>(null)
   const [isRunPanelCollapsed, setIsRunPanelCollapsed] = useState(false)
@@ -692,8 +698,13 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
   const handleUpdateSelectedNode = (patch: Partial<WorkflowNode>) => {
     if (!selectedNode) return
+    const extraWorkflowUpdates: Partial<WorkflowDefinition> = {}
+    if (patch.config && 'nextRunAt' in patch.config) {
+      extraWorkflowUpdates.nextRunAt = patch.config.nextRunAt
+    }
     onSaveWorkflow({
       ...activeWorkflow,
+      ...extraWorkflowUpdates,
       version: activeWorkflow.version + 1,
       nodes: activeWorkflow.nodes.map(n => (n.id === selectedNode.id ? { ...n, ...patch } : n)),
       updatedAt: Date.now()
@@ -701,8 +712,13 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   }
 
   const handleUpdateNodeById = (nodeId: string, patch: Partial<WorkflowNode>) => {
+    const extraWorkflowUpdates: Partial<WorkflowDefinition> = {}
+    if (patch.config && 'nextRunAt' in patch.config) {
+      extraWorkflowUpdates.nextRunAt = patch.config.nextRunAt
+    }
     onSaveWorkflow({
       ...activeWorkflow,
+      ...extraWorkflowUpdates,
       version: activeWorkflow.version + 1,
       nodes: activeWorkflow.nodes.map(n => (n.id === nodeId ? { ...n, ...patch } : n)),
       updatedAt: Date.now()
@@ -794,17 +810,47 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
     const cleaned: WorkflowDefinition = {
       ...activeWorkflow,
       nodes: activeWorkflow.nodes.map(n =>
-        n.config.lastOutput || n.config.lastExecutedAt
-          ? { ...n, config: { ...n.config, lastOutput: undefined, lastExecutedAt: undefined } }
+        n.config.lastOutput || n.config.lastExecutedAt || n.config.branchTaken
+          ? { ...n, config: { ...n.config, lastOutput: undefined, lastExecutedAt: undefined, branchTaken: undefined } }
           : n
       ),
       updatedAt: Date.now()
     }
     onSaveWorkflow(cleaned)
+    setClearedRunId(null)
     setDismissedRunId(null)
     setExpandedRunSteps({})
     onRunWorkflow(cleaned, isTest, 'Executar fluxo completo')
   }
+
+  const handleClearExecution = () => {
+    if (activeRun?.id) {
+      setClearedRunId(activeRun.id)
+    }
+    setDismissedRunId(null)
+    setExecutingNodeId(null)
+    setExpandedRunSteps({})
+
+    const cleaned: WorkflowDefinition = {
+      ...activeWorkflow,
+      nodes: activeWorkflow.nodes.map(n => ({
+        ...n,
+        config: {
+          ...n.config,
+          lastOutput: undefined,
+          lastExecutedAt: undefined,
+          branchTaken: undefined
+        }
+      })),
+      updatedAt: Date.now()
+    }
+    onSaveWorkflow(cleaned)
+    onClearExecution?.()
+  }
+
+  const hasExecutionData =
+    Boolean(runForThisWorkflow) ||
+    activeWorkflow.nodes.some(n => Boolean(n.config.lastOutput || n.config.lastExecutedAt || n.config.branchTaken))
 
   const addMenuGroups = [
     {
@@ -1074,6 +1120,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 <span>Testar</span>
               </button>
             )}
+            {hasExecutionData && !isExecuting && (
+              <button
+                type="button"
+                onClick={handleClearExecution}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-zinc-700/80 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 hover:border-zinc-600 font-medium text-xs transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Limpar resultados e status de execução do fluxo (estilo n8n)"
+              >
+                <Eraser className="w-3 h-3 text-zinc-400" />
+                <span>Limpar execução</span>
+              </button>
+            )}
             {isExecuting ? (
               <button
                 type="button"
@@ -1163,6 +1220,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     >
                       <Square className="w-2.5 h-2.5 fill-current" />
                       <span>Parar</span>
+                    </button>
+                  )}
+                  {!isRunActive && (
+                    <button
+                      type="button"
+                      onClick={handleClearExecution}
+                      className="text-[10px] font-semibold text-zinc-400 hover:text-zinc-100 bg-zinc-800/80 hover:bg-zinc-700 border border-zinc-700/70 rounded-md px-2 py-0.5 cursor-pointer flex items-center gap-1 transition-colors mr-0.5"
+                      title="Limpar todos os dados e status da execução deste fluxo"
+                    >
+                      <Eraser className="w-2.5 h-2.5" />
+                      <span>Limpar</span>
                     </button>
                   )}
                   <button
@@ -1257,6 +1325,28 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     </div>
                   )
                 })}
+              </div>
+            )}
+
+            {!isRunActive && (
+              <div className="px-3 py-2 border-t border-zinc-800/80 bg-[#101012] flex items-center justify-between">
+                <span className="text-[10px] text-zinc-500">
+                  {run.status === 'completed'
+                    ? 'Execução finalizada com sucesso'
+                    : run.status === 'cancelled'
+                    ? 'Execução cancelada'
+                    : run.status === 'failed'
+                    ? 'Execução com falha'
+                    : 'Execução finalizada'}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearExecution}
+                  className="text-[10.5px] font-medium text-zinc-300 hover:text-white flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors cursor-pointer"
+                >
+                  <Eraser className="w-3 h-3 text-zinc-400" />
+                  <span>Limpar execução</span>
+                </button>
               </div>
             )}
           </div>
@@ -1814,7 +1904,16 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                               <div className="flex items-center gap-1.5 min-w-0">
                                 <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                                 <span className="text-[11px] text-zinc-400 truncate">
-                                  Próxima: <strong className="text-zinc-200 font-medium">{formatWorkflowNextRun(node.config.nextRunAt)}</strong>
+                                  Próxima: <strong className="text-zinc-200 font-medium">
+                                    {formatWorkflowNextRun(
+                                      node.config.nextRunAt ||
+                                      computeWorkflowNextRunISO(
+                                        node.config.scheduleFrequency || 'daily',
+                                        node.config.scheduleTime || '09:00',
+                                        node.config.scheduleDays
+                                      )
+                                    )}
+                                  </strong>
                                 </span>
                               </div>
 
@@ -2808,7 +2907,22 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Tipo de Gatilho</label>
                       <CustomSelect
                         value={selectedNode.config.triggerType || 'manual'}
-                        onChange={newType => handleUpdateSelectedNode({ config: { ...selectedNode.config, triggerType: newType as any } })}
+                        onChange={newType => {
+                          const nextIso = newType === 'schedule'
+                            ? computeWorkflowNextRunISO(
+                                selectedNode.config.scheduleFrequency || 'daily',
+                                selectedNode.config.scheduleTime || '09:00',
+                                selectedNode.config.scheduleDays
+                              )
+                            : undefined
+                          handleUpdateSelectedNode({
+                            config: {
+                              ...selectedNode.config,
+                              triggerType: newType as any,
+                              nextRunAt: nextIso
+                            }
+                          })
+                        }}
                         options={[
                           { value: 'manual', label: 'Manual (Ao Executar)' },
                           { value: 'schedule', label: 'Agendamento Programado' },
@@ -2820,12 +2934,25 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     </div>
 
                     {selectedNode.config.triggerType === 'schedule' && (
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         <div>
                           <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Frequência</label>
                           <CustomSelect
                             value={selectedNode.config.scheduleFrequency || 'daily'}
-                            onChange={newFreq => handleUpdateSelectedNode({ config: { ...selectedNode.config, scheduleFrequency: newFreq as any } })}
+                            onChange={newFreq => {
+                              const nextIso = computeWorkflowNextRunISO(
+                                newFreq as any,
+                                selectedNode.config.scheduleTime || '09:00',
+                                selectedNode.config.scheduleDays
+                              )
+                              handleUpdateSelectedNode({
+                                config: {
+                                  ...selectedNode.config,
+                                  scheduleFrequency: newFreq as any,
+                                  nextRunAt: nextIso
+                                }
+                              })
+                            }}
                             options={[
                               { value: 'daily', label: 'Diariamente' },
                               { value: 'weekdays', label: 'Dias úteis' },
@@ -2839,8 +2966,36 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           <label className="block text-[11px] text-zinc-400 mb-1 font-medium">Horário de Execução</label>
                           <CustomTimePicker
                             value={selectedNode.config.scheduleTime || '09:00'}
-                            onChange={newTime => handleUpdateSelectedNode({ config: { ...selectedNode.config, scheduleTime: newTime } })}
+                            onChange={newTime => {
+                              const nextIso = computeWorkflowNextRunISO(
+                                selectedNode.config.scheduleFrequency || 'daily',
+                                newTime,
+                                selectedNode.config.scheduleDays
+                              )
+                              handleUpdateSelectedNode({
+                                config: {
+                                  ...selectedNode.config,
+                                  scheduleTime: newTime,
+                                  nextRunAt: nextIso
+                                }
+                              })
+                            }}
                           />
+                        </div>
+                        <div className="flex items-center gap-1.5 pt-1 text-xs text-zinc-400 bg-[#18181b] p-2 rounded-xl border border-zinc-800/80">
+                          <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                          <span className="truncate">
+                            Próxima: <strong className="text-zinc-200 font-medium">
+                              {formatWorkflowNextRun(
+                                selectedNode.config.nextRunAt ||
+                                computeWorkflowNextRunISO(
+                                  selectedNode.config.scheduleFrequency || 'daily',
+                                  selectedNode.config.scheduleTime || '09:00',
+                                  selectedNode.config.scheduleDays
+                                )
+                              )}
+                            </strong>
+                          </span>
                         </div>
                       </div>
                     )}
