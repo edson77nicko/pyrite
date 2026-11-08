@@ -66,7 +66,8 @@ import {
   FlaskConical,
   AlertTriangle,
   Eraser,
-  PanelLeft
+  PanelLeft,
+  Square
 } from 'lucide-react'
 import { CustomSelect } from './CustomSelect'
 import { CustomTimePicker } from './CustomTimePicker'
@@ -86,6 +87,7 @@ interface WorkflowCanvasEditorProps {
   onSaveWorkflow: (workflow: WorkflowDefinition) => void
   onDeleteWorkflow: (workflowId: string) => void
   onRunWorkflow: (workflow: WorkflowDefinition, isTest: boolean, prompt: string) => void
+  onStopWorkflow?: () => void
   onResumeWorkflowRun?: (run: AgentRun) => Promise<void> | void
   onOpenNote?: (noteId: string) => void
   isExecuting: boolean
@@ -268,6 +270,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   onSaveWorkflow,
   onDeleteWorkflow,
   onRunWorkflow,
+  onStopWorkflow,
   onResumeWorkflowRun,
   onOpenNote,
   isExecuting,
@@ -291,6 +294,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   const [flowSearchQuery, setFlowSearchQuery] = useState('')
   const [isRenamingWorkflow, setIsRenamingWorkflow] = useState(false)
   const [workflowTitleDraft, setWorkflowTitleDraft] = useState('')
+  const [workflowToDelete, setWorkflowToDelete] = useState<WorkflowDefinition | null>(null)
 
   const handleDuplicateWorkflow = (sourceWf: WorkflowDefinition) => {
     const copy: WorkflowDefinition = {
@@ -925,21 +929,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     >
                       <Copy className="w-3 h-3" />
                     </button>
-                    {workflows.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (window.confirm(`Excluir fluxo "${wf.name}"?`)) {
-                            onDeleteWorkflow(wf.id)
-                          }
-                        }}
-                        className="p-1 rounded hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 cursor-pointer"
-                        title="Excluir fluxo"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setWorkflowToDelete(wf)
+                      }}
+                      className="p-1 rounded hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                      title="Excluir fluxo"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
                 </div>
               )
@@ -1024,10 +1024,18 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                       setWorkflowTitleDraft(activeWorkflow.name)
                       setIsRenamingWorkflow(true)
                     }}
-                    className="p-1 text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                    className="p-1 text-zinc-500 hover:text-zinc-300 cursor-pointer rounded hover:bg-zinc-800/60"
                     title="Renomear fluxo"
                   >
                     <Type className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkflowToDelete(activeWorkflow)}
+                    className="p-1 text-zinc-500 hover:text-rose-400 cursor-pointer rounded hover:bg-zinc-800/60"
+                    title="Excluir fluxo"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               )}
@@ -1044,9 +1052,9 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             </button>
           </div>
 
-          {/* Direita: Botão Pílula Branco "▷ Executar fluxo de trabalho" */}
+          {/* Direita: Botão Pílula Branco "▷ Executar fluxo de trabalho" OU Botão Vermelho "⏹ Parar Fluxo" */}
           <div className="flex items-center gap-2">
-            {!validation.valid && (
+            {!validation.valid && !isExecuting && (
               <div
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-950/70 border border-amber-800/60 text-amber-300 text-[11px]"
                 title={validation.errors.join('\n')}
@@ -1055,30 +1063,42 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 <span className="truncate max-w-[220px]">{validation.errors[0]}</span>
               </div>
             )}
-            <button
-              type="button"
-              disabled={isExecuting}
-              onClick={() => handleStartRun(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white font-medium text-xs transition-all cursor-pointer disabled:opacity-50"
-              title="Percorre todo o fluxo sem gravar nada no cofre"
-            >
-              <FlaskConical className="w-3 h-3" />
-              <span>Testar</span>
-            </button>
-            <button
-              type="button"
-              disabled={isExecuting}
-              onClick={() => handleStartRun(false)}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-semibold text-xs transition-all shadow-sm cursor-pointer ${
-                validation.valid
-                  ? 'bg-zinc-100 hover:bg-white text-zinc-950 active:scale-95'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
-              }`}
-              title={validation.valid ? 'Iniciar execução do fluxo' : validation.errors.join('\n')}
-            >
-              <Play className={`w-3 h-3 fill-current ${isExecuting ? 'animate-spin' : ''}`} />
-              <span>{isExecuting ? 'Executando fluxo...' : 'Executar fluxo de trabalho'}</span>
-            </button>
+            {!isExecuting && (
+              <button
+                type="button"
+                onClick={() => handleStartRun(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white font-medium text-xs transition-all cursor-pointer"
+                title="Percorre todo o fluxo sem gravar nada no cofre"
+              >
+                <FlaskConical className="w-3 h-3" />
+                <span>Testar</span>
+              </button>
+            )}
+            {isExecuting ? (
+              <button
+                type="button"
+                onClick={() => onStopWorkflow?.()}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full font-semibold text-xs transition-all shadow-lg cursor-pointer bg-rose-600 hover:bg-rose-500 text-white active:scale-95 animate-pulse"
+                title="Parar execução imediatamente"
+              >
+                <Square className="w-3 h-3 fill-current" />
+                <span>Parar Fluxo</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleStartRun(false)}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-semibold text-xs transition-all shadow-sm cursor-pointer ${
+                  validation.valid
+                    ? 'bg-zinc-100 hover:bg-white text-zinc-950 active:scale-95'
+                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                }`}
+                title={validation.valid ? 'Iniciar execução do fluxo' : validation.errors.join('\n')}
+              >
+                <Play className="w-3 h-3 fill-current" />
+                <span>Executar fluxo de trabalho</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1098,6 +1118,8 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               ? { label: 'Executando...', cls: 'text-amber-300 bg-amber-950/50 border-amber-800/50' }
               : run.status === 'completed'
               ? { label: 'Concluído', cls: 'text-emerald-300 bg-emerald-950/50 border-emerald-800/50' }
+              : run.status === 'cancelled'
+              ? { label: 'Cancelado', cls: 'text-rose-400 bg-rose-950/50 border-rose-800/50' }
               : run.status === 'failed'
               ? { label: 'Falhou', cls: 'text-rose-300 bg-rose-950/50 border-rose-800/50' }
               : run.status === 'waiting_approval'
@@ -1132,6 +1154,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
+                  {isRunActive && onStopWorkflow && (
+                    <button
+                      type="button"
+                      onClick={() => onStopWorkflow()}
+                      className="text-[10px] font-semibold text-rose-300 hover:text-white bg-rose-950/70 hover:bg-rose-900 border border-rose-800/70 rounded-md px-2 py-0.5 cursor-pointer flex items-center gap-1 transition-colors mr-0.5"
+                      title="Parar execução imediatamente"
+                    >
+                      <Square className="w-2.5 h-2.5 fill-current" />
+                      <span>Parar</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setIsRunPanelCollapsed(v => !v)}
@@ -1869,27 +1902,39 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                           </div>
                         )}
 
-                        <button
-                          type="button"
-                          disabled={isExecuting || isExecutingThisNode}
-                          onClick={() => {
-                            if (node.config.triggerType === 'manual' || !node.config.triggerType) {
-                              handleStartRun(false)
-                            } else {
-                              handleExecuteSingleNode(node)
-                            }
-                          }}
-                          className="w-full py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
-                        >
-                          <Play className={`w-3.5 h-3.5 fill-current ${isExecutingThisNode || isExecuting ? 'animate-spin' : ''}`} />
-                          <span>
-                            {isExecutingThisNode || isExecuting
-                              ? 'Executando...'
-                              : node.config.triggerType === 'manual' || !node.config.triggerType
-                              ? 'Executar agora (iniciar fluxo)'
-                              : 'Testar gatilho'}
-                          </span>
-                        </button>
+                        {isExecuting ? (
+                          <button
+                            type="button"
+                            onClick={() => onStopWorkflow?.()}
+                            className="w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm active:scale-95 animate-pulse"
+                            title="Parar fluxo em execução"
+                          >
+                            <Square className="w-3.5 h-3.5 fill-current" />
+                            <span>Parar fluxo em execução</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={isExecutingThisNode}
+                            onClick={() => {
+                              if (node.config.triggerType === 'manual' || !node.config.triggerType) {
+                                handleStartRun(false)
+                              } else {
+                                handleExecuteSingleNode(node)
+                              }
+                            }}
+                            className="w-full py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+                          >
+                            <Play className={`w-3.5 h-3.5 fill-current ${isExecutingThisNode ? 'animate-spin' : ''}`} />
+                            <span>
+                              {isExecutingThisNode
+                                ? 'Executando...'
+                                : node.config.triggerType === 'manual' || !node.config.triggerType
+                                ? 'Executar agora (iniciar fluxo)'
+                                : 'Testar gatilho'}
+                            </span>
+                          </button>
+                        )}
 
                         <ResultField
                           output={node.config.lastOutput}
@@ -3122,6 +3167,17 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     <span className="font-mono text-zinc-200">v{activeWorkflow.version}</span>
                   </div>
                 </div>
+
+                <div className="pt-3 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setWorkflowToDelete(activeWorkflow)}
+                    className="w-full py-2 px-3 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/50 text-rose-300 hover:text-rose-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Excluir este fluxo</span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -3141,6 +3197,55 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
         )}
       </div>
     </div>
+
+    {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE FLUXO DE TRABALHO */}
+    {workflowToDelete && (
+      <div
+        data-no-pan="true"
+        className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-100"
+        onClick={() => setWorkflowToDelete(null)}
+      >
+        <div
+          className="bg-[#141416] border border-zinc-800 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95 duration-100"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0">
+              <Trash2 className="w-5 h-5 text-rose-400" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-zinc-100">Excluir Fluxo de Trabalho</h3>
+              <p className="text-xs text-zinc-400 truncate">{workflowToDelete.name}</p>
+            </div>
+          </div>
+
+          <div className="text-xs text-zinc-300 leading-relaxed bg-[#18181c] border border-zinc-800/80 rounded-xl p-3">
+            Tem certeza que deseja excluir o fluxo <strong className="text-white">"{workflowToDelete.name}"</strong>? Todos os nós, conexões e configurações deste fluxo serão removidos permanentemente.
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setWorkflowToDelete(null)}
+              className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const targetId = workflowToDelete.id
+                setWorkflowToDelete(null)
+                onDeleteWorkflow(targetId)
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-colors cursor-pointer shadow-sm active:scale-95"
+            >
+              Excluir Fluxo
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
   )
 }

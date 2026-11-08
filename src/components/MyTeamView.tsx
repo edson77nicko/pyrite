@@ -9,7 +9,8 @@ import type {
   MultiAgentStoreState,
   ProjectContext,
   ProposalStatus,
-  TeamDefinition
+  TeamDefinition,
+  WorkflowDefinition
 } from '../types/agents'
 import type { Note, NoteType, TaskItem } from '../types'
 import type { TaskBoard } from '../types/tasks'
@@ -3563,12 +3564,64 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               await onUpdateStore({ ...store, workflows: nextWfs })
             }}
             onDeleteWorkflow={async wfId => {
-              const nextWfs = workflows.filter(w => w.id !== wfId)
+              let nextWfs = workflows.filter(w => w.id !== wfId)
+              if (nextWfs.length === 0) {
+                const freshInId = `wn_in_${Date.now()}`
+                const freshLlmId = `wn_llm_${Date.now() + 1}`
+                const freshOutId = `wn_out_${Date.now() + 2}`
+                const freshWf: WorkflowDefinition = {
+                  id: `wf_${Date.now()}`,
+                  version: 1,
+                  status: 'draft',
+                  name: 'Novo Fluxo de Trabalho',
+                  description: 'Fluxo visual customizado.',
+                  nodes: [
+                    {
+                      id: freshInId,
+                      kind: 'input',
+                      label: 'Gatilho Manual',
+                      position: { x: 140, y: 180 },
+                      config: { triggerType: 'manual', content: '' }
+                    },
+                    {
+                      id: freshLlmId,
+                      kind: 'llm',
+                      label: 'Processamento por IA',
+                      position: { x: 500, y: 180 },
+                      config: {
+                        model: 'gpt-4o',
+                        promptTemplate: 'Com base na entrada, elabore o conteúdo solicitado com detalhes e qualidade profissional.',
+                        systemPrompt: 'Você é um assistente inteligente executando uma etapa de automação no Pyrite. Responda em português com clareza e objetividade.'
+                      }
+                    },
+                    {
+                      id: freshOutId,
+                      kind: 'deliverable',
+                      label: 'Gravar Nota no Cofre',
+                      position: { x: 860, y: 180 },
+                      config: {
+                        targetFolder: 'Entregas',
+                        namingPattern: 'Entrega - {fluxo} - {data}',
+                        outputType: 'note'
+                      }
+                    }
+                  ],
+                  edges: [
+                    { id: `we_${Date.now()}_1`, sourceNodeId: freshInId, targetNodeId: freshLlmId, branch: 'default' },
+                    { id: `we_${Date.now()}_2`, sourceNodeId: freshLlmId, targetNodeId: freshOutId, branch: 'default' }
+                  ],
+                  createdAt: Date.now(),
+                  updatedAt: Date.now()
+                }
+                nextWfs = [freshWf]
+              }
               await onUpdateStore({ ...store, workflows: nextWfs })
               if (nextWfs[0]) setSelectedWorkflowId(nextWfs[0].id)
             }}
             onRunWorkflow={async (wf, isTest, prompt) => {
               setIsExecuting(true)
+              const controller = new AbortController()
+              abortControllerRef.current = controller
               try {
                 const wfContext = resolveActiveContext(selectedProjectId)
                 const proj: ProjectContext | undefined = wfContext ? {
@@ -3593,31 +3646,50 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   projectContext: proj,
                   explicitClientName: proj?.clientName,
                   isTestRun: isTest,
+                  abortSignal: controller.signal,
                   commitNote: workflowCommitNote,
                   commitTasks: workflowCommitTasks
                 })
                 await persistWorkflowRun(wfRun, 'prepend')
                 setSelectedRunId(wfRun.id)
                 setStatusBanner({
-                  type: wfRun.status === 'completed' ? 'success' : wfRun.status === 'failed' ? 'error' : 'warning',
+                  type:
+                    wfRun.status === 'completed'
+                      ? 'success'
+                      : wfRun.status === 'cancelled'
+                      ? 'warning'
+                      : wfRun.status === 'failed'
+                      ? 'error'
+                      : 'warning',
                   text:
                     wfRun.status === 'completed'
                       ? isTest
                         ? `Teste do fluxo "${wf.name}" concluído (nada foi gravado no cofre).`
                         : `Fluxo "${wf.name}" executado com sucesso!`
+                      : wfRun.status === 'cancelled'
+                      ? `Execução do fluxo "${wf.name}" foi cancelada.`
                       : wfRun.status === 'waiting_approval'
                       ? `Fluxo "${wf.name}" pausado aguardando aprovação humana.`
                       : `Fluxo "${wf.name}" falhou: ${wfRun.error || wfRun.status}`
                 })
               } catch (err: any) {
-                setStatusBanner({
-                  type: 'error',
-                  text: `Erro ao executar o fluxo: ${err?.message || 'falha inesperada'}`
-                })
+                if (controller.signal.aborted) {
+                  setStatusBanner({
+                    type: 'warning',
+                    text: `Execução do fluxo "${wf.name}" foi cancelada.`
+                  })
+                } else {
+                  setStatusBanner({
+                    type: 'error',
+                    text: `Erro ao executar o fluxo: ${err?.message || 'falha inesperada'}`
+                  })
+                }
               } finally {
                 setIsExecuting(false)
+                abortControllerRef.current = null
               }
             }}
+            onStopWorkflow={handleCancelActiveExecution}
             onOpenNote={onOpenNote}
             onResumeWorkflowRun={async pausedRun => {
               await handleDirectApproveWorkflowRun(pausedRun)

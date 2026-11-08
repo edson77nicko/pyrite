@@ -3801,6 +3801,11 @@ async function traverseWorkflowGraph(params: {
   }
 
   while (activeQueue.length > 0 && !failureMessage) {
+    if (abortSignal?.aborted) {
+      failureMessage = 'Execução cancelada pelo usuário.'
+      break
+    }
+
     const currentId = activeQueue.shift()!
     if (visitedNodes.has(currentId)) continue
 
@@ -3920,6 +3925,12 @@ async function traverseWorkflowGraph(params: {
         abortSignal
       })
 
+      if (abortSignal?.aborted || aiRes.cancelled) {
+        failureMessage = 'Execução cancelada pelo usuário.'
+        setNodeState(node.id, 'failed', 'Cancelado pelo usuário.', 'Execução cancelada pelo usuário.')
+        break
+      }
+
       if (!aiRes.success || !aiRes.text) {
         failureMessage = `Bloco "${node.label}" (LLM) falhou: ${aiRes.error || 'sem resposta da IA.'}`
         setNodeState(node.id, 'failed', failureMessage, failureMessage)
@@ -3981,6 +3992,11 @@ async function traverseWorkflowGraph(params: {
       })
 
       if (stepRun.status === 'failed' || stepRun.status === 'cancelled') {
+        if (abortSignal?.aborted || stepRun.status === 'cancelled') {
+          failureMessage = 'Execução cancelada pelo usuário.'
+          setNodeState(node.id, 'failed', 'Cancelado pelo usuário.', 'Execução cancelada pelo usuário.')
+          break
+        }
         failureMessage = `Agente "${selectedAgent.name}" falhou: ${stepRun.error || stepRun.status}`
         setNodeState(node.id, 'failed', failureMessage, failureMessage)
         continue
@@ -4020,6 +4036,11 @@ async function traverseWorkflowGraph(params: {
           agent: selectedAgent,
           abortSignal
         })
+        if (abortSignal?.aborted || aiRes.cancelled) {
+          failureMessage = 'Execução cancelada pelo usuário.'
+          setNodeState(node.id, 'failed', 'Cancelado pelo usuário.', 'Execução cancelada pelo usuário.')
+          break
+        }
         if (!aiRes.success || !aiRes.text) {
           if (stepRun.draftContent && stepRun.draftContent.trim() && !stepRun.draftContent.includes('[Cliente pendente]')) {
             agentOutput = stepRun.draftContent
@@ -4099,7 +4120,12 @@ async function traverseWorkflowGraph(params: {
       } else if (rule) {
         // ai_rule ou qualquer tipo com uma regra não-vazia → avaliar via IA
         const aiPrompt = `Você avalia uma condição de um fluxo de trabalho. Leia a entrada cuidadosamente e responda com UMA ÚNICA PALAVRA: sim ou não.\n\nCondição: ${rule}\n\n--- entrada ---\n${prevText}`
-        const aiRes = await callWorkflowAi({ system: 'Você é um avaliador de condições.', user: aiPrompt })
+        const aiRes = await callWorkflowAi({ system: 'Você é um avaliador de condições.', user: aiPrompt, abortSignal })
+        if (abortSignal?.aborted || aiRes.cancelled) {
+          failureMessage = 'Execução cancelada pelo usuário.'
+          setNodeState(node.id, 'failed', 'Cancelado pelo usuário.', 'Execução cancelada pelo usuário.')
+          break
+        }
         if (!aiRes.success || !aiRes.text) {
           failureMessage = `Bloco "${node.label}": falha ao avaliar condição com IA${aiRes.error ? ` — ${aiRes.error}` : '.'}`
           setNodeState(node.id, 'failed', failureMessage, failureMessage)
@@ -4240,6 +4266,12 @@ Responda com o valor direto e sucinto da propriedade (por exemplo, se for data: 
           abortSignal
         })
 
+        if (abortSignal?.aborted || aiRes.cancelled) {
+          failureMessage = 'Execução cancelada pelo usuário.'
+          setNodeState(node.id, 'failed', 'Cancelado pelo usuário.', 'Execução cancelada pelo usuário.')
+          break
+        }
+
         if (aiRes.success && aiRes.text) {
           extractedValue = aiRes.text.trim().replace(/^["'`]|["'`]$/g, '')
         }
@@ -4302,6 +4334,12 @@ Responda com o valor direto e sucinto da propriedade (por exemplo, se for data: 
             temperature: 0.1,
             abortSignal
           })
+
+          if (abortSignal?.aborted || aiPropRes.cancelled) {
+            failureMessage = 'Execução cancelada pelo usuário.'
+            setNodeState(node.id, 'failed', 'Cancelado pelo usuário.', 'Execução cancelada pelo usuário.')
+            break
+          }
 
           if (aiPropRes.success && aiPropRes.text) {
             extractedPropValue = aiPropRes.text.trim().replace(/^["'`]|["'`]$/g, '')
@@ -4376,6 +4414,12 @@ ${clip(prevContent, 4000)}`
           temperature: 0.2,
           abortSignal
         })
+
+        if (abortSignal?.aborted || aiRes.cancelled) {
+          failureMessage = 'Execução cancelada pelo usuário.'
+          setNodeState(node.id, 'failed', 'Cancelado pelo usuário.', 'Execução cancelada pelo usuário.')
+          break
+        }
 
         if (aiRes.success && aiRes.text) {
           try {
@@ -4580,6 +4624,28 @@ ${clip(prevContent, 4000)}`
   }
 
   const finalBase: AgentRun = latestRun || baseRunTemplate()
+
+  if (abortSignal?.aborted || failureMessage === 'Execução cancelada pelo usuário.') {
+    for (const item of nodeStates) {
+      if (item.status === 'running') {
+        item.status = 'failed'
+        item.endedAt = Date.now()
+        item.outputSummary = 'Cancelado pelo usuário.'
+        item.output = 'Execução cancelada pelo usuário.'
+      }
+    }
+    return {
+      ...finalBase,
+      workflowId: workflow.id,
+      routineId,
+      workflowSnapshot: workflow,
+      pausedAtWorkflowNodeId: undefined,
+      workflowNodeStates: nodeStates,
+      status: 'cancelled',
+      error: 'Execução cancelada pelo usuário.',
+      updatedAt: Date.now()
+    }
+  }
 
   if (failureMessage) {
     return {
