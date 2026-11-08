@@ -175,6 +175,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   onUpdateStore,
   notes,
   folders,
+  vaultPath,
   onOpenNote,
   onCreateCommittedNote,
   onCreateTask,
@@ -211,9 +212,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const [selectedTeamId, setSelectedTeamId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_TEAM)
-      if (saved && teams.some(t => t.id === saved)) return saved
+      if (saved && (saved === 'overview' || teams.some(t => t.id === saved))) return saved
     } catch {}
-    return teams[0]?.id || ''
+    return 'overview'
   })
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(() => {
     try {
@@ -1359,7 +1360,12 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             <button
               key={nav.id}
               type="button"
-              onClick={() => setActiveSection(nav.id)}
+              onClick={() => {
+                setActiveSection(nav.id)
+                if (nav.id === 'squads') {
+                  setSelectedTeamId('overview')
+                }
+              }}
               title={nav.title}
               className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
                 isActive
@@ -3560,29 +3566,30 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         {activeSection === 'squads' && (
           <ErrorBoundary fallbackTitle="Gestão de Esquadrão">
             <SquadManagementView
-            squads={teams}
-            agents={store.agents}
-            selectedSquadId={selectedTeamId}
-            onSelectSquad={setSelectedTeamId}
-            onSaveSquad={async updatedSquad => {
-              const exists = teams.some(t => t.id === updatedSquad.id)
-              const nextTeams = exists
-                ? teams.map(t => (t.id === updatedSquad.id ? updatedSquad : t))
-                : [...teams, updatedSquad]
-              await onUpdateStore({ ...store, teams: nextTeams })
-            }}
-            onDeleteSquad={async squadId => {
-              const nextTeams = teams.filter(t => t.id !== squadId)
-              await onUpdateStore({ ...store, teams: nextTeams })
-              if (nextTeams[0]) setSelectedTeamId(nextTeams[0].id)
-            }}
-            onOpenSquadChat={squad => {
-              const leadId = squad.coordinatorAgentId || squad.pipeline?.[0]?.agentId || squad.nodes?.[0]?.agentId || store.agents[0]?.id || ''
-              setSelectedAgentId(leadId)
-              setSelectedTeamId(squad.id)
-              setUseTeamDelegation(true)
-              setActiveSection('agents')
-            }}
+              squads={teams}
+              agents={store.agents}
+              selectedSquadId={selectedTeamId}
+              vaultName={vaultPath ? (vaultPath.split(/[/\\]/).filter(Boolean).pop() || 'Cofre Principal') : 'Cofre Principal'}
+              onSelectSquad={setSelectedTeamId}
+              onSaveSquad={async updatedSquad => {
+                const exists = teams.some(t => t.id === updatedSquad.id)
+                const nextTeams = exists
+                  ? teams.map(t => (t.id === updatedSquad.id ? updatedSquad : t))
+                  : [...teams, updatedSquad]
+                await onUpdateStore({ ...store, teams: nextTeams })
+              }}
+              onDeleteSquad={async squadId => {
+                const nextTeams = teams.filter(t => t.id !== squadId)
+                await onUpdateStore({ ...store, teams: nextTeams })
+                setSelectedTeamId('overview')
+              }}
+              onOpenSquadChat={squad => {
+                const leadId = squad.coordinatorAgentId || squad.pipeline?.[0]?.agentId || squad.nodes?.[0]?.agentId || store.agents[0]?.id || ''
+                setSelectedAgentId(leadId)
+                setSelectedTeamId(squad.id)
+                setUseTeamDelegation(true)
+                setActiveSection('agents')
+              }}
             />
           </ErrorBoundary>
         )}
