@@ -1710,12 +1710,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               if (dragOverTarget === '') setDragOverTarget(null)
             }}
             onDrop={(e) => handleDrop(e, '')}
-            className={`flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider transition-all rounded-md ${
+            className={`flex items-center justify-between px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider transition-all rounded-md ${
               dragOverTarget === ''
                 ? 'ring-2 ring-[var(--accent)] bg-[var(--accent-glow-subtle)] text-[var(--accent)]'
                 : 'text-zinc-500'
             }`}
           >
+            <div className="flex items-center gap-2">
+              <Folder className="w-4 h-4 text-[var(--accent)]" />
+              <span>Documentos {dragOverTarget === '' && '· Raiz do cofre'}</span>
+            </div>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -1723,27 +1727,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   e.stopPropagation()
                   handleStartCreateFolder()
                 }}
-                className="inline-flex items-center gap-0.5 p-1 -ml-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition-colors cursor-pointer"
+                className="p-0.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
                 title="Criar nova pasta na raiz do cofre"
               >
-                <Plus className="w-3 h-3 text-[var(--accent)]" />
-                <Folder className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
               </button>
-              <span>Documentos {dragOverTarget === '' && '· Raiz do cofre'}</span>
+              {dragOverTarget === '' ? (
+                <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold text-zinc-950 uppercase tracking-normal" style={{ backgroundColor: 'var(--accent)' }}>
+                  Mover para raiz
+                </span>
+              ) : (
+                <span className="text-[9.5px] font-mono text-zinc-600">{notes.length}</span>
+              )}
             </div>
-            {dragOverTarget === '' ? (
-              <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold text-zinc-950 uppercase tracking-normal" style={{ backgroundColor: 'var(--accent)' }}>
-                Mover para raiz
-              </span>
-            ) : (
-              <span className="text-[9.5px] font-mono text-zinc-600">{notes.length}</span>
-            )}
           </div>
 
           {/* Form to create folder when triggered at root */}
           {isCreatingFolder && !parentForNewFolder && (
-            <form onSubmit={handleCreateFolderSubmit} className="mx-1 my-1 px-2.5 py-1.5 flex items-center gap-1.5 bg-[#16161d] border border-zinc-700/80 rounded-lg shadow-sm">
-              <Folder className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+            <form onSubmit={handleCreateFolderSubmit} className="mx-1 my-1 px-2.5 py-1.5 flex items-center gap-2 bg-[#16161d] border border-zinc-700/80 rounded-lg shadow-sm">
+              <Folder className="w-4 h-4 text-[var(--accent)] shrink-0" />
               <input
                 type="text"
                 autoFocus
@@ -1782,7 +1784,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }`}
             >
               <div className="flex items-center justify-center gap-1.5 pointer-events-none">
-                <Folder className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                <Folder className="w-4 h-4" style={{ color: 'var(--accent)' }} />
                 <span>Mover para a raiz do cofre</span>
               </div>
             </div>
@@ -1817,7 +1819,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onSelectNote(n.id)
                     }}
                     title={n.title}
-                    className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border select-none ${
+                    className={`group flex items-center justify-between px-2.5 py-1 rounded-lg text-[13px] cursor-pointer transition-colors border select-none ${
                       isNoteDragged
                         ? 'opacity-40 border-dashed border-zinc-600'
                         : isActive
@@ -1829,8 +1831,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ...(isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : {})
                     } as React.CSSProperties}
                   >
-                    <div className="flex items-center gap-1.5 truncate min-w-0">
-                      <Star className="w-3 h-3 shrink-0" style={{ fill: 'var(--accent-icon, var(--accent))', color: 'var(--accent-icon, var(--accent))' }} />
+                    <div className="flex items-center gap-2 truncate min-w-0">
+                      <Star className="w-4 h-4 shrink-0" style={{ fill: 'var(--accent-icon, var(--accent))', color: 'var(--accent-icon, var(--accent))' }} />
                       <span className="truncate">{n.title}</span>
                     </div>
                   </div>
@@ -1842,7 +1844,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Recursive Subfolders & Notes Tree */}
         <div className="space-y-[1px] min-w-fit">
-          {rootFolderNodes.map(node => renderFolderNode(node))}
+          {rootFolderNodes.map(node => renderFolderNode(node, 0))}
         </div>
 
         {/* Unassigned notes (without folder) */}
@@ -1900,7 +1902,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onSelectNote(note.id)
                     }}
                     title={`${note.title} (${isMindMap ? 'Mapa Mental' : isDraw ? 'Desenho / Draw' : isHtml ? 'Arquivo HTML' : 'Nota'})`}
-                    className={`group flex items-center justify-between px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer transition-colors border select-none ${
+                    className={`group flex items-center justify-between px-2.5 py-1 rounded-lg text-[13px] cursor-pointer transition-colors border select-none ${
                       isNoteDragged
                         ? 'opacity-40 border-dashed border-zinc-600'
                         : isActive
@@ -1912,9 +1914,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ...(isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : {})
                     } as React.CSSProperties}
                   >
-                    <div className="flex items-center gap-1.5 truncate min-w-0">
+                    <div className="flex items-center gap-2 truncate min-w-0">
                       <NoteIcon
-                        className="w-3.5 h-3.5 shrink-0"
+                        className="w-4 h-4 shrink-0"
                         style={
                           isHtml
                             ? { color: '#f97316' }
