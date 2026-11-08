@@ -1997,10 +1997,6 @@ export const App: React.FC = () => {
                     settings={settings}
                     isRightSidebarOpen={isRightSidebarOpen}
                     onToggleRightSidebar={() => setIsRightSidebarOpen(o => !o)}
-                    onUseNoteWithAgent={(noteId, role) => {
-                      setPreselectedNoteForBinding({ noteId, role })
-                      handleChangeView('agents')
-                    }}
                   />
                 )
               )}
