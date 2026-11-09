@@ -81,9 +81,23 @@ async function publish() {
   const latest = await publicResponse.json()
   if (latest.tag_name !== tag || latest.draft || latest.prerelease) throw new Error('A versão publicada não está marcada como latest estável.')
   const metadataAsset = latest.assets.find(asset => asset.name === 'latest.yml')
-  const remoteMetadata = await fetch(metadataAsset.browser_download_url, { headers: { 'User-Agent': 'Pyrite-Release-Verify' } })
+  let remoteMetadata = null
   const normalizeYaml = s => s.replace(/\r\n/g, '\n').trim()
-  if (!remoteMetadata.ok || normalizeYaml(await remoteMetadata.text()) !== normalizeYaml(metadata)) throw new Error('A metadata pública não corresponde ao instalador publicado.')
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      const res = await fetch(metadataAsset.browser_download_url, { headers: { 'User-Agent': 'Pyrite-Release-Verify' } })
+      if (res.ok) {
+        const text = await res.text()
+        if (normalizeYaml(text) === normalizeYaml(metadata)) {
+          remoteMetadata = text
+          break
+        }
+      }
+    } catch {}
+    console.log(`Aguardando sincronização do CDN do GitHub... tentativa ${attempt}/10`)
+    await new Promise(r => setTimeout(r, 3000))
+  }
+  if (!remoteMetadata) throw new Error('A metadata pública não corresponde ao instalador publicado.')
   console.log(`Publicada e verificada: ${latest.html_url}`)
   console.log(`Atualização automática disponível: ${tag}. Assets: ${latest.assets.map(asset => asset.name).join(', ')}`)
 

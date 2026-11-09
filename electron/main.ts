@@ -591,6 +591,22 @@ function setupAutoUpdater() {
     return
   }
 
+  const logDir = app.getPath('userData')
+  const updaterLogFile = path.join(logDir, 'updater.log')
+  const logUpdater = (level: string, msg: string) => {
+    try {
+      const entry = `[${new Date().toISOString()}] [${level}] ${msg}\n`
+      fs.appendFileSync(updaterLogFile, entry)
+    } catch {}
+  }
+
+  autoUpdater.logger = {
+    info: (msg: string) => { console.log('[AutoUpdater]', msg); logUpdater('INFO', msg) },
+    warn: (msg: string) => { console.warn('[AutoUpdater]', msg); logUpdater('WARN', msg) },
+    error: (msg: string) => { console.error('[AutoUpdater]', msg); logUpdater('ERROR', msg) },
+    debug: (msg: string) => { logUpdater('DEBUG', msg) }
+  }
+
   autoUpdater.on('checking-for-update', () => {
     win?.webContents.send('updater:status', { status: 'checking' })
   })
@@ -619,12 +635,23 @@ function setupAutoUpdater() {
     win?.webContents.send('updater:status', { status: 'error', error: err?.message || 'Update failed' })
   })
 
-  // Automatically check for updates 3 seconds after window opens
-  setTimeout(() => {
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.warn('[AutoUpdater] Check on start failed:', err.message)
-    })
-  }, 3000)
+  const runCheck = async (attempt = 1) => {
+    try {
+      logUpdater('INFO', `Triggering checkForUpdates (attempt ${attempt})`)
+      await autoUpdater.checkForUpdates()
+    } catch (err: any) {
+      logUpdater('WARN', `Update check failed (attempt ${attempt}): ${err?.message || err}`)
+      if (attempt < 3) {
+        setTimeout(() => runCheck(attempt + 1), 30000)
+      }
+    }
+  }
+
+  // Initial check 3 seconds after window opens
+  setTimeout(() => runCheck(1), 3000)
+
+  // Periodic check every 30 minutes while app is running
+  setInterval(() => runCheck(1), 30 * 60 * 1000)
 }
 
 ipcMain.handle('updater:check', async () => {
