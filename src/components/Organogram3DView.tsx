@@ -36,6 +36,7 @@ export interface Organogram3DViewProps {
   squads: TeamDefinition[]
   agents: AgentProfileVersion[]
   vaultName?: string
+  accentColor?: string
   isSidebarCollapsed?: boolean
   onToggleSidebar?: () => void
   onSelectSquad: (squadId: string) => void
@@ -48,20 +49,52 @@ export interface Organogram3DViewProps {
 }
 
 // =============================================================================
-// PALETA DE CORES NATIVA DO PYRITE (TITÂNIO ESCURO & OURO QUEIMADO OFICIAL)
+// FUNÇÃO UTILITÁRIA PARA RESOLVER A COR DE DESTAQUE DINÂMICA DA PLATAFORMA
+// =============================================================================
+export function getDynamicAccentColor(overrideHex?: string): { hex: string; num: number } {
+  let hex = overrideHex
+  if (!hex && typeof window !== 'undefined') {
+    hex = getComputedStyle(document.documentElement).getPropertyValue('--accent')?.trim()
+  }
+  if (!hex || hex === 'undefined' || hex === 'null') {
+    hex = '#c59b27'
+  }
+  if (!hex.startsWith('#')) {
+    if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+      hex = `#${hex}`
+    } else if (typeof document !== 'undefined') {
+      const probe = document.createElement('div')
+      probe.style.color = hex
+      document.body.appendChild(probe)
+      const computed = getComputedStyle(probe).color
+      document.body.removeChild(probe)
+      const m = computed.match(/\d+/g)
+      if (m && m.length >= 3) {
+        const r = parseInt(m[0], 10)
+        const g = parseInt(m[1], 10)
+        const b = parseInt(m[2], 10)
+        hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`
+      } else {
+        hex = '#c59b27'
+      }
+    }
+  }
+  const cleanHex = hex.replace('#', '')
+  const num = parseInt(cleanHex, 16) || 0xc59b27
+  return { hex, num }
+}
+
+// =============================================================================
+// PALETA DE CORES NATIVA DO PYRITE (TITÂNIO ESCURO & ACENTO DINÂMICO)
 // =============================================================================
 const PYRITE_3D = {
   floorBg: 0x09090b,          // Obsidian / Zinc-950 puro do Pyrite
   platformNavy: 0x121215,     // Titânio escuro da plataforma
   platformSteel: 0x18181b,    // Chapa de aço Zinc-900
   platformTrim: 0x27272a,     // Friso Zinc-800
-  accentGold: 0xc59b27,       // Ouro Queimado Oficial Pyrite
-  accentGoldGlow: 0xd4af37,   // Brilho quente do ouro
   gridColor: 0x27272a,        // Linhas de grade Zinc-800
   // STATUS CONECTADO (ONLINE)
   statusOnline: 0x10b981,     // Esmeralda conectado
-  screenOnlineWarm: 0xc59b27, // Tela ativa em tom âmbar/ouro
-  screenOnlineAux: 0xd4af37,  // Tela secundária
   // STATUS DESCONECTADO (OFFLINE / PAUSADO)
   statusOffline: 0x52525b,    // Zinc-600 standby
   screenOffline: 0x09090b,    // Tela desligada fosca
@@ -76,14 +109,189 @@ const PYRITE_3D = {
   agentHair: 0x27272a         // Cabelo
 }
 
-const AVAILABLE_INTEGRATIONS = [
-  { id: 'vault', label: 'Cofre Local (.md)', color: '#c59b27' },
+const getAvailableIntegrations = (accentHex: string) => [
+  { id: 'vault', label: 'Cofre Local (.md)', color: accentHex },
   { id: 'web', label: 'Busca Web', color: '#38bdf8' },
   { id: 'code', label: 'Execução de Código', color: '#a855f7' },
   { id: 'slack', label: 'Slack', color: '#ec4899' },
   { id: 'zendesk', label: 'Zendesk', color: '#10b981' },
   { id: 'files', label: 'Análise de Arquivos', color: '#06b6d4' }
 ]
+
+// =============================================================================
+// EDIFÍCIO CORPORATIVO CENTRAL (MINIATURA MODERNA DE HEADQUARTERS)
+// =============================================================================
+function createCorporateHQBuilding(
+  accentNum: number,
+  platformSteel: number,
+  platformNavy: number,
+  platformTrim: number
+): THREE.Group {
+  const building = new THREE.Group()
+
+  const accentEmissiveMat = new THREE.MeshStandardMaterial({
+    color: accentNum,
+    emissive: accentNum,
+    emissiveIntensity: 2.2,
+    roughness: 0.2
+  })
+
+  const windowGlassMat = new THREE.MeshStandardMaterial({
+    color: 0x18181b,
+    emissive: accentNum,
+    emissiveIntensity: 0.65,
+    roughness: 0.2,
+    metalness: 0.9
+  })
+
+  // 1. Térreo / Lobby de Entrada (Podium)
+  const lobbyWidth = 15
+  const lobbyHeight = 6.5
+  const lobbyDepth = 15
+  const podiumGeo = new THREE.BoxGeometry(lobbyWidth, lobbyHeight, lobbyDepth)
+  const podiumMat = new THREE.MeshStandardMaterial({
+    color: platformSteel,
+    roughness: 0.35,
+    metalness: 0.8
+  })
+  const podium = new THREE.Mesh(podiumGeo, podiumMat)
+  podium.position.y = lobbyHeight / 2
+  building.add(podium)
+
+  // Vidro da entrada principal (fachada frontal envidraçada)
+  const lobbyGlassGeo = new THREE.PlaneGeometry(7.5, 4.2)
+  const lobbyGlassMat = new THREE.MeshStandardMaterial({
+    color: 0x09090b,
+    emissive: accentNum,
+    emissiveIntensity: 1.4,
+    roughness: 0.1,
+    metalness: 0.95
+  })
+  const lobbyGlass = new THREE.Mesh(lobbyGlassGeo, lobbyGlassMat)
+  lobbyGlass.position.set(0, 2.6, lobbyDepth / 2 + 0.05)
+  building.add(lobbyGlass)
+
+  // Marquise de entrada com fita LED na cor de destaque
+  const canopyGeo = new THREE.BoxGeometry(9.5, 0.7, 3.8)
+  const canopyMat = new THREE.MeshStandardMaterial({ color: platformTrim, metalness: 0.85, roughness: 0.25 })
+  const canopy = new THREE.Mesh(canopyGeo, canopyMat)
+  canopy.position.set(0, 5.0, lobbyDepth / 2 + 1.8)
+  building.add(canopy)
+
+  const canopyLedGeo = new THREE.BoxGeometry(9.3, 0.25, 0.3)
+  const canopyLed = new THREE.Mesh(canopyLedGeo, accentEmissiveMat)
+  canopyLed.position.set(0, 4.7, lobbyDepth / 2 + 3.7)
+  building.add(canopyLed)
+
+  // 2. Torre Central - Bloco Intermediário
+  const midWidth = 11.5
+  const midHeight = 13.5
+  const midDepth = 11.5
+  const midGeo = new THREE.BoxGeometry(midWidth, midHeight, midDepth)
+  const midMat = new THREE.MeshStandardMaterial({
+    color: platformNavy,
+    roughness: 0.4,
+    metalness: 0.85
+  })
+  const midTower = new THREE.Mesh(midGeo, midMat)
+  midTower.position.y = lobbyHeight + midHeight / 2
+  building.add(midTower)
+
+  // Faixas horizontais de janelas iluminadas na torre média
+  for (let t = 0; t < 4; t++) {
+    const wy = lobbyHeight + 2.0 + t * 2.8
+    const winFB = new THREE.Mesh(new THREE.BoxGeometry(9.2, 1.1, midDepth + 0.1), windowGlassMat)
+    winFB.position.set(0, wy, 0)
+    building.add(winFB)
+
+    const winSide = new THREE.Mesh(new THREE.BoxGeometry(midWidth + 0.1, 1.1, 9.2), windowGlassMat)
+    winSide.position.set(0, wy, 0)
+    building.add(winSide)
+  }
+
+  // Frisos arquitetônicos verticais nas esquinas da torre média
+  const cornerFinGeo = new THREE.BoxGeometry(0.6, midHeight, 0.6)
+  const finMat = new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.95, roughness: 0.2 })
+  ;[-midWidth / 2, midWidth / 2].forEach(fx => {
+    ;[-midDepth / 2, midDepth / 2].forEach(fz => {
+      const fin = new THREE.Mesh(cornerFinGeo, finMat)
+      fin.position.set(fx, lobbyHeight + midHeight / 2, fz)
+      building.add(fin)
+    })
+  })
+
+  // 3. Terraço de Transição / Cornice Luminosa
+  const terraceGeo = new THREE.BoxGeometry(12.5, 0.9, 12.5)
+  const terraceMat = new THREE.MeshStandardMaterial({ color: platformTrim, metalness: 0.8, roughness: 0.3 })
+  const terrace = new THREE.Mesh(terraceGeo, terraceMat)
+  terrace.position.y = lobbyHeight + midHeight + 0.45
+  building.add(terrace)
+
+  const terraceLightGeo = new THREE.BoxGeometry(12.7, 0.3, 12.7)
+  const terraceLight = new THREE.Mesh(terraceLightGeo, accentEmissiveMat)
+  terraceLight.position.y = lobbyHeight + midHeight + 0.8
+  building.add(terraceLight)
+
+  // 4. Bloco Superior / Penthouse Executiva
+  const topWidth = 8
+  const topHeight = 9.5
+  const topDepth = 8
+  const topGeo = new THREE.BoxGeometry(topWidth, topHeight, topDepth)
+  const topMat = new THREE.MeshStandardMaterial({
+    color: platformSteel,
+    roughness: 0.25,
+    metalness: 0.92
+  })
+  const topTower = new THREE.Mesh(topGeo, topMat)
+  const topElevation = lobbyHeight + midHeight + 0.9 + topHeight / 2
+  topTower.position.y = topElevation
+  building.add(topTower)
+
+  // Janelas do bloco executivo
+  for (let t = 0; t < 2; t++) {
+    const wy = lobbyHeight + midHeight + 2.8 + t * 3.4
+    const winTop = new THREE.Mesh(new THREE.BoxGeometry(6.2, 1.3, topDepth + 0.1), windowGlassMat)
+    winTop.position.set(0, wy, 0)
+    building.add(winTop)
+  }
+
+  // Emblema Corporativo no topo da torre (Face Frontal)
+  const emblemGeo = new THREE.CylinderGeometry(1.3, 1.3, 0.3, 6)
+  const emblem = new THREE.Mesh(emblemGeo, accentEmissiveMat)
+  emblem.rotation.x = Math.PI / 2
+  emblem.position.set(0, topElevation + 2.2, topDepth / 2 + 0.2)
+  building.add(emblem)
+
+  // 5. Cobertura / Heliponto & Spire / Antena
+  const roofGeo = new THREE.BoxGeometry(6, 1.0, 6)
+  const roofMat = new THREE.MeshStandardMaterial({ color: platformNavy, metalness: 0.75, roughness: 0.4 })
+  const roof = new THREE.Mesh(roofGeo, roofMat)
+  const roofElevation = lobbyHeight + midHeight + 0.9 + topHeight + 0.5
+  roof.position.y = roofElevation
+  building.add(roof)
+
+  // Mastro da Antena
+  const spireMastGeo = new THREE.CylinderGeometry(0.18, 0.4, 7.5, 8)
+  const spireMastMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.95, roughness: 0.15 })
+  const spireMast = new THREE.Mesh(spireMastGeo, spireMastMat)
+  const spireElevation = roofElevation + 0.5 + 3.75
+  spireMast.position.set(0, spireElevation, 0)
+  building.add(spireMast)
+
+  // Beacon Luminoso pulsante no topo
+  const beaconGeo = new THREE.SphereGeometry(0.65, 12, 12)
+  const beaconMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: accentNum,
+    emissiveIntensity: 3.5,
+    roughness: 0.1
+  })
+  const beacon = new THREE.Mesh(beaconGeo, beaconMat)
+  beacon.position.set(0, spireElevation + 4.0, 0)
+  building.add(beacon)
+
+  return building
+}
 
 // =============================================================================
 // CONSTRUTOR DE ESTAÇÃO DE TRABALHO DETALHADA NO ESTILO NATIVO PYRITE
@@ -95,8 +303,9 @@ function createWorkstationMesh(params: {
   x: number
   z: number
   facingAngle?: number
+  accentColorNum: number
 }): THREE.Group {
-  const { agent, squadId, isConnected, x, z, facingAngle = 0 } = params
+  const { agent, squadId, isConnected, x, z, facingAngle = 0, accentColorNum } = params
 
   const group = new THREE.Group()
   group.position.set(x, 0, z)
@@ -220,16 +429,16 @@ function createWorkstationMesh(params: {
   const monChassisMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.6, metalness: 0.6 })
   const screenGeo = new THREE.PlaneGeometry(monWidth - 0.6, monHeight - 0.6)
 
-  // Telas: se conectado, telas luminosas quentes; se desconectado, apagadas
+  // Telas: se conectado, telas luminosas quentes na cor de destaque; se desconectado, apagadas
   const leftScreenMat = new THREE.MeshStandardMaterial({
-    color: isConnected ? PYRITE_3D.screenOnlineWarm : PYRITE_3D.screenOffline,
-    emissive: isConnected ? PYRITE_3D.screenOnlineWarm : 0x000000,
+    color: isConnected ? accentColorNum : PYRITE_3D.screenOffline,
+    emissive: isConnected ? accentColorNum : 0x000000,
     emissiveIntensity: isConnected ? 2.0 : 0,
     roughness: isConnected ? 0.2 : 0.8
   })
   const rightScreenMat = new THREE.MeshStandardMaterial({
-    color: isConnected ? PYRITE_3D.screenOnlineAux : PYRITE_3D.screenOffline,
-    emissive: isConnected ? PYRITE_3D.screenOnlineAux : 0x000000,
+    color: isConnected ? accentColorNum : PYRITE_3D.screenOffline,
+    emissive: isConnected ? accentColorNum : 0x000000,
     emissiveIntensity: isConnected ? 1.6 : 0,
     roughness: isConnected ? 0.2 : 0.8
   })
@@ -362,8 +571,8 @@ function createWorkstationMesh(params: {
 
   const visorGeo = new THREE.BoxGeometry(3.6, 1.1, 1.4)
   const visorMat = new THREE.MeshStandardMaterial({
-    color: isConnected ? PYRITE_3D.accentGold : PYRITE_3D.statusOffline,
-    emissive: isConnected ? PYRITE_3D.accentGold : 0x000000,
+    color: isConnected ? accentColorNum : PYRITE_3D.statusOffline,
+    emissive: isConnected ? accentColorNum : 0x000000,
     emissiveIntensity: isConnected ? 2.2 : 0
   })
   const visor = new THREE.Mesh(visorGeo, visorMat)
@@ -386,6 +595,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   squads,
   agents,
   vaultName = 'Cofre Principal',
+  accentColor,
   isSidebarCollapsed = false,
   onToggleSidebar,
   onSelectSquad,
@@ -398,6 +608,20 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const turntableCanvasRef = useRef<HTMLCanvasElement>(null)
+
+  // Cor de destaque dinâmica baseada no tema selecionado pelo usuário
+  const [dynamicAccent, setDynamicAccent] = useState(() => getDynamicAccentColor(accentColor))
+
+  useEffect(() => {
+    const updateAccent = () => {
+      const next = getDynamicAccentColor(accentColor)
+      setDynamicAccent(prev => (prev.hex === next.hex ? prev : next))
+    }
+    updateAccent()
+    const observer = new MutationObserver(updateAccent)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class'] })
+    return () => observer.disconnect()
+  }, [accentColor])
 
   // Drawer Lateral
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
@@ -453,7 +677,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       setFormTask(selectedAgent.roleDescription || selectedAgent.specialistRole || 'Especialista Operacional')
 
       const currentSkills = selectedAgent.skills || []
-      const initialIntegrations = AVAILABLE_INTEGRATIONS.map(i => i.id).filter(id =>
+      const availableIntegrations = getAvailableIntegrations(dynamicAccent.hex)
+      const initialIntegrations = availableIntegrations.map(i => i.id).filter(id =>
         currentSkills.some(s => s.toLowerCase().includes(id)) ||
         (id === 'vault' && (selectedAgent.knowledgeBindings || []).length > 0)
       )
@@ -535,8 +760,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
     const ringGeo = new THREE.TorusGeometry(17, 0.5, 12, 40)
     const ringMat = new THREE.MeshStandardMaterial({
-      color: PYRITE_3D.accentGold,
-      emissive: PYRITE_3D.accentGold,
+      color: dynamicAccent.num,
+      emissive: dynamicAccent.num,
       emissiveIntensity: 2.0
     })
     const ring = new THREE.Mesh(ringGeo, ringMat)
@@ -552,7 +777,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       isConnected: isConn,
       x: 0,
       z: -2,
-      facingAngle: 0
+      facingAngle: 0,
+      accentColorNum: dynamicAccent.num
     })
     ttGroup.add(miniStation)
 
@@ -570,7 +796,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       cancelAnimationFrame(ttAnimId)
       ttRenderer.dispose()
     }
-  }, [selectedAgent, selectedAgentCurrentSquad])
+  }, [selectedAgent, selectedAgentCurrentSquad, dynamicAccent.hex])
 
   // =========================================================================
   // MONTAGEM DO CENÁRIO PRINCIPAL THREE.JS (CORES NATIVAS PYRITE & TABULEIROS ESTREITOS)
@@ -625,13 +851,13 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     dirLight.position.set(160, 320, 200)
     scene.add(dirLight)
 
-    const vaultPointLight = new THREE.PointLight(PYRITE_3D.accentGold, 2.0, 360)
-    vaultPointLight.position.set(0, 20, 0)
+    const vaultPointLight = new THREE.PointLight(dynamicAccent.num, 2.2, 380)
+    vaultPointLight.position.set(0, 48, 0)
     scene.add(vaultPointLight)
 
     // 4. Piso Industrial com Grid Pyrite
     const floorSize = 1800
-    const gridHelper = new THREE.GridHelper(floorSize, 50, PYRITE_3D.accentGold, 0x1f1f23)
+    const gridHelper = new THREE.GridHelper(floorSize, 50, dynamicAccent.num, 0x1f1f23)
     gridHelper.position.y = -0.5
     // @ts-ignore
     gridHelper.material.opacity = 0.18
@@ -640,68 +866,79 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     scene.add(gridHelper)
 
     // =======================================================================
-    // 5. CENTRO: O COFRE CORPORATIVO (REDONDO, REDUZIDO, TONS PYRITE)
+    // 5. CENTRO: O COFRE CORPORATIVO (REDONDO, REDUZIDO PELA METADE COM HQ TOWER)
     // =======================================================================
     const hubGroup = new THREE.Group()
     hubGroup.position.set(0, 0, 0)
 
-    const hubRadius = 48
-    const baseCylGeo = new THREE.CylinderGeometry(hubRadius, hubRadius + 6, 8, 48)
+    // Redução do círculo central pela metade (raio 24 em vez de 48)
+    const hubRadius = 24
+    const baseCylGeo = new THREE.CylinderGeometry(hubRadius, hubRadius + 3, 5, 48)
     const baseCylMat = new THREE.MeshStandardMaterial({
       color: PYRITE_3D.platformNavy,
-      roughness: 0.4,
+      roughness: 0.35,
       metalness: 0.85
     })
     const baseCyl = new THREE.Mesh(baseCylGeo, baseCylMat)
-    baseCyl.position.y = 4
+    baseCyl.position.y = 2.5
     hubGroup.add(baseCyl)
 
-    // Anel de canal luminoso Dourado Pyrite
-    const goldRingGeo = new THREE.TorusGeometry(hubRadius - 1, 1.8, 12, 48)
+    // Anel perimetral luminoso na cor de destaque selecionada
+    const goldRingGeo = new THREE.TorusGeometry(hubRadius - 0.5, 1.0, 12, 48)
     const goldRingMat = new THREE.MeshStandardMaterial({
-      color: PYRITE_3D.accentGold,
-      emissive: PYRITE_3D.accentGold,
+      color: dynamicAccent.num,
+      emissive: dynamicAccent.num,
       emissiveIntensity: 2.2,
       roughness: 0.2,
       metalness: 0.8
     })
     const goldRing = new THREE.Mesh(goldRingGeo, goldRingMat)
     goldRing.rotation.x = Math.PI / 2
-    goldRing.position.y = 8
+    goldRing.position.y = 5.0
     hubGroup.add(goldRing)
 
-    // Platô superior biselado limpo (sem elementos girando ou flutuando)
-    const topPlateGeo = new THREE.CylinderGeometry(hubRadius - 6, hubRadius - 6, 3, 48)
+    // Platô superior biselado da praça
+    const topPlateGeo = new THREE.CylinderGeometry(hubRadius - 3, hubRadius - 3, 2, 48)
     const topPlateMat = new THREE.MeshStandardMaterial({
       color: PYRITE_3D.platformSteel,
       roughness: 0.5,
-      metalness: 0.75
+      metalness: 0.8
     })
     const topPlate = new THREE.Mesh(topPlateGeo, topPlateMat)
-    topPlate.position.y = 9.5
+    topPlate.position.y = 6.0
     hubGroup.add(topPlate)
 
-    // Núcleo embutido com anel concêntrico suave
-    const coreDiscGeo = new THREE.CylinderGeometry(hubRadius - 16, hubRadius - 16, 0.8, 36)
+    // Núcleo circular embutido da praça
+    const coreDiscGeo = new THREE.CylinderGeometry(hubRadius - 5, hubRadius - 5, 0.6, 36)
     const coreDiscMat = new THREE.MeshStandardMaterial({
       color: PYRITE_3D.platformNavy,
-      roughness: 0.2,
+      roughness: 0.25,
       metalness: 0.9
     })
     const coreDisc = new THREE.Mesh(coreDiscGeo, coreDiscMat)
-    coreDisc.position.y = 11.2
+    coreDisc.position.y = 7.3
     hubGroup.add(coreDisc)
 
-    const coreRingGeo = new THREE.TorusGeometry(hubRadius - 18, 0.9, 10, 36)
+    const coreRingGeo = new THREE.TorusGeometry(hubRadius - 6, 0.5, 10, 36)
     const coreRingMat = new THREE.MeshStandardMaterial({
-      color: PYRITE_3D.accentGold,
-      emissive: PYRITE_3D.accentGold,
+      color: dynamicAccent.num,
+      emissive: dynamicAccent.num,
       emissiveIntensity: 1.8
     })
     const coreRing = new THREE.Mesh(coreRingGeo, coreRingMat)
     coreRing.rotation.x = Math.PI / 2
-    coreRing.position.y = 11.8
+    coreRing.position.y = 7.6
     hubGroup.add(coreRing)
+
+    // PREDIOZINHO CORPORATIVO NO CENTRO (MINIATURA DA CORPORAÇÃO)
+    const hqBuilding = createCorporateHQBuilding(
+      dynamicAccent.num,
+      PYRITE_3D.platformSteel,
+      PYRITE_3D.platformNavy,
+      PYRITE_3D.platformTrim
+    )
+    hqBuilding.position.y = 7.6
+    hubGroup.add(hqBuilding)
 
     scene.add(hubGroup)
 
@@ -784,11 +1021,11 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       platMesh.position.y = platHeight / 2 + 1.25
       platformGroup.add(platMesh)
 
-      // Friso luminoso na borda superior do tabuleiro em ouro Pyrite
+      // Friso luminoso na borda superior do tabuleiro na cor selecionada
       const edgeGeo = new THREE.BoxGeometry(platWidth + 0.8, 1.2, platDepth + 0.8)
       const edgeMat = new THREE.MeshStandardMaterial({
-        color: PYRITE_3D.accentGold,
-        emissive: PYRITE_3D.accentGold,
+        color: dynamicAccent.num,
+        emissive: dynamicAccent.num,
         emissiveIntensity: 1.6,
         roughness: 0.2,
         metalness: 0.8
@@ -837,7 +1074,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
           isConnected,
           x: deskX,
           z: deskZ,
-          facingAngle
+          facingAngle,
+          accentColorNum: dynamicAccent.num
         })
 
         workstation.position.y = platHeight + 1.25
@@ -883,11 +1121,11 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       const armorTube = new THREE.Mesh(armorTubeGeo, armorTubeMat)
       scene.add(armorTube)
 
-      // Fibra de dados luminosa Dourada Pyrite interna
+      // Fibra de dados luminosa interna na cor selecionada
       const coreTubeGeo = new THREE.TubeGeometry(curve, 20, 0.9, 6, false)
       const coreTubeMat = new THREE.MeshStandardMaterial({
-        color: PYRITE_3D.accentGold,
-        emissive: PYRITE_3D.accentGold,
+        color: dynamicAccent.num,
+        emissive: dynamicAccent.num,
         emissiveIntensity: 2.2,
         roughness: 0.15
       })
@@ -898,7 +1136,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       const pulseGeo = new THREE.SphereGeometry(1.8, 10, 10)
       const pulseMat = new THREE.MeshStandardMaterial({
         color: 0xfffbeb,
-        emissive: PYRITE_3D.accentGold,
+        emissive: dynamicAccent.num,
         emissiveIntensity: 3.5
       })
       const pulseMesh = new THREE.Mesh(pulseGeo, pulseMat)
@@ -934,10 +1172,10 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
       renderer.render(scene, camera)
 
-      // 1. Tag do Hub Central
+      // 1. Tag do Hub Central (acima da antena da torre corporativa)
       const hubEl = tagRefs.current.get('hub')
       if (hubEl) {
-        tempVec.set(0, 36, 0)
+        tempVec.set(0, 48, 0)
         tempVec.project(camera)
         if (tempVec.z < 1) {
           const sx = (tempVec.x * 0.5 + 0.5) * width
@@ -1065,7 +1303,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       controls.dispose()
       renderer.dispose()
     }
-  }, [squads, agents])
+  }, [squads, agents, vaultName, dynamicAccent.hex])
 
   // Resetar câmera e alvo para a perspectiva compacta padrão
   const handleResetCamera = () => {
@@ -1257,7 +1495,10 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
           style={{ willChange: 'transform' }}
         >
           <div className="px-3.5 py-1 rounded-full bg-[#141417]/95 border border-[var(--accent)]/50 text-center shadow-xl backdrop-blur-md flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[var(--accent)] shadow-[0_0_8px_rgba(197,155,39,0.5)] animate-pulse shrink-0" />
+            <span
+              className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse shrink-0"
+              style={{ boxShadow: `0 0 8px ${dynamicAccent.hex}` }}
+            />
             <span className="text-xs font-bold text-zinc-100">{vaultName}</span>
             <span className="text-[10px] font-mono text-[var(--accent)] uppercase font-semibold">&bull; CORPORATE HQ</span>
           </div>
@@ -1334,9 +1575,12 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                     <div
                       className={`px-2 py-0.5 rounded-full border text-[10px] font-medium flex items-center gap-1.5 shadow-lg backdrop-blur-md ${
                         isSelected
-                          ? 'bg-[var(--accent)] border-[var(--accent)] text-zinc-950 font-bold shadow-[0_0_12px_rgba(197,155,39,0.4)]'
+                          ? 'bg-[var(--accent)] border-[var(--accent)] text-zinc-950 font-bold'
                           : 'bg-[#141417]/95 border-zinc-800 text-zinc-200 hover:border-[var(--accent)]/50'
                       }`}
+                      style={{
+                        boxShadow: isSelected ? `0 0 12px ${dynamicAccent.hex}66` : undefined
+                      }}
                     >
                       <AgentIcon variant={ag.icon} size={13} className="shrink-0 rounded-full" />
                       <span className="truncate max-w-[90px]">{ag.name}</span>
@@ -1580,7 +1824,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                 Integrações & Ferramentas Ativas
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {AVAILABLE_INTEGRATIONS.map(item => {
+                {getAvailableIntegrations(dynamicAccent.hex).map(item => {
                   const isActive = formIntegrations.includes(item.id)
                   return (
                     <button

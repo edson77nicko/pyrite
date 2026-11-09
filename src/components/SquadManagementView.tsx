@@ -31,6 +31,7 @@ interface SquadManagementViewProps {
   agents: AgentProfileVersion[]
   selectedSquadId: string
   vaultName?: string
+  accentColor?: string
   onSelectSquad: (squadId: string) => void
   onSaveSquad: (squad: TeamDefinition) => void
   onDeleteSquad: (squadId: string) => void
@@ -159,6 +160,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
   agents,
   selectedSquadId,
   vaultName = 'Cofre Principal',
+  accentColor,
   onSelectSquad,
   onSaveSquad,
   onDeleteSquad,
@@ -1146,6 +1148,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
           squads={squads}
           agents={agents}
           vaultName={vaultName}
+          accentColor={accentColor}
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
           onSelectSquad={onSelectSquad}
