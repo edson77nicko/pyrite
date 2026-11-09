@@ -2420,6 +2420,22 @@ body {
   animation: cyberFloat 4s ease-in-out infinite;
 }
 
+/* =========================================================================
+   PROTEÇÃO TOTAL CONTRA BORDAS PRETAS / BACKDROP ARTIFACTS EM TELA CHEIA
+   ========================================================================= */
+:fullscreen,
+::backdrop,
+div:fullscreen {
+  background-color: #09090b !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
 
 
 

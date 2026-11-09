@@ -103,6 +103,17 @@ ipcMain.handle('window:isMaximized', () => {
   return win?.isMaximized() || false
 })
 
+ipcMain.handle('window:fullscreen', () => {
+  if (!win) return false
+  const next = !win.isFullScreen()
+  win.setFullScreen(next)
+  return next
+})
+
+ipcMain.handle('window:isFullscreen', () => {
+  return win?.isFullScreen() || false
+})
+
 // IPC: Local Vault & File System (Phase 2)
 // Registro de cofres autorizados na sessão para impedir gravação/exclusão fora do cofre autorizado (P0)
 const authorizedVaults = new Set<string>()

@@ -85,7 +85,7 @@ export function getDynamicAccentColor(overrideHex?: string): { hex: string; num:
 }
 
 // =============================================================================
-// PALETA DE CORES NATIVA DO PYRITE (TITÂNIO ESCURO & ACENTO DINÂMICO)
+// PALETA DE CORES NATIVA DO PYRITE (TITÂNIO ESCURO & ALTO CONTRASTE)
 // =============================================================================
 const PYRITE_3D = {
   floorBg: 0x09090b,          // Obsidian / Zinc-950 puro do Pyrite
@@ -98,15 +98,15 @@ const PYRITE_3D = {
   // STATUS DESCONECTADO (OFFLINE / PAUSADO)
   statusOffline: 0x52525b,    // Zinc-600 standby
   screenOffline: 0x09090b,    // Tela desligada fosca
-  // MESA E ESPECIALISTA
-  deskWood: 0xefe7db,         // Madeira birch clara
+  // MESA E ESPECIALISTA (ALTO CONTRASTE IDENTICO A REFERENCIA)
+  deskWood: 0xefe7db,         // Madeira birch clara (destaque brilhante sobre fundo escuro)
   deskLegDark: 0x27272a,      // Estrutura Zinc-800
-  drawerUnit: 0xd8cfc0,       // Gaveteiro
+  drawerUnit: 0xd8cfc0,       // Gaveteiro claro
   chairMesh: 0x18181b,        // Cadeira ergonômica carvão
-  chairChrome: 0x71717a,      // Metal da cadeira
+  chairChrome: 0x94a3b8,      // Metal cromado da cadeira
   agentSuit: 0x18181b,        // Traje executivo escuro
   agentSkin: 0xfcd34d,        // Pele natural
-  agentHair: 0x27272a         // Cabelo
+  agentHair: 0x27272a         // Cabelo esculpido
 }
 
 const getAvailableIntegrations = (accentHex: string) => [
@@ -117,6 +117,26 @@ const getAvailableIntegrations = (accentHex: string) => [
   { id: 'zendesk', label: 'Zendesk', color: '#10b981' },
   { id: 'files', label: 'Análise de Arquivos', color: '#06b6d4' }
 ]
+
+// =============================================================================
+// FUNÇÃO UTILITÁRIA PARA GERAR FORMA DE TABULEIRO COM CANTOS ARREDONDADOS (POD)
+// =============================================================================
+function createRoundedRectShape(width: number, depth: number, radius: number): THREE.Shape {
+  const shape = new THREE.Shape()
+  const hw = width / 2
+  const hd = depth / 2
+  const r = Math.min(radius, hw - 1, hd - 1)
+  shape.moveTo(-hw + r, -hd)
+  shape.lineTo(hw - r, -hd)
+  shape.quadraticCurveTo(hw, -hd, hw, -hd + r)
+  shape.lineTo(hw, hd - r)
+  shape.quadraticCurveTo(hw, hd, hw - r, hd)
+  shape.lineTo(-hw + r, hd)
+  shape.quadraticCurveTo(-hw, hd, -hw, hd - r)
+  shape.lineTo(-hw, -hd + r)
+  shape.quadraticCurveTo(-hw, -hd, -hw + r, -hd)
+  return shape
+}
 
 // =============================================================================
 // EDIFÍCIO CORPORATIVO CENTRAL (MINIATURA MODERNA DE HEADQUARTERS)
@@ -145,9 +165,9 @@ function createCorporateHQBuilding(
   })
 
   // 1. Térreo / Lobby de Entrada (Podium)
-  const lobbyWidth = 15
-  const lobbyHeight = 6.5
-  const lobbyDepth = 15
+  const lobbyWidth = 14
+  const lobbyHeight = 6.0
+  const lobbyDepth = 14
   const podiumGeo = new THREE.BoxGeometry(lobbyWidth, lobbyHeight, lobbyDepth)
   const podiumMat = new THREE.MeshStandardMaterial({
     color: platformSteel,
@@ -159,7 +179,7 @@ function createCorporateHQBuilding(
   building.add(podium)
 
   // Vidro da entrada principal (fachada frontal envidraçada)
-  const lobbyGlassGeo = new THREE.PlaneGeometry(7.5, 4.2)
+  const lobbyGlassGeo = new THREE.PlaneGeometry(7.0, 3.8)
   const lobbyGlassMat = new THREE.MeshStandardMaterial({
     color: 0x09090b,
     emissive: accentNum,
@@ -168,25 +188,25 @@ function createCorporateHQBuilding(
     metalness: 0.95
   })
   const lobbyGlass = new THREE.Mesh(lobbyGlassGeo, lobbyGlassMat)
-  lobbyGlass.position.set(0, 2.6, lobbyDepth / 2 + 0.05)
+  lobbyGlass.position.set(0, 2.4, lobbyDepth / 2 + 0.05)
   building.add(lobbyGlass)
 
   // Marquise de entrada com fita LED na cor de destaque
-  const canopyGeo = new THREE.BoxGeometry(9.5, 0.7, 3.8)
+  const canopyGeo = new THREE.BoxGeometry(9.0, 0.6, 3.5)
   const canopyMat = new THREE.MeshStandardMaterial({ color: platformTrim, metalness: 0.85, roughness: 0.25 })
   const canopy = new THREE.Mesh(canopyGeo, canopyMat)
-  canopy.position.set(0, 5.0, lobbyDepth / 2 + 1.8)
+  canopy.position.set(0, 4.6, lobbyDepth / 2 + 1.7)
   building.add(canopy)
 
-  const canopyLedGeo = new THREE.BoxGeometry(9.3, 0.25, 0.3)
+  const canopyLedGeo = new THREE.BoxGeometry(8.8, 0.2, 0.25)
   const canopyLed = new THREE.Mesh(canopyLedGeo, accentEmissiveMat)
-  canopyLed.position.set(0, 4.7, lobbyDepth / 2 + 3.7)
+  canopyLed.position.set(0, 4.3, lobbyDepth / 2 + 3.4)
   building.add(canopyLed)
 
   // 2. Torre Central - Bloco Intermediário
-  const midWidth = 11.5
-  const midHeight = 13.5
-  const midDepth = 11.5
+  const midWidth = 10.5
+  const midHeight = 12.0
+  const midDepth = 10.5
   const midGeo = new THREE.BoxGeometry(midWidth, midHeight, midDepth)
   const midMat = new THREE.MeshStandardMaterial({
     color: platformNavy,
@@ -198,19 +218,19 @@ function createCorporateHQBuilding(
   building.add(midTower)
 
   // Faixas horizontais de janelas iluminadas na torre média
-  for (let t = 0; t < 4; t++) {
-    const wy = lobbyHeight + 2.0 + t * 2.8
-    const winFB = new THREE.Mesh(new THREE.BoxGeometry(9.2, 1.1, midDepth + 0.1), windowGlassMat)
+  for (let t = 0; t < 3; t++) {
+    const wy = lobbyHeight + 2.2 + t * 3.0
+    const winFB = new THREE.Mesh(new THREE.BoxGeometry(8.2, 1.1, midDepth + 0.1), windowGlassMat)
     winFB.position.set(0, wy, 0)
     building.add(winFB)
 
-    const winSide = new THREE.Mesh(new THREE.BoxGeometry(midWidth + 0.1, 1.1, 9.2), windowGlassMat)
+    const winSide = new THREE.Mesh(new THREE.BoxGeometry(midWidth + 0.1, 1.1, 8.2), windowGlassMat)
     winSide.position.set(0, wy, 0)
     building.add(winSide)
   }
 
   // Frisos arquitetônicos verticais nas esquinas da torre média
-  const cornerFinGeo = new THREE.BoxGeometry(0.6, midHeight, 0.6)
+  const cornerFinGeo = new THREE.BoxGeometry(0.5, midHeight, 0.5)
   const finMat = new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.95, roughness: 0.2 })
   ;[-midWidth / 2, midWidth / 2].forEach(fx => {
     ;[-midDepth / 2, midDepth / 2].forEach(fz => {
@@ -221,21 +241,21 @@ function createCorporateHQBuilding(
   })
 
   // 3. Terraço de Transição / Cornice Luminosa
-  const terraceGeo = new THREE.BoxGeometry(12.5, 0.9, 12.5)
+  const terraceGeo = new THREE.BoxGeometry(11.5, 0.8, 11.5)
   const terraceMat = new THREE.MeshStandardMaterial({ color: platformTrim, metalness: 0.8, roughness: 0.3 })
   const terrace = new THREE.Mesh(terraceGeo, terraceMat)
-  terrace.position.y = lobbyHeight + midHeight + 0.45
+  terrace.position.y = lobbyHeight + midHeight + 0.4
   building.add(terrace)
 
-  const terraceLightGeo = new THREE.BoxGeometry(12.7, 0.3, 12.7)
+  const terraceLightGeo = new THREE.BoxGeometry(11.7, 0.25, 11.7)
   const terraceLight = new THREE.Mesh(terraceLightGeo, accentEmissiveMat)
-  terraceLight.position.y = lobbyHeight + midHeight + 0.8
+  terraceLight.position.y = lobbyHeight + midHeight + 0.7
   building.add(terraceLight)
 
   // 4. Bloco Superior / Penthouse Executiva
-  const topWidth = 8
-  const topHeight = 9.5
-  const topDepth = 8
+  const topWidth = 7.2
+  const topHeight = 8.5
+  const topDepth = 7.2
   const topGeo = new THREE.BoxGeometry(topWidth, topHeight, topDepth)
   const topMat = new THREE.MeshStandardMaterial({
     color: platformSteel,
@@ -243,43 +263,43 @@ function createCorporateHQBuilding(
     metalness: 0.92
   })
   const topTower = new THREE.Mesh(topGeo, topMat)
-  const topElevation = lobbyHeight + midHeight + 0.9 + topHeight / 2
+  const topElevation = lobbyHeight + midHeight + 0.8 + topHeight / 2
   topTower.position.y = topElevation
   building.add(topTower)
 
   // Janelas do bloco executivo
   for (let t = 0; t < 2; t++) {
-    const wy = lobbyHeight + midHeight + 2.8 + t * 3.4
-    const winTop = new THREE.Mesh(new THREE.BoxGeometry(6.2, 1.3, topDepth + 0.1), windowGlassMat)
+    const wy = lobbyHeight + midHeight + 2.5 + t * 3.2
+    const winTop = new THREE.Mesh(new THREE.BoxGeometry(5.6, 1.2, topDepth + 0.1), windowGlassMat)
     winTop.position.set(0, wy, 0)
     building.add(winTop)
   }
 
   // Emblema Corporativo no topo da torre (Face Frontal)
-  const emblemGeo = new THREE.CylinderGeometry(1.3, 1.3, 0.3, 6)
+  const emblemGeo = new THREE.CylinderGeometry(1.2, 1.2, 0.25, 6)
   const emblem = new THREE.Mesh(emblemGeo, accentEmissiveMat)
   emblem.rotation.x = Math.PI / 2
-  emblem.position.set(0, topElevation + 2.2, topDepth / 2 + 0.2)
+  emblem.position.set(0, topElevation + 1.8, topDepth / 2 + 0.15)
   building.add(emblem)
 
   // 5. Cobertura / Heliponto & Spire / Antena
-  const roofGeo = new THREE.BoxGeometry(6, 1.0, 6)
+  const roofGeo = new THREE.BoxGeometry(5.4, 0.9, 5.4)
   const roofMat = new THREE.MeshStandardMaterial({ color: platformNavy, metalness: 0.75, roughness: 0.4 })
   const roof = new THREE.Mesh(roofGeo, roofMat)
-  const roofElevation = lobbyHeight + midHeight + 0.9 + topHeight + 0.5
+  const roofElevation = lobbyHeight + midHeight + 0.8 + topHeight + 0.45
   roof.position.y = roofElevation
   building.add(roof)
 
   // Mastro da Antena
-  const spireMastGeo = new THREE.CylinderGeometry(0.18, 0.4, 7.5, 8)
+  const spireMastGeo = new THREE.CylinderGeometry(0.16, 0.35, 6.5, 8)
   const spireMastMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.95, roughness: 0.15 })
   const spireMast = new THREE.Mesh(spireMastGeo, spireMastMat)
-  const spireElevation = roofElevation + 0.5 + 3.75
+  const spireElevation = roofElevation + 0.45 + 3.25
   spireMast.position.set(0, spireElevation, 0)
   building.add(spireMast)
 
   // Beacon Luminoso pulsante no topo
-  const beaconGeo = new THREE.SphereGeometry(0.65, 12, 12)
+  const beaconGeo = new THREE.SphereGeometry(0.6, 12, 12)
   const beaconMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: accentNum,
@@ -287,14 +307,14 @@ function createCorporateHQBuilding(
     roughness: 0.1
   })
   const beacon = new THREE.Mesh(beaconGeo, beaconMat)
-  beacon.position.set(0, spireElevation + 4.0, 0)
+  beacon.position.set(0, spireElevation + 3.5, 0)
   building.add(beacon)
 
   return building
 }
 
 // =============================================================================
-// CONSTRUTOR DE ESTAÇÃO DE TRABALHO DETALHADA NO ESTILO NATIVO PYRITE
+// CONSTRUTOR DE ESTAÇÃO DE TRABALHO DETALHADA (EXATAMENTE COMO NA REFERÊNCIA)
 // =============================================================================
 function createWorkstationMesh(params: {
   agent: AgentProfileVersion
@@ -312,31 +332,31 @@ function createWorkstationMesh(params: {
   group.rotation.y = facingAngle
   group.userData = { agentId: agent.id, squadId }
 
-  const deskTopWidth = 24
-  const deskTopDepth = 14
-  const deskTopHeight = 1.3
-  const deskElevation = 7.5
+  const deskTopWidth = 22
+  const deskTopDepth = 13
+  const deskTopHeight = 1.2
+  const deskElevation = 7.2
 
-  // 1. Tampo da Mesa (Madeira birch clara)
+  // 1. Tampo da Mesa (Madeira birch clara de alto contraste)
   const deskGeo = new THREE.BoxGeometry(deskTopWidth, deskTopHeight, deskTopDepth)
   const deskMat = new THREE.MeshStandardMaterial({
     color: PYRITE_3D.deskWood,
-    roughness: 0.35,
-    metalness: 0.15
+    roughness: 0.32,
+    metalness: 0.12
   })
   const deskTop = new THREE.Mesh(deskGeo, deskMat)
   deskTop.position.y = deskElevation
   group.add(deskTop)
 
   // Painel lateral estrutural esquerdo
-  const leftPanelGeo = new THREE.BoxGeometry(1.0, deskElevation - deskTopHeight / 2, deskTopDepth - 0.8)
+  const leftPanelGeo = new THREE.BoxGeometry(0.9, deskElevation - deskTopHeight / 2, deskTopDepth - 0.8)
   const legMat = new THREE.MeshStandardMaterial({ color: PYRITE_3D.deskLegDark, roughness: 0.6 })
   const leftPanel = new THREE.Mesh(leftPanelGeo, legMat)
-  leftPanel.position.set(-deskTopWidth / 2 + 0.6, (deskElevation - deskTopHeight / 2) / 2, 0)
+  leftPanel.position.set(-deskTopWidth / 2 + 0.5, (deskElevation - deskTopHeight / 2) / 2, 0)
   group.add(leftPanel)
 
-  // Gaveteiro sob a mesa à direita com 3 gavetas
-  const cabinetWidth = 6.0
+  // Gaveteiro sob a mesa à direita com 3 gavetas e puxadores cromados
+  const cabinetWidth = 5.5
   const cabinetHeight = deskElevation - deskTopHeight / 2 - 0.2
   const cabinetDepth = deskTopDepth - 1.2
   const cabinetGeo = new THREE.BoxGeometry(cabinetWidth, cabinetHeight, cabinetDepth)
@@ -349,103 +369,109 @@ function createWorkstationMesh(params: {
   cabinet.position.set(deskTopWidth / 2 - cabinetWidth / 2 - 0.4, cabinetHeight / 2, 0)
   group.add(cabinet)
 
-  // Puxadores cromados
-  const handleGeo = new THREE.BoxGeometry(2.4, 0.25, 0.4)
+  const handleGeo = new THREE.BoxGeometry(2.2, 0.22, 0.35)
   const handleMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.95, roughness: 0.15 })
-  ;[-1.5, 0.2, 1.9].forEach(yOff => {
+  ;[-1.4, 0.2, 1.8].forEach(yOff => {
     const handle = new THREE.Mesh(handleGeo, handleMat)
-    handle.position.set(deskTopWidth / 2 - cabinetWidth / 2 - 0.4, cabinetHeight / 2 + yOff, cabinetDepth / 2 + 0.2)
+    handle.position.set(deskTopWidth / 2 - cabinetWidth / 2 - 0.4, cabinetHeight / 2 + yOff, cabinetDepth / 2 + 0.18)
     group.add(handle)
   })
 
-  // Divisória acústica traseira
-  const dividerGeo = new THREE.BoxGeometry(deskTopWidth, 5.5, 0.8)
+  // Divisória acústica traseira entre mesas opostas
+  const dividerGeo = new THREE.BoxGeometry(deskTopWidth, 5.2, 0.8)
   const dividerMat = new THREE.MeshStandardMaterial({
     color: PYRITE_3D.platformTrim,
     roughness: 0.8
   })
   const divider = new THREE.Mesh(dividerGeo, dividerMat)
-  divider.position.set(0, deskElevation + 2.8, -deskTopDepth / 2 + 0.4)
+  divider.position.set(0, deskElevation + 2.6, -deskTopDepth / 2 + 0.4)
   group.add(divider)
 
+  // Friso superior da divisória
+  const dividerTrimGeo = new THREE.BoxGeometry(deskTopWidth + 0.2, 0.3, 0.9)
+  const dividerTrimMat = new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.85, roughness: 0.3 })
+  const dividerTrim = new THREE.Mesh(dividerTrimGeo, dividerTrimMat)
+  dividerTrim.position.set(0, deskElevation + 5.2, -deskTopDepth / 2 + 0.4)
+  group.add(dividerTrim)
+
   // Gabinete PC sob a mesa
-  const pcGeo = new THREE.BoxGeometry(3.0, 5.8, 8.5)
+  const pcGeo = new THREE.BoxGeometry(2.8, 5.4, 8.0)
   const pcMat = new THREE.MeshStandardMaterial({ color: PYRITE_3D.platformNavy, roughness: 0.5, metalness: 0.7 })
   const pcTower = new THREE.Mesh(pcGeo, pcMat)
-  pcTower.position.set(deskTopWidth / 2 - cabinetWidth - 2.0, 3.0, 0.5)
+  pcTower.position.set(deskTopWidth / 2 - cabinetWidth - 1.8, 2.7, 0.5)
   group.add(pcTower)
 
-  // LED no PC
-  const pcLedGeo = new THREE.BoxGeometry(0.3, 0.8, 0.2)
+  // LED de status no gabinete PC (Verde ativo / Cinza desligado)
+  const pcLedGeo = new THREE.BoxGeometry(0.25, 0.7, 0.2)
   const pcLedMat = new THREE.MeshStandardMaterial({
     color: isConnected ? PYRITE_3D.statusOnline : PYRITE_3D.statusOffline,
     emissive: isConnected ? PYRITE_3D.statusOnline : 0x000000,
     emissiveIntensity: isConnected ? 2.5 : 0
   })
   const pcLed = new THREE.Mesh(pcLedGeo, pcLedMat)
-  pcLed.position.set(deskTopWidth / 2 - cabinetWidth - 2.0, 5.2, 4.8)
+  pcLed.position.set(deskTopWidth / 2 - cabinetWidth - 1.8, 4.8, 4.5)
   group.add(pcLed)
 
   // Mousepad, teclado e mouse
-  const padGeo = new THREE.BoxGeometry(14, 0.15, 8.5)
+  const padGeo = new THREE.BoxGeometry(13, 0.12, 8.0)
   const padMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.9 })
   const pad = new THREE.Mesh(padGeo, padMat)
-  pad.position.set(-1.0, deskElevation + 0.7, 0.5)
+  pad.position.set(-1.0, deskElevation + 0.65, 0.5)
   group.add(pad)
 
-  const kbGeo = new THREE.BoxGeometry(8.5, 0.3, 3.2)
+  const kbGeo = new THREE.BoxGeometry(8.0, 0.28, 3.0)
   const kbMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.7 })
   const kb = new THREE.Mesh(kbGeo, kbMat)
-  kb.position.set(-1.0, deskElevation + 0.85, 1.4)
+  kb.position.set(-1.0, deskElevation + 0.78, 1.4)
   group.add(kb)
 
-  const mouseGeo = new THREE.BoxGeometry(1.2, 0.35, 1.8)
+  const mouseGeo = new THREE.BoxGeometry(1.1, 0.32, 1.6)
   const mouseMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.5 })
   const mouse = new THREE.Mesh(mouseGeo, mouseMat)
-  mouse.position.set(4.5, deskElevation + 0.85, 1.4)
+  mouse.position.set(4.2, deskElevation + 0.78, 1.4)
   group.add(mouse)
 
   // Caneca de café
-  const mugGeo = new THREE.CylinderGeometry(0.7, 0.6, 1.4, 10)
+  const mugGeo = new THREE.CylinderGeometry(0.65, 0.55, 1.3, 10)
   const mugMat = new THREE.MeshStandardMaterial({ color: 0xf4f4f5, roughness: 0.2 })
   const mug = new THREE.Mesh(mugGeo, mugMat)
-  mug.position.set(-8.5, deskElevation + 1.3, -2.5)
+  mug.position.set(-8.0, deskElevation + 1.2, -2.2)
   group.add(mug)
 
-  // 2. Monitores Duplos Angulados
-  const monWidth = 7.8
-  const monHeight = 5.2
-  const monDepth = 0.6
-  const monElevation = deskElevation + 4.2
-  const monZ = -deskTopDepth / 2 + 2.2
+  // 2. Monitores Duplos Angulados (como no print de referência)
+  const monWidth = 7.4
+  const monHeight = 4.8
+  const monDepth = 0.5
+  const monElevation = deskElevation + 4.0
+  const monZ = -deskTopDepth / 2 + 2.0
 
-  const armPoleGeo = new THREE.CylinderGeometry(0.45, 0.45, 4.5, 8)
+  const armPoleGeo = new THREE.CylinderGeometry(0.4, 0.4, 4.2, 8)
   const armPoleMat = new THREE.MeshStandardMaterial({ color: 0x71717a, metalness: 0.9 })
   const armPole = new THREE.Mesh(armPoleGeo, armPoleMat)
-  armPole.position.set(0, deskElevation + 2.2, monZ - 0.6)
+  armPole.position.set(0, deskElevation + 2.1, monZ - 0.5)
   group.add(armPole)
 
   const monChassisGeo = new THREE.BoxGeometry(monWidth, monHeight, monDepth)
   const monChassisMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.6, metalness: 0.6 })
-  const screenGeo = new THREE.PlaneGeometry(monWidth - 0.6, monHeight - 0.6)
+  const screenGeo = new THREE.PlaneGeometry(monWidth - 0.5, monHeight - 0.5)
 
   // Telas: se conectado, telas luminosas quentes na cor de destaque; se desconectado, apagadas
   const leftScreenMat = new THREE.MeshStandardMaterial({
     color: isConnected ? accentColorNum : PYRITE_3D.screenOffline,
     emissive: isConnected ? accentColorNum : 0x000000,
-    emissiveIntensity: isConnected ? 2.0 : 0,
+    emissiveIntensity: isConnected ? 2.2 : 0,
     roughness: isConnected ? 0.2 : 0.8
   })
   const rightScreenMat = new THREE.MeshStandardMaterial({
-    color: isConnected ? accentColorNum : PYRITE_3D.screenOffline,
-    emissive: isConnected ? accentColorNum : 0x000000,
-    emissiveIntensity: isConnected ? 1.6 : 0,
+    color: isConnected ? 0x38bdf8 : PYRITE_3D.screenOffline,
+    emissive: isConnected ? 0x38bdf8 : 0x000000,
+    emissiveIntensity: isConnected ? 1.8 : 0,
     roughness: isConnected ? 0.2 : 0.8
   })
 
   // Monitor Esquerdo
   const leftMon = new THREE.Mesh(monChassisGeo, monChassisMat)
-  leftMon.position.set(-4.2, monElevation, monZ)
+  leftMon.position.set(-3.9, monElevation, monZ)
   leftMon.rotation.y = 0.22
   const leftScreen = new THREE.Mesh(screenGeo, leftScreenMat)
   leftScreen.position.z = monDepth / 2 + 0.05
@@ -454,134 +480,134 @@ function createWorkstationMesh(params: {
 
   // Monitor Direito
   const rightMon = new THREE.Mesh(monChassisGeo, monChassisMat)
-  rightMon.position.set(4.2, monElevation, monZ)
+  rightMon.position.set(3.9, monElevation, monZ)
   rightMon.rotation.y = -0.22
   const rightScreen = new THREE.Mesh(screenGeo, rightScreenMat)
   rightScreen.position.z = monDepth / 2 + 0.05
   rightMon.add(rightScreen)
   group.add(rightMon)
 
-  // Fita de LED na borda da mesa indicando status do agente (Verde se ativo, apagado se pausado)
-  const deskLedGeo = new THREE.BoxGeometry(deskTopWidth, 0.35, 0.35)
+  // Fita de LED na borda da mesa indicando status do agente (Verde se ativo, cinza se pausado)
+  const deskLedGeo = new THREE.BoxGeometry(deskTopWidth, 0.3, 0.3)
   const deskLedMat = new THREE.MeshStandardMaterial({
     color: isConnected ? PYRITE_3D.statusOnline : PYRITE_3D.statusOffline,
     emissive: isConnected ? PYRITE_3D.statusOnline : 0x000000,
-    emissiveIntensity: isConnected ? 2.2 : 0
+    emissiveIntensity: isConnected ? 2.5 : 0
   })
   const deskLed = new THREE.Mesh(deskLedGeo, deskLedMat)
-  deskLed.position.set(0, deskElevation - 0.5, deskTopDepth / 2 + 0.15)
+  deskLed.position.set(0, deskElevation - 0.45, deskTopDepth / 2 + 0.12)
   group.add(deskLed)
 
   // 3. Cadeira Ergonômica de Escritório
   const chairGroup = new THREE.Group()
-  chairGroup.position.set(-1.0, 0, 6.2)
+  chairGroup.position.set(-1.0, 0, 5.8)
 
-  const starHubGeo = new THREE.CylinderGeometry(0.7, 0.7, 0.6, 8)
+  const starHubGeo = new THREE.CylinderGeometry(0.65, 0.65, 0.5, 8)
   const starHubMat = new THREE.MeshStandardMaterial({ color: PYRITE_3D.chairChrome, metalness: 0.9 })
   const starHub = new THREE.Mesh(starHubGeo, starHubMat)
-  starHub.position.y = 0.5
+  starHub.position.y = 0.45
   chairGroup.add(starHub)
 
   for (let i = 0; i < 5; i++) {
     const ang = (i / 5) * Math.PI * 2
-    const spokeGeo = new THREE.CylinderGeometry(0.2, 0.2, 3.2, 6)
+    const spokeGeo = new THREE.CylinderGeometry(0.18, 0.18, 3.0, 6)
     const spoke = new THREE.Mesh(spokeGeo, starHubMat)
-    spoke.position.set(Math.cos(ang) * 1.6, 0.4, Math.sin(ang) * 1.6)
+    spoke.position.set(Math.cos(ang) * 1.5, 0.35, Math.sin(ang) * 1.5)
     spoke.rotation.z = Math.PI / 2
     spoke.rotation.y = -ang
     chairGroup.add(spoke)
   }
 
-  const pistonGeo = new THREE.CylinderGeometry(0.5, 0.5, 4.2, 8)
+  const pistonGeo = new THREE.CylinderGeometry(0.45, 0.45, 3.8, 8)
   const piston = new THREE.Mesh(pistonGeo, starHubMat)
-  piston.position.y = 2.4
+  piston.position.y = 2.2
   chairGroup.add(piston)
 
-  const seatGeo = new THREE.BoxGeometry(8.5, 1.4, 8.0)
+  const seatGeo = new THREE.BoxGeometry(8.0, 1.3, 7.5)
   const seatMat = new THREE.MeshStandardMaterial({ color: PYRITE_3D.chairMesh, roughness: 0.85 })
   const seat = new THREE.Mesh(seatGeo, seatMat)
-  seat.position.y = 4.8
+  seat.position.y = 4.5
   chairGroup.add(seat)
 
-  const backGeo = new THREE.BoxGeometry(8.0, 9.5, 1.4)
+  const backGeo = new THREE.BoxGeometry(7.5, 9.0, 1.3)
   const back = new THREE.Mesh(backGeo, seatMat)
-  back.position.set(0, 9.8, 3.5)
+  back.position.set(0, 9.2, 3.2)
   back.rotation.x = 0.08
   chairGroup.add(back)
 
-  const armGeo = new THREE.BoxGeometry(0.8, 3.2, 4.5)
+  const armGeo = new THREE.BoxGeometry(0.75, 3.0, 4.2)
   const leftArmRest = new THREE.Mesh(armGeo, starHubMat)
-  leftArmRest.position.set(-4.2, 6.6, 0.8)
+  leftArmRest.position.set(-3.9, 6.2, 0.7)
   chairGroup.add(leftArmRest)
   const rightArmRest = new THREE.Mesh(armGeo, starHubMat)
-  rightArmRest.position.set(4.2, 6.6, 0.8)
+  rightArmRest.position.set(3.9, 6.2, 0.7)
   chairGroup.add(rightArmRest)
 
   group.add(chairGroup)
 
   // 4. Boneco do Especialista (Sentado na Cadeira)
   const agentFigure = new THREE.Group()
-  agentFigure.position.set(-1.0, 0, 6.2)
+  agentFigure.position.set(-1.0, 0, 5.8)
 
-  const thighsGeo = new THREE.BoxGeometry(4.8, 1.8, 6.5)
+  const thighsGeo = new THREE.BoxGeometry(4.5, 1.6, 6.0)
   const pantsMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.8 })
   const thighs = new THREE.Mesh(thighsGeo, pantsMat)
-  thighs.position.set(0, 5.4, -2.6)
+  thighs.position.set(0, 5.1, -2.4)
   agentFigure.add(thighs)
 
-  const torsoGeo = new THREE.BoxGeometry(5.8, 6.8, 3.8)
+  const torsoGeo = new THREE.BoxGeometry(5.4, 6.4, 3.5)
   const suitMat = new THREE.MeshStandardMaterial({
     color: isConnected ? PYRITE_3D.agentSuit : 0x27272a,
     roughness: 0.5
   })
   const torso = new THREE.Mesh(torsoGeo, suitMat)
-  torso.position.set(0, 8.8, 0.4)
+  torso.position.set(0, 8.4, 0.3)
   agentFigure.add(torso)
 
-  const armForeGeo = new THREE.BoxGeometry(1.5, 1.5, 5.5)
+  const armForeGeo = new THREE.BoxGeometry(1.4, 1.4, 5.2)
   const leftArm = new THREE.Mesh(armForeGeo, suitMat)
-  leftArm.position.set(-2.8, 7.8, -2.2)
+  leftArm.position.set(-2.6, 7.4, -2.0)
   leftArm.rotation.x = 0.2
   agentFigure.add(leftArm)
 
   const rightArm = new THREE.Mesh(armForeGeo, suitMat)
-  rightArm.position.set(2.8, 7.8, -2.2)
+  rightArm.position.set(2.6, 7.4, -2.0)
   rightArm.rotation.x = 0.2
   agentFigure.add(rightArm)
 
-  const headGeo = new THREE.SphereGeometry(2.5, 14, 14)
+  const headGeo = new THREE.SphereGeometry(2.3, 14, 14)
   const headMat = new THREE.MeshStandardMaterial({ color: PYRITE_3D.agentSkin, roughness: 0.5 })
   const head = new THREE.Mesh(headGeo, headMat)
-  head.position.set(0, 14.2, 0.6)
+  head.position.set(0, 13.5, 0.5)
   agentFigure.add(head)
 
-  const hairGeo = new THREE.SphereGeometry(2.65, 14, 14)
+  const hairGeo = new THREE.SphereGeometry(2.45, 14, 14)
   const hairMat = new THREE.MeshStandardMaterial({ color: PYRITE_3D.agentHair, roughness: 0.9 })
   const hair = new THREE.Mesh(hairGeo, hairMat)
-  hair.position.set(0, 14.8, 1.0)
+  hair.position.set(0, 14.1, 0.9)
   hair.scale.set(1.02, 0.95, 0.9)
   agentFigure.add(hair)
 
-  const headsetBandGeo = new THREE.TorusGeometry(2.4, 0.25, 8, 16)
+  const headsetBandGeo = new THREE.TorusGeometry(2.2, 0.22, 8, 16)
   const headsetMat = new THREE.MeshStandardMaterial({ color: 0x27272a, metalness: 0.8 })
   const headset = new THREE.Mesh(headsetBandGeo, headsetMat)
   headset.rotation.z = Math.PI / 2
-  headset.position.set(0, 14.6, 0.6)
+  headset.position.set(0, 13.9, 0.5)
   agentFigure.add(headset)
 
-  const visorGeo = new THREE.BoxGeometry(3.6, 1.1, 1.4)
+  const visorGeo = new THREE.BoxGeometry(3.4, 1.0, 1.3)
   const visorMat = new THREE.MeshStandardMaterial({
     color: isConnected ? accentColorNum : PYRITE_3D.statusOffline,
     emissive: isConnected ? accentColorNum : 0x000000,
-    emissiveIntensity: isConnected ? 2.2 : 0
+    emissiveIntensity: isConnected ? 2.5 : 0
   })
   const visor = new THREE.Mesh(visorGeo, visorMat)
-  visor.position.set(0, 14.2, -1.5)
+  visor.position.set(0, 13.5, -1.4)
   agentFigure.add(visor)
 
   group.add(agentFigure)
 
-  // Hitbox invisível
+  // Hitbox invisível para clique e raycasting
   const hitGeo = new THREE.BoxGeometry(deskTopWidth + 4, 18, deskTopDepth + 12)
   const hitMat = new THREE.MeshBasicMaterial({ visible: false })
   const hitMesh = new THREE.Mesh(hitGeo, hitMat)
@@ -626,6 +652,15 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   // Drawer Lateral
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // Sincronizar estado de fullscreen nativo
+  useEffect(() => {
+    const handleFSChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement))
+    }
+    document.addEventListener('fullscreenchange', handleFSChange)
+    return () => document.removeEventListener('fullscreenchange', handleFSChange)
+  }, [])
 
   // Modo de Navegação da Câmera (Pan Livre vs Órbita)
   const [navMode, setNavMode] = useState<'pan' | 'orbit'>('pan')
@@ -713,7 +748,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   }, [navMode])
 
   // =========================================================================
-  // MINI TURNTABLE 3D NO DRAWER PARA O AGENTE SELECIONADO (ESTILO PYRITE)
+  // MINI TURNTABLE 3D NO DRAWER PARA O AGENTE SELECIONADO
   // =========================================================================
   useEffect(() => {
     const canvas = turntableCanvasRef.current
@@ -747,7 +782,6 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
     const ttGroup = new THREE.Group()
 
-    // Base giratória com anel circular de neon dourado
     const discGeo = new THREE.CylinderGeometry(18, 19, 1.5, 32)
     const discMat = new THREE.MeshStandardMaterial({
       color: PYRITE_3D.platformNavy,
@@ -799,7 +833,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   }, [selectedAgent, selectedAgentCurrentSquad, dynamicAccent.hex])
 
   // =========================================================================
-  // MONTAGEM DO CENÁRIO PRINCIPAL THREE.JS (CORES NATIVAS PYRITE & TABULEIROS ESTREITOS)
+  // MONTAGEM DO CENÁRIO PRINCIPAL THREE.JS (MODULAR PODS, CONDUÍTES E ALTO CONTRASTE)
   // =========================================================================
   useEffect(() => {
     const container = containerRef.current
@@ -831,7 +865,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
-    controls.screenSpacePanning = true // PAN TOTALMENTE LIVRE
+    controls.screenSpacePanning = true
     controls.maxPolarAngle = Math.PI / 2 - 0.04
     controls.minDistance = 90
     controls.maxDistance = 1100
@@ -843,15 +877,15 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     }
     controlsRef.current = controls
 
-    // 3. Iluminação Pyrite (Quente / Ouro + Neutro Titânio)
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.35)
+    // 3. Iluminação Pyrite (Quente Ouro/Acento + Neutro Titânio)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.4)
     scene.add(ambientLight)
 
-    const dirLight = new THREE.DirectionalLight(0xfffbeb, 1.5)
+    const dirLight = new THREE.DirectionalLight(0xfffbeb, 1.6)
     dirLight.position.set(160, 320, 200)
     scene.add(dirLight)
 
-    const vaultPointLight = new THREE.PointLight(dynamicAccent.num, 2.2, 380)
+    const vaultPointLight = new THREE.PointLight(dynamicAccent.num, 2.4, 400)
     vaultPointLight.position.set(0, 48, 0)
     scene.add(vaultPointLight)
 
@@ -866,13 +900,12 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     scene.add(gridHelper)
 
     // =======================================================================
-    // 5. CENTRO: O COFRE CORPORATIVO (REDONDO, REDUZIDO PELA METADE COM HQ TOWER)
+    // 5. CENTRO: O COFRE CORPORATIVO (PEDESTAL CIRCULAR + PRÉDIO CORPORATIVO HQ)
     // =======================================================================
     const hubGroup = new THREE.Group()
     hubGroup.position.set(0, 0, 0)
 
-    // Redução do círculo central pela metade (raio 24 em vez de 48)
-    const hubRadius = 24
+    const hubRadius = 26
     const baseCylGeo = new THREE.CylinderGeometry(hubRadius, hubRadius + 3, 5, 48)
     const baseCylMat = new THREE.MeshStandardMaterial({
       color: PYRITE_3D.platformNavy,
@@ -884,7 +917,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     hubGroup.add(baseCyl)
 
     // Anel perimetral luminoso na cor de destaque selecionada
-    const goldRingGeo = new THREE.TorusGeometry(hubRadius - 0.5, 1.0, 12, 48)
+    const goldRingGeo = new THREE.TorusGeometry(hubRadius - 0.5, 0.9, 12, 48)
     const goldRingMat = new THREE.MeshStandardMaterial({
       color: dynamicAccent.num,
       emissive: dynamicAccent.num,
@@ -919,7 +952,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     coreDisc.position.y = 7.3
     hubGroup.add(coreDisc)
 
-    const coreRingGeo = new THREE.TorusGeometry(hubRadius - 6, 0.5, 10, 36)
+    const coreRingGeo = new THREE.TorusGeometry(hubRadius - 6, 0.45, 10, 36)
     const coreRingMat = new THREE.MeshStandardMaterial({
       color: dynamicAccent.num,
       emissive: dynamicAccent.num,
@@ -943,31 +976,33 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     scene.add(hubGroup)
 
     // =======================================================================
-    // 6. PLATAFORMAS DOS DEPARTAMENTOS (TABULEIROS ESTREITOS COM MARGEM MÍNIMA)
+    // 6. PLATAFORMAS DOS DEPARTAMENTOS (ESTRUTURA MODULAR POD COM CANTOS ARREDONDADOS)
     // =======================================================================
     const totalSquads = squads.length
     deskMeshesRef.current.clear()
     pulseSpheresRef.current = []
 
+    // Coordenadas das plataformas (organização aberta triangular como no print de referência)
     const computeSquadCoords = (idx: number, total: number) => {
-      if (total === 1) return { x: 0, z: -180 }
+      if (total === 1) return { x: 0, z: -170 }
       if (total === 2) {
-        return idx === 0 ? { x: -180, z: -10 } : { x: 180, z: -10 }
+        // Exatamente como no print de referência: esquadrões flanqueando o Hub central
+        return idx === 0 ? { x: -175, z: -60 } : { x: 175, z: -60 }
       }
       if (total === 3) {
-        if (idx === 0) return { x: -190, z: -70 }
-        if (idx === 1) return { x: 190, z: -70 }
+        if (idx === 0) return { x: -185, z: -65 }
+        if (idx === 1) return { x: 185, z: -65 }
         return { x: 0, z: 160 }
       }
       if (total === 4) {
-        if (idx === 0) return { x: -190, z: -80 }
-        if (idx === 1) return { x: 190, z: -80 }
-        if (idx === 2) return { x: -190, z: 90 }
-        return { x: 190, z: 90 }
+        if (idx === 0) return { x: -190, z: -75 }
+        if (idx === 1) return { x: 190, z: -75 }
+        if (idx === 2) return { x: -190, z: 95 }
+        return { x: 190, z: 95 }
       }
       const angle = (idx / total) * Math.PI * 2 - Math.PI / 2
       return {
-        x: Math.round(Math.cos(angle) * 240),
+        x: Math.round(Math.cos(angle) * 230),
         z: Math.round(Math.sin(angle) * 160)
       }
     }
@@ -986,84 +1021,151 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       platformGroup.position.set(sqX, 0, sqZ)
 
       const agentCount = squadAgents.length
-      const cols = agentCount > 3 ? 3 : Math.max(1, agentCount)
-      const rows = Math.ceil(agentCount / cols)
+      // Organização em pares de mesas opostas (como na referência)
+      const cols = agentCount > 4 ? 3 : agentCount > 2 ? 2 : Math.max(1, agentCount)
+      const rows = agentCount > 1 ? 2 : 1
 
-      // Dimensões estreitas que abraçam os módulos de mesas
-      const deskPitchX = 29
-      const deskPitchZ = 24
+      // Dimensões otimizadas do pod (estreitas e com contorno arredondado)
+      const deskPitchX = 27
+      const deskPitchZ = 19
       const marginX = 8
       const marginZ = 7
 
-      const platWidth = Math.max(76, cols * deskPitchX + marginX * 2)
-      const platDepth = Math.max(48, rows * deskPitchZ + marginZ * 2)
-      const platHeight = 7
+      const platWidth = Math.max(68, cols * deskPitchX + marginX * 2)
+      const platDepth = Math.max(46, rows * deskPitchZ + marginZ * 2)
+      const platHeight = 6
 
-      // Base do tabuleiro em titânio escuro
-      const basePlatformGeo = new THREE.BoxGeometry(platWidth + 4, 2.5, platDepth + 4)
-      const basePlatformMat = new THREE.MeshStandardMaterial({
+      // Base arredondada do pod com chanfro (Tier 1 - Titânio escuro)
+      const baseShape = createRoundedRectShape(platWidth + 4, platDepth + 4, 8)
+      const baseGeo = new THREE.ExtrudeGeometry(baseShape, {
+        depth: 2.2,
+        bevelEnabled: true,
+        bevelSegments: 2,
+        steps: 1,
+        bevelSize: 1.2,
+        bevelThickness: 1.2
+      })
+      baseGeo.rotateX(Math.PI / 2)
+      const baseMat = new THREE.MeshStandardMaterial({
         color: PYRITE_3D.platformNavy,
         roughness: 0.5,
         metalness: 0.85
       })
-      const basePlat = new THREE.Mesh(basePlatformGeo, basePlatformMat)
-      basePlat.position.y = 1.25
-      platformGroup.add(basePlat)
+      const baseMesh = new THREE.Mesh(baseGeo, baseMat)
+      baseMesh.position.y = 1.1
+      platformGroup.add(baseMesh)
 
-      // Corpo principal do tabuleiro estreito
-      const platGeo = new THREE.BoxGeometry(platWidth, platHeight, platDepth)
-      const platMat = new THREE.MeshStandardMaterial({
-        color: PYRITE_3D.platformSteel,
-        roughness: 0.45,
-        metalness: 0.75
-      })
-      const platMesh = new THREE.Mesh(platGeo, platMat)
-      platMesh.position.y = platHeight / 2 + 1.25
-      platformGroup.add(platMesh)
-
-      // Friso luminoso na borda superior do tabuleiro na cor selecionada
-      const edgeGeo = new THREE.BoxGeometry(platWidth + 0.8, 1.2, platDepth + 0.8)
-      const edgeMat = new THREE.MeshStandardMaterial({
+      // Anel perimétrico de underglow LED luminoso na cor selecionada
+      const glowGeo = new THREE.BoxGeometry(platWidth + 2.5, 0.4, platDepth + 2.5)
+      const glowMat = new THREE.MeshStandardMaterial({
         color: dynamicAccent.num,
         emissive: dynamicAccent.num,
-        emissiveIntensity: 1.6,
-        roughness: 0.2,
+        emissiveIntensity: 1.8
+      })
+      const glowMesh = new THREE.Mesh(glowGeo, glowMat)
+      glowMesh.position.y = 2.4
+      platformGroup.add(glowMesh)
+
+      // Corpo principal do pod com cantos arredondados (Tier 2 - Aço escovado Zinc-900)
+      const mainShape = createRoundedRectShape(platWidth, platDepth, 7)
+      const mainGeo = new THREE.ExtrudeGeometry(mainShape, {
+        depth: platHeight,
+        bevelEnabled: true,
+        bevelSegments: 3,
+        steps: 1,
+        bevelSize: 1.4,
+        bevelThickness: 1.4
+      })
+      mainGeo.rotateX(Math.PI / 2)
+      const mainMat = new THREE.MeshStandardMaterial({
+        color: PYRITE_3D.platformSteel,
+        roughness: 0.38,
         metalness: 0.8
       })
-      const edgeMesh = new THREE.Mesh(edgeGeo, edgeMat)
-      edgeMesh.position.y = platHeight + 1.6
-      platformGroup.add(edgeMesh)
+      const mainMesh = new THREE.Mesh(mainGeo, mainMat)
+      mainMesh.position.y = platHeight / 2 + 2.2
+      platformGroup.add(mainMesh)
 
-      // Terminal/Dock de conexão dos cabos de dados
-      const dockWidth = 18
-      const dockDepth = 6
-      const dockHeight = 5
+      // Friso metálico chanfrado na borda superior
+      const trimGeo = new THREE.BoxGeometry(platWidth + 0.6, 0.4, platDepth + 0.6)
+      const trimMat = new THREE.MeshStandardMaterial({
+        color: 0x3f3f46,
+        metalness: 0.9,
+        roughness: 0.25
+      })
+      const trimMesh = new THREE.Mesh(trimGeo, trimMat)
+      trimMesh.position.y = platHeight + 2.4
+      platformGroup.add(trimMesh)
+
+      // Trilho rebaixado central entre as mesas (corredor de dados)
+      const runnerGeo = new THREE.BoxGeometry(platWidth - 6, 0.15, 2.5)
+      const runnerMat = new THREE.MeshStandardMaterial({
+        color: dynamicAccent.num,
+        emissive: dynamicAccent.num,
+        emissiveIntensity: 1.4
+      })
+      const runnerMesh = new THREE.Mesh(runnerGeo, runnerMat)
+      runnerMesh.position.set(0, platHeight + 2.45, 0)
+      platformGroup.add(runnerMesh)
+
+      // Terminal/Dock de conexão dos cabos de dados voltado para o Hub Central
+      const isLeftSide = sqX < 0
+      const dockWidth = 14
+      const dockDepth = 5
+      const dockHeight = 4.2
       const dockGeo = new THREE.BoxGeometry(dockWidth, dockHeight, dockDepth)
       const dockMat = new THREE.MeshStandardMaterial({
         color: PYRITE_3D.platformTrim,
-        metalness: 0.85,
-        roughness: 0.25
+        metalness: 0.9,
+        roughness: 0.2
       })
       const dockMesh = new THREE.Mesh(dockGeo, dockMat)
-      const isLeftSide = sqX < 0
-      const dockX = isLeftSide ? platWidth / 2 - dockDepth / 2 : -platWidth / 2 + dockDepth / 2
-      dockMesh.position.set(dockX, platHeight + 0.5, 0)
+      const dockLocalX = isLeftSide ? platWidth / 2 - dockDepth / 2 : -platWidth / 2 + dockDepth / 2
+      dockMesh.position.set(dockLocalX, platHeight + 1.2, 0)
       platformGroup.add(dockMesh)
 
-      // 7. CRIAÇÃO DE CADA ESTAÇÃO DE TRABALHO
+      // Colar do dock
+      const dockRingGeo = new THREE.CylinderGeometry(2.4, 2.6, 1.8, 16)
+      const dockRingMat = new THREE.MeshStandardMaterial({
+        color: dynamicAccent.num,
+        emissive: dynamicAccent.num,
+        emissiveIntensity: 1.8,
+        metalness: 0.9
+      })
+      const dockRing = new THREE.Mesh(dockRingGeo, dockRingMat)
+      dockRing.rotation.z = Math.PI / 2
+      dockRing.position.set(dockLocalX + (isLeftSide ? 2.8 : -2.8), platHeight + 1.2, 0)
+      platformGroup.add(dockRing)
+
+      // 7. CRIAÇÃO DE CADA ESTAÇÃO DE TRABALHO EM PARES OPOSTOS (CLUSTER OPEN-PLAN)
       squadAgents.forEach(({ step, agent }, agIdx) => {
-        const col = agIdx % cols
-        const row = Math.floor(agIdx / cols)
-
-        const startX = -((cols - 1) * deskPitchX) / 2
-        const startZ = -((rows - 1) * deskPitchZ) / 2
-
-        const deskX = startX + col * deskPitchX
-        const deskZ = startZ + row * deskPitchZ
-
+        let deskX = 0
+        let deskZ = 0
         let facingAngle = 0
-        if (rows > 1 && row === 1) {
-          facingAngle = Math.PI
+
+        if (agentCount === 1) {
+          deskX = 0
+          deskZ = 0
+          facingAngle = 0
+        } else if (agentCount === 2) {
+          // 2 mesas se encarando
+          deskX = 0
+          deskZ = agIdx === 0 ? -9.5 : 9.5
+          facingAngle = agIdx === 0 ? 0 : Math.PI
+        } else if (agentCount <= 4) {
+          // 2 colunas de mesas se encarando
+          const col = agIdx % 2
+          const row = Math.floor(agIdx / 2)
+          deskX = (col === 0 ? -1 : 1) * (deskPitchX / 2)
+          deskZ = row === 0 ? -9.5 : 9.5
+          facingAngle = row === 0 ? 0 : Math.PI
+        } else {
+          // 3 colunas de mesas se encarando
+          const col = agIdx % 3
+          const row = Math.floor(agIdx / 3)
+          deskX = (col - 1) * deskPitchX
+          deskZ = row === 0 ? -9.5 : 9.5
+          facingAngle = row === 0 ? 0 : Math.PI
         }
 
         const isConnected = step.enabled !== false && agent.state !== 'paused'
@@ -1078,7 +1180,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
           accentColorNum: dynamicAccent.num
         })
 
-        workstation.position.y = platHeight + 1.25
+        workstation.position.y = platHeight + 2.2
 
         platformGroup.add(workstation)
         deskMeshesRef.current.set(agent.id, workstation)
@@ -1087,57 +1189,88 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       scene.add(platformGroup)
 
       // =======================================================================
-      // 8. CONDUÍTES CONTÍNUOS QUE ENCONTRAM O DOCK DA PLATAFORMA
+      // 8. CONDUÍTES FLUÍDOS CONTÍNUOS QUE CONECTAM O HUB DIRETAMENTE AO POD
       // =======================================================================
       const angle = Math.atan2(sqZ, sqX)
-      const startX = Math.cos(angle) * hubRadius
-      const startZ = Math.sin(angle) * hubRadius
+      const startX = Math.cos(angle) * (hubRadius + 1)
+      const startZ = Math.sin(angle) * (hubRadius + 1)
+      const startY = 3.8
 
-      const endX = isLeftSide ? sqX + platWidth / 2 : sqX - platWidth / 2
-      const endZ = sqZ
-
-      const distX = endX - startX
-      const distZ = endZ - startZ
-
-      const mid1X = startX + distX * 0.35
-      const mid1Z = startZ + distZ * 0.15
-      const mid2X = startX + distX * 0.70
-      const mid2Z = endZ
-
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(startX, 6, startZ),
-        new THREE.Vector3(mid1X, 4, mid1Z),
-        new THREE.Vector3(mid2X, 4, mid2Z),
-        new THREE.Vector3(endX, 6, endZ)
-      ])
-
-      // Tubo de blindagem metálica grafite
-      const armorTubeGeo = new THREE.TubeGeometry(curve, 20, 2.0, 8, false)
-      const armorTubeMat = new THREE.MeshStandardMaterial({
+      // Soquete metálico no Hub central
+      const hubPortGeo = new THREE.CylinderGeometry(2.6, 2.8, 2.0, 16)
+      const hubPortMat = new THREE.MeshStandardMaterial({
         color: PYRITE_3D.platformTrim,
-        roughness: 0.35,
-        metalness: 0.85
+        metalness: 0.9,
+        roughness: 0.25
+      })
+      const hubPort = new THREE.Mesh(hubPortGeo, hubPortMat)
+      hubPort.position.set(startX, startY, startZ)
+      hubPort.rotation.z = Math.PI / 2
+      hubPort.rotation.y = -angle
+      scene.add(hubPort)
+
+      // Ponto exato de chegada no dock do pod
+      const dockWorldX = sqX + dockLocalX + (isLeftSide ? 2.5 : -2.5)
+      const dockWorldZ = sqZ
+      const dockWorldY = platHeight + 1.2
+
+      const dist = Math.hypot(dockWorldX - startX, dockWorldZ - startZ)
+
+      // Curva suave tangencial (S-Spline elegante sobre o piso)
+      const p0 = new THREE.Vector3(startX, startY, startZ)
+      const p1 = new THREE.Vector3(
+        startX + Math.cos(angle) * dist * 0.38,
+        2.8,
+        startZ + Math.sin(angle) * dist * 0.38
+      )
+      const p2 = new THREE.Vector3(
+        dockWorldX - (isLeftSide ? -1 : 1) * dist * 0.38,
+        2.8,
+        dockWorldZ
+      )
+      const p3 = new THREE.Vector3(dockWorldX, dockWorldY, dockWorldZ)
+
+      const curve = new THREE.CatmullRomCurve3([p0, p1, p2, p3])
+
+      // 1. Tubo de blindagem externo de vidro/aço translúcido
+      const armorTubeGeo = new THREE.TubeGeometry(curve, 32, 2.2, 10, false)
+      const armorTubeMat = new THREE.MeshStandardMaterial({
+        color: 0x27272a,
+        roughness: 0.15,
+        metalness: 0.85,
+        transparent: true,
+        opacity: 0.65
       })
       const armorTube = new THREE.Mesh(armorTubeGeo, armorTubeMat)
       scene.add(armorTube)
 
-      // Fibra de dados luminosa interna na cor selecionada
-      const coreTubeGeo = new THREE.TubeGeometry(curve, 20, 0.9, 6, false)
+      // 2. Fibra interna de laser/dados luminosa na cor selecionada
+      const coreTubeGeo = new THREE.TubeGeometry(curve, 32, 0.95, 8, false)
       const coreTubeMat = new THREE.MeshStandardMaterial({
         color: dynamicAccent.num,
         emissive: dynamicAccent.num,
-        emissiveIntensity: 2.2,
-        roughness: 0.15
+        emissiveIntensity: 2.8,
+        roughness: 0.1
       })
       const coreTube = new THREE.Mesh(coreTubeGeo, coreTubeMat)
       scene.add(coreTube)
 
-      // Esfera de pulso de dados animada
-      const pulseGeo = new THREE.SphereGeometry(1.8, 10, 10)
+      // 3. Abraçadeiras metálicas de fixação no piso ao longo do conduíte
+      ;[0.28, 0.55, 0.82].forEach(pct => {
+        const clampPt = curve.getPointAt(pct)
+        const clampGeo = new THREE.TorusGeometry(2.3, 0.35, 8, 16)
+        const clampMat = new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.9, roughness: 0.2 })
+        const clampMesh = new THREE.Mesh(clampGeo, clampMat)
+        clampMesh.position.copy(clampPt)
+        scene.add(clampMesh)
+      })
+
+      // 4. Esfera de pulso de dados animada que viaja pelo conduíte
+      const pulseGeo = new THREE.SphereGeometry(2.0, 12, 12)
       const pulseMat = new THREE.MeshStandardMaterial({
-        color: 0xfffbeb,
+        color: 0xffffff,
         emissive: dynamicAccent.num,
-        emissiveIntensity: 3.5
+        emissiveIntensity: 3.8
       })
       const pulseMesh = new THREE.Mesh(pulseGeo, pulseMat)
       scene.add(pulseMesh)
@@ -1145,7 +1278,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       pulseSpheresRef.current.push({
         mesh: pulseMesh,
         curve,
-        speed: 0.004 + (sIdx % 3) * 0.001,
+        speed: 0.0035 + (sIdx % 3) * 0.001,
         progress: sIdx * 0.35
       })
     })
@@ -1162,7 +1295,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       controls.update()
 
       const cameraDist = camera.position.distanceTo(controls.target)
-      const zoomed = cameraDist < 320
+      const zoomed = cameraDist < 360
 
       pulseSpheresRef.current.forEach(p => {
         p.progress = (p.progress + p.speed) % 1
@@ -1175,7 +1308,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       // 1. Tag do Hub Central (acima da antena da torre corporativa)
       const hubEl = tagRefs.current.get('hub')
       if (hubEl) {
-        tempVec.set(0, 48, 0)
+        tempVec.set(0, 46, 0)
         tempVec.project(camera)
         if (tempVec.z < 1) {
           const sx = (tempVec.x * 0.5 + 0.5) * width
@@ -1187,12 +1320,13 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
         }
       }
 
-      // 2. Tags dos Esquadrões e Agentes
+      // 2. Tags dos Esquadrões e dos Agentes
       squads.forEach((sq, sIdx) => {
         const sqEl = tagRefs.current.get(`squad-${sq.id}`)
         if (sqEl) {
           const { x: sqX, z: sqZ } = computeSquadCoords(sIdx, totalSquads)
-          tempVec.set(sqX, 16, sqZ + 45)
+          // Rótulo posicionado limpamente no chão em frente à plataforma (como na referência)
+          tempVec.set(sqX, 2, sqZ + 36)
           tempVec.project(camera)
           if (tempVec.z < 1) {
             const sx = (tempVec.x * 0.5 + 0.5) * width
@@ -1306,29 +1440,51 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   }, [squads, agents, vaultName, dynamicAccent.hex])
 
   // Resetar câmera e alvo para a perspectiva compacta padrão
-  const handleResetCamera = () => {
+  const handleResetCamera = (e: React.MouseEvent) => {
+    e.stopPropagation()
     if (!cameraRef.current || !controlsRef.current) return
     cameraRef.current.position.set(0, 240, 380)
     controlsRef.current.target.set(0, 0, 0)
     controlsRef.current.update()
   }
 
-  const handleZoom = (delta: number) => {
+  const handleZoom = (e: React.MouseEvent, delta: number) => {
+    e.stopPropagation()
     if (!cameraRef.current || !controlsRef.current) return
     const factor = delta > 0 ? 0.82 : 1.18
     cameraRef.current.position.multiplyScalar(factor)
     controlsRef.current.update()
   }
 
-  const handleToggleFullscreen = () => {
-    if (!containerRef.current) return
-    if (!isFullscreen) {
-      containerRef.current.requestFullscreen?.().catch(() => {})
-      setIsFullscreen(true)
-    } else {
-      document.exitFullscreen?.().catch(() => {})
-      setIsFullscreen(false)
+  // Alternador de Tela Cheia com proteção total contra ghost backdrops
+  const handleToggleFullscreen = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+
+    // 1. Sempre fechar qualquer drawer/sidebar aberto para evitar sobreposições
+    setSelectedAgentId(null)
+
+    // 2. Tentar API nativa do Electron (se em ambiente desktop)
+    const electron = (window as any).electronAPI
+    if (electron?.toggleFullscreen) {
+      try {
+        const next = await electron.toggleFullscreen()
+        setIsFullscreen(next)
+        return
+      } catch {}
     }
+
+    // 3. Fallback para HTML5 Fullscreen nativo
+    if (!containerRef.current) return
+    try {
+      if (!document.fullscreenElement) {
+        await containerRef.current.requestFullscreen()
+        setIsFullscreen(true)
+      } else {
+        await document.exitFullscreen()
+        setIsFullscreen(false)
+      }
+    } catch {}
   }
 
   // Salvar Configuração no Drawer
@@ -1509,7 +1665,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
           const count = (sq.pipeline || []).length
           return (
             <React.Fragment key={sq.id}>
-              {/* Tag do Departamento */}
+              {/* Rótulo do Departamento no Piso (Estilo limpo da referência) */}
               <div
                 ref={el => {
                   if (el) tagRefs.current.set(`squad-${sq.id}`, el)
@@ -1518,23 +1674,25 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                 className="absolute top-0 left-0 pointer-events-auto whitespace-nowrap min-w-max shrink-0 z-20 hidden"
                 style={{ willChange: 'transform' }}
               >
-                <div className="px-3 py-1.5 rounded-2xl bg-[#141417]/95 border border-zinc-800 hover:border-[var(--accent)]/60 text-center shadow-xl backdrop-blur-md flex items-center gap-2 transition-all w-max whitespace-nowrap shrink-0">
-                  <div className="w-5 h-5 rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0">
-                    {renderDynamicIcon(sq.icon || 'Users', 'w-3 h-3 text-[var(--accent)]')}
-                  </div>
-                  <div className="text-left flex items-center gap-1.5 whitespace-nowrap shrink-0">
-                    <span className="text-[11.5px] font-bold text-zinc-100 whitespace-nowrap">{sq.name}</span>
-                    <span className="text-[10px] text-[var(--accent)] font-mono font-medium whitespace-nowrap">
+                <div className="flex flex-col items-center pointer-events-auto select-none">
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-[#09090b]/85 border border-zinc-800/80 shadow-lg backdrop-blur-sm">
+                    <div className="w-4 h-4 rounded-md bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0">
+                      {renderDynamicIcon(sq.icon || 'Users', 'w-2.5 h-2.5 text-[var(--accent)]')}
+                    </div>
+                    <span className="text-xs font-bold text-zinc-100 tracking-tight whitespace-nowrap">
+                      {sq.name}
+                    </span>
+                    <span className="text-[11px] text-[var(--accent)] font-mono font-medium whitespace-nowrap">
                       ({count} {count === 1 ? 'Agente' : 'Agentes'})
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1 ml-1 shrink-0">
+                  <div className="flex items-center gap-1.5 mt-1">
                     {onOpenSquadChat && (
                       <button
                         type="button"
                         onClick={() => onOpenSquadChat(sq)}
-                        className="p-1 rounded-lg bg-zinc-800 hover:bg-[var(--accent)] hover:text-zinc-950 text-zinc-300 transition-colors cursor-pointer"
+                        className="p-1 rounded-lg bg-[#141417]/90 hover:bg-[var(--accent)] hover:text-zinc-950 text-zinc-300 border border-zinc-800 transition-colors cursor-pointer shadow-sm"
                         title={`Conversar com equipe de ${sq.name}`}
                       >
                         <MessageSquare className="w-3 h-3" />
@@ -1543,7 +1701,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onSelectSquad(sq.id)}
-                      className="px-2 py-0.5 rounded-lg bg-zinc-800 hover:bg-[var(--accent)] hover:text-zinc-950 text-zinc-200 text-[10px] font-medium flex items-center gap-0.5 transition-colors cursor-pointer shrink-0"
+                      className="px-2 py-0.5 rounded-lg bg-[#141417]/90 hover:bg-[var(--accent)] hover:text-zinc-950 text-zinc-200 border border-zinc-800 text-[10px] font-medium flex items-center gap-0.5 transition-colors cursor-pointer shadow-sm"
                     >
                       <span>Gerenciar</span>
                       <ChevronRight className="w-3 h-3" />
@@ -1552,7 +1710,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                 </div>
               </div>
 
-              {/* Tags dos Agentes do Esquadrão */}
+              {/* Tags Flutuantes dos Agentes do Esquadrão (Capsule badges da referência) */}
               {(sq.pipeline || []).map(p => {
                 const ag = agents.find(a => a.id === p.agentId)
                 if (!ag) return null
@@ -1573,24 +1731,24 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                     style={{ willChange: 'transform' }}
                   >
                     <div
-                      className={`px-2 py-0.5 rounded-full border text-[10px] font-medium flex items-center gap-1.5 shadow-lg backdrop-blur-md ${
+                      className={`px-2 py-0.5 rounded-full border text-[10px] font-medium flex items-center gap-1.5 shadow-xl backdrop-blur-md ${
                         isSelected
                           ? 'bg-[var(--accent)] border-[var(--accent)] text-zinc-950 font-bold'
-                          : 'bg-[#141417]/95 border-zinc-800 text-zinc-200 hover:border-[var(--accent)]/50'
+                          : 'bg-[#121215]/95 border-zinc-800 text-zinc-200 hover:border-[var(--accent)]/50'
                       }`}
                       style={{
                         boxShadow: isSelected ? `0 0 12px ${dynamicAccent.hex}66` : undefined
                       }}
                     >
-                      <AgentIcon variant={ag.icon} size={13} className="shrink-0 rounded-full" />
-                      <span className="truncate max-w-[90px]">{ag.name}</span>
+                      <AgentIcon variant={ag.icon} size={12} className="shrink-0 rounded-full" />
+                      <span className="truncate max-w-[95px]">{ag.name}</span>
                       <span
                         className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                           isConn
                             ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]'
                             : 'bg-zinc-600 shadow-none'
                         }`}
-                        title={isConn ? 'Conectado / Online' : 'Pausado / Desconectado'}
+                        title={isConn ? 'Conectado / Online' : 'Pausado / Standby'}
                       />
                     </div>
                   </div>
@@ -1606,13 +1764,18 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
           ========================================================================= */}
       <nav
         aria-label="Controles de visualização 3D"
+        onClick={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
         className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-[#141417]/95 border border-zinc-800 shadow-2xl backdrop-blur-xl pointer-events-auto"
       >
         {/* Alternador de Modo de Arraste (Mover vs Girar) */}
         <div className="flex items-center rounded-xl bg-zinc-900/80 p-0.5 border border-zinc-800/80">
           <button
             type="button"
-            onClick={() => setNavMode('pan')}
+            onClick={e => {
+              e.stopPropagation()
+              setNavMode('pan')
+            }}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               navMode === 'pan'
                 ? 'bg-[var(--accent)] text-zinc-950 shadow-sm'
@@ -1626,7 +1789,10 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
           <button
             type="button"
-            onClick={() => setNavMode('orbit')}
+            onClick={e => {
+              e.stopPropagation()
+              setNavMode('orbit')
+            }}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               navMode === 'orbit'
                 ? 'bg-[var(--accent)] text-zinc-950 shadow-sm'
@@ -1643,7 +1809,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
         <button
           type="button"
-          onClick={() => handleZoom(1)}
+          onClick={e => handleZoom(e, 1)}
           className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
           title="Aproximar (Zoom In)"
         >
@@ -1652,7 +1818,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
         <button
           type="button"
-          onClick={() => handleZoom(-1)}
+          onClick={e => handleZoom(e, -1)}
           className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
           title="Afastar (Zoom Out)"
         >
@@ -1683,10 +1849,11 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       {/* =========================================================================
           5. DRAWER LATERAL: "AGENT CONFIGURATION" (IDENTIDADE PYRITE)
           ========================================================================= */}
-      {selectedAgent && (
+      {selectedAgent && selectedAgent.id && !isFullscreen && (
         <aside
           role="region"
           aria-label="Configuração do Agente"
+          onClick={e => e.stopPropagation()}
           className="absolute top-0 right-0 bottom-0 w-96 bg-[#121215]/98 border-l border-zinc-800 shadow-2xl z-30 flex flex-col backdrop-blur-2xl animate-in slide-in-from-right duration-200"
         >
           <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">

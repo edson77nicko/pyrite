@@ -23,6 +23,8 @@ const electronAPI = {
   maximize: () => ipcRenderer.invoke('window:maximize') as Promise<boolean>,
   close: () => ipcRenderer.invoke('window:close'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized') as Promise<boolean>,
+  toggleFullscreen: () => ipcRenderer.invoke('window:fullscreen') as Promise<boolean>,
+  isFullscreen: () => ipcRenderer.invoke('window:isFullscreen') as Promise<boolean>,
   onMaximizedChange: (callback: (isMax: boolean) => void) => {
     const handler = (_event: any, isMax: boolean) => callback(isMax)
     ipcRenderer.on('window:maximizedChange', handler)
