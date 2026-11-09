@@ -18,7 +18,9 @@ import {
   ChevronUp,
   Sparkles,
   Building2,
-  ArrowLeft
+  ArrowLeft,
+  PanelLeftClose,
+  PanelLeft
 } from 'lucide-react'
 import { AgentIcon } from './AgentIcon'
 import { renderDynamicIcon, IconPickerPopover } from './IconPickerPopover'
@@ -173,6 +175,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
 
   const [squadSearchQuery, setSquadSearchQuery] = useState('')
   const [connectionFilter, setConnectionFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   // Estado de expansão do acordeão por card (Configurar ⌵)
   const [expandedCardIds, setExpandedCardIds] = useState<Record<string, boolean>>({})
@@ -1008,31 +1011,42 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       {/* ==================================================================== */}
       {/* COLUNA ESQUERDA: LISTA DE ESQUADRÕES + ORGANOGRAMA GERAL             */}
       {/* ==================================================================== */}
-      <aside className="w-72 shrink-0 h-full bg-[#0e0e11] border-r border-zinc-800/80 flex flex-col">
-        {/* Cabeçalho */}
-        <div className="h-13 px-4 border-b border-zinc-800/80 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)]">
-              <Users className="w-4 h-4" />
+      {!isSidebarCollapsed && (
+        <aside className="w-72 shrink-0 h-full bg-[#0e0e11] border-r border-zinc-800/80 flex flex-col animate-in slide-in-from-left-2 duration-150">
+          {/* Cabeçalho */}
+          <div className="h-13 px-4 border-b border-zinc-800/80 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)]">
+                <Users className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-zinc-100">Esquadrões</div>
+                <div className="text-[10px] text-zinc-500">{squads.length} departamentos</div>
+              </div>
             </div>
-            <div>
-              <div className="text-xs font-semibold text-zinc-100">Esquadrões</div>
-              <div className="text-[10px] text-zinc-500">{squads.length} departamentos</div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsSidebarCollapsed(true)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+                title="Recolher barra lateral"
+              >
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewSquadLeadAgentId(agents[0]?.id || '')
+                  setNewSquadIcon('Users')
+                  setIsNewSquadModalOpen(true)
+                }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--accent)] hover:brightness-110 text-zinc-950 font-semibold text-xs transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Novo</span>
+              </button>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setNewSquadLeadAgentId(agents[0]?.id || '')
-              setNewSquadIcon('Users')
-              setIsNewSquadModalOpen(true)
-            }}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--accent)] hover:brightness-110 text-zinc-950 font-semibold text-xs transition-all cursor-pointer shadow-sm active:scale-95"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Novo</span>
-          </button>
-        </div>
 
         {/* Item Fixo de Topo: Organograma do Cofre */}
         <div className="p-2.5 border-b border-zinc-800/60">
@@ -1122,6 +1136,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
             })}
         </div>
       </aside>
+      )}
 
       {/* ==================================================================== */}
       {/* PAINEL CENTRAL: ORGANOGRAMA DO COFRE OU DETALHE DO ESQUADRÃO         */}
@@ -1131,6 +1146,8 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
           squads={squads}
           agents={agents}
           vaultName={vaultName}
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
           onSelectSquad={onSelectSquad}
           onSaveSquad={onSaveSquad}
           onDeleteSquad={onDeleteSquad}
@@ -1144,7 +1161,20 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
           }}
         />
       ) : (
-        renderSquadDetail()
+        <div className="relative flex-1 flex flex-col h-full overflow-hidden">
+          {isSidebarCollapsed && (
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed(false)}
+              className="absolute top-3.5 left-3.5 z-30 p-2 rounded-xl bg-[#121215]/90 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-zinc-100 shadow-xl backdrop-blur-md transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+              title="Expandir barra lateral"
+            >
+              <PanelLeft className="w-4 h-4 text-[var(--accent)]" />
+              <span className="text-xs font-medium">Esquadrões</span>
+            </button>
+          )}
+          {renderSquadDetail()}
+        </div>
       )}
 
       {/* ==================================================================== */}
