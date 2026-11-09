@@ -1,6 +1,6 @@
 import { SidebarMenu } from './SidebarMenu'
 import type { SidebarAction } from './SidebarMenu'
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import pyriteLogo from '../assets/icone_pyrite.png'
 import type { Note, NoteType, ViewMode } from '../types'
 import type { TaskBoard, TaskItem } from '../types/tasks'
@@ -25,7 +25,8 @@ import {
   Brain,
   CodeXml,
   RotateCw,
-  FileInput
+  FileInput,
+  LocateFixed
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -122,11 +123,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [folderFilter, setFolderFilter] = useState<string | null>(null)
   const scope = `${vaultPath || ''}:${isOpen}`
   const [previousScope, setPreviousScope] = useState(scope)
+  const lastRevealedKeyRef = useRef<string | null>(null)
+  const revealScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   if (previousScope !== scope) {
     setPreviousScope(scope)
     setContext(null)
     setFolderFilter(null)
   }
+
+  useEffect(() => {
+    lastRevealedKeyRef.current = null
+  }, [scope])
   const openContext = (e: React.MouseEvent, target: { note?: Note; folder?: string }) => { e.preventDefault(); e.stopPropagation(); setContext({ x: e.clientX, y: e.clientY, ...target }) }
   const [search, setSearch] = useState('')
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({})
@@ -166,6 +174,81 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const clean = normPath(path).toLowerCase()
     return clean === '' || clean === 'início' || clean === 'inicio' || clean === 'sem pasta'
   }
+
+  const isNodeActiveBranch = (node: TreeNode, activeId?: string): boolean => {
+    if (!activeId) return false
+    if (node.notes.some(n => n.id === activeId)) return true
+    return node.children.some(child => isNodeActiveBranch(child, activeId))
+  }
+
+  const revealNoteInTree = useCallback((noteId?: string, smooth = true) => {
+    if (!noteId) return
+    const activeNote = notes.find(n => n.id === noteId)
+    if (!activeNote) return
+
+    // 1. Expand all parent/ancestor folders
+    if (activeNote.folder && !isVaultRoot(activeNote.folder)) {
+      const parts = normPath(activeNote.folder).split('/').filter(Boolean)
+      if (parts.length > 0) {
+        const toExpand: Record<string, boolean> = {}
+        let accumulated = ''
+        for (const part of parts) {
+          accumulated = accumulated ? `${accumulated}/${part}` : part
+          toExpand[accumulated] = false
+        }
+        setCollapsedFolders(prev => {
+          const needsUpdate = Object.entries(toExpand).some(([k]) => (prev[k] ?? true) !== false)
+          return needsUpdate ? { ...prev, ...toExpand } : prev
+        })
+      }
+    }
+
+    // 2. Clear folderFilter if it would hide this note
+    if (folderFilter) {
+      const normNoteFolder = normPath(activeNote.folder)
+      const normFilter = normPath(folderFilter)
+      if (normNoteFolder !== normFilter && !normNoteFolder.startsWith(`${normFilter}/`)) {
+        setFolderFilter(null)
+      }
+    }
+
+    // 3. Scroll active note into view
+    if (revealScrollTimerRef.current) {
+      clearTimeout(revealScrollTimerRef.current)
+    }
+
+    const scrollToNote = () => {
+      const el = (document.querySelector(`[data-sidebar-tree-note="${noteId}"]`) as HTMLElement | null)
+        || (document.querySelector('.app-sidebar-note-active') as HTMLElement | null)
+      if (el) {
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: smooth ? 'smooth' : 'auto' })
+      }
+    }
+
+    revealScrollTimerRef.current = setTimeout(scrollToNote, 60)
+    setTimeout(scrollToNote, 180)
+  }, [notes, folderFilter])
+
+  // Auto-reveal active note whenever currentNoteId changes or notes load
+  useEffect(() => {
+    if (!currentNoteId || notes.length === 0 || !isOpen) return
+    const activeNote = notes.find(n => n.id === currentNoteId)
+    if (!activeNote) return
+
+    const revealKey = `${currentNoteId}:${normPath(activeNote.folder)}`
+    if (lastRevealedKeyRef.current !== revealKey) {
+      lastRevealedKeyRef.current = revealKey
+      revealNoteInTree(currentNoteId)
+    }
+  }, [currentNoteId, notes, isOpen, folderFilter, revealNoteInTree])
+
+  useEffect(() => {
+    return () => {
+      if (revealScrollTimerRef.current) {
+        clearTimeout(revealScrollTimerRef.current)
+      }
+    }
+  }, [])
 
   const canDropInto = (
     dragged: { type: 'note'; note: Note } | { type: 'folder'; fullPath: string } | null,
@@ -645,6 +728,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       (draggedItemRef.current?.type === 'folder' && normPath(draggedItemRef.current.fullPath) === normPath(node.fullPath))
     const isTargetFolder = dragOverTarget !== null && dragOverTarget === normPath(node.fullPath)
     const isRootNode = isVaultRoot(node.fullPath)
+    const containsActive = isNodeActiveBranch(node, currentNoteId)
 
     return (
       <div key={node.fullPath} className="space-y-[1px]">
@@ -674,11 +758,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <div className="flex items-center gap-2 truncate min-w-0">
             {isCollapsed ? (
-              <Folder className="w-4 h-4 opacity-80 shrink-0 folder-icon-common" style={isTargetFolder ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
+              <Folder className="w-4 h-4 opacity-80 shrink-0 folder-icon-common" style={isTargetFolder || (containsActive && isCollapsed) ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
             ) : (
-              <FolderOpen className="w-4 h-4 shrink-0 folder-icon-common" style={isTargetFolder ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
+              <FolderOpen className="w-4 h-4 shrink-0 folder-icon-common" style={isTargetFolder || containsActive ? { color: 'var(--accent-icon, var(--accent))' } : undefined} />
             )}
-            <span className="truncate">{node.name}</span>
+            <span className={`truncate ${containsActive ? 'text-zinc-200 font-medium' : ''}`}>{node.name}</span>
+            {containsActive && isCollapsed && (
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--accent)' }} title="Contém a nota ativa" />
+            )}
           </div>
 
           {isTargetFolder ? (
@@ -804,6 +891,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               return (
                 <div
                   key={note.id}
+                  data-sidebar-tree-note={note.id}
                   draggable={true}
                   onDragStart={(e) => handleNoteDragStart(e, note)}
                   onDragEnd={handleDragEnd}
@@ -821,12 +909,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     isNoteDragged
                       ? 'opacity-40 border-dashed border-zinc-600'
                       : isActive
-                      ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs app-sidebar-note-active'
+                      ? 'text-zinc-100 font-medium border-[var(--accent)] shadow-xs app-sidebar-note-active'
                       : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                   }`}
                   style={{
                     WebkitUserDrag: 'element',
-                    ...(isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : {})
+                    ...(isActive && !isNoteDragged
+                      ? {
+                          backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                          borderColor: 'var(--accent, #d4af37)',
+                          boxShadow: '0 0 0 1px var(--accent-glow-subtle, rgba(197, 155, 39, 0.2))'
+                        }
+                      : {})
                   } as React.CSSProperties}
                 >
                   <div className="flex items-center gap-2 truncate min-w-0">
@@ -926,8 +1020,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Header Actions: Collapse All & Create New Dropdown */}
+        {/* Header Actions: Locate Active Note, Collapse All & Create New Dropdown */}
         <div className="flex items-center gap-1 shrink-0">
+          {currentNoteId && (
+            <button
+              type="button"
+              onClick={() => revealNoteInTree(currentNoteId)}
+              className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800/70 rounded-md transition-colors cursor-pointer"
+              title="Localizar e revelar nota ativa na árvore"
+            >
+              <LocateFixed className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             type="button"
             onClick={handleToggleCollapseAll}
@@ -1721,6 +1825,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span>Documentos {dragOverTarget === '' && '· Raiz do cofre'}</span>
             </div>
             <div className="flex items-center gap-1.5">
+              {currentNoteId && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    revealNoteInTree(currentNoteId)
+                  }}
+                  className="p-0.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+                  title="Localizar e revelar nota ativa na árvore"
+                >
+                  <LocateFixed className="w-3.5 h-3.5 text-[var(--accent)]" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={(e) => {
@@ -1889,6 +2006,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 return (
                   <div
                     key={note.id}
+                    data-sidebar-tree-note={note.id}
                     draggable={true}
                     onDragStart={(e) => handleNoteDragStart(e, note)}
                     onDragEnd={handleDragEnd}
@@ -1906,12 +2024,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       isNoteDragged
                         ? 'opacity-40 border-dashed border-zinc-600'
                         : isActive
-                        ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs app-sidebar-note-active'
+                        ? 'text-zinc-100 font-medium border-[var(--accent)] shadow-xs app-sidebar-note-active'
                         : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                     }`}
                     style={{
                       WebkitUserDrag: 'element',
-                      ...(isActive && !isNoteDragged ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : {})
+                      ...(isActive && !isNoteDragged
+                        ? {
+                            backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                            borderColor: 'var(--accent, #d4af37)',
+                            boxShadow: '0 0 0 1px var(--accent-glow-subtle, rgba(197, 155, 39, 0.2))'
+                          }
+                        : {})
                     } as React.CSSProperties}
                   >
                     <div className="flex items-center gap-2 truncate min-w-0">

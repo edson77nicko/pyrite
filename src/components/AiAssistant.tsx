@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import type { Note, NoteType, AgentProfileVersion, MultiAgentStoreState } from '../types'
 import type {
   AgentSpecialistRole,
@@ -35,7 +35,6 @@ import {
   Check,
   Settings,
   PenLine,
-  Eye,
   Copy,
   MessageSquare,
   Plus,
@@ -47,42 +46,10 @@ import {
   FileText,
   Clock,
   CheckCircle2,
-  ListTodo,
-  FilePlus,
-  Workflow,
-  Users,
-  ArrowRight
+  FilePlus
 } from 'lucide-react'
 
 export type AgentRuleMode = 'analyst' | 'editor'
-
-export interface AgentRuleMeta {
-  id: AgentRuleMode
-  name: string
-  shortName: string
-  icon: string
-  tagline: string
-  badgeColor: string
-}
-
-export const AGENT_RULES: AgentRuleMeta[] = [
-  {
-    id: 'analyst',
-    name: 'Modo Analista',
-    shortName: 'Analista',
-    icon: '👁️',
-    tagline: 'Apenas conversa e ajuda com nota e pasta (Somente Leitura)',
-    badgeColor: '#38bdf8'
-  },
-  {
-    id: 'editor',
-    name: 'Modo Co-Autor',
-    shortName: 'Co-Autor',
-    icon: '✍️',
-    tagline: 'A nota é o seu canvas: edita notas e artefatos diretamente',
-    badgeColor: '#c59b27'
-  }
-]
 
 export interface ChatMessage {
   id: string
@@ -101,6 +68,40 @@ export interface AgentSpecialty {
   tagline: string
   systemDirective: string
   presets: { label: string; prompt: string }[]
+}
+
+export function sanitizeHtmlContent(raw: string): string {
+  if (!raw) return ''
+  let content = raw.trim()
+
+  // 1. Remove markdown code block fences if present at top
+  content = content.replace(/^```(?:html|htm|xml)?\s*\n?/i, '')
+
+  // 2. Locate the real start of the HTML document (strip greetings/explanations before <!DOCTYPE or <html)
+  const docTypeIdx = content.search(/<!DOCTYPE\s+html/i)
+  const htmlTagIdx = content.search(/<html/i)
+
+  let startIdx = -1
+  if (docTypeIdx !== -1) {
+    startIdx = docTypeIdx
+  } else if (htmlTagIdx !== -1) {
+    startIdx = htmlTagIdx
+  }
+
+  if (startIdx !== -1) {
+    content = content.substring(startIdx)
+  }
+
+  // 3. Locate the real end of the HTML document (</html>) and cut off trailing chat text
+  const endHtmlIdx = content.toLowerCase().lastIndexOf('</html>')
+  if (endHtmlIdx !== -1) {
+    content = content.substring(0, endHtmlIdx + '</html>'.length)
+  } else {
+    // If </html> is missing (e.g. truncated stream), strip any markdown trailing fence
+    content = content.replace(/\n?```\s*$/i, '')
+  }
+
+  return content.trim()
 }
 
 export interface ParsedTaskAction {
@@ -338,18 +339,17 @@ export function parseThoughtBlocks(text: string): { thoughts: string[]; cleanTex
 export const CollapsibleThought: React.FC<{ thought: string }> = ({ thought }) => {
   const [isOpen, setIsOpen] = useState(false)
   return (
-    <div className="my-1.5 rounded-lg border border-zinc-800/60 bg-zinc-950/40 text-xs overflow-hidden">
+    <div className="my-1">
       <button
         type="button"
         onClick={() => setIsOpen(o => !o)}
-        className="w-full flex items-center gap-1.5 px-2.5 py-1 text-left text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-[11px]"
+        className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-xs py-0.5 select-none group"
       >
-        <Sparkles className="w-3 h-3 text-[var(--accent)] shrink-0" />
-        <span className="font-mono text-[10px] text-zinc-400">Processo de raciocínio</span>
-        <ChevronRight className={`w-3 h-3 text-zinc-500 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+        <span className="group-hover:text-zinc-200">Processo de raciocínio</span>
+        <ChevronRight className={`w-3 h-3 text-zinc-500 group-hover:text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
       </button>
       {isOpen && (
-        <div className="px-3 py-2 border-t border-zinc-800/40 text-[11px] text-zinc-400 font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto custom-chat-scrollbar bg-black/20">
+        <div className="mt-1 ml-1 pl-3 border-l border-zinc-800 text-[11px] text-zinc-400 font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto custom-chat-scrollbar">
           {thought}
         </div>
       )}
@@ -361,6 +361,7 @@ interface TaskActionsCollapsibleProps {
   messageId: string
   actions: ParsedTaskAction[]
   executedTaskActions: Record<string, boolean>
+  tasks?: TaskItem[]
   onExecute: (act: ParsedTaskAction, key: string) => void
   onOpenTasks?: () => void
   taskBoards?: TaskBoard[]
@@ -371,6 +372,7 @@ export const TaskActionsCollapsible: React.FC<TaskActionsCollapsibleProps> = ({
   messageId,
   actions,
   executedTaskActions,
+  tasks = [],
   onExecute,
   onOpenTasks,
   taskBoards = [],
@@ -383,91 +385,65 @@ export const TaskActionsCollapsible: React.FC<TaskActionsCollapsibleProps> = ({
   const boardName = board?.name || 'Geral'
 
   const total = actions.length
-  const completedCount = actions.filter((_, idx) => executedTaskActions[`${messageId}_${idx}`]).length
+  const isTaskExecuted = (act: ParsedTaskAction, idx: number) => {
+    const key = `${messageId}_${idx}`
+    if (executedTaskActions[key]) return true
+    if (tasks && tasks.some(t => t.title.trim().toLowerCase() === act.title.trim().toLowerCase())) {
+      return true
+    }
+    return false
+  }
+
+  const completedCount = actions.filter((act, idx) => isTaskExecuted(act, idx)).length
   const allDone = completedCount >= total
 
   return (
-    <div className="mt-2 rounded-xl border border-zinc-800/80 bg-[#121318] overflow-hidden text-xs shadow-xs">
-      {/* Collapsible Header Bar - Gemini single-line style */}
-      <div className="flex items-center justify-between px-3 py-2 bg-zinc-900/60 hover:bg-zinc-850/60 transition-colors">
+    <div className="my-1.5 text-xs">
+      <div className="flex items-center gap-2 py-0.5 group">
         <button
           type="button"
           onClick={() => setIsOpen(o => !o)}
-          className="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer min-w-0 flex-1 text-left"
+          className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-xs select-none min-w-0"
         >
-          {allDone ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          ) : (
-            <ListTodo className="w-4 h-4 text-[var(--accent)] shrink-0" />
-          )}
-          <span className="font-semibold text-xs truncate">
+          <span className="truncate">
             {allDone
-              ? `${total} ${total === 1 ? 'tarefa criada' : 'tarefas criadas'} em "${boardName}"`
-              : `${total} ${total === 1 ? 'tarefa proposta' : 'tarefas propostas'} para "${boardName}"`}
+              ? `Criou ${total} ${total === 1 ? 'tarefa' : 'tarefas'} no projeto "${boardName}"`
+              : `Processou ${completedCount}/${total} tarefas em "${boardName}"`}
           </span>
-          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+          <ChevronRight className={`w-3 h-3 text-zinc-500 group-hover:text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
         </button>
 
-        <div className="flex items-center gap-2 shrink-0 ml-2">
-          {!allDone && (
-            <button
-              type="button"
-              onClick={() => {
-                actions.forEach((act, idx) => {
-                  const key = `${messageId}_${idx}`
-                  if (!executedTaskActions[key]) {
-                    onExecute(act, key)
-                  }
-                })
-              }}
-              className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-semibold cursor-pointer transition-colors"
-            >
-              Criar todas ({total - completedCount})
-            </button>
-          )}
-
-          {onOpenTasks && (
-            <button
-              type="button"
-              onClick={onOpenTasks}
-              className="text-[10px] text-zinc-400 hover:text-[var(--accent)] flex items-center gap-1 cursor-pointer transition-colors"
-              title="Abrir quadro de tarefas"
-            >
-              <span>Ver tarefas</span>
-              <span>→</span>
-            </button>
-          )}
-        </div>
+        {onOpenTasks && (
+          <button
+            type="button"
+            onClick={onOpenTasks}
+            className="text-[11px] text-zinc-500 hover:text-[var(--accent)] flex items-center gap-0.5 ml-auto shrink-0 transition-colors cursor-pointer"
+            title="Abrir quadro de tarefas"
+          >
+            <span>Ver no quadro</span>
+            <span>→</span>
+          </button>
+        )}
       </div>
 
-      {/* Expanded List - Strictly 1 Line per Task (Gemini style) */}
       {isOpen && (
-        <div className="divide-y divide-zinc-800/50 border-t border-zinc-800/80 max-h-64 overflow-y-auto custom-chat-scrollbar bg-[#0f1015]">
+        <div className="mt-1 ml-1 pl-3 border-l border-zinc-800 space-y-1 py-1 max-h-56 overflow-y-auto custom-chat-scrollbar">
           {actions.map((act, idx) => {
-            const taskKey = `${messageId}_${idx}`
-            const isDone = !!executedTaskActions[taskKey]
+            const isDone = isTaskExecuted(act, idx)
 
             return (
               <div
-                key={taskKey}
-                className="flex items-center justify-between gap-2.5 px-3 py-1.5 hover:bg-zinc-850/40 transition-colors group"
+                key={idx}
+                className="flex items-center justify-between gap-2 text-[11px] py-0.5 text-zinc-300 hover:text-zinc-100"
               >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  {isDone ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  ) : (
-                    <span className="w-3.5 h-3.5 flex items-center justify-center rounded-xs border border-zinc-700 shrink-0 text-[9px] text-zinc-400">
-                      {idx + 1}
-                    </span>
-                  )}
-                  <span className={`truncate text-[11px] font-medium ${isDone ? 'text-zinc-200' : 'text-zinc-300'}`}>
-                    {act.title}
-                  </span>
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                  <span className="text-emerald-400 shrink-0 text-xs">✓</span>
+                  <span className="truncate font-medium">{act.title}</span>
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
                   {act.priority && act.priority !== 'none' && (
-                    <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded ${
+                    <span className={`text-[9px] font-mono px-1 py-0.2 rounded ${
                       act.priority === 'urgent'
                         ? 'bg-rose-500/20 text-rose-300'
                         : act.priority === 'high'
@@ -485,8 +461,8 @@ export const TaskActionsCollapsible: React.FC<TaskActionsCollapsibleProps> = ({
                   {!isDone && (
                     <button
                       type="button"
-                      onClick={() => onExecute(act, taskKey)}
-                      className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 font-medium cursor-pointer transition-colors"
+                      onClick={() => onExecute(act, `${messageId}_${idx}`)}
+                      className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 cursor-pointer transition-colors"
                     >
                       + Criar
                     </button>
@@ -508,78 +484,47 @@ export const AgentActionsCollapsible: React.FC<{
   const [isOpen, setIsOpen] = useState(false)
   const total = actions.length
   if (total === 0) return null
-
   const first = actions[0]
 
   return (
-    <div className="mt-2 rounded-xl border border-indigo-500/30 bg-[#12131a] overflow-hidden text-xs shadow-xs">
-      <div className="flex items-center justify-between px-3 py-2 bg-indigo-950/20 hover:bg-indigo-950/30 transition-colors">
+    <div className="my-1.5 text-xs">
+      <div className="flex items-center gap-2 py-0.5 group">
         <button
           type="button"
           onClick={() => setIsOpen(o => !o)}
-          className="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer min-w-0 flex-1 text-left"
+          className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-xs select-none min-w-0"
         >
-          <div className="w-5 h-5 rounded-md bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0 text-xs">
-            {first.icon || '🤖'}
-          </div>
-          <span className="font-semibold text-xs truncate">
-            {total === 1 ? `Agente "${first.name}" criado na sua equipe` : `${total} agentes criados na sua equipe`}
+          <span className="truncate">
+            {total === 1 ? `Criou agente "${first.name}" na equipe` : `Criou ${total} agentes na equipe`}
           </span>
-          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+          <ChevronRight className={`w-3 h-3 text-zinc-500 group-hover:text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
         </button>
 
         <button
           type="button"
           onClick={() => onOpenAgent(first.id)}
-          className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1 shrink-0 ml-2 shadow-xs"
+          className="text-[11px] text-zinc-500 hover:text-indigo-300 flex items-center gap-0.5 ml-auto shrink-0 transition-colors cursor-pointer"
         >
-          <span>Abrir na Equipe</span>
-          <ArrowRight className="w-3 h-3" />
+          <span>Abrir na equipe</span>
+          <span>→</span>
         </button>
       </div>
 
       {isOpen && (
-        <div className="p-3 bg-black/40 border-t border-zinc-800/80 space-y-2">
+        <div className="mt-1 ml-1 pl-3 border-l border-zinc-800 space-y-2 py-1 max-h-56 overflow-y-auto custom-chat-scrollbar">
           {actions.map((act, idx) => (
-            <div key={idx} className="p-2.5 rounded-lg bg-zinc-900/70 border border-zinc-800/60 space-y-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">{act.icon || '🤖'}</span>
-                  <span className="font-semibold text-zinc-200">{act.name}</span>
-                  {act.specialistRole && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-800 text-zinc-400 border border-zinc-700/60">
-                      {act.specialistRole}
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onOpenAgent(act.id)}
-                  className="text-[10px] text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
-                >
-                  Ver Perfil
-                </button>
+            <div key={idx} className="text-[11px] space-y-1">
+              <div className="flex items-center gap-1.5">
+                <span>{act.icon || '🤖'}</span>
+                <span className="font-medium text-zinc-200">{act.name}</span>
+                {act.specialistRole && (
+                  <span className="px-1 py-0.2 rounded text-[9px] font-mono bg-zinc-800 text-zinc-400">
+                    {act.specialistRole}
+                  </span>
+                )}
               </div>
-
               {act.roleDescription && (
-                <p className="text-zinc-400 text-[11px] leading-relaxed">{act.roleDescription}</p>
-              )}
-
-              {act.tone && (
-                <div className="text-[10px] text-zinc-500">
-                  <strong className="text-zinc-400">Tom:</strong> {act.tone}
-                </div>
-              )}
-
-              {act.rules && act.rules.length > 0 && (
-                <div className="pt-1 border-t border-zinc-800/50">
-                  <div className="text-[10px] font-medium text-zinc-400 mb-1">Regras & Diretrizes:</div>
-                  <ul className="list-disc list-inside space-y-0.5 text-[10px] text-zinc-400 pl-1">
-                    {act.rules.map((r, ri) => (
-                      <li key={ri} className="truncate">{r}</li>
-                    ))}
-                  </ul>
-                </div>
+                <p className="text-zinc-400 text-[10px] leading-relaxed pl-5">{act.roleDescription}</p>
               )}
             </div>
           ))}
@@ -596,72 +541,51 @@ export const WorkflowActionsCollapsible: React.FC<{
   const [isOpen, setIsOpen] = useState(false)
   const total = actions.length
   if (total === 0) return null
-
   const first = actions[0]
   const stagesCount = first.nodes?.length || 0
 
   return (
-    <div className="mt-2 rounded-xl border border-emerald-500/30 bg-[#101714] overflow-hidden text-xs shadow-xs">
-      <div className="flex items-center justify-between px-3 py-2 bg-emerald-950/20 hover:bg-emerald-950/30 transition-colors">
+    <div className="my-1.5 text-xs">
+      <div className="flex items-center gap-2 py-0.5 group">
         <button
           type="button"
           onClick={() => setIsOpen(o => !o)}
-          className="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer min-w-0 flex-1 text-left"
+          className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-xs select-none min-w-0"
         >
-          <Workflow className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span className="font-semibold text-xs truncate">
+          <span className="truncate">
             {total === 1
-              ? `Fluxo "${first.name}" criado (${stagesCount} etapas conectadas)`
-              : `${total} fluxos criados no Flow Canvas`}
+              ? `Criou fluxo "${first.name}" (${stagesCount} etapas)`
+              : `Criou ${total} fluxos no Flow Canvas`}
           </span>
-          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+          <ChevronRight className={`w-3 h-3 text-zinc-500 group-hover:text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
         </button>
 
         <button
           type="button"
           onClick={() => onOpenWorkflow(first.id)}
-          className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1 shrink-0 ml-2 shadow-xs"
+          className="text-[11px] text-zinc-500 hover:text-emerald-300 flex items-center gap-0.5 ml-auto shrink-0 transition-colors cursor-pointer"
         >
-          <span>Abrir no Flow</span>
-          <ArrowRight className="w-3 h-3" />
+          <span>Abrir Flow</span>
+          <span>→</span>
         </button>
       </div>
 
       {isOpen && (
-        <div className="p-3 bg-black/40 border-t border-zinc-800/80 space-y-2">
+        <div className="mt-1 ml-1 pl-3 border-l border-zinc-800 space-y-2 py-1 max-h-56 overflow-y-auto custom-chat-scrollbar">
           {actions.map((wf, idx) => (
-            <div key={idx} className="p-2.5 rounded-lg bg-zinc-900/70 border border-zinc-800/60 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-zinc-200">{wf.name}</span>
-                <button
-                  type="button"
-                  onClick={() => onOpenWorkflow(wf.id)}
-                  className="text-[10px] text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
-                >
-                  Abrir Canvas
-                </button>
-              </div>
-
-              {wf.description && (
-                <p className="text-zinc-400 text-[11px]">{wf.description}</p>
-              )}
-
+            <div key={idx} className="text-[11px] space-y-1">
+              <div className="font-medium text-zinc-200">{wf.name}</div>
+              {wf.description && <p className="text-zinc-400 text-[10px]">{wf.description}</p>}
               {wf.nodes && wf.nodes.length > 0 && (
-                <div className="pt-1.5 border-t border-zinc-800/50">
-                  <div className="text-[10px] font-medium text-zinc-400 mb-1.5">Etapas do Pipeline:</div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {wf.nodes.map((node, ni) => (
-                      <React.Fragment key={ni}>
-                        <div className="px-2 py-1 rounded-md bg-zinc-800/80 border border-zinc-700/60 text-[10px] text-zinc-200 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                          <span>{node.label || node.kind || `Nó ${ni + 1}`}</span>
-                        </div>
-                        {ni < (wf.nodes?.length || 0) - 1 && (
-                          <span className="text-zinc-600 text-xs">→</span>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </div>
+                <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                  {wf.nodes.map((node, ni) => (
+                    <React.Fragment key={ni}>
+                      <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-300">
+                        {node.label || node.kind || `Nó ${ni + 1}`}
+                      </span>
+                      {ni < (wf.nodes?.length || 0) - 1 && <span className="text-zinc-600 text-[10px]">→</span>}
+                    </React.Fragment>
+                  ))}
                 </div>
               )}
             </div>
@@ -679,70 +603,49 @@ export const SquadActionsCollapsible: React.FC<{
   const [isOpen, setIsOpen] = useState(false)
   const total = actions.length
   if (total === 0) return null
-
   const first = actions[0]
   const membersCount = first.pipeline?.length || 0
 
   return (
-    <div className="mt-2 rounded-xl border border-amber-500/30 bg-[#181510] overflow-hidden text-xs shadow-xs">
-      <div className="flex items-center justify-between px-3 py-2 bg-amber-950/20 hover:bg-amber-950/30 transition-colors">
+    <div className="my-1.5 text-xs">
+      <div className="flex items-center gap-2 py-0.5 group">
         <button
           type="button"
           onClick={() => setIsOpen(o => !o)}
-          className="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer min-w-0 flex-1 text-left"
+          className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-xs select-none min-w-0"
         >
-          <Users className="w-4 h-4 text-amber-400 shrink-0" />
-          <span className="font-semibold text-xs truncate">
+          <span className="truncate">
             {total === 1
-              ? `Squad "${first.name}" criado (${membersCount} especialistas)`
-              : `${total} squads criados na sua equipe`}
+              ? `Criou squad "${first.name}" (${membersCount} especialistas)`
+              : `Criou ${total} squads na equipe`}
           </span>
-          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+          <ChevronRight className={`w-3 h-3 text-zinc-500 group-hover:text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
         </button>
 
         <button
           type="button"
           onClick={() => onOpenSquad(first.id)}
-          className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1 shrink-0 ml-2 shadow-xs"
+          className="text-[11px] text-zinc-500 hover:text-amber-300 flex items-center gap-0.5 ml-auto shrink-0 transition-colors cursor-pointer"
         >
           <span>Abrir Squads</span>
-          <ArrowRight className="w-3 h-3" />
+          <span>→</span>
         </button>
       </div>
 
       {isOpen && (
-        <div className="p-3 bg-black/40 border-t border-zinc-800/80 space-y-2">
+        <div className="mt-1 ml-1 pl-3 border-l border-zinc-800 space-y-1.5 py-1 max-h-56 overflow-y-auto custom-chat-scrollbar">
           {actions.map((sq, idx) => (
-            <div key={idx} className="p-2.5 rounded-lg bg-zinc-900/70 border border-zinc-800/60 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-zinc-200">{sq.name}</span>
-                <button
-                  type="button"
-                  onClick={() => onOpenSquad(sq.id)}
-                  className="text-[10px] text-amber-400 hover:text-amber-300 underline cursor-pointer"
-                >
-                  Ver Squad
-                </button>
-              </div>
-
-              {sq.description && (
-                <p className="text-zinc-400 text-[11px]">{sq.description}</p>
-              )}
-
+            <div key={idx} className="text-[11px] space-y-1">
+              <div className="font-medium text-zinc-200">{sq.name}</div>
+              {sq.description && <p className="text-zinc-400 text-[10px]">{sq.description}</p>}
               {sq.pipeline && sq.pipeline.length > 0 && (
-                <div className="pt-1.5 border-t border-zinc-800/50 space-y-1">
-                  <div className="text-[10px] font-medium text-zinc-400">Especialistas & Funções:</div>
-                  <div className="space-y-1">
-                    {sq.pipeline.map((step, si) => (
-                      <div key={si} className="flex items-center gap-2 text-[10px] text-zinc-300 bg-zinc-800/50 px-2 py-1 rounded">
-                        <span className="text-amber-400 font-mono">#{si + 1}</span>
-                        <span className="font-medium">{step.roleInSquad || step.agentId}</span>
-                        {step.expectedOutput && (
-                          <span className="ml-auto text-[9px] text-zinc-500 font-mono">saída: {step.expectedOutput}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                <div className="space-y-0.5 pt-0.5">
+                  {sq.pipeline.map((step, si) => (
+                    <div key={si} className="text-[10px] text-zinc-400 flex items-center gap-1">
+                      <span className="text-amber-400">#{si + 1}</span>
+                      <span>{step.roleInSquad || step.agentId}</span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -753,125 +656,21 @@ export const SquadActionsCollapsible: React.FC<{
   )
 }
 
-export const AGENT_SPECIALTIES: AgentSpecialty[] = [
-  {
-    id: 'none',
-    name: 'Modo Padrão (Sem Especialidade)',
-    shortName: 'Padrão',
-    badgeColor: '#71717a',
-    icon: '🤖',
-    tagline: 'Comportamento natural do modelo LLM sem direcionamento de persona adicional',
-    systemDirective: '',
-    presets: []
-  },
-  {
-    id: 'architect',
-    name: 'Arquiteto de Conhecimento',
-    shortName: 'Arquiteto',
-    badgeColor: '#c59b27',
-    icon: '🧠',
-    tagline: 'Construção de segundo cérebro, mapeamento ontológico, taxonomia e pontes no Vault',
-    systemDirective: `Sua persona e missão principal é a ARQUITETURA DE CONHECIMENTO E GESTÃO DE PENSAMENTO EM REDE (Segundo Cérebro / Zettelkasten).
-- Trate cada nota e pasta não como arquivos isolados, mas como nós de um grafo vivo e interconectado de ideias.
-- Identifique ativamente pontes conceituais latentes e conexões não óbvias entre diferentes tópicos e disciplinas presentes no cofre.
-- Proponha links bidirecionais [[Nome da Nota]] ou [[Nome da Nota|Alias]] sempre que oportuno, justificando a sinergia.
-- Ajude a estruturar MOCs (Maps of Content), taxonomias orgânicas de tags e categorias para organização sustentável de longo prazo.
-- Detecte lacunas conceituais e sugira desdobramentos lógicos para aprofundamento do tema.`,
-    presets: [
-      { label: '🔗 Conexões no Vault', prompt: 'Analise o contexto e sugira conexões semânticas com outras ideias do cofre, indicando links bidirecionais [[...]].' },
-      { label: '🧩 Mapa Conceitual', prompt: 'Crie um mapa conceitual das ideias centrais presentes neste contexto.' },
-      { label: '🏷️ Taxonomia & Tags', prompt: 'Sugira uma taxonomia de tags e categorias para organizar este material no cofre.' },
-      { label: '🌌 Análise Sistêmica', prompt: 'Faça uma síntese sistêmica de como os conceitos desta nota/pasta se relacionam entre si.' }
-    ]
-  },
-  {
-    id: 'writer',
-    name: 'Redator & Síntese',
-    shortName: 'Redator',
-    badgeColor: '#38bdf8',
-    icon: '✍️',
-    tagline: 'Comunicação executiva de alto impacto, clareza cirúrgica, elegância e ritmo',
-    systemDirective: `Sua persona e missão principal é a REDAÇÃO DE ELITE, CLAREZA RADICAL E SÍNTESE EXECUTIVA.
-- Escreva com máxima densidade informacional e elegância: cada parágrafo deve entregar valor indispensável sem desperdício de palavras.
-- Elimine jargões vazios, rodeios e prolixidade. Estruture o texto com ritmo fluido, títulos escaneáveis e frases de alto impacto.
-- Ao sintetizar, capture a essência nuclear das notas sem perder os nuances críticos.
-- Ao expandir tópicos, utilize analogias memoráveis, exemplos práticos concretos e distinções conceituais nítidas.`,
-    presets: [
-      { label: '✨ Melhorar Redação', prompt: 'Reescreva e aprimore o texto do contexto com maior elegância, fluidez e clareza.' },
-      { label: '📋 Resumo Executivo', prompt: 'Gere um resumo executivo em tópicos com os pontos mais importantes do contexto.' },
-      { label: '📖 Expandir Tópico', prompt: 'Expanda o conteúdo com explicações aprofundadas, exemplos práticos e desdobramentos.' },
-      { label: '🎯 Títulos & Estrutura', prompt: 'Sugira títulos, subtítulos e uma estrutura refinada para organizar este texto.' }
-    ]
-  },
-  {
-    id: 'critic',
-    name: 'Analista Crítico & Socrático',
-    shortName: 'Crítico',
-    badgeColor: '#f43f5e',
-    icon: '🔬',
-    tagline: 'Pensamento por primeiros princípios, testes de estresse em teses e método socrático',
-    systemDirective: `Sua persona e missão principal é a ANÁLISE CRÍTICA RIGOROSA, QUESTIONAMENTO SOCRÁTICO E PENSAMENTO POR PRIMEIROS PRINCÍPIOS.
-- Atue como um parceiro intelectual exigente: desafie premissas não comprovadas, vieses de confirmação e conclusões precipitadas.
-- Construa a melhor antítese possível (steel-man) para a tese defendida pelo usuário, testando sua solidez lógica.
-- Formule perguntas socráticas cirúrgicas que provoquem reflexão profunda e desvelem ângulos cegos.
-- Avalie efeitos de segunda e terceira ordem, custos de oportunidade, riscos não mapeados e trade-offs implícitos.`,
-    presets: [
-      { label: '🔍 Auditoria Crítica', prompt: 'Analise criticamente o conteúdo apontando fragilidades, premissas não comprovadas e possíveis falhas.' },
-      { label: '❓ Perguntas Socráticas', prompt: 'Elabore 4 perguntas socráticas desafiadoras para testar a consistência desta tese.' },
-      { label: '⚖️ Riscos & Trade-offs', prompt: 'Avalie os riscos potenciais, efeitos colaterais e trade-offs implícitos nesta abordagem.' },
-      { label: '💡 Antítese Oposta', prompt: 'Apresente o melhor contra-argumento possível à ideia defendida neste contexto.' }
-    ]
-  },
-  {
-    id: 'coder',
-    name: 'Engenheiro & Técnico',
-    shortName: 'Técnico',
-    badgeColor: '#a855f7',
-    icon: '💻',
-    tagline: 'Arquitetura de sistemas, especificações técnicas rigorosas e engenharia limpa',
-    systemDirective: `Sua persona e missão principal é a ENGENHARIA DE SOFTWARE E ESPECIFICAÇÃO TÉCNICA DE ALTO PADRÃO.
-- Projete soluções com rigor arquitetural: desacoplamento, manutenibilidade, escalabilidade e respeito a padrões consolidados.
-- Ao propor arquiteturas, pondere os trade-offs de engenharia (complexidade vs. flexibilidade, performance vs. legibilidade).
-- Quando fornecer código, entregue implementações idiomáticas, tipadas, robustas, com tratamento preventivo de erros e documentação contextualizada.
-- Crie especificações funcionais, checklists técnicos de implementação e diagramas textuais estruturados.`,
-    presets: [
-      { label: '💻 Especificação Técnica', prompt: 'Elabore uma especificação técnica detalhada com requisitos funcionais e não funcionais.' },
-      { label: '📐 Arquitetura de Dados', prompt: 'Proponha uma arquitetura de componentes ou modelo de dados para suportar este projeto.' },
-      { label: '🛠️ Snippet de Código', prompt: 'Gere um exemplo de código funcional e bem documentado implementando o conceito central.' },
-      { label: '✅ Checklist de Entrega', prompt: 'Crie um checklist de tarefas técnicas para implementação e validação passo a passo.' }
-    ]
-  },
-  {
-    id: 'project_manager',
-    name: 'Gestor de Projetos & Tarefas',
-    shortName: 'Gestor',
-    badgeColor: '#10b981',
-    icon: '📋',
-    tagline: 'Decomposição de metas em planos acionáveis, gestão de backlog, prazos e tarefas',
-    systemDirective: `Sua persona e missão principal é a GESTÃO ESTRATÉGICA DE PROJETOS, EXECUÇÃO E DECOMPOSIÇÃO DE METAS EM TAREFAS.
-- Atue como um experiente Gerente de Projetos e Tech Lead ágil.
-- Quando o usuário expressar um objetivo, projeto ou necessidade, ajude a decompô-lo em tarefas claras, prioritárias, estimadas e acionáveis com subtarefas lógicas.
-- Sempre que sugerir criar, atualizar ou estruturar tarefas no Pyrite, forneça blocos executáveis de ação de tarefas usando a sintaxe especial:
-\`\`\`task-action
-{
-  "action": "create",
-  "title": "Nome conciso da tarefa",
-  "priority": "high",
-  "deadline": "2026-10-25",
-  "tags": ["projeto", "prioridade"],
-  "subtasks": ["Passo 1", "Passo 2", "Passo 3"],
-  "description": "Detalhes sobre a entrega..."
+export interface QuickPreset {
+  label: string
+  prompt: string
+  category: string
 }
-\`\`\`
-- Prioridades aceitas: "urgent", "high", "medium", "low", "none".
-- Analise periodicamente a lista de tarefas existentes no Vault para identificar gargalos, tarefas atrasadas e dependências críticas.`,
-    presets: [
-      { label: '🎯 Decompor em Tarefas', prompt: 'Analise o contexto atual e crie um plano de execução estruturado com tarefas acionáveis e subtarefas detalhadas.' },
-      { label: '📊 Status & Priorização', prompt: 'Analise as tarefas do cofre e sugira a priorização recomendada para a semana/sprint com prazos.' },
-      { label: '⚡ Checklist Rápido', prompt: 'Gere um checklist executável de tarefas prioritárias para iniciar este objetivo imediatamente.' },
-      { label: '🔍 Auditoria de Gargalos', prompt: 'Identifique riscos, dependências ocultas e tarefas que podem travar o avanço do projeto.' }
-    ]
-  }
+
+export const MASTER_QUICK_PRESETS: QuickPreset[] = [
+  { label: '🔗 Conexões no Vault', prompt: 'Analise o contexto e sugira conexões semânticas com outras ideias do cofre, indicando links bidirecionais [[...]].', category: 'Conhecimento' },
+  { label: '🧩 Mapa Conceitual', prompt: 'Crie um mapa mental conceitual com as ideias centrais presentes neste contexto.', category: 'Visual' },
+  { label: '🏷️ Taxonomia & Tags', prompt: 'Sugira uma taxonomia de tags e categorias para organizar este material no cofre.', category: 'Organização' },
+  { label: '📋 Resumo Executivo', prompt: 'Gere um resumo executivo em tópicos com os pontos mais importantes do contexto.', category: 'Síntese' },
+  { label: '✨ Melhorar Redação', prompt: 'Reescreva e aprimore o texto do contexto com maior elegância, fluidez e clareza.', category: 'Escrita' },
+  { label: '⚡ Criar Workflow', prompt: 'Crie um fluxo de trabalho visual estruturado no Flow Canvas para este objetivo.', category: 'Flow' },
+  { label: '👥 Criar Squad', prompt: 'Crie um squad colaborativo com especialistas para executar este projeto em pipeline.', category: 'Equipe' },
+  { label: '🎯 Decompor em Tarefas', prompt: 'Analise o contexto atual e crie um plano de execução estruturado com tarefas acionáveis e subtarefas detalhadas.', category: 'Projetos' }
 ]
 
 export interface AgentConversation {
@@ -880,7 +679,7 @@ export interface AgentConversation {
   createdAt: number
   updatedAt: number
   specialtyId: string
-  ruleMode: AgentRuleMode
+  ruleMode?: string
   messages: ChatMessage[]
   linkedBoardId?: string
 }
@@ -977,28 +776,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   // Renaming state for conversations
   const [editingConvId, setEditingConvId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
-
-  // Agent Specialty State with persistence
-  const [activeSpecialtyId, setActiveSpecialtyId] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem('pyrite_ai_specialty') || localStorage.getItem('pyrita_ai_specialty')
-      if (saved === 'strategist') return 'architect'
-      return saved || 'architect'
-    } catch {
-      return 'architect'
-    }
-  })
-
-  // Agent Permission Rule Mode: 'analyst' (read-only consultant) vs 'editor' (co-author that creates/edits notes)
-  const [agentRule, setAgentRule] = useState<AgentRuleMode>(() => {
-    try {
-      const saved = localStorage.getItem('pyrite_ai_agent_rule') || localStorage.getItem('pyrita_ai_agent_rule')
-      return (saved === 'editor' ? 'editor' : 'analyst') as AgentRuleMode
-    } catch {
-      return 'analyst'
-    }
-  })
-  const [isRuleMenuOpen, setIsRuleMenuOpen] = useState(false)
 
   // Selected Team Agent or Squad in Global Chat (OpenBot Agent/Squad Switcher)
   const [selectedTeamAgentId, setSelectedTeamAgentId] = useState<string>(() => {
@@ -1103,13 +880,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     setExecutedTaskActions(prev => ({ ...prev, [key]: true }))
   }
 
-  const activeSpecialty = useMemo(() => {
-    if (activeSpecialtyId === 'none') {
-      return AGENT_SPECIALTIES[0]
-    }
-    return AGENT_SPECIALTIES.find(s => s.id === activeSpecialtyId) || AGENT_SPECIALTIES[1]
-  }, [activeSpecialtyId])
-
   // Context Selection States (Note, Folder & Additional Tagged Notes)
   const [isNoteContextActive, setIsNoteContextActive] = useState<boolean>(true)
   const [selectedFolderContext, setSelectedFolderContext] = useState<string | null>(null)
@@ -1129,7 +899,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const audioChunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<any>(null)
 
-  const ruleMenuRef = useRef<HTMLDivElement | null>(null)
   const boardMenuRef = useRef<HTMLDivElement | null>(null)
   const folderPickerRef = useRef<HTMLDivElement | null>(null)
   const folderPopupRef = useRef<HTMLDivElement | null>(null)
@@ -1229,8 +998,9 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
   const chatFeedRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const isNearBottomRef = useRef<boolean>(true)
 
-  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     if (chatFeedRef.current) {
       chatFeedRef.current.scrollTo({
         top: chatFeedRef.current.scrollHeight,
@@ -1239,20 +1009,62 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     } else if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior, block: 'end' })
     }
+  }, [])
+
+  const handleChatScroll = () => {
+    if (!chatFeedRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = chatFeedRef.current
+    isNearBottomRef.current = scrollHeight - scrollTop - clientHeight < 150
   }
 
   // Scroll immediately to bottom on mount and when conversation is selected/opened
   useEffect(() => {
-    const timer = setTimeout(() => {
+    isNearBottomRef.current = true
+    const scrollInstant = () => {
       scrollToBottom('auto')
-    }, 60)
-    return () => clearTimeout(timer)
-  }, [activeConversationId])
+    }
+    scrollInstant()
+    const raf = requestAnimationFrame(scrollInstant)
+    const t1 = setTimeout(scrollInstant, 50)
+    const t2 = setTimeout(scrollInstant, 150)
+    const t3 = setTimeout(scrollInstant, 300)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(t1)
+      clearTimeout(t2)
+      clearTimeout(t3)
+    }
+  }, [activeConversationId, scrollToBottom])
 
   // Follow stream/messages smoothly when updated or generating
   useEffect(() => {
-    scrollToBottom('smooth')
+    if (chatFeedRef.current && (isNearBottomRef.current || isGenerating)) {
+      chatFeedRef.current.scrollTop = chatFeedRef.current.scrollHeight
+    }
   }, [messages, isGenerating])
+
+  // Content resize and DOM mutation auto-scroll tracker
+  useEffect(() => {
+    const el = chatFeedRef.current
+    if (!el) return
+
+    const handleResize = () => {
+      if (isNearBottomRef.current || isGenerating) {
+        el.scrollTop = el.scrollHeight
+      }
+    }
+
+    const observer = new ResizeObserver(handleResize)
+    observer.observe(el)
+
+    const mutationObserver = new MutationObserver(handleResize)
+    mutationObserver.observe(el, { childList: true, subtree: true, characterData: true })
+
+    return () => {
+      observer.disconnect()
+      mutationObserver.disconnect()
+    }
+  }, [isGenerating])
 
   const setMessages = (updateFn: (prev: ChatMessage[]) => ChatMessage[]) => {
     setConversations(prevConvs => {
@@ -1287,13 +1099,12 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       title: 'Nova Conversa',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      specialtyId: activeSpecialtyId,
-      ruleMode: agentRule,
+      specialtyId: selectedTeamAgentId || 'master',
       messages: [
         {
           id: `msg_${Date.now()}`,
           sender: 'ai',
-          text: `Olá! Nova conversa iniciada com **${activeSpecialty.name}** (${activeSpecialty.icon}).\n\nComo posso ajudar você agora? Digite uma pergunta, use \`/\` para skills ou \`@\` para adicionar notas ao contexto.`
+          text: `Olá! Sou o Assistente Mestre do Pyrite. Como posso ajudar você agora? Digite uma pergunta, peça para criar ou editar notas, gerenciar tarefas, criar agentes ou fluxos visuais, use \`/\` para skills ou \`@\` para somar notas ao contexto.`
         }
       ]
     }
@@ -1316,8 +1127,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           title: 'Nova Conversa',
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          specialtyId: activeSpecialtyId,
-          ruleMode: agentRule,
+          specialtyId: selectedTeamAgentId || 'master',
           messages: [
             {
               id: `msg_${Date.now()}`,
@@ -1365,9 +1175,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   // Click outside listener for dropdown popovers
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (ruleMenuRef.current && !ruleMenuRef.current.contains(e.target as Node)) {
-        setIsRuleMenuOpen(false)
-      }
       if (teamAgentMenuRef.current && !teamAgentMenuRef.current.contains(e.target as Node)) {
         setIsTeamAgentMenuOpen(false)
       }
@@ -1569,6 +1376,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       isAudio: !!audioBase64
     }
     setMessages(prev => [...prev, userMsg])
+    scrollToBottom('auto')
 
     // If an API key is configured (or ollama active) and Electron AI is available, execute real LLM call
     if (window.electronAPI?.aiChat && (hasActiveKey || activeProvider === 'ollama')) {
@@ -1623,16 +1431,20 @@ Código-Fonte Atual:
 ---
 ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
 ---
-🚨 INSTRUÇÃO OBRIGATÓRIA PARA EDIÇÃO DESTE CÓDIGO HTML:
-- O usuário está com este arquivo HTML aberto na tela do Pyrite com visualização ao vivo e editor de código.
-- Quando ele solicitar para adicionar elementos, alterar estilos CSS/Tailwind, modificar cores, adicionar seções, criar formulários, incluir scripts JavaScript, gráficos ou reformular o código, você DEVE gerar o código HTML completo atualizado dentro do bloco:
-  <<<REPLACE_NOTE>>>
-  <!DOCTYPE html>
-  <html lang="pt-BR">
-  ... (todo o código HTML completo com as modificações)
-  </html>
-  <<<END_REPLACE_NOTE>>>
-- O Pyrite irá detectar o bloco <<<REPLACE_NOTE>>> e atualizar o código e a pré-visualização ao vivo do usuário instantaneamente!\n`
+🚨 REGRAS DE OURO PARA EDIÇÃO DESTE ARQUIVO HTML:
+1. O usuário está com este arquivo HTML aberto na tela do Pyrite com editor Monaco e visualização ao vivo ao lado do chat.
+2. Quando ele solicitar alterações, melhorias visuais, Tailwind, CSS, JavaScript, componentes ou novo layout, você DEVE gerar o código HTML completo atualizado dentro do bloco:
+   <<<REPLACE_NOTE>>>
+   <!DOCTYPE html>
+   <html lang="pt-BR">
+   ... (todo o código HTML completo com as modificações)
+   </html>
+   <<<END_REPLACE_NOTE>>>
+3. REGRA CRÍTICA DE CONTEÚDO: Dentro de <<<REPLACE_NOTE>>>, coloque ESTRITAMENTE código HTML puro (começando em <!DOCTYPE html> e terminando em </html>).
+   - NUNCA insira explicações, saudações, introduções ou comentários conversacionais dentro de <<<REPLACE_NOTE>>> (qualquer texto fora de tags aparece diretamente na tela do projeto do usuário!).
+   - NUNCA envolva o código em crases markdown (\`\`\`html) dentro de <<<REPLACE_NOTE>>>.
+   - Suas explicações amigáveis sobre o que você alterou devem ficar SEMPRE FORA do bloco <<<REPLACE_NOTE>>>, no chat.
+4. O Pyrite detectará o bloco, salvará o código no arquivo .html e atualizará a tela do usuário em tempo real!\n`
           } else {
             contextBlock += `\n### NOTA ATIVA PRINCIPAL EM CONTEXTO:\nTítulo: "${effectiveNote.title}"\nPasta: ${effectiveNote.folder || 'Início'}\nTags: ${effectiveNote.tags?.join(', ') || 'nenhuma'}\nConteúdo da nota:\n---\n${effectiveNote.content || '(nota vazia)'}\n---\n`
           }
@@ -1689,10 +1501,9 @@ ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
           }
         } catch {}
 
-        const ruleDirective = agentRule === 'editor'
-          ? `REGRA DE OPERAÇÃO: MODO CO-AUTOR (ESCRITA & CRIAÇÃO ATIVA).
-- A nota ativa é o seu CANVA de trabalho direto!
-- Você tem permissão para editar, reescrever, melhorar e atualizar a nota ativa diretamente quando o usuário solicitar.
+        const ruleDirective = `REGRA DE OPERAÇÃO: CRIAÇÃO & EDIÇÃO TOTAL NO COFRE.
+- Você é o Assistente Mestre e tem capacidade total de leitura, escrita e estruturação.
+- A nota ativa pode ser lida, analisada, reescrita ou expandida diretamente quando o usuário solicitar.
 - QUANDO O USUÁRIO SOLICITAR PARA SUBSTITUIR, EDITAR, REESCREVER OU MELHORAR A NOTA ATIVA (ex: "substitua a nota", "reescreva a nota", "melhore o texto da nota", "atualize o mapa mental", "adicione tópicos no mapa", "expanda o mapa", "aplique as alterações na nota"):
   Você DEVE fornecer a versão final completa delimitada EXATAMENTE pelo bloco:
   <<<REPLACE_NOTE>>>
@@ -1729,32 +1540,21 @@ ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
        - [ ] Testes e Validação
          - Testes de Usabilidade
          - Homologação em Produção
-- PARA ARQUIVOS DO TIPO HTML (html):
-  Dentro do bloco <<<REPLACE_NOTE>>>, forneça o código HTML completo atualizado com <!DOCTYPE html>, tags semânticas, estilos <style> ou Tailwind CDN e scripts <script>. Não use explicações ou marcações markdown dentro do bloco <<<REPLACE_NOTE>>>, apenas o código HTML puro que será executado e renderizado no app.
+- PARA ARQUIVOS DO TIPO HTML (.html):
+  Dentro do bloco <<<REPLACE_NOTE>>>, forneça SEMPRE o código HTML completo atualizado de <!DOCTYPE html> até </html>, com tags semânticas, estilos Tailwind CDN / CSS e scripts.
+  REGRA MANDATÓRIA: NUNCA coloque introduções, saudações, explicações ou crases de markdown (\`\`\`html) dentro do bloco <<<REPLACE_NOTE>>>. Apenas o código HTML puro que será executado e renderizado no app.
 - REGRA CRÍTICA PARA CRIAÇÃO DE NOVAS NOTAS, MAPAS MENTAIS OU ARQUIVOS HTML:
-  Sempre que o usuário pedir para CRIAR, GERAR, SALVAR ou MONTAR uma nova nota, novo documento ou novo mapa mental (ex: "crie uma nota sobre...", "criar nova nota...", "crie um novo mapa sobre...", "gere uma nota...", "salve essa ideia em uma nota..."):
+  Sempre que o usuário pedir para CRIAR, GERAR, SALVAR ou MONTAR uma nova nota, documento, mapa mental ou página HTML (ex: "crie uma página html...", "crie uma landing page...", "crie uma nota sobre...", "gere um mapa mental..."):
   Você DEVE OBRIGATORIAMENTE emitir o bloco executável delimitado no formato exato:
   <<<CREATE_NOTE>>>
-  Título: Nome Exato da Nova Nota
+  Título: Nome da Página.html (ou Nome da Nota)
   Pasta: Início
-  Tipo: note (ou mindmap se for mapa mental)
+  Tipo: html (ou note, ou mindmap)
   Conteúdo:
-  (coloque todo o conteúdo formatado em markdown aqui)
+  (se for html: coloque EXCLUSIVAMENTE o código HTML completo de <!DOCTYPE html> até </html>, sem textos conversacionais e sem crases markdown)
   <<<END_CREATE_NOTE>>>
   NUNCA apenas diga no texto que vai criar sem emitir o bloco <<<CREATE_NOTE>>>, pois este bloco é o comando que cria o arquivo no cofre do usuário!
 - Fora dos blocos delimitadores, explique resumidamente no chat o que foi gerado/aprimorado.`
-          : `REGRA DE OPERAÇÃO: MODO ANALISTA (CONSULTORIA & LEITURA).
-- Você atua exclusivamente como consultor, parceiro de pensamento e analista de conhecimento.
-- Analise a nota e a pasta em profundidade, formule hipóteses, aponte conexões e proponha melhorias.
-- Não altere a nota ativa atual diretamente sem permissão.
-- CRIAÇÃO DE NOVAS NOTAS OU MAPAS MENTAIS: Quando o usuário solicitar expressamente a criação de uma NOVA nota ou mapa mental (ex: "crie uma nota sobre...", "crie um mapa sobre..."), você DEVE emitir o bloco executável <<<CREATE_NOTE>>> normalmente para criá-lo no cofre:
-  <<<CREATE_NOTE>>>
-  Título: Nome da Nova Nota
-  Pasta: Início
-  Tipo: note (ou mindmap)
-  Conteúdo:
-  (conteúdo em markdown completo aqui)
-  <<<END_CREATE_NOTE>>>`
 
         const specialtyBlock = selectedSquad
           ? (() => {
@@ -1806,9 +1606,7 @@ ${selectedTeamAgent.knowledgeBindings
       : `- [${b.role}] ${b.noteTitle || b.folderPath || 'Fonte'}`
   })
   .join('\n\n')}\n`
-          : activeSpecialty.id !== 'none' && activeSpecialty.systemDirective
-          ? `Especialidade cognitiva ativa: ${activeSpecialty.name} (${activeSpecialty.icon})\nDiretriz de Especialidade:\n${activeSpecialty.systemDirective}\n`
-          : `Modo Geral Padrão: Atue conforme os parâmetros base do modelo LLM sem direcionamento de persona específica.\n`
+          : ''
 
         const artifactsDirective = `DIRETRIZ CRUCIAL SOBRE ARTEFATOS CONCÊNTRICOS (:::kpi, :::timeline, :::comparison, :::card):
 - USE COM PARCIMÔNIA E MODERAÇÃO EXTREMA.
@@ -2046,17 +1844,51 @@ Diretrizes gerais:
         if (res.success && res.text) {
           let responseText = res.text
 
-          // Check for Canvas Auto-Update <<<REPLACE_NOTE>>>
-          if (agentRule === 'editor' && onUpdateNote && responseText.includes('<<<REPLACE_NOTE>>>')) {
-            const replaceMatch = responseText.match(/<<<REPLACE_NOTE>>>([\s\S]*?)<<<END_REPLACE_NOTE>>>/)
-            if (replaceMatch && replaceMatch[1]) {
-              const revisedContent = replaceMatch[1].trim()
-              const isHtml = effectiveNote.type === 'html' || effectiveNote.filePath?.endsWith('.html') || effectiveNote.filePath?.endsWith('.htm') || /<!DOCTYPE\s+html|<html/i.test(revisedContent)
+          // Check for Canvas / HTML Auto-Update <<<REPLACE_NOTE>>>
+          if (onUpdateNote) {
+            const replaceRegex = /<<<(?:REPLACE_NOTE|replace_note)>>>([\s\S]*?)(?:<<<(?:END_REPLACE_NOTE|end_replace_note)>>>|$)/i
+            const replaceBlockRegex = /```(?:replace-note|replace_note|update-note)\s*([\s\S]*?)\s*```/i
+
+            let revisedContent: string | null = null
+            let matchedReplaceRaw: string | null = null
+
+            const match1 = responseText.match(replaceRegex)
+            if (match1 && match1[1] && match1[1].trim()) {
+              revisedContent = match1[1].trim()
+              matchedReplaceRaw = match1[0]
+            } else {
+              const match2 = responseText.match(replaceBlockRegex)
+              if (match2 && match2[1] && match2[1].trim()) {
+                revisedContent = match2[1].trim()
+                matchedReplaceRaw = match2[0]
+              }
+            }
+
+            // Fallback for HTML documents:
+            // If the active note is an HTML file and the AI returned a complete HTML document (either in ```html...``` or <!DOCTYPE html>...</html>)
+            const isTargetHtml = effectiveNote.type === 'html' || effectiveNote.filePath?.endsWith('.html') || effectiveNote.filePath?.endsWith('.htm') || effectiveNote.title.toLowerCase().endsWith('.html')
+
+            if (!revisedContent && isTargetHtml) {
+              const htmlCodeBlockMatch = responseText.match(/```(?:html|htm)?\s*([\s\S]*?(?:<!DOCTYPE\s+html|<html)[\s\S]*?<\/html>[\s\S]*?)\s*```/i)
+                || responseText.match(/(<!DOCTYPE\s+html[\s\S]*?<\/html>)/i)
+                || responseText.match(/(<html[\s\S]*?<\/html>)/i)
+
+              if (htmlCodeBlockMatch && htmlCodeBlockMatch[1]) {
+                revisedContent = htmlCodeBlockMatch[1].trim()
+                matchedReplaceRaw = htmlCodeBlockMatch[0]
+              }
+            }
+
+            if (revisedContent) {
+              const isHtml = isTargetHtml || /<!DOCTYPE\s+html|<html/i.test(revisedContent)
               const isMind = !isHtml && (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content) || isMindMapContent(revisedContent))
               const baseDoc = (!isHtml && (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content)))
                 ? parseMindMapDocument(effectiveNote.content, effectiveNote.title)
                 : undefined
-              const finalContent = isMind
+
+              const finalContent = isHtml
+                ? sanitizeHtmlContent(revisedContent)
+                : isMind
                 ? serializeMindMapDocument(parseMindMapDocument(revisedContent, effectiveNote.title, baseDoc))
                 : revisedContent
 
@@ -2066,18 +1898,29 @@ Diretrizes gerais:
                 type: isHtml ? 'html' : isMind ? 'mindmap' : effectiveNote.type,
                 updatedAt: Date.now()
               })
+
               const label = isHtml ? 'Arquivo HTML' : isMind ? 'Mapa Mental' : 'Nota'
               setToastNotice(`✨ ${label} "${effectiveNote.title}" atualizado pelo Agente!`)
               setTimeout(() => setToastNotice(null), 4000)
 
-              responseText = responseText.replace(
-                /<<<REPLACE_NOTE>>>[\s\S]*?<<<END_REPLACE_NOTE>>>/,
-                `> ✨ **${label} [[${effectiveNote.title}]] atualizado com sucesso no seu cofre!**\n`
-              ).trim()
+              if (matchedReplaceRaw) {
+                responseText = responseText.replace(
+                  matchedReplaceRaw,
+                  `\n> ✨ **${label} [[${effectiveNote.title}]] atualizado com sucesso no seu cofre!**\n`
+                ).trim()
+              } else {
+                responseText = `> ✨ **${label} [[${effectiveNote.title}]] atualizado com sucesso no seu cofre!**\n\n` + responseText
+              }
+
+              // If it's an HTML file, clean any redundant raw HTML code blocks that may still remain in the chat text
+              if (isHtml) {
+                responseText = responseText.replace(/```(?:html|htm)?\s*<!DOCTYPE[\s\S]*?<\/html>\s*```/gi, '').trim()
+                responseText = responseText.replace(/```(?:html|htm)?\s*<html[\s\S]*?<\/html>\s*```/gi, '').trim()
+              }
             }
           }
 
-          // Check for Note / MindMap Creation <<<CREATE_NOTE>>>
+          // Check for Note / MindMap / HTML Creation <<<CREATE_NOTE>>>
           if (onCreateNote) {
             const createRegex = /<<<(?:CREATE_NOTE|create_note)>>>([\s\S]*?)(?:<<<(?:END_CREATE_NOTE|end_create_note)>>>|$)/i
             const codeBlockRegex = /```(?:create-note|create_note|note-action)\s*([\s\S]*?)\s*```/i
@@ -2097,23 +1940,28 @@ Diretrizes gerais:
               }
             }
 
-            // Fallback Intent Detection: user explicitly asked to create a note and AI responded with note content without delimiters
+            // Fallback Intent Detection: user explicitly asked to create a note/html and AI responded with content without delimiters
             if (!blockText) {
-              const userPromptLower = userContent.toLowerCase()
-              const userWantsNewNote = /\b(?:crie|criar|gere|gerar|salve|salvar|monte|montar)\s+(?:uma\s+)?(?:nova\s+)?(?:nota|mapa|documento)\b/i.test(userPromptLower)
+              const userPromptLower = raw.toLowerCase()
+              const userWantsHtml = /\b(?:html|p[áa]gina|pagina|site|landing\s*page|dashboard|web|jogo)\b/i.test(userPromptLower) && /<!DOCTYPE\s+html|<html/i.test(responseText)
+              const userWantsNewNote = userWantsHtml || /\b(?:crie|criar|gere|gerar|salve|salvar|monte|montar|faça|fazer|desenvolva|desenvolver)\s+(?:uma\s+)?(?:nova\s+)?(?:nota|mapa|documento|p[áa]gina|pagina|site|landing|tela|dashboard|jogo|html)\b/i.test(userPromptLower)
 
               if (userWantsNewNote) {
                 const headingMatch = responseText.match(/(?:^|\n)#\s+([^\n]+)/)
                 const titleFieldMatch = responseText.match(/(?:^|\n)T[íi]tulo:\s*([^\n]+)/i)
-                const noteTitle = (headingMatch ? headingMatch[1] : titleFieldMatch ? titleFieldMatch[1] : '').replace(/[\[\]]/g, '').trim()
+                const titleTagMatch = responseText.match(/<title>([^<]+)<\/title>/i)
+                const extractedTitle = (headingMatch ? headingMatch[1] : titleFieldMatch ? titleFieldMatch[1] : titleTagMatch ? titleTagMatch[1] : '').replace(/[\[\]]/g, '').trim()
+
+                const isHtml = userWantsHtml || /<!DOCTYPE\s+html|<html/i.test(responseText)
+                const noteTitle = extractedTitle || (isHtml ? 'Página Web' : '')
 
                 if (noteTitle && responseText.length > 40) {
-                  const isMind = /\bmapa\b/i.test(userPromptLower) || isMindMapContent(responseText)
+                  const isMind = !isHtml && (/\bmapa\b/i.test(userPromptLower) || isMindMapContent(responseText))
                   const cleanContent = responseText
                     .replace(/^(?:Claro[!,.]?|Com certeza[!,.]?|Vou criar[^\n]*|Aqui est[áa][^\n]*)\s*\n+/i, '')
                     .trim()
 
-                  blockText = `Título: ${noteTitle}\nPasta: Início\nTipo: ${isMind ? 'mindmap' : 'note'}\nConteúdo:\n${cleanContent}`
+                  blockText = `Título: ${noteTitle}\nPasta: Início\nTipo: ${isHtml ? 'html' : isMind ? 'mindmap' : 'note'}\nConteúdo:\n${cleanContent}`
                 }
               }
             }
@@ -2139,8 +1987,22 @@ Diretrizes gerais:
               title = title.replace(/[\[\]]/g, '').trim() || 'Nova Nota'
 
               const isHtml = type === 'html' || title.toLowerCase().endsWith('.html') || title.toLowerCase().endsWith('.htm') || /<!DOCTYPE\s+html|<html/i.test(content)
+              if (isHtml && (!title || title === 'Novo Conteúdo' || title === 'Nova Nota')) {
+                const titleTagMatch = content.match(/<title>([^<]+)<\/title>/i)
+                if (titleTagMatch && titleTagMatch[1] && titleTagMatch[1].trim()) {
+                  title = titleTagMatch[1].trim()
+                } else {
+                  title = 'Página Web'
+                }
+              }
+              if (isHtml && !title.toLowerCase().endsWith('.html') && !title.toLowerCase().endsWith('.htm')) {
+                title = `${title}.html`
+              }
+
               const isMind = !isHtml && (type === 'mindmap' || isMindMapContent(content))
-              const finalContent = isMind
+              const finalContent = isHtml
+                ? sanitizeHtmlContent(content)
+                : isMind
                 ? serializeMindMapDocument(parseMindMapDocument(content, title))
                 : content
 
@@ -2156,6 +2018,12 @@ Diretrizes gerais:
                 ).trim()
               } else {
                 responseText = `> ✨ **${label} [[${title}]] criada com sucesso no seu cofre!**\n\n` + responseText
+              }
+
+              // If it's an HTML file, clean any redundant raw HTML code blocks from chat
+              if (isHtml) {
+                responseText = responseText.replace(/```(?:html|htm)?\s*<!DOCTYPE[\s\S]*?<\/html>\s*```/gi, '').trim()
+                responseText = responseText.replace(/```(?:html|htm)?\s*<html[\s\S]*?<\/html>\s*```/gi, '').trim()
               }
             }
           }
@@ -2456,9 +2324,9 @@ Diretrizes gerais:
     const q = slashQuery.toLowerCase()
     const list: { label: string; prompt: string; category: string }[] = []
 
-    for (const p of activeSpecialty.presets) {
+    for (const p of MASTER_QUICK_PRESETS) {
       if (p.label.toLowerCase().includes(q) || p.prompt.toLowerCase().includes(q)) {
-        list.push({ label: p.label, prompt: p.prompt, category: activeSpecialty.shortName })
+        list.push({ label: p.label, prompt: p.prompt, category: p.category })
       }
     }
 
@@ -2480,7 +2348,7 @@ Diretrizes gerais:
     } catch {}
 
     return list.slice(0, 8)
-  }, [slashSearchOpen, slashQuery, activeSpecialty])
+  }, [slashSearchOpen, slashQuery])
 
   // Filtered conversations list for the drawer
   const filteredConversations = useMemo(() => {
@@ -2511,68 +2379,9 @@ Diretrizes gerais:
         </div>
       )}
 
-      {/* 1. TOP HEADER: AGENT RULE SELECTOR (ANALISTA vs CO-AUTOR) & ACTION ICONS */}
+      {/* 1. TOP HEADER: AGENT / SQUAD SELECTOR & ACTION ICONS */}
       <div className="h-10 px-3 border-b border-zinc-800/80 bg-[#0e0e12] flex items-center justify-between shrink-0 gap-1.5">
         <div className="flex items-center gap-1.5 min-w-0">
-          {/* Agent Rule Selector: Modo Analista (Leitura) vs Modo Co-Autor (Edita Notas) */}
-          <div ref={ruleMenuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setIsRuleMenuOpen(o => !o)}
-              className={`flex items-center justify-center w-7 h-7 rounded-lg border text-xs transition-all cursor-pointer shadow-sm ${
-                agentRule === 'editor'
-                  ? 'bg-[var(--accent)]/15 border-[var(--accent)]/40 text-[var(--accent)]'
-                  : 'bg-zinc-900 border-zinc-700/70 text-zinc-200 hover:border-zinc-500'
-              }`}
-              title={`Permissão do Agente: ${agentRule === 'editor' ? 'Modo Co-Autor (Edita Notas)' : 'Modo Analista (Leitura)'} (clique para alternar)`}
-            >
-              <span className="text-sm leading-none">{agentRule === 'editor' ? '✍️' : '👁️'}</span>
-            </button>
-
-            {isRuleMenuOpen && (
-              <div className="absolute top-9 left-0 z-50 w-72 bg-[#101117] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl space-y-1 animate-in fade-in zoom-in-95 duration-100">
-                <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
-                  <span>REGRA DE OPERAÇÃO DO AGENTE</span>
-                  <span className="text-[9px] text-zinc-500">Permissão</span>
-                </div>
-                <div className="space-y-0.5 pt-0.5">
-                  {AGENT_RULES.map(rule => {
-                    const isCur = agentRule === rule.id
-                    return (
-                      <button
-                        key={rule.id}
-                        type="button"
-                        onClick={() => {
-                          setAgentRule(rule.id)
-                          try {
-                            localStorage.setItem('pyrite_ai_agent_rule', rule.id)
-                          } catch {}
-                          setIsRuleMenuOpen(false)
-                        }}
-                        className={`w-full text-left px-2.5 py-2 rounded-lg flex items-start gap-2.5 transition-all cursor-pointer ${
-                          isCur
-                            ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white'
-                            : 'hover:bg-zinc-850 text-zinc-300'
-                        }`}
-                      >
-                        <span className="text-base leading-none mt-0.5">{rule.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-xs flex items-center justify-between">
-                            <span className={isCur ? 'text-[var(--accent)]' : 'text-zinc-100'}>{rule.name}</span>
-                            {isCur && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
-                          </div>
-                          <p className="text-[10px] text-zinc-400 leading-tight mt-0.5">
-                            {rule.tagline}
-                          </p>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* OpenBot Team Agent / Squad Selector: Talk to any agent or squad right inside the global chat */}
           {((teamAgents && teamAgents.length > 0) || (multiAgentStore?.teams && multiAgentStore.teams.length > 0)) && (
             <div ref={teamAgentMenuRef} className="relative min-w-0 max-w-[140px]">
@@ -2950,9 +2759,13 @@ Diretrizes gerais:
       )}
 
       {/* 3. CHAT FEED */}
-      <div ref={chatFeedRef} className="flex-1 overflow-y-auto p-3 space-y-3 custom-chat-scrollbar">
-        {messages.length === 0 && (
-          <div className="h-full min-h-[220px] flex flex-col items-center justify-center text-center p-4 text-zinc-500 space-y-2">
+      <div
+        ref={chatFeedRef}
+        onScroll={handleChatScroll}
+        className="flex-1 overflow-y-auto p-3 custom-chat-scrollbar flex flex-col"
+      >
+        {messages.length === 0 ? (
+          <div className="m-auto flex flex-col items-center justify-center text-center p-4 text-zinc-500 space-y-2">
             <div className="w-10 h-10 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center text-lg shadow-inner">
               ✨
             </div>
@@ -2961,97 +2774,96 @@ Diretrizes gerais:
               <p className="text-[11px] text-zinc-500">Pergunte sobre suas notas, planeje projetos ou crie tarefas.</p>
             </div>
           </div>
-        )}
-
-        {/* Messages Feed */}
-        <div className="space-y-3 pt-1">
-          {messages.map(m => (
-            <div
-              key={m.id}
-              className={`flex flex-col gap-1 text-xs leading-relaxed ${
-                m.sender === 'user' ? 'items-end' : 'items-start'
-              }`}
-            >
-              <div className="text-[10px] text-zinc-500 font-medium px-1 flex items-center gap-1">
-                {m.sender === 'ai' ? (
-                  <>
-                    <Bot className="w-3 h-3 text-[var(--accent)]" />
-                    <span>{activeSpecialty.name}</span>
-                  </>
-                ) : (
-                  <>
-                    <User className="w-3 h-3 text-zinc-400" />
-                    <span>Você</span>
-                  </>
-                )}
-              </div>
-
-              {/* Seamless Typography: Transparent container for AI, Speech bubble for User */}
-              {m.sender === 'user' ? (
-                <div className="chat-user-bubble p-2.5 rounded-2xl bg-zinc-800/90 text-zinc-100 rounded-br-xs max-w-[90%] shadow-sm">
-                  {m.text}
+        ) : (
+          <div className="mt-auto space-y-3 pt-1">
+            {messages.map(m => (
+              <div
+                key={m.id}
+                className={`flex flex-col gap-1 text-xs leading-relaxed ${
+                  m.sender === 'user' ? 'items-end' : 'items-start'
+                }`}
+              >
+                <div className="text-[10px] text-zinc-500 font-medium px-1 flex items-center gap-1">
+                  {m.sender === 'ai' ? (
+                    <>
+                      <Bot className="w-3 h-3 text-[var(--accent)]" />
+                      <span>{selectedSquad ? selectedSquad.name : selectedTeamAgent ? selectedTeamAgent.name : 'Assistente'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <User className="w-3 h-3 text-zinc-400" />
+                      <span>Você</span>
+                    </>
+                  )}
                 </div>
-              ) : (
-                (() => {
-                  const { thoughts, cleanText: thoughtFreeText } = parseThoughtBlocks(m.text)
-                  const { displayText, taskActions, agentActions, workflowActions, squadActions } = parseMasterActions(thoughtFreeText)
 
-                  return (
-                    <div className="w-full text-zinc-200 px-1 py-1 space-y-2">
-                      {m.text === 'Pensando...' ? (
-                        <div className="flex items-center gap-2 py-1 text-zinc-400 font-mono text-[11px]">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)] shrink-0" />
-                          <span>Preparando uma resposta para você…</span>
-                        </div>
-                      ) : (
-                        <>
-                          {thoughts.map((th, i) => (
-                            <CollapsibleThought key={i} thought={th} />
-                          ))}
+                {/* Seamless Typography: Transparent container for AI, Speech bubble for User */}
+                {m.sender === 'user' ? (
+                  <div className="chat-user-bubble p-2.5 rounded-2xl bg-zinc-800/90 text-zinc-100 rounded-br-xs max-w-[90%] shadow-sm">
+                    {m.text}
+                  </div>
+                ) : (
+                  (() => {
+                    const { thoughts, cleanText: thoughtFreeText } = parseThoughtBlocks(m.text)
+                    const { displayText, taskActions, agentActions, workflowActions, squadActions } = parseMasterActions(thoughtFreeText)
 
-                          {displayText ? (
-                            <MarkdownRenderer
-                              content={displayText}
-                              onNavigate={onConnectNote}
-                              onButtonClick={(promptText) => executePrompt(promptText)}
-                              onInsertSnippet={agentRule === 'editor' ? onInsertSnippet : undefined}
-                            />
-                          ) : null}
+                    return (
+                      <div className="w-full text-zinc-200 px-1 py-1 space-y-2">
+                        {m.text === 'Pensando...' ? (
+                          <div className="flex items-center gap-2 py-1 text-zinc-400 font-mono text-[11px]">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)] shrink-0" />
+                            <span>Preparando uma resposta para você…</span>
+                          </div>
+                        ) : (
+                          <>
+                            {thoughts.map((th, i) => (
+                              <CollapsibleThought key={i} thought={th} />
+                            ))}
 
-                          {taskActions.length > 0 && (
-                            <TaskActionsCollapsible
-                              messageId={m.id}
-                              actions={taskActions}
-                              executedTaskActions={executedTaskActions}
-                              onExecute={handleExecuteTaskAction}
-                              onOpenTasks={onOpenTasks}
-                              taskBoards={taskBoards}
-                              defaultBoardId={effectiveBoardId}
-                            />
-                          )}
+                            {displayText ? (
+                              <MarkdownRenderer
+                                content={displayText}
+                                onNavigate={onConnectNote}
+                                onButtonClick={(promptText) => executePrompt(promptText)}
+                                onInsertSnippet={onInsertSnippet}
+                              />
+                            ) : null}
 
-                          {agentActions.length > 0 && (
-                            <AgentActionsCollapsible
-                              actions={agentActions}
-                              onOpenAgent={(id) => navigateToTeamSection('agents', id)}
-                            />
-                          )}
+                            {taskActions.length > 0 && (
+                              <TaskActionsCollapsible
+                                messageId={m.id}
+                                actions={taskActions}
+                                executedTaskActions={executedTaskActions}
+                                tasks={tasks}
+                                onExecute={handleExecuteTaskAction}
+                                onOpenTasks={onOpenTasks}
+                                taskBoards={taskBoards}
+                                defaultBoardId={effectiveBoardId}
+                              />
+                            )}
 
-                          {workflowActions.length > 0 && (
-                            <WorkflowActionsCollapsible
-                              actions={workflowActions}
-                              onOpenWorkflow={(id) => navigateToTeamSection('workflows', id)}
-                            />
-                          )}
+                            {agentActions.length > 0 && (
+                              <AgentActionsCollapsible
+                                actions={agentActions}
+                                onOpenAgent={(id) => navigateToTeamSection('agents', id)}
+                              />
+                            )}
 
-                          {squadActions.length > 0 && (
-                            <SquadActionsCollapsible
-                              actions={squadActions}
-                              onOpenSquad={(id) => navigateToTeamSection('squads', id)}
-                            />
-                          )}
-                        </>
-                      )}
+                            {workflowActions.length > 0 && (
+                              <WorkflowActionsCollapsible
+                                actions={workflowActions}
+                                onOpenWorkflow={(id) => navigateToTeamSection('workflows', id)}
+                              />
+                            )}
+
+                            {squadActions.length > 0 && (
+                              <SquadActionsCollapsible
+                                actions={squadActions}
+                                onOpenSquad={(id) => navigateToTeamSection('squads', id)}
+                              />
+                            )}
+                          </>
+                        )}
 
                       {m.isActionable && (
                         <div className="pt-2 border-t border-zinc-800/60 flex items-center gap-2">
@@ -3070,7 +2882,7 @@ Diretrizes gerais:
                       {!m.isActionable && m.text !== 'Pensando...' && (
                         <div className="pt-2 border-t border-zinc-800/40 flex items-center justify-between gap-1.5">
                           <div>
-                            {agentRule === 'editor' && onInsertSnippet && (
+                            {onInsertSnippet && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -3084,12 +2896,6 @@ Diretrizes gerais:
                                 <PenLine className="w-2.5 h-2.5" />
                                 <span>{insertedNotice === m.id ? '✓ Inserido!' : 'Inserir resposta na nota'}</span>
                               </button>
-                            )}
-                            {agentRule === 'analyst' && (
-                              <span className="text-[10px] text-zinc-500 italic flex items-center gap-1">
-                                <Eye className="w-3 h-3 text-sky-400/70" />
-                                Modo Analista (Consultivo)
-                              </span>
                             )}
                           </div>
 
@@ -3140,6 +2946,7 @@ Diretrizes gerais:
           ))}
           <div ref={messagesEndRef} className="h-px shrink-0" />
         </div>
+      )}
       </div>
 
       {/* 4. MODERN CHAT INPUT CARD WITH '/' (SKILLS) & '@' (NOTES) AUTOCOMPLETE */}
@@ -3312,7 +3119,7 @@ Diretrizes gerais:
               aria-label="Mensagem para o agente"
               value={input}
               onChange={handleInputChange}
-              placeholder={`Pergunte ao ${activeSpecialty.shortName} (digite '/' para skills ou '@' para somar notas)...`}
+              placeholder="Pergunte ao Assistente (digite '/' para skills ou '@' para somar notas)..."
               className="agent-message-input w-full bg-transparent px-1 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none"
               onKeyDown={event => {
                 if (event.nativeEvent.isComposing) return
@@ -3470,13 +3277,6 @@ Diretrizes gerais:
       <AiSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        activeSpecialtyId={activeSpecialtyId}
-        onSelectSpecialty={id => {
-          setActiveSpecialtyId(id)
-          try {
-            localStorage.setItem('pyrite_ai_specialty', id)
-          } catch {}
-        }}
         onConfigSaved={refreshAiConfig}
       />
 

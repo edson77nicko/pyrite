@@ -383,7 +383,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
   // Modais e Popovers customizados de alta usabilidade
   const [isAiSettingsModalOpen, setIsAiSettingsModalOpen] = useState(false)
-  const [aiSettingsInitialTab, setAiSettingsInitialTab] = useState<'models' | 'specialties' | 'skills'>('models')
+  const [aiSettingsInitialTab, setAiSettingsInitialTab] = useState<'models' | 'skills'>('models')
   const [installedAiSkills, setInstalledAiSkills] = useState<CustomAgentSkill[]>([])
   const [activeProviderName, setActiveProviderName] = useState<string>('openrouter')
   const [activeModelName, setActiveModelName] = useState<string>('google/gemini-2.5-flash')

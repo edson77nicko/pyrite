@@ -22,18 +22,15 @@ import {
   ChevronUp,
   FileText
 } from 'lucide-react'
-import { AGENT_SPECIALTIES } from './AiAssistant'
 
 export interface AiSettingsModalProps {
   isOpen: boolean
   onClose: () => void
-  activeSpecialtyId?: string
-  onSelectSpecialty?: (id: string) => void
   onConfigSaved?: () => void
   initialTab?: SettingsTab
 }
 
-export type SettingsTab = 'models' | 'specialties' | 'skills'
+export type SettingsTab = 'models' | 'skills' | 'specialties'
 
 export type ProviderKey = 'openai' | 'gemini' | 'deepseek' | 'openrouter' | 'groq' | 'ollama'
 
@@ -92,17 +89,15 @@ export const DEFAULT_AGENT_SKILLS: AgentSkill[] = []
 export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
   isOpen,
   onClose,
-  activeSpecialtyId = 'general',
-  onSelectSpecialty = () => {},
   onConfigSaved,
   initialTab = 'models'
 }) => {
   // Navigation tab
-  const [currentTab, setCurrentTab] = useState<SettingsTab>(initialTab)
+  const [currentTab, setCurrentTab] = useState<SettingsTab>(initialTab === 'specialties' ? 'models' : initialTab)
 
   useEffect(() => {
     if (isOpen && initialTab) {
-      setCurrentTab(initialTab)
+      setCurrentTab(initialTab === 'specialties' ? 'models' : initialTab)
     }
   }, [isOpen, initialTab])
 
@@ -475,25 +470,6 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => setCurrentTab('specialties')}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer ${
-                  currentTab === 'specialties'
-                    ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white font-semibold shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
-                }`}
-              >
-                <Bot className={`w-4 h-4 ${currentTab === 'specialties' ? 'text-[var(--accent)]' : 'text-zinc-500'}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[11px] font-medium leading-tight">Especialidades</div>
-                  <div className="text-[9px] text-zinc-500 truncate mt-0.5">5 perfis cognitivos</div>
-                </div>
-                <span className="text-[10px]">
-                  {AGENT_SPECIALTIES.find(s => s.id === activeSpecialtyId)?.icon}
-                </span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setCurrentTab('skills')}
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer ${
                   currentTab === 'skills'
@@ -534,12 +510,10 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
             <div>
               <h3 className="font-bold text-sm text-zinc-100">
                 {currentTab === 'models' && 'Configurações do Modelo LLM'}
-                {currentTab === 'specialties' && 'Especialidades Cognitivas do Agente'}
                 {currentTab === 'skills' && 'Habilidades & Cofres de Conhecimento'}
               </h3>
               <p className="text-[10px] text-zinc-500">
                 {currentTab === 'models' && 'Selecione o provedor, modelo e conecte sua chave de API'}
-                {currentTab === 'specialties' && 'Escolha a persona e o modo de raciocínio ativo para o agente'}
                 {currentTab === 'skills' && 'Importe pastas locais com notas e instruções para expandir as capacidades do agente'}
               </p>
             </div>
@@ -754,95 +728,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
             )}
 
             {/* ------------------------------------------------------------------- */}
-            {/* TAB 2: SPECIALTIES CONFIGURATION */}
-            {/* ------------------------------------------------------------------- */}
-            {currentTab === 'specialties' && (
-              <div className="space-y-3">
-                <div className="text-[11px] text-zinc-400 pb-1">
-                  Selecione a especialidade com a qual o agente de IA irá raciocinar e estruturar suas notas:
-                </div>
-
-                <div className="space-y-2.5">
-                  {AGENT_SPECIALTIES.map(s => {
-                    const isCur = activeSpecialtyId === s.id
-                    return (
-                      <div
-                        key={s.id}
-                        className={`p-3.5 rounded-2xl border transition-all ${
-                          isCur
-                            ? 'bg-[#13151c] border-[var(--accent)] shadow-md shadow-black/30'
-                            : 'bg-[#0f1014] border-zinc-800/80 hover:border-zinc-700'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3">
-                            <span className="text-2xl leading-none mt-0.5">{s.icon}</span>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h4 className="font-bold text-xs text-zinc-100">{s.name}</h4>
-                                <span
-                                  className="px-1.5 py-0.2 rounded-full text-[9px] font-semibold"
-                                  style={{
-                                    backgroundColor: `${s.badgeColor}22`,
-                                    color: s.badgeColor,
-                                    border: `1px solid ${s.badgeColor}44`
-                                  }}
-                                >
-                                  {s.shortName}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">{s.tagline}</p>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onSelectSpecialty(s.id)
-                              try {
-                                localStorage.setItem('pyrite_ai_specialty', s.id)
-                              } catch {}
-                            }}
-                            className={`px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                              isCur
-                                ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-sm'
-                                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
-                            }`}
-                          >
-                            {isCur ? (
-                              <>
-                                <Check className="w-3.5 h-3.5" />
-                                <span>Ativo</span>
-                              </>
-                            ) : (
-                              <span>Selecionar</span>
-                            )}
-                          </button>
-                        </div>
-
-                        {/* Quick Presets Pills */}
-                        {s.presets.length > 0 && (
-                          <div className="mt-2.5 pt-2 border-t border-zinc-800/60 flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[9px] text-zinc-500 font-semibold uppercase">Prompts rápidos:</span>
-                            {s.presets.map((p, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-0.5 rounded-md bg-zinc-850 border border-zinc-800 text-[10px] text-zinc-300"
-                              >
-                                {p.label}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ------------------------------------------------------------------- */}
-            {/* TAB 3: SKILLS CATALOG & FOLDER SUB-VAULTS */}
+            {/* TAB 2: SKILLS CATALOG & FOLDER SUB-VAULTS */}
             {/* ------------------------------------------------------------------- */}
             {currentTab === 'skills' && (
               <div className="space-y-4">
