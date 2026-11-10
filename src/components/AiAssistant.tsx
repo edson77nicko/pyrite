@@ -51,12 +51,30 @@ import {
 
 export type AgentRuleMode = 'analyst' | 'editor'
 
+export interface NotePatchItem {
+  search: string
+  replace: string
+}
+
+export interface NoteEditAction {
+  id: string
+  type: 'patch' | 'replace'
+  targetTitle: string
+  targetType: NoteType
+  patches: NotePatchItem[]
+  replaceContent?: string
+  applied: boolean
+  appliedAt?: number
+  discarded?: boolean
+}
+
 export interface ChatMessage {
   id: string
   sender: 'ai' | 'user'
   text: string
   isActionable?: boolean
   isAudio?: boolean
+  proposedEdit?: NoteEditAction
 }
 
 export interface AgentSpecialty {
@@ -102,6 +120,159 @@ export function sanitizeHtmlContent(raw: string): string {
   }
 
   return content.trim()
+}
+
+export function applyPatches(
+  originalContent: string,
+  patches: NotePatchItem[]
+): { success: boolean; newContent: string; appliedCount: number; failedCount: number } {
+  let content = originalContent
+  let appliedCount = 0
+  let failedCount = 0
+
+  for (const patch of patches) {
+    const search = patch.search
+    const replace = patch.replace
+
+    if (!search && !replace) continue
+
+    // If search is empty, append to the end
+    if (!search) {
+      content = content ? `${content.trimEnd()}\n\n${replace}` : replace
+      appliedCount++
+      continue
+    }
+
+    // 1. Exact match
+    if (content.includes(search)) {
+      content = content.replace(search, replace)
+      appliedCount++
+      continue
+    }
+
+    // 2. Normalized line endings (\r\n vs \n)
+    const normSearch = search.replace(/\r\n/g, '\n')
+    const normContent = content.replace(/\r\n/g, '\n')
+    if (normContent.includes(normSearch)) {
+      const idx = normContent.indexOf(normSearch)
+      content = normContent.substring(0, idx) + replace.replace(/\r\n/g, '\n') + normContent.substring(idx + normSearch.length)
+      appliedCount++
+      continue
+    }
+
+    // 3. Trimmed search match
+    const trimmedSearch = search.trim()
+    if (trimmedSearch && content.includes(trimmedSearch)) {
+      content = content.replace(trimmedSearch, replace.trim())
+      appliedCount++
+      continue
+    }
+
+    // 4. Line-by-line whitespace-tolerant match
+    const searchLines = search.split(/\r?\n/).map(l => l.trimEnd()).filter(Boolean)
+    if (searchLines.length > 0) {
+      const contentLines = content.split(/\r?\n/)
+      let foundStart = -1
+      for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
+        let match = true
+        for (let j = 0; j < searchLines.length; j++) {
+          if (contentLines[i + j].trimEnd() !== searchLines[j]) {
+            match = false
+            break
+          }
+        }
+        if (match) {
+          foundStart = i
+          break
+        }
+      }
+
+      if (foundStart !== -1) {
+        contentLines.splice(foundStart, searchLines.length, ...replace.split(/\r?\n/))
+        content = contentLines.join('\n')
+        appliedCount++
+        continue
+      }
+    }
+
+    failedCount++
+  }
+
+  return {
+    success: appliedCount > 0,
+    newContent: content,
+    appliedCount,
+    failedCount
+  }
+}
+
+export function parseNoteEditActions(
+  text: string,
+  targetTitle: string,
+  targetType: NoteType = 'note'
+): {
+  displayText: string
+  patchAction: NoteEditAction | null
+} {
+  if (!text) return { displayText: '', patchAction: null }
+
+  let patchAction: NoteEditAction | null = null
+  let cleanText = text
+
+  // 1. Check for <<<PATCH_NOTE>>> with SEARCH / REPLACE
+  const patchRegex = /<<<(?:PATCH_NOTE|patch_note)>>>([\s\S]*?)(?:<<<(?:END_PATCH_NOTE|end_patch_note)>>>|$)/i
+  const patchChunkRegex = /<<<<<<< SEARCH\s*\n?([\s\S]*?)\n?=======\s*\n?([\s\S]*?)\n?>>>>>>>/g
+
+  const patchMatch = text.match(patchRegex)
+  if (patchMatch && patchMatch[1]) {
+    const rawChunks = patchMatch[1]
+    const patches: NotePatchItem[] = []
+    let chunk
+    while ((chunk = patchChunkRegex.exec(rawChunks)) !== null) {
+      if (chunk[1] !== undefined || chunk[2] !== undefined) {
+        patches.push({
+          search: chunk[1] || '',
+          replace: chunk[2] || ''
+        })
+      }
+    }
+
+    if (patches.length > 0) {
+      patchAction = {
+        id: `edit_${Date.now()}`,
+        type: 'patch',
+        targetTitle,
+        targetType,
+        patches,
+        applied: false
+      }
+    }
+  }
+
+  // 2. Check for <<<REPLACE_NOTE>>>
+  if (!patchAction) {
+    const replaceRegex = /<<<(?:REPLACE_NOTE|replace_note)>>>([\s\S]*?)(?:<<<(?:END_REPLACE_NOTE|end_replace_note)>>>|$)/i
+    const replaceMatch = text.match(replaceRegex)
+    if (replaceMatch && replaceMatch[1] && replaceMatch[1].trim()) {
+      patchAction = {
+        id: `edit_${Date.now()}`,
+        type: 'replace',
+        targetTitle,
+        targetType,
+        patches: [],
+        replaceContent: replaceMatch[1].trim(),
+        applied: false
+      }
+    }
+  }
+
+  // Strip delimiters from displayed text
+  cleanText = cleanText
+    .replace(/<<<(?:PATCH_NOTE|patch_note)>>>[\s\S]*?(?:<<<(?:END_PATCH_NOTE|end_patch_note)>>>|$)/gi, '')
+    .replace(/<<<(?:REPLACE_NOTE|replace_note)>>>[\s\S]*?(?:<<<(?:END_REPLACE_NOTE|end_replace_note)>>>|$)/gi, '')
+    .trim()
+
+  return { displayText: cleanText, patchAction }
 }
 
 export interface ParsedTaskAction {
@@ -315,6 +486,8 @@ export function parseMasterActions(text: string): {
     .replace(/```agent-action\s*[\s\S]*?\s*```/g, '')
     .replace(/```workflow-action\s*[\s\S]*?\s*```/g, '')
     .replace(/```squad-action\s*[\s\S]*?\s*```/g, '')
+    .replace(/<<<(?:PATCH_NOTE|patch_note)>>>[\s\S]*?(?:<<<(?:END_PATCH_NOTE|end_patch_note)>>>|$)/gi, '')
+    .replace(/<<<(?:REPLACE_NOTE|replace_note)>>>[\s\S]*?(?:<<<(?:END_REPLACE_NOTE|end_replace_note)>>>|$)/gi, '')
     .trim()
 
   return { displayText, taskActions, agentActions, workflowActions, squadActions }
@@ -351,6 +524,131 @@ export const CollapsibleThought: React.FC<{ thought: string }> = ({ thought }) =
       {isOpen && (
         <div className="mt-1 ml-1 pl-3 border-l border-zinc-800 text-[11px] text-zinc-400 font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto custom-chat-scrollbar">
           {thought}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export const DiffProposalCard: React.FC<{
+  edit: NoteEditAction
+  onApply: () => void
+  onDiscard: () => void
+}> = ({ edit, onApply, onDiscard }) => {
+  const [isExpanded, setIsExpanded] = useState(true)
+
+  return (
+    <div className="mt-2 rounded-xl border border-zinc-800/90 bg-[#121319] overflow-hidden text-xs shadow-md">
+      {/* Header Bar */}
+      <div className="flex items-center justify-between px-3.5 py-2.5 bg-zinc-900/70 border-b border-zinc-800/80">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-5 h-5 rounded-md bg-[var(--accent)]/15 text-[var(--accent)] flex items-center justify-center shrink-0">
+            <Pencil className="w-3 h-3" />
+          </div>
+          <div className="min-w-0">
+            <div className="font-semibold text-zinc-200 text-xs truncate">
+              Sugestão de Edição em "{edit.targetTitle}"
+            </div>
+            <div className="text-[10px] text-zinc-500 font-mono">
+              {edit.type === 'patch'
+                ? `Edição Cirúrgica (${edit.patches.length} ${edit.patches.length === 1 ? 'trecho' : 'trechos'})`
+                : 'Substituição de Conteúdo'}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          {edit.applied ? (
+            <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+              <Check className="w-3 h-3 stroke-[2.5]" />
+              <span>Aplicado na nota</span>
+            </span>
+          ) : edit.discarded ? (
+            <span className="text-[10px] font-medium text-zinc-500 bg-zinc-800/60 px-2 py-0.5 rounded-full">
+              Descartado
+            </span>
+          ) : (
+            <span className="text-[10px] font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+              Pendente de Aprovação
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setIsExpanded(o => !o)}
+            className="text-zinc-500 hover:text-zinc-300 p-0.5 cursor-pointer transition-colors"
+            title={isExpanded ? 'Recolher pré-visualização' : 'Expandir pré-visualização'}
+          >
+            <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Diff Preview Body */}
+      {isExpanded && (
+        <div className="p-3 bg-[#0d0e12] space-y-2.5 max-h-72 overflow-y-auto custom-chat-scrollbar">
+          {edit.type === 'patch' ? (
+            edit.patches.map((patch, idx) => (
+              <div key={idx} className="space-y-1.5 border border-zinc-800/80 rounded-lg p-2 bg-zinc-950/40">
+                {edit.patches.length > 1 && (
+                  <div className="text-[9px] font-mono text-zinc-500">
+                    TRECHO #{idx + 1}
+                  </div>
+                )}
+                {/* Search / Before (Red) */}
+                {patch.search && (
+                  <div className="p-2 rounded bg-rose-950/20 border border-rose-900/30 text-rose-300 font-mono text-[11px] whitespace-pre-wrap leading-relaxed select-text">
+                    <div className="text-[9px] font-bold text-rose-400 uppercase tracking-wider mb-0.5 select-none">
+                      - Original (Será substituído):
+                    </div>
+                    {patch.search}
+                  </div>
+                )}
+                {/* Replace / After (Green) */}
+                <div className="p-2 rounded bg-emerald-950/20 border border-emerald-900/30 text-emerald-300 font-mono text-[11px] whitespace-pre-wrap leading-relaxed select-text">
+                  <div className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider mb-0.5 select-none">
+                    + Novo Conteúdo:
+                  </div>
+                  {patch.replace}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-900/30 text-emerald-300 font-mono text-[11px] whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto custom-chat-scrollbar select-text">
+              <div className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider mb-1 select-none">
+                + Novo Conteúdo Completo:
+              </div>
+              {edit.replaceContent}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Footer Actions (Only when not applied and not discarded) */}
+      {!edit.applied && !edit.discarded && (
+        <div className="px-3.5 py-2 bg-zinc-900/50 border-t border-zinc-800/60 flex items-center justify-between gap-2">
+          <span className="text-[10px] text-zinc-500">
+            Deseja gravar esta alteração no arquivo agora?
+          </span>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={onDiscard}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+            >
+              Descartar
+            </button>
+
+            <button
+              type="button"
+              onClick={onApply}
+              className="px-3 py-1 rounded-lg text-[11px] font-semibold bg-emerald-500 hover:bg-emerald-600 text-zinc-950 transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Aplicar na Nota</span>
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -768,6 +1066,13 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   const [hasActiveKey, setHasActiveKey] = useState<boolean>(false)
   const [isMultimodalActive, setIsMultimodalActive] = useState<boolean>(true)
   const [isGenerating, setIsGenerating] = useState<boolean>(false)
+  const [autoApplyEdits, setAutoApplyEdits] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('pyrite_ai_auto_apply_edits') === 'true'
+    } catch {
+      return false
+    }
+  })
 
   // Local conversations sidebar open state
   const [isLocalConversationsOpen, setIsLocalConversationsOpen] = useState<boolean>(false)
@@ -1191,6 +1496,9 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
 
   // Refresh AI configuration from Electron safeStorage
   const refreshAiConfig = async () => {
+    try {
+      setAutoApplyEdits(localStorage.getItem('pyrite_ai_auto_apply_edits') === 'true')
+    } catch {}
     if (!window.electronAPI?.aiGetAllConfigs) return
     try {
       const data = await window.electronAPI.aiGetAllConfigs()
@@ -1355,6 +1663,74 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     inputRef.current?.focus()
   }
 
+  // Handler to apply proposed edit from DiffProposalCard
+  const handleApplyProposedEdit = (messageId: string, edit: NoteEditAction) => {
+    if (!onUpdateNote) return
+
+    const target = (effectiveNote.title === edit.targetTitle)
+      ? effectiveNote
+      : allNotes.find(n => n.title === edit.targetTitle) || effectiveNote
+
+    let newContent = target.content
+
+    if (edit.type === 'patch') {
+      const patchRes = applyPatches(target.content, edit.patches)
+      newContent = patchRes.newContent
+    } else if (edit.type === 'replace' && edit.replaceContent !== undefined) {
+      newContent = edit.replaceContent
+    }
+
+    const isHtml = target.type === 'html' || target.filePath?.endsWith('.html') || target.filePath?.endsWith('.htm') || /<!DOCTYPE\s+html|<html/i.test(newContent)
+    const isMind = !isHtml && (target.type === 'mindmap' || isMindMapContent(target.content) || isMindMapContent(newContent))
+
+    const finalContent = isHtml
+      ? sanitizeHtmlContent(newContent)
+      : isMind
+      ? serializeMindMapDocument(parseMindMapDocument(newContent, target.title))
+      : newContent
+
+    onUpdateNote({
+      ...target,
+      content: finalContent,
+      type: isHtml ? 'html' : isMind ? 'mindmap' : target.type,
+      updatedAt: Date.now()
+    })
+
+    setMessages(prev => prev.map(m => {
+      if (m.id === messageId && m.proposedEdit) {
+        return {
+          ...m,
+          proposedEdit: {
+            ...m.proposedEdit,
+            applied: true,
+            discarded: false
+          }
+        }
+      }
+      return m
+    }))
+
+    const label = isHtml ? 'Arquivo HTML' : isMind ? 'Mapa Mental' : 'Nota'
+    setToastNotice(`✨ ${label} "${target.title}" atualizado com sucesso!`)
+    setTimeout(() => setToastNotice(null), 4000)
+  }
+
+  // Handler to discard proposed edit
+  const handleDiscardProposedEdit = (messageId: string) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id === messageId && m.proposedEdit) {
+        return {
+          ...m,
+          proposedEdit: {
+            ...m.proposedEdit,
+            discarded: true
+          }
+        }
+      }
+      return m
+    }))
+  }
+
   // Interactive Vault Chat with Real LLM, Context Injection & Canvas Auto-Update
   const executePrompt = async (raw: string, audioBase64?: string) => {
     if ((!raw.trim() && !audioBase64) || isGenerating) return
@@ -1433,20 +1809,55 @@ ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
 ---
 🚨 REGRAS DE OURO PARA EDIÇÃO DESTE ARQUIVO HTML:
 1. O usuário está com este arquivo HTML aberto na tela do Pyrite com editor Monaco e visualização ao vivo ao lado do chat.
-2. Quando ele solicitar alterações, melhorias visuais, Tailwind, CSS, JavaScript, componentes ou novo layout, você DEVE gerar o código HTML completo atualizado dentro do bloco:
+2. PREFIRA SEMPRE EDIÇÃO CIRÚRGICA <<<PATCH_NOTE>>> (economiza tokens e edita apenas onde necessário):
+   Para alterar textos, tags, botões, classes Tailwind, CSS, funções JS ou adicionar trechos pontuais, use:
+   <<<PATCH_NOTE>>>
+   <<<<<<< SEARCH
+   trecho exato do código HTML existente
+   =======
+   novo trecho modificado
+   >>>>>>>
+   <<<END_PATCH_NOTE>>>
+   Você pode incluir múltiplos blocos SEARCH / REPLACE dentro do mesmo <<<PATCH_NOTE>>> para editar diferentes partes.
+3. Se o usuário pedir para reescrever toda a página do zero, criar um layout totalmente novo ou reestruturar o documento inteiro, use o código completo dentro do bloco:
    <<<REPLACE_NOTE>>>
    <!DOCTYPE html>
    <html lang="pt-BR">
-   ... (todo o código HTML completo com as modificações)
+   ... (código HTML completo)
    </html>
    <<<END_REPLACE_NOTE>>>
-3. REGRA CRÍTICA DE CONTEÚDO: Dentro de <<<REPLACE_NOTE>>>, coloque ESTRITAMENTE código HTML puro (começando em <!DOCTYPE html> e terminando em </html>).
-   - NUNCA insira explicações, saudações, introduções ou comentários conversacionais dentro de <<<REPLACE_NOTE>>> (qualquer texto fora de tags aparece diretamente na tela do projeto do usuário!).
-   - NUNCA envolva o código em crases markdown (\`\`\`html) dentro de <<<REPLACE_NOTE>>>.
-   - Suas explicações amigáveis sobre o que você alterou devem ficar SEMPRE FORA do bloco <<<REPLACE_NOTE>>>, no chat.
-4. O Pyrite detectará o bloco, salvará o código no arquivo .html e atualizará a tela do usuário em tempo real!\n`
+4. REGRA CRÍTICA DE CONTEÚDO:
+   - NUNCA insira explicações, saudações ou comentários conversacionais dentro ou antes dos blocos <<<PATCH_NOTE>>> ou <<<REPLACE_NOTE>>> (qualquer texto fora de tags aparece na tela do projeto do usuário!).
+   - NUNCA envolva o código em crases markdown (\`\`\`html) dentro dos blocos.
+   - Suas explicações amigáveis sobre o que você alterou devem ficar SEMPRE FORA dos blocos, no chat.
+5. O Pyrite detectará as alterações, salvará o arquivo e atualizará a visualização em tempo real!\n`
           } else {
-            contextBlock += `\n### NOTA ATIVA PRINCIPAL EM CONTEXTO:\nTítulo: "${effectiveNote.title}"\nPasta: ${effectiveNote.folder || 'Início'}\nTags: ${effectiveNote.tags?.join(', ') || 'nenhuma'}\nConteúdo da nota:\n---\n${effectiveNote.content || '(nota vazia)'}\n---\n`
+            contextBlock += `\n### NOTA ATIVA PRINCIPAL EM CONTEXTO:
+Título: "${effectiveNote.title}"
+Pasta: ${effectiveNote.folder || 'Início'}
+Tags: ${effectiveNote.tags?.join(', ') || 'nenhuma'}
+Conteúdo da nota:
+---
+${effectiveNote.content || '(nota vazia)'}
+---
+🚨 INSTRUÇÕES MANDATÓRIAS PARA ALTERAR, EDITAR OU INSERIR CONTEÚDO NESTA NOTA:
+1. NUNCA jogue o texto modificado nem reescreva a nota toda solta no chat!
+2. Para alterações pontuais, correções, acréscimos de tópicos, mudanças de parágrafo ou inserções cirúrgicas:
+   USE O BLOCO CIRÚRGICO <<<PATCH_NOTE>>> com SEARCH / REPLACE:
+   <<<PATCH_NOTE>>>
+   <<<<<<< SEARCH
+   trecho exato do texto da nota que será modificado
+   =======
+   novo trecho com as alterações aplicadas
+   >>>>>>>
+   <<<END_PATCH_NOTE>>>
+   O trecho SEARCH DEVE corresponder exatamente a um trecho existente no conteúdo da nota.
+3. Se for uma reformulação completa ou se o usuário pedir para reescrever toda a nota do zero:
+   USE O BLOCO:
+   <<<REPLACE_NOTE>>>
+   (todo o conteúdo novo da nota)
+   <<<END_REPLACE_NOTE>>>
+4. O Pyrite apresentará a alteração para aprovação do usuário com pré-visualização de diferenças (Diff) ou aplicará diretamente conforme as permissões configuradas. No chat, dê apenas uma breve explicação cordial do que você ajustou.\n`
           }
         }
 
@@ -1503,13 +1914,21 @@ ${effectiveNote.content || '<!-- Documento HTML vazio -->'}
 
         const ruleDirective = `REGRA DE OPERAÇÃO: CRIAÇÃO & EDIÇÃO TOTAL NO COFRE.
 - Você é o Assistente Mestre e tem capacidade total de leitura, escrita e estruturação.
-- A nota ativa pode ser lida, analisada, reescrita ou expandida diretamente quando o usuário solicitar.
-- QUANDO O USUÁRIO SOLICITAR PARA SUBSTITUIR, EDITAR, REESCREVER OU MELHORAR A NOTA ATIVA (ex: "substitua a nota", "reescreva a nota", "melhore o texto da nota", "atualize o mapa mental", "adicione tópicos no mapa", "expanda o mapa", "aplique as alterações na nota"):
-  Você DEVE fornecer a versão final completa delimitada EXATAMENTE pelo bloco:
-  <<<REPLACE_NOTE>>>
-  (todo o conteúdo revisado aqui)
-  <<<END_REPLACE_NOTE>>>
-  O Pyrite irá detectar esse bloco e atualizar a nota ou mapa mental do usuário automaticamente no editor!
+- A nota ativa pode ser lida, analisada, reescrita ou editada cirurgicamente quando o usuário solicitar.
+- QUANDO O USUÁRIO SOLICITAR PARA MODIFICAR, EDITAR, ACRESCENTAR OU MELHORAR A NOTA OU ARQUIVO ATIVO:
+  1. PREFIRA EDIÇÃO CIRÚRGICA <<<PATCH_NOTE>>> para alterações pontuais, correções ou acréscimos:
+     <<<PATCH_NOTE>>>
+     <<<<<<< SEARCH
+     trecho original exato
+     =======
+     novo trecho modificado
+     >>>>>>>
+     <<<END_PATCH_NOTE>>>
+  2. Use <<<REPLACE_NOTE>>> para mapas mentais ou quando o usuário solicitar expressamente reescrever a nota inteira do zero:
+     <<<REPLACE_NOTE>>>
+     (todo o conteúdo revisado aqui)
+     <<<END_REPLACE_NOTE>>>
+  O Pyrite irá detectar esses blocos e oferecer a proposta para aprovação do usuário com diff visual ou aplicar diretamente conforme a configuração de permissão. NUNCA imprima o conteúdo novo ou reescrito solto no chat!
 - PARA NOTAS DO TIPO MAPA MENTAL (mindmap) - GUIA DE CRIAÇÃO E EDIÇÃO CORRETA:
   Dentro do bloco <<<REPLACE_NOTE>>>, forneça SEMPRE uma estrutura hierárquica em Markdown Outline rigorosamente formatada:
   1. TABELA DE CORRESPONDÊNCIA DE ETAPAS (SIGA ESTRITAMENTE):
@@ -1844,79 +2263,87 @@ Diretrizes gerais:
         if (res.success && res.text) {
           let responseText = res.text
 
-          // Check for Canvas / HTML Auto-Update <<<REPLACE_NOTE>>>
+          // Check for Note / HTML Edits (Surgical <<<PATCH_NOTE>>> or Full <<<REPLACE_NOTE>>>)
+          let activeProposedEdit: NoteEditAction | undefined = undefined
+
           if (onUpdateNote) {
-            const replaceRegex = /<<<(?:REPLACE_NOTE|replace_note)>>>([\s\S]*?)(?:<<<(?:END_REPLACE_NOTE|end_replace_note)>>>|$)/i
-            const replaceBlockRegex = /```(?:replace-note|replace_note|update-note)\s*([\s\S]*?)\s*```/i
+            const { displayText: parsedCleanText, patchAction } = parseNoteEditActions(
+              responseText,
+              effectiveNote.title,
+              effectiveNote.type
+            )
 
-            let revisedContent: string | null = null
-            let matchedReplaceRaw: string | null = null
-
-            const match1 = responseText.match(replaceRegex)
-            if (match1 && match1[1] && match1[1].trim()) {
-              revisedContent = match1[1].trim()
-              matchedReplaceRaw = match1[0]
-            } else {
-              const match2 = responseText.match(replaceBlockRegex)
-              if (match2 && match2[1] && match2[1].trim()) {
-                revisedContent = match2[1].trim()
-                matchedReplaceRaw = match2[0]
-              }
-            }
-
-            // Fallback for HTML documents:
-            // If the active note is an HTML file and the AI returned a complete HTML document (either in ```html...``` or <!DOCTYPE html>...</html>)
+            let resolvedEdit = patchAction
             const isTargetHtml = effectiveNote.type === 'html' || effectiveNote.filePath?.endsWith('.html') || effectiveNote.filePath?.endsWith('.htm') || effectiveNote.title.toLowerCase().endsWith('.html')
 
-            if (!revisedContent && isTargetHtml) {
+            // Fallback for HTML documents if delimiters were omitted by the model:
+            if (!resolvedEdit && isTargetHtml) {
               const htmlCodeBlockMatch = responseText.match(/```(?:html|htm)?\s*([\s\S]*?(?:<!DOCTYPE\s+html|<html)[\s\S]*?<\/html>[\s\S]*?)\s*```/i)
                 || responseText.match(/(<!DOCTYPE\s+html[\s\S]*?<\/html>)/i)
                 || responseText.match(/(<html[\s\S]*?<\/html>)/i)
 
-              if (htmlCodeBlockMatch && htmlCodeBlockMatch[1]) {
-                revisedContent = htmlCodeBlockMatch[1].trim()
-                matchedReplaceRaw = htmlCodeBlockMatch[0]
+              if (htmlCodeBlockMatch && htmlCodeBlockMatch[1] && htmlCodeBlockMatch[1].trim()) {
+                resolvedEdit = {
+                  id: `edit_${Date.now()}`,
+                  type: 'replace',
+                  targetTitle: effectiveNote.title,
+                  targetType: 'html',
+                  patches: [],
+                  replaceContent: htmlCodeBlockMatch[1].trim(),
+                  applied: false
+                }
+                responseText = responseText.replace(htmlCodeBlockMatch[0], '').trim()
               }
             }
 
-            if (revisedContent) {
-              const isHtml = isTargetHtml || /<!DOCTYPE\s+html|<html/i.test(revisedContent)
-              const isMind = !isHtml && (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content) || isMindMapContent(revisedContent))
-              const baseDoc = (!isHtml && (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content)))
-                ? parseMindMapDocument(effectiveNote.content, effectiveNote.title)
-                : undefined
+            if (resolvedEdit) {
+              if (autoApplyEdits) {
+                // Direct Autonomous Apply Mode
+                let updatedContent = effectiveNote.content
+                if (resolvedEdit.type === 'patch') {
+                  const patchRes = applyPatches(effectiveNote.content, resolvedEdit.patches)
+                  updatedContent = patchRes.newContent
+                } else if (resolvedEdit.type === 'replace' && resolvedEdit.replaceContent !== undefined) {
+                  updatedContent = resolvedEdit.replaceContent
+                }
 
-              const finalContent = isHtml
-                ? sanitizeHtmlContent(revisedContent)
-                : isMind
-                ? serializeMindMapDocument(parseMindMapDocument(revisedContent, effectiveNote.title, baseDoc))
-                : revisedContent
+                const isHtml = isTargetHtml || /<!DOCTYPE\s+html|<html/i.test(updatedContent)
+                const isMind = !isHtml && (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content) || isMindMapContent(updatedContent))
+                const baseDoc = (!isHtml && (effectiveNote.type === 'mindmap' || isMindMapContent(effectiveNote.content)))
+                  ? parseMindMapDocument(effectiveNote.content, effectiveNote.title)
+                  : undefined
 
-              onUpdateNote({
-                ...effectiveNote,
-                content: finalContent,
-                type: isHtml ? 'html' : isMind ? 'mindmap' : effectiveNote.type,
-                updatedAt: Date.now()
-              })
+                const finalContent = isHtml
+                  ? sanitizeHtmlContent(updatedContent)
+                  : isMind
+                  ? serializeMindMapDocument(parseMindMapDocument(updatedContent, effectiveNote.title, baseDoc))
+                  : updatedContent
 
-              const label = isHtml ? 'Arquivo HTML' : isMind ? 'Mapa Mental' : 'Nota'
-              setToastNotice(`✨ ${label} "${effectiveNote.title}" atualizado pelo Agente!`)
-              setTimeout(() => setToastNotice(null), 4000)
+                onUpdateNote({
+                  ...effectiveNote,
+                  content: finalContent,
+                  type: isHtml ? 'html' : isMind ? 'mindmap' : effectiveNote.type,
+                  updatedAt: Date.now()
+                })
 
-              if (matchedReplaceRaw) {
-                responseText = responseText.replace(
-                  matchedReplaceRaw,
-                  `\n> ✨ **${label} [[${effectiveNote.title}]] atualizado com sucesso no seu cofre!**\n`
-                ).trim()
+                resolvedEdit.applied = true
+                activeProposedEdit = resolvedEdit
+                const label = isHtml ? 'Arquivo HTML' : isMind ? 'Mapa Mental' : 'Nota'
+                setToastNotice(`✨ ${label} "${effectiveNote.title}" atualizado pelo Agente!`)
+                setTimeout(() => setToastNotice(null), 4000)
               } else {
-                responseText = `> ✨ **${label} [[${effectiveNote.title}]] atualizado com sucesso no seu cofre!**\n\n` + responseText
+                // Draft / Suggestion Proposal Mode (Default - requests permission)
+                resolvedEdit.applied = false
+                activeProposedEdit = resolvedEdit
               }
 
-              // If it's an HTML file, clean any redundant raw HTML code blocks that may still remain in the chat text
-              if (isHtml) {
-                responseText = responseText.replace(/```(?:html|htm)?\s*<!DOCTYPE[\s\S]*?<\/html>\s*```/gi, '').trim()
-                responseText = responseText.replace(/```(?:html|htm)?\s*<html[\s\S]*?<\/html>\s*```/gi, '').trim()
-              }
+              responseText = parsedCleanText
+            }
+
+            // Clean any leftover raw HTML code blocks from chat text
+            if (isTargetHtml) {
+              responseText = responseText.replace(/```(?:html|htm)?\s*<!DOCTYPE[\s\S]*?<\/html>\s*```/gi, '').trim()
+              responseText = responseText.replace(/```(?:html|htm)?\s*<html[\s\S]*?<\/html>\s*```/gi, '').trim()
             }
           }
 
@@ -2210,7 +2637,7 @@ Diretrizes gerais:
             setTimeout(() => setToastNotice(null), 4500)
           }
 
-          setMessages(prev => [...prev, { id: newAiId, sender: 'ai', text: responseText }])
+          setMessages(prev => [...prev, { id: newAiId, sender: 'ai', text: responseText, proposedEdit: activeProposedEdit }])
         } else {
           setMessages(prev => [
             ...prev,
@@ -2862,6 +3289,14 @@ Diretrizes gerais:
                                 onOpenSquad={(id) => navigateToTeamSection('squads', id)}
                               />
                             )}
+
+                            {m.proposedEdit && (
+                              <DiffProposalCard
+                                edit={m.proposedEdit}
+                                onApply={() => handleApplyProposedEdit(m.id, m.proposedEdit!)}
+                                onDiscard={() => handleDiscardProposedEdit(m.id)}
+                              />
+                            )}
                           </>
                         )}
 
@@ -3276,7 +3711,12 @@ Diretrizes gerais:
       {/* Unified AI Settings Modal with Left Sidebar (Modelos, Especialidades, Skills) */}
       <AiSettingsModal
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={() => {
+          setIsSettingsOpen(false)
+          try {
+            setAutoApplyEdits(localStorage.getItem('pyrite_ai_auto_apply_edits') === 'true')
+          } catch {}
+        }}
         onConfigSaved={refreshAiConfig}
       />
 

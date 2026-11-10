@@ -125,6 +125,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [previousScope, setPreviousScope] = useState(scope)
   const lastRevealedKeyRef = useRef<string | null>(null)
   const revealScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const treeContainerRef = useRef<HTMLDivElement>(null)
 
   if (previousScope !== scope) {
     setPreviousScope(scope)
@@ -218,10 +219,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     const scrollToNote = () => {
-      const el = (document.querySelector(`[data-sidebar-tree-note="${noteId}"]`) as HTMLElement | null)
-        || (document.querySelector('.app-sidebar-note-active') as HTMLElement | null)
-      if (el) {
-        el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: smooth ? 'smooth' : 'auto' })
+      const container = treeContainerRef.current || (document.querySelector('.custom-chat-scrollbar') as HTMLElement | null)
+      if (!container) return
+
+      const el = (container.querySelector(`[data-sidebar-tree-note="${noteId}"]`) as HTMLElement | null)
+        || (container.querySelector('.app-sidebar-note-active') as HTMLElement | null)
+      if (!el) return
+
+      const containerRect = container.getBoundingClientRect()
+      const elRect = el.getBoundingClientRect()
+
+      // Calculate vertical offset relative to the scroll container without any horizontal shift
+      const isAbove = elRect.top < containerRect.top
+      const isBelow = elRect.bottom > containerRect.bottom
+
+      if (isAbove) {
+        const diff = elRect.top - containerRect.top - 12
+        container.scrollTo({
+          top: Math.max(0, container.scrollTop + diff),
+          left: 0,
+          behavior: smooth ? 'smooth' : 'auto'
+        })
+      } else if (isBelow) {
+        const diff = elRect.bottom - containerRect.bottom + 12
+        container.scrollTo({
+          top: container.scrollTop + diff,
+          left: 0,
+          behavior: smooth ? 'smooth' : 'auto'
+        })
+      } else if (container.scrollLeft !== 0) {
+        container.scrollLeft = 0
       }
     }
 
@@ -1252,7 +1279,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* 4. Hierarchical File Tree & Favorites - High Density & Horizontal Flexibility */}
-      <div className="flex-1 overflow-y-auto overflow-x-auto px-1.5 py-1 space-y-2 custom-chat-scrollbar min-w-0">
+      <div
+        ref={treeContainerRef}
+        className="flex-1 overflow-y-auto overflow-x-auto px-1.5 py-1 space-y-2 custom-chat-scrollbar min-w-0"
+      >
         
         {/* PARTE 1: ITENS (Clientes, Conteúdo, etc.) */}
         <div className="space-y-1 pt-1 pb-1">

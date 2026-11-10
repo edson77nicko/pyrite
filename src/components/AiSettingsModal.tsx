@@ -20,7 +20,8 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
-  FileText
+  FileText,
+  Sliders
 } from 'lucide-react'
 
 export interface AiSettingsModalProps {
@@ -30,7 +31,7 @@ export interface AiSettingsModalProps {
   initialTab?: SettingsTab
 }
 
-export type SettingsTab = 'models' | 'skills' | 'specialties'
+export type SettingsTab = 'models' | 'skills' | 'permissions' | 'specialties'
 
 export type ProviderKey = 'openai' | 'gemini' | 'deepseek' | 'openrouter' | 'groq' | 'ollama'
 
@@ -133,6 +134,25 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
   const [isSaving, setIsSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  // Tab Permissions: Auto-apply note edits without manual draft approval (default: false)
+  const [autoApplyEdits, setAutoApplyEdits] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('pyrite_ai_auto_apply_edits') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  const handleSetAutoApply = (enabled: boolean) => {
+    setAutoApplyEdits(enabled)
+    try {
+      localStorage.setItem('pyrite_ai_auto_apply_edits', enabled ? 'true' : 'false')
+      onConfigSaved?.()
+    } catch (err) {
+      console.error('Failed to save auto apply setting:', err)
+    }
+  }
 
   // Tab 3: Custom Skills State with localStorage persistence
   const [customSkills, setCustomSkills] = useState<CustomAgentSkill[]>(() => {
@@ -486,6 +506,25 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                   {installedSkillsCount}
                 </span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setCurrentTab('permissions')}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer ${
+                  currentTab === 'permissions'
+                    ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-white font-semibold shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+                }`}
+              >
+                <Sliders className={`w-4 h-4 ${currentTab === 'permissions' ? 'text-[var(--accent)]' : 'text-zinc-500'}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] font-medium leading-tight">Permissões & Autonomia</div>
+                  <div className="text-[9px] text-zinc-500 truncate mt-0.5">
+                    {autoApplyEdits ? 'Edição Direta' : 'Rascunho com Aprovação'}
+                  </div>
+                </div>
+                <span className={`w-1.5 h-1.5 rounded-full ${autoApplyEdits ? 'bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.8)]' : 'bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]'}`} />
+              </button>
             </div>
           </div>
 
@@ -511,10 +550,12 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
               <h3 className="font-bold text-sm text-zinc-100">
                 {currentTab === 'models' && 'Configurações do Modelo LLM'}
                 {currentTab === 'skills' && 'Habilidades & Cofres de Conhecimento'}
+                {currentTab === 'permissions' && 'Permissões de Edição & Autonomia'}
               </h3>
               <p className="text-[10px] text-zinc-500">
                 {currentTab === 'models' && 'Selecione o provedor, modelo e conecte sua chave de API'}
                 {currentTab === 'skills' && 'Importe pastas locais com notas e instruções para expandir as capacidades do agente'}
+                {currentTab === 'permissions' && 'Controle como o assistente aplica alterações no conteúdo das suas notas e arquivos'}
               </p>
             </div>
 
@@ -1001,6 +1042,105 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ------------------------------------------------------------------- */}
+            {/* TAB 3: PERMISSIONS & AUTONOMY */}
+            {/* ------------------------------------------------------------------- */}
+            {currentTab === 'permissions' && (
+              <div className="space-y-4 max-w-xl">
+                <div>
+                  <h4 className="text-xs font-semibold text-zinc-200 mb-1">
+                    Modo de Aplicação de Alterações nas Notas
+                  </h4>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Escolha se o assistente deve pedir sua confirmação antes de gravar alterações nas notas e arquivos, ou se deve agir com autonomia direta.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2.5">
+                  {/* Option 1: Draft with Permission (Default) */}
+                  <div
+                    onClick={() => handleSetAutoApply(false)}
+                    className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                      !autoApplyEdits
+                        ? 'bg-[var(--accent)]/10 border-[var(--accent)]/50 shadow-sm'
+                        : 'bg-zinc-900/40 border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-850/40'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-xs text-zinc-100">
+                            Modo Sugestão com Rascunho & Aprovação
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                            Recomendado (Padrão)
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-400 leading-relaxed">
+                          A IA gera uma proposta visual com pré-visualização (Diff) no chat mostrando exatamente o que será alterado (trecho original e novo conteúdo). As modificações só são gravadas no arquivo quando você clica em <strong>"Aplicar na Nota"</strong>.
+                        </p>
+                      </div>
+                      <div className="shrink-0 mt-0.5">
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                          !autoApplyEdits
+                            ? 'border-[var(--accent)] bg-[var(--accent)] text-zinc-950'
+                            : 'border-zinc-600 bg-transparent'
+                        }`}>
+                          {!autoApplyEdits && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Option 2: Direct Auto-Apply */}
+                  <div
+                    onClick={() => handleSetAutoApply(true)}
+                    className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                      autoApplyEdits
+                        ? 'bg-amber-500/10 border-amber-500/50 shadow-sm'
+                        : 'bg-zinc-900/40 border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-850/40'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-xs text-zinc-100">
+                            Edição Direta Automática
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            Autonomia Total
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-400 leading-relaxed">
+                          A IA aplica patches e edições cirúrgicas diretamente no arquivo aberto (Markdown ou HTML) no instante em que responde, sem pedir confirmação manual prévia. Ideal para fluxos ágeis de co-autoria.
+                        </p>
+                      </div>
+                      <div className="shrink-0 mt-0.5">
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                          autoApplyEdits
+                            ? 'border-amber-400 bg-amber-400 text-zinc-950'
+                            : 'border-zinc-600 bg-transparent'
+                        }`}>
+                          {autoApplyEdits && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Surgical Patch Info Box */}
+                <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 space-y-2">
+                  <div className="flex items-center gap-2 text-zinc-300 text-xs font-semibold">
+                    <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Edição Cirúrgica & Economia de Tokens</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    O Pyrite instrui o assistente a usar blocos cirúrgicos (<code className="text-zinc-300 bg-zinc-800 px-1 py-0.5 rounded text-[10px]">&lt;&lt;&lt;PATCH_NOTE&gt;&gt;&gt;</code>) com busca e substituição (<code className="text-zinc-300 bg-zinc-800 px-1 py-0.5 rounded text-[10px]">SEARCH / REPLACE</code>). Em vez de reescrever centenas de linhas de código ou notas inteiras para mudar uma frase ou botão, ele altera apenas o ponto solicitado, economizando até <strong>95% dos tokens</strong> e respondendo muito mais rápido.
+                  </p>
+                </div>
               </div>
             )}
           </div>
