@@ -40,6 +40,18 @@
   border-color: var(--accent) !important;
 }
 
+/* In-Editor Ctrl+F Search Highlights */
+::highlight(search-results) {
+  background-color: rgba(234, 179, 8, 0.32);
+  color: #ffffff;
+}
+
+::highlight(search-active) {
+  background-color: var(--accent, #f59e0b);
+  color: #000000;
+  font-weight: 600;
+}
+
 .border-t-accent {
   border-top-color: var(--accent) !important;
 }

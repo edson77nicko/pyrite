@@ -16,7 +16,8 @@ import {
   Table,
   PanelRight,
   MessageSquare,
-  Palette
+  Palette,
+  Search
 } from 'lucide-react'
 import { NotionColorPicker } from './NotionColorPicker'
 import { NoteCommentsModal } from './NoteCommentsModal'
@@ -319,6 +320,14 @@ export const Editor: React.FC<EditorProps> = ({
                 title="Bloco de Código"
               >
                 <Code className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => liveEditorRef.current?.openSearch?.()}
+                className="p-1.5 hover:text-zinc-100 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+                title="Localizar na nota (Ctrl+F)"
+              >
+                <Search className="w-3.5 h-3.5" />
               </button>
             </div>
           )}

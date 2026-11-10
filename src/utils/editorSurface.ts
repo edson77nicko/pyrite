@@ -66,7 +66,45 @@ export function insertEditorBlock(root: HTMLElement, html: string): HTMLElement 
 
 /** Turn a click on blank canvas into a real, editable line at that position. */
 export function focusBlankEditorLine(root: HTMLElement, clientY: number): void {
+  // If user has an active text selection, never clear it or insert extra lines
+  const sel = window.getSelection()
+  if (sel && !sel.isCollapsed && (sel.toString().trim().length ?? 0) > 0) {
+    return
+  }
+
   const children = Array.from(root.children) as HTMLElement[]
+  if (children.length === 0) {
+    const p = editorParagraph()
+    root.append(p)
+    placeEditorCaret(root, p)
+    return
+  }
+
+  // If clicking alongside an existing block/line, place caret on that block without creating a new line
+  const current = children.find(child => {
+    const rect = child.getBoundingClientRect()
+    return clientY >= rect.top && clientY <= rect.bottom
+  })
+  if (current) {
+    placeEditorCaret(root, current)
+    return
+  }
+
+  // If clicking below all content
+  const last = children.at(-1)
+  const bottom = last?.getBoundingClientRect().bottom || root.getBoundingClientRect().top
+  if (clientY >= bottom) {
+    if (last?.tagName === 'P' && !last.textContent?.trim()) {
+      placeEditorCaret(root, last)
+      return
+    }
+    const paragraph = editorParagraph()
+    root.append(paragraph)
+    placeEditorCaret(root, paragraph)
+    return
+  }
+
+  // If clicking in blank space above or between lines
   const next = children.find(child => child.getBoundingClientRect().top > clientY)
   if (next) {
     const paragraph = editorParagraph(true)
@@ -74,15 +112,4 @@ export function focusBlankEditorLine(root: HTMLElement, clientY: number): void {
     placeEditorCaret(root, paragraph)
     return
   }
-  const last = children.at(-1)
-  const lineHeight = parseFloat(getComputedStyle(root).lineHeight) || 24
-  const bottom = last?.getBoundingClientRect().bottom || root.getBoundingClientRect().top
-  if (last?.tagName === 'P' && !last.textContent?.trim() && clientY <= bottom + lineHeight / 2) {
-    placeEditorCaret(root, last)
-    return
-  }
-  const count = Math.max(1, Math.min(80, Math.ceil((clientY - bottom) / lineHeight)))
-  let paragraph = editorParagraph()
-  for (let index = 0; index < count; index++) { paragraph = editorParagraph(); root.append(paragraph) }
-  placeEditorCaret(root, paragraph)
 }

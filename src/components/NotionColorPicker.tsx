@@ -34,6 +34,29 @@ export const NOTION_BG_COLORS: NotionColorItem[] = [
   { id: 'red', label: 'Fundo Vermelho', color: 'rgba(239, 68, 68, 0.25)', preview: '#ef4444' }
 ]
 
+const STORAGE_KEY_RECENT_COLORS = 'pyrite_recent_editor_colors'
+
+export interface RecentColorEntry extends NotionColorItem {
+  type: 'text' | 'bg'
+}
+
+const DEFAULT_RECENT_COLORS: RecentColorEntry[] = [
+  { id: 'yellow', label: 'Amarelo', color: '#eab308', preview: '#eab308', type: 'text' },
+  { id: 'red', label: 'Vermelho', color: '#ef4444', preview: '#ef4444', type: 'text' },
+  { id: 'yellow', label: 'Fundo Amarelo', color: 'rgba(234, 179, 8, 0.25)', preview: '#eab308', type: 'bg' }
+]
+
+const loadRecentColors = (): RecentColorEntry[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_RECENT_COLORS)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+  } catch {}
+  return DEFAULT_RECENT_COLORS
+}
+
 interface NotionColorPickerProps {
   isOpen: boolean
   onClose: () => void
@@ -50,7 +73,22 @@ export const NotionColorPicker: React.FC<NotionColorPickerProps> = ({
   align = 'left'
 }) => {
   const [tab, setTab] = useState<'text' | 'bg'>('text')
+  const [recentColors, setRecentColors] = useState<RecentColorEntry[]>(loadRecentColors)
   const popoverRef = useRef<HTMLDivElement>(null)
+
+  const handleSelectColor = (type: 'text' | 'bg', item: NotionColorItem) => {
+    const entry: RecentColorEntry = { ...item, type }
+    setRecentColors(prev => {
+      const filtered = prev.filter(r => !(r.type === type && r.id === item.id))
+      const updated = [entry, ...filtered].slice(0, 5)
+      try {
+        localStorage.setItem(STORAGE_KEY_RECENT_COLORS, JSON.stringify(updated))
+      } catch {}
+      return updated
+    })
+    onSelectColor(type, item.color)
+    onClose()
+  }
 
   useEffect(() => {
     if (!isOpen) return
@@ -115,8 +153,59 @@ export const NotionColorPicker: React.FC<NotionColorPickerProps> = ({
         </button>
       </div>
 
+      {/* Recent Colors (At least top 3-5 recently used) */}
+      {recentColors.length > 0 && (
+        <div className="pb-2 mb-2 border-b border-zinc-800/80">
+          <div className="flex items-center justify-between text-[10px] uppercase font-semibold text-zinc-500 px-1 py-0.5 mb-1">
+            <span>Mais Recentes</span>
+            <span className="text-[9px] text-zinc-600 font-normal">Acesso rápido</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-0.5 flex-wrap">
+            {recentColors.slice(0, 5).map((recent, idx) => {
+              const isText = recent.type === 'text'
+              return (
+                <button
+                  key={`${recent.type}-${recent.id}-${idx}`}
+                  type="button"
+                  onMouseDown={e => {
+                    e.preventDefault()
+                    handleSelectColor(recent.type, recent)
+                  }}
+                  title={`${isText ? 'Texto' : 'Fundo'}: ${recent.label}`}
+                  className="group relative flex items-center justify-center w-7 h-7 rounded-lg border border-zinc-700/70 hover:border-[var(--accent)] hover:bg-zinc-800/80 hover:scale-105 active:scale-95 transition-all cursor-pointer bg-zinc-900/80"
+                >
+                  {isText ? (
+                    <span
+                      className="font-bold text-[12.5px] leading-none"
+                      style={{ color: recent.preview }}
+                    >
+                      A
+                    </span>
+                  ) : (
+                    <span
+                      className="w-4 h-4 rounded text-[10px] flex items-center justify-center font-bold border border-zinc-700/60 leading-none"
+                      style={{
+                        backgroundColor: recent.color === 'transparent' ? 'transparent' : recent.color,
+                        color: recent.preview === 'transparent' ? '#a1a1aa' : recent.preview
+                      }}
+                    >
+                      A
+                    </span>
+                  )}
+                  {/* Subtle indicator dot: accent for text, sky for background */}
+                  <span
+                    className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#16161a]"
+                    style={{ backgroundColor: isText ? 'var(--accent, #eab308)' : '#38bdf8' }}
+                  />
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Colors List (Notion Style) */}
-      <div className="max-h-60 overflow-y-auto space-y-0.5 custom-chat-scrollbar pr-0.5">
+      <div className="max-h-56 overflow-y-auto space-y-0.5 custom-chat-scrollbar pr-0.5">
         {tab === 'text' ? (
           <div>
             <div className="text-[10px] uppercase font-semibold text-zinc-500 px-2 py-1">
@@ -128,8 +217,7 @@ export const NotionColorPicker: React.FC<NotionColorPickerProps> = ({
                 type="button"
                 onMouseDown={e => {
                   e.preventDefault()
-                  onSelectColor('text', item.color)
-                  onClose()
+                  handleSelectColor('text', item)
                 }}
                 className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer"
               >
@@ -162,8 +250,7 @@ export const NotionColorPicker: React.FC<NotionColorPickerProps> = ({
                 type="button"
                 onMouseDown={e => {
                   e.preventDefault()
-                  onSelectColor('bg', item.color)
-                  onClose()
+                  handleSelectColor('bg', item)
                 }}
                 className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer"
               >

@@ -38,7 +38,10 @@ import {
   AlertTriangle,
   MessageSquareText,
   Palette,
-  X
+  X,
+  Search,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react'
 import type { LiveBlock } from '../utils/markdownBlocks'
 import { renderArtifactHtml } from '../utils/artifactParser'
@@ -58,6 +61,7 @@ export interface LivePreviewEditorHandle {
   insertTable: () => void
   focus?: () => void
   scrollToBlock?: (blockIndex: number, snippet?: string) => void
+  openSearch?: (initialQuery?: string) => void
 }
 
 export interface LivePreviewEditorProps {
@@ -837,6 +841,18 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   const [isSelectionColorPickerOpen, setIsSelectionColorPickerOpen] = useState(false)
   const selectionColorBtnRef = useRef<HTMLButtonElement>(null)
 
+  // Drag selection tracking to prevent accidental line insertions and selection drops
+  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null)
+  const hasDraggedRef = useRef(false)
+
+  // Floating In-Editor Search state (Ctrl+F)
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchMatches, setSearchMatches] = useState<Range[]>([])
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
+
   // Floating Link Search/Picker Popover (for selection link button or editing existing link)
   const [linkPickerPopover, setLinkPickerPopover] = useState<{
     isOpen: boolean
@@ -934,6 +950,160 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     if (typingSnapshotTimerRef.current) clearTimeout(typingSnapshotTimerRef.current)
   }, [])
 
+  // Floating In-Editor Search (Ctrl+F) Functions
+  const performSearch = useCallback((query: string, activeIdx = 0) => {
+    if (!containerRef.current || !query.trim()) {
+      setSearchMatches([])
+      setActiveMatchIndex(0)
+      if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
+        const CSSHighlights = (CSS as any).highlights
+        CSSHighlights.delete('search-results')
+        CSSHighlights.delete('search-active')
+      }
+      return
+    }
+
+    const root = containerRef.current
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        if (node.parentElement?.closest('[data-type="code"], [data-type="table"], .editor-selection-toolbar')) {
+          return NodeFilter.FILTER_REJECT
+        }
+        return NodeFilter.FILTER_ACCEPT
+      }
+    })
+
+    const ranges: Range[] = []
+    const lowerQuery = query.toLowerCase()
+    let currentNode: Node | null
+
+    while ((currentNode = walker.nextNode())) {
+      const text = currentNode.nodeValue || ''
+      const lowerText = text.toLowerCase()
+      let start = 0
+      let index: number
+
+      while ((index = lowerText.indexOf(lowerQuery, start)) !== -1) {
+        const range = document.createRange()
+        range.setStart(currentNode, index)
+        range.setEnd(currentNode, index + query.length)
+        ranges.push(range)
+        start = index + query.length
+      }
+    }
+
+    setSearchMatches(ranges)
+    const clampedIdx = ranges.length > 0 ? Math.min(activeIdx, ranges.length - 1) : 0
+    setActiveMatchIndex(clampedIdx)
+
+    if (typeof CSS !== 'undefined' && 'highlights' in CSS && typeof (window as any).Highlight !== 'undefined') {
+      const CSSHighlights = (CSS as any).highlights
+      const HighlightClass = (window as any).Highlight
+      if (ranges.length > 0) {
+        CSSHighlights.set('search-results', new HighlightClass(...ranges))
+        const activeRange = ranges[clampedIdx]
+        if (activeRange) {
+          CSSHighlights.set('search-active', new HighlightClass(activeRange))
+        }
+      } else {
+        CSSHighlights.delete('search-results')
+        CSSHighlights.delete('search-active')
+      }
+    }
+
+    if (ranges[clampedIdx]) {
+      const el = ranges[clampedIdx].startContainer.parentElement
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }
+    }
+  }, [])
+
+  const goToNextMatch = useCallback(() => {
+    if (searchMatches.length === 0) return
+    const nextIdx = (activeMatchIndex + 1) % searchMatches.length
+    setActiveMatchIndex(nextIdx)
+    if (typeof CSS !== 'undefined' && 'highlights' in CSS && typeof (window as any).Highlight !== 'undefined') {
+      const activeRange = searchMatches[nextIdx]
+      if (activeRange) {
+        (CSS as any).highlights.set('search-active', new (window as any).Highlight(activeRange))
+      }
+    }
+    const el = searchMatches[nextIdx]?.startContainer.parentElement
+    if (el) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }
+  }, [searchMatches, activeMatchIndex])
+
+  const goToPrevMatch = useCallback(() => {
+    if (searchMatches.length === 0) return
+    const prevIdx = (activeMatchIndex - 1 + searchMatches.length) % searchMatches.length
+    setActiveMatchIndex(prevIdx)
+    if (typeof CSS !== 'undefined' && 'highlights' in CSS && typeof (window as any).Highlight !== 'undefined') {
+      const activeRange = searchMatches[prevIdx]
+      if (activeRange) {
+        (CSS as any).highlights.set('search-active', new (window as any).Highlight(activeRange))
+      }
+    }
+    const el = searchMatches[prevIdx]?.startContainer.parentElement
+    if (el) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }
+  }, [searchMatches, activeMatchIndex])
+
+  const closeSearch = useCallback(() => {
+    setIsSearchOpen(false)
+    setSearchQuery('')
+    setSearchMatches([])
+    setActiveMatchIndex(0)
+    if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
+      const CSSHighlights = (CSS as any).highlights
+      CSSHighlights.delete('search-results')
+      CSSHighlights.delete('search-active')
+    }
+    containerRef.current?.focus()
+  }, [])
+
+  const openSearch = useCallback((initialQuery?: string) => {
+    setIsSearchOpen(true)
+    const sel = window.getSelection()?.toString().trim()
+    const q = initialQuery || (sel && sel.length < 100 ? sel : searchQuery)
+    if (q) {
+      setSearchQuery(q)
+      performSearch(q, 0)
+    }
+    setTimeout(() => {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    }, 40)
+  }, [searchQuery, performSearch])
+
+  // Global Ctrl+F keyboard shortcut listener
+  useEffect(() => {
+    const handleKeyDownGlobal = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault()
+        e.stopPropagation()
+        openSearch()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDownGlobal, true)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDownGlobal, true)
+    }
+  }, [openSearch])
+
+  // Cleanup highlights on unmount
+  useEffect(() => {
+    return () => {
+      if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
+        const CSSHighlights = (CSS as any).highlights
+        CSSHighlights.delete('search-results')
+        CSSHighlights.delete('search-active')
+      }
+    }
+  }, [])
+
   // Synchronize initial HTML when note changes or on external update
   useEffect(() => {
     if (!containerRef.current) return
@@ -951,6 +1121,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       setSlashMenu(null)
       setWikiSuggest(null)
       setSelectionToolbar(null)
+      closeSearch()
     } else if (
       note.content !== lastSyncedMdRef.current &&
       !containerRef.current.contains(document.activeElement)
@@ -962,7 +1133,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       lastSnapshotHtmlRef.current = newHtml
       refreshBlocks()
     }
-  }, [note.id, note.content, note.title, allNotes, refreshBlocks])
+  }, [note.id, note.content, note.title, allNotes, refreshBlocks, closeSearch])
 
   const insertBlock = (html: string) => {
     if (!containerRef.current) return null
@@ -1262,6 +1433,9 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
           target.classList.remove('pyrite-block-pulse-highlight')
         }, 2200)
       }
+    },
+    openSearch: (initialQuery?: string) => {
+      openSearch(initialQuery)
     }
   }))
 
@@ -2087,6 +2261,17 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   // AppFlowy Block Gutter & Comments Handlers
   const handleEditorMouseMove = (e: React.MouseEvent) => {
     if (!isEditable || inlineAi.isOpen) return
+    // If mouse button is held down, user is dragging or selecting text - suppress hoveredBlock
+    if (e.buttons > 0) {
+      if (dragStartPosRef.current) {
+        const dx = Math.abs(e.clientX - dragStartPosRef.current.x)
+        const dy = Math.abs(e.clientY - dragStartPosRef.current.y)
+        if (dx > 4 || dy > 4) {
+          hasDraggedRef.current = true
+        }
+      }
+      return
+    }
     const container = containerRef.current
     if (!container) return
 
@@ -2309,6 +2494,12 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
   // Handle click delegation (wikilink navigation, task checkboxes, code copy)
   const handleEditorClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const sel = window.getSelection()
+    const hasSelection = sel && !sel.isCollapsed && (sel.toString().trim().length ?? 0) > 0
+    if (hasSelection || hasDraggedRef.current) {
+      hasDraggedRef.current = false
+      return
+    }
     if (e.target === e.currentTarget && containerRef.current && isEditable) {
       focusBlankEditorLine(containerRef.current, e.clientY)
       return
@@ -2450,6 +2641,12 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         }
       }}
       onClick={(e) => {
+        const sel = window.getSelection()
+        const hasSelection = sel && !sel.isCollapsed && (sel.toString().trim().length ?? 0) > 0
+        if (hasSelection || hasDraggedRef.current) {
+          hasDraggedRef.current = false
+          return
+        }
         if (e.target === e.currentTarget && containerRef.current && isEditable) {
           focusBlankEditorLine(containerRef.current, e.clientY)
         }
@@ -2464,7 +2661,24 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         onBlur={() => { if (isEditable) persistContent() }}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        onMouseUp={handleSelectionCheck}
+        onMouseDown={(e) => {
+          dragStartPosRef.current = { x: e.clientX, y: e.clientY }
+          hasDraggedRef.current = false
+        }}
+        onMouseUp={(e) => {
+          if (dragStartPosRef.current) {
+            const dx = Math.abs(e.clientX - dragStartPosRef.current.x)
+            const dy = Math.abs(e.clientY - dragStartPosRef.current.y)
+            if (dx > 4 || dy > 4) {
+              hasDraggedRef.current = true
+            }
+          }
+          handleSelectionCheck()
+          setTimeout(() => {
+            hasDraggedRef.current = false
+            dragStartPosRef.current = null
+          }, 100)
+        }}
         onKeyUp={handleSelectionCheck}
         onClick={handleEditorClick}
         onContextMenu={handleEditorContextMenu}
@@ -2554,6 +2768,77 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         onApply={handleApplyInlineAi}
         onClose={() => setInlineAi({ isOpen: false, targetText: '', position: { top: 0, left: 0 } })}
       />
+
+      {/* Floating In-Editor Search Bar (Ctrl+F) */}
+      {isSearchOpen && (
+        <div
+          ref={searchContainerRef}
+          onMouseDown={e => e.stopPropagation()}
+          className="fixed top-12 right-6 z-50 flex items-center gap-1 px-2.5 py-1.5 bg-[#16161b]/95 border border-zinc-700/80 rounded-xl shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-150 select-none text-xs shadow-black/80"
+        >
+          <Search className="w-3.5 h-3.5 text-zinc-400 shrink-0 ml-0.5" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              performSearch(e.target.value, 0)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                if (e.shiftKey) goToPrevMatch()
+                else goToNextMatch()
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                closeSearch()
+              }
+            }}
+            placeholder="Localizar na nota..."
+            className="bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none w-44 px-1.5 py-0.5"
+          />
+
+          {searchQuery.trim() && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 shrink-0">
+              {searchMatches.length > 0
+                ? `${activeMatchIndex + 1}/${searchMatches.length}`
+                : '0/0'}
+            </span>
+          )}
+
+          <div className="w-[1px] h-3.5 bg-zinc-800 mx-0.5 shrink-0" />
+
+          <button
+            type="button"
+            onClick={goToPrevMatch}
+            disabled={searchMatches.length === 0}
+            title="Anterior (Shift+Enter)"
+            className="p-1 rounded hover:bg-zinc-800 hover:text-zinc-100 text-zinc-400 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+          >
+            <ChevronUp className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={goToNextMatch}
+            disabled={searchMatches.length === 0}
+            title="Próximo (Enter)"
+            className="p-1 rounded hover:bg-zinc-800 hover:text-zinc-100 text-zinc-400 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+          >
+            <ChevronDown className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={closeSearch}
+            title="Fechar (Esc)"
+            className="p-1 rounded hover:bg-zinc-800 hover:text-zinc-100 text-zinc-400 cursor-pointer ml-0.5"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Floating Notion/AppFlowy Selection Popover Toolbar */}
       {isEditable && selectionToolbar && (
