@@ -188,7 +188,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       title: `Criar nota: "${query.trim()}"`,
       subtitle: 'Criar e abrir instantaneamente',
       icon: <Plus className="w-4 h-4 text-amber-400" />,
-      action: () => onCreateNote(query.trim())
+      action: () => onCreateNote(undefined, query.trim(), 'note')
     })
   }
 

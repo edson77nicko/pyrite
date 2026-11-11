@@ -1015,8 +1015,7 @@ ipcMain.handle('vault:managePath', async (_event, params: { vaultPath: string; s
       if (fs.existsSync(destination)) throw new Error('Já existe um arquivo ou pasta no destino.')
       fs.mkdirSync(path.dirname(destination), { recursive: true })
       if (!fs.existsSync(source)) {
-        fs.mkdirSync(destination, { recursive: true })
-        return { success: true }
+        return { success: true, sourceNotFound: true }
       }
       if (params.action === 'copy') fs.cpSync(source, destination, { recursive: true, force: false, errorOnExist: true })
       else fs.renameSync(source, destination)

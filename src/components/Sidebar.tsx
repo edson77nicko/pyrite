@@ -607,6 +607,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setParentForNewFolder(parent || null)
     setNewFolderName('')
     setIsCreatingFolder(true)
+    if (parent) {
+      const parts = parent.split('/')
+      const toExpand: Record<string, boolean> = {}
+      let acc = ''
+      for (const part of parts) {
+        acc = acc ? `${acc}/${part}` : part
+        toExpand[acc] = false
+      }
+      setCollapsedFolders(prev => ({ ...prev, ...toExpand }))
+    }
   }
 
   const handleCreateFolderSubmit = (e: React.FormEvent) => {
@@ -893,7 +903,53 @@ export const Sidebar: React.FC<SidebarProps> = ({
               isTargetFolder ? 'bg-[var(--accent-glow-subtle)]/30 rounded-b-md' : ''
             }`}
           >
-            {node.notes.length === 0 && node.children.length === 0 && (
+            {/* Inline Subfolder Creation Field */}
+            {isCreatingFolder && parentForNewFolder === node.fullPath && (
+              <form
+                onSubmit={handleCreateFolderSubmit}
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1.5 px-2 py-1 mx-1 my-0.5 bg-[#16161d] border border-zinc-700/80 rounded-lg shadow-sm animate-in fade-in duration-100"
+              >
+                <Folder className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.stopPropagation()
+                      setIsCreatingFolder(false)
+                      setParentForNewFolder(null)
+                      setNewFolderName('')
+                    }
+                  }}
+                  placeholder="Nome da subpasta..."
+                  className="flex-1 bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none min-w-0"
+                />
+                <button
+                  type="submit"
+                  className="px-1 text-xs text-[var(--accent)] hover:text-white font-semibold cursor-pointer"
+                  title="Criar subpasta"
+                >
+                  ✓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingFolder(false)
+                    setParentForNewFolder(null)
+                    setNewFolderName('')
+                  }}
+                  className="px-1 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                  title="Cancelar"
+                >
+                  ✕
+                </button>
+              </form>
+            )}
+
+            {node.notes.length === 0 && node.children.length === 0 && !(isCreatingFolder && parentForNewFolder === node.fullPath) && (
               <div
                 className={`px-2 py-1 text-[10px] rounded transition-colors ${
                   isTargetFolder
@@ -1247,36 +1303,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         else if (action === 'search') { setFolderFilter(context.folder!); setSearch('') }
         else await onManage(action, context, value)
       }} />}
-      {/* Create Folder Modal / Inline input */}
-      {isCreatingFolder && (
-        <form onSubmit={handleCreateFolderSubmit} className="px-2.5 py-1.5 flex items-center gap-1 border-b border-zinc-800/60 bg-zinc-900/40">
-          <input
-            type="text"
-            autoFocus
-            value={newFolderName}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            placeholder={parentForNewFolder ? `Subpasta em ${parentForNewFolder}...` : "Nome da pasta..."}
-            className="flex-1 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 rounded-md text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[var(--accent)] transition-colors"
-          />
-          <button
-            type="submit"
-            className="px-2 py-1 rounded-md text-xs font-semibold cursor-pointer transition-all hover:bg-[var(--accent-glow)] shadow-xs"
-            style={{
-              backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
-              color: 'var(--accent, #d4af37)'
-            }}
-          >
-            Criar
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsCreatingFolder(false)}
-            className="px-1.5 py-1 text-zinc-400 hover:text-zinc-200 text-xs"
-          >
-            ✕
-          </button>
-        </form>
-      )}
+
 
       {/* 4. Hierarchical File Tree & Favorites - High Density & Horizontal Flexibility */}
       <div

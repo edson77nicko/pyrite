@@ -49,6 +49,7 @@ export const Editor: React.FC<EditorProps> = ({
   const [title, setTitle] = useState(note.title)
   const isTitleFocusedRef = useRef(false)
   const previousNoteIdRef = useRef(note.id)
+  const committedTitleRef = useRef<string>(note.title)
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false)
   const [isHeaderColorOpen, setIsHeaderColorOpen] = useState(false)
   const headerColorBtnRef = useRef<HTMLButtonElement>(null)
@@ -99,6 +100,7 @@ export const Editor: React.FC<EditorProps> = ({
       flushPendingContent()
       previousNoteIdRef.current = note.id
       isTitleFocusedRef.current = false
+      committedTitleRef.current = note.title
       setContent(note.content)
       setTitle(note.title)
     } else {
@@ -106,6 +108,7 @@ export const Editor: React.FC<EditorProps> = ({
         setContent(note.content)
       }
       if (!isTitleFocusedRef.current && note.title !== title) {
+        committedTitleRef.current = note.title
         setTitle(note.title)
       }
     }
@@ -121,10 +124,11 @@ export const Editor: React.FC<EditorProps> = ({
   const commitTitleChange = (candidateTitle?: string) => {
     const raw = candidateTitle !== undefined ? candidateTitle : title
     const trimmed = raw.trim()
-    if (!trimmed || trimmed === note.title) {
+    if (!trimmed || trimmed === note.title || trimmed === committedTitleRef.current) {
       setTitle(note.title)
       return
     }
+    committedTitleRef.current = trimmed
     setTitle(trimmed)
     onUpdateNote({ ...note, title: trimmed, updatedAt: Date.now() })
   }
@@ -388,6 +392,7 @@ export const Editor: React.FC<EditorProps> = ({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault()
+                      e.stopPropagation()
                       isTitleFocusedRef.current = false
                       commitTitleChange(title)
                       liveEditorRef.current?.focus?.()

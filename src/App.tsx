@@ -72,12 +72,25 @@ export const App: React.FC = () => {
       const diskFolderList = diskFolders || []
 
       setNotes(prevNotes => {
-        const existingMap = new Map(prevNotes.map(n => [n.filePath || `${n.folder}/${n.title}`, n]))
+        const normalizeKey = (p?: string) => (p || '').replace(/\\/g, '/').toLowerCase().trim()
+        const byPath = new Map<string, Note>()
+        const byRel = new Map<string, Note>()
+        const byId = new Map<string, Note>()
+
+        for (const n of prevNotes) {
+          if (n.filePath) byPath.set(normalizeKey(n.filePath), n)
+          const rel = normalizeKey(`${n.folder || 'Início'}/${n.title}`)
+          byRel.set(rel, n)
+          byId.set(n.id, n)
+        }
+
         const loadedNotes: Note[] = safeFiles.map((f) => {
-          const key = f.filePath || `${f.folder}/${f.title}`
-          const existing = existingMap.get(key)
+          const normP = normalizeKey(f.filePath)
+          const rel = normalizeKey(`${f.folder || 'Início'}/${f.title}`)
+          const detId = computeDeterministicNoteId(f.folder, f.title)
+          const existing = (normP ? byPath.get(normP) : null) || byRel.get(rel) || byId.get(detId)
           return {
-            id: existing ? existing.id : computeDeterministicNoteId(f.folder, f.title),
+            id: existing ? existing.id : detId,
             title: f.title,
             folder: f.folder,
             content: f.content,
@@ -865,15 +878,29 @@ export const App: React.FC = () => {
     const drawCount = notes.filter(n => n.type === 'draw').length
     const htmlCount = notes.filter(n => n.type === 'html').length
     const noteCount = notes.filter(n => n.type !== 'draw' && n.type !== 'mindmap' && n.type !== 'html').length
-    const title = initialTitle || (
-      type === 'mindmap'
-        ? `Mapa Mental ${mindMapCount + 1}`
-        : type === 'draw'
-        ? `Desenho ${drawCount + 1}`
-        : type === 'html'
-        ? `Página ${htmlCount + 1}.html`
-        : `Nota ${noteCount + 1}`
-    )
+
+    let candidateTitle = initialTitle
+    if (!candidateTitle) {
+      let counter = (type === 'mindmap' ? mindMapCount : type === 'draw' ? drawCount : type === 'html' ? htmlCount : noteCount) + 1
+      const baseName = type === 'mindmap' ? 'Mapa Mental' : type === 'draw' ? 'Desenho' : type === 'html' ? 'Página' : 'Nota'
+      const extSuffix = type === 'html' ? '.html' : ''
+      candidateTitle = `${baseName} ${counter}${extSuffix}`
+      while (notes.some(n => (n.folder || 'Início') === targetFolder && n.title.toLowerCase() === candidateTitle!.toLowerCase())) {
+        counter++
+        candidateTitle = `${baseName} ${counter}${extSuffix}`
+      }
+    }
+    const title = candidateTitle
+
+    const ext = type === 'html' ? '.html'
+      : type === 'mindmap' ? '.mindmap.json'
+      : type === 'draw' ? '.draw.json'
+      : '.md'
+    const validTitle = title.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Sem título'
+    const destDir = targetFolder && targetFolder !== 'Início'
+      ? targetFolder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') + '/'
+      : ''
+    const expectedFilePath = vaultPath ? `${vaultPath.replace(/[\\/]$/, '')}/${destDir}${validTitle}${ext}` : undefined
 
     const defaultHtmlStarter = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -910,10 +937,11 @@ export const App: React.FC = () => {
       : ''
 
     const newNote: Note = {
-      id: `${type}_${Date.now()}`,
+      id: computeDeterministicNoteId(targetFolder, title),
       title,
       content,
       folder: targetFolder,
+      filePath: expectedFilePath,
       tags: type === 'mindmap' ? ['mindmap', 'mapa-mental'] : type === 'draw' ? ['draw', 'desenho'] : type === 'html' ? ['html', 'web'] : [],
       type,
       createdAt: Date.now(),
@@ -1098,8 +1126,11 @@ export const App: React.FC = () => {
   }
 
   const handleUpdateNote = async (updatedNote: Note) => {
-    const prevNote = notes.find(n => n.id === updatedNote.id)
-    const titleChanged = prevNote && prevNote.title !== updatedNote.title
+    const normalizeKey = (p?: string) => (p || '').replace(/\\/g, '/').toLowerCase().trim()
+    const prevNote = notes.find(n => n.id === updatedNote.id) ||
+      (updatedNote.filePath ? notes.find(n => n.filePath && normalizeKey(n.filePath) === normalizeKey(updatedNote.filePath)) : undefined)
+
+    const titleChanged = Boolean(prevNote && prevNote.title !== updatedNote.title)
 
     const extracted = extractTags(updatedNote.content)
     const combinedTags = Array.from(new Set([...updatedNote.tags, ...extracted]))
@@ -1111,34 +1142,43 @@ export const App: React.FC = () => {
       const validTitle = finalNote.title.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Sem título'
       finalNote.title = validTitle
 
-      if (prevNote.filePath) {
-        const originalExt = prevNote.filePath.endsWith('.draw.json') ? '.draw.json'
-          : prevNote.filePath.endsWith('.draw.md') ? '.draw.md'
-          : prevNote.filePath.endsWith('.mindmap.json') ? '.mindmap.json'
-          : prevNote.filePath.endsWith('.mindmap.md') ? '.mindmap.md'
-          : prevNote.filePath.endsWith('.html') ? '.html'
-          : prevNote.filePath.endsWith('.htm') ? '.htm'
-          : '.md'
+      const oldSource = prevNote?.filePath || finalNote.filePath
+      const originalExt = (oldSource || '').endsWith('.draw.json') ? '.draw.json'
+        : (oldSource || '').endsWith('.draw.md') ? '.draw.md'
+        : (oldSource || '').endsWith('.mindmap.json') ? '.mindmap.json'
+        : (oldSource || '').endsWith('.mindmap.md') ? '.mindmap.md'
+        : (oldSource || '').endsWith('.html') ? '.html'
+        : (oldSource || '').endsWith('.htm') ? '.htm'
+        : '.md'
 
-        const folder = finalNote.folder || 'Início'
-        const destDir = folder && folder !== 'Início' ? folder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') + '/' : ''
-        const newDestination = vaultPath.replace(/[\\/]$/, '') + '/' + destDir + validTitle + originalExt
+      const folder = finalNote.folder || 'Início'
+      const destDir = folder && folder !== 'Início' ? folder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') + '/' : ''
+      const newDestination = vaultPath.replace(/[\\/]$/, '') + '/' + destDir + validTitle + originalExt
 
-        if (prevNote.filePath !== newDestination) {
-          try {
-            const moveRes = await api.managePath({
-              vaultPath,
-              source: prevNote.filePath,
-              destination: newDestination,
-              action: 'move'
-            })
-            if (moveRes.success) {
-              finalNote.filePath = newDestination
-            }
-          } catch (err) {
-            console.error('Failed to rename note file on disk:', err)
+      if (oldSource && normalizeKey(oldSource) !== normalizeKey(newDestination)) {
+        try {
+          const moveRes = await api.managePath({
+            vaultPath,
+            source: oldSource,
+            destination: newDestination,
+            action: 'move'
+          })
+          if (moveRes.success) {
+            finalNote.filePath = newDestination
+          } else {
+            finalNote.filePath = newDestination
           }
+        } catch (err) {
+          console.error('Failed to rename note file on disk:', err)
+          finalNote.filePath = newDestination
         }
+
+        // Clean up old source file if it still exists on disk (prevent phantom duplicate notes)
+        try {
+          await api.deleteFile(oldSource, vaultPath)
+        } catch {}
+      } else {
+        finalNote.filePath = newDestination
       }
     }
 
