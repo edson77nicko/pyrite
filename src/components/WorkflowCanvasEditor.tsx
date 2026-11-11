@@ -46,8 +46,6 @@ import {
   Send,
   Calendar,
   ChevronDown,
-  ArrowLeft,
-  ArrowRight,
   MousePointer,
   Hand,
   StickyNote,
@@ -1000,54 +998,19 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     </div>
                   </div>
 
-                  {/* Seletor rápido Ativo/Inativo e Ações */}
+                  {/* Ação rápida de duplicar */}
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleToggleWorkflowActive(wf)
+                        handleDuplicateWorkflow(wf)
                       }}
-                      className={`p-1 rounded-lg border transition-all cursor-pointer ${
-                        isWfActive
-                          ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-400 hover:bg-emerald-900/50'
-                          : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
-                      }`}
-                      title={isWfActive ? 'Fluxo ativo. Clique para pausar/desativar.' : 'Fluxo inativo. Clique para ativar e publicar.'}
+                      className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Duplicar fluxo"
                     >
-                      <span
-                        className={`w-6 h-3.5 flex items-center rounded-full p-0.5 transition-colors ${
-                          isWfActive ? 'bg-emerald-500 justify-end' : 'bg-zinc-700 justify-start'
-                        }`}
-                      >
-                        <span className="w-2.5 h-2.5 rounded-full bg-white shadow-xs" />
-                      </span>
+                      <Copy className="w-3.5 h-3.5" />
                     </button>
-
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDuplicateWorkflow(wf)
-                        }}
-                        className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer"
-                        title="Duplicar fluxo"
-                      >
-                        <Copy className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setWorkflowToDelete(wf)
-                        }}
-                        className="p-1 rounded hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 cursor-pointer"
-                        title="Excluir fluxo"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
                   </div>
                 </div>
               )
@@ -1078,25 +1041,6 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/60 border border-zinc-800/60 text-xs text-zinc-300 font-medium">
               <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] inline-block" />
               <span>Local</span>
-            </div>
-
-            <div className="flex items-center gap-0.5 text-zinc-500">
-              <button
-                type="button"
-                onClick={handleFitView}
-                className="p-1 rounded hover:bg-zinc-850 hover:text-zinc-200 transition-colors cursor-pointer"
-                title="Centralizar visualização"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleFitView}
-                className="p-1 rounded hover:bg-zinc-850 hover:text-zinc-200 transition-colors cursor-pointer"
-                title="Ajustar à tela"
-              >
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
             </div>
 
             <div className="relative" ref={workflowMenuRef}>
@@ -1136,14 +1080,6 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                     title="Renomear fluxo"
                   >
                     <Type className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWorkflowToDelete(activeWorkflow)}
-                    className="p-1 text-zinc-500 hover:text-rose-400 cursor-pointer rounded hover:bg-zinc-800/60"
-                    title="Excluir fluxo"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               )}
@@ -1185,19 +1121,9 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 />
               </button>
             </div>
-
-            <button
-              type="button"
-              onClick={handleFitView}
-              className="p-1.5 rounded-lg border border-zinc-800/80 hover:bg-zinc-850 text-zinc-400 hover:text-zinc-200 text-xs flex items-center gap-1 cursor-pointer ml-1"
-              title="Centralizar e ajustar à tela"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-              <span className="text-[11px]">Centralizar</span>
-            </button>
           </div>
 
-          {/* Direita: Botão Pílula Branco "▷ Executar fluxo de trabalho" OU Botão Vermelho "⏹ Parar Fluxo" */}
+          {/* Direita: Status de Execução + Limpar Execução + Lixeira Isolada no Final */}
           <div className="flex items-center gap-2">
             {!isWorkflowActive && (
               <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900/80 border border-zinc-800 text-[11px] text-zinc-400 font-medium">
@@ -1214,53 +1140,34 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                 <span className="truncate max-w-[220px]">{validation.errors[0]}</span>
               </div>
             )}
-            {!isExecuting && (
-              <button
-                type="button"
-                onClick={() => handleStartRun(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white font-medium text-xs transition-all cursor-pointer"
-                title="Percorre todo o fluxo sem gravar nada no cofre"
-              >
-                <FlaskConical className="w-3 h-3" />
-                <span>Testar</span>
-              </button>
+            {isExecuting && (
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/50 border border-emerald-800/50 text-emerald-400 text-xs font-medium animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+                <span>Executando...</span>
+              </div>
             )}
             {hasExecutionData && !isExecuting && (
               <button
                 type="button"
                 onClick={handleClearExecution}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-zinc-700/80 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 hover:border-zinc-600 font-medium text-xs transition-all cursor-pointer shadow-sm active:scale-95"
-                title="Limpar resultados e status de execução do fluxo (estilo n8n)"
+                title="Limpar resultados e status de execução do fluxo"
               >
                 <Eraser className="w-3 h-3 text-zinc-400" />
                 <span>Limpar execução</span>
               </button>
             )}
-            {isExecuting ? (
-              <button
-                type="button"
-                onClick={() => onStopWorkflow?.()}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full font-semibold text-xs transition-all shadow-lg cursor-pointer bg-rose-600 hover:bg-rose-500 text-white active:scale-95 animate-pulse"
-                title="Parar execução imediatamente"
-              >
-                <Square className="w-3 h-3 fill-current" />
-                <span>Parar Fluxo</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => handleStartRun(false)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-semibold text-xs transition-all shadow-sm cursor-pointer ${
-                  validation.valid
-                    ? 'bg-zinc-100 hover:bg-white text-zinc-950 active:scale-95'
-                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
-                }`}
-                title={validation.valid ? 'Iniciar execução do fluxo' : validation.errors.join('\n')}
-              >
-                <Play className="w-3 h-3 fill-current" />
-                <span>Executar fluxo de trabalho</span>
-              </button>
-            )}
+
+            {/* Ícone da Lixeira isolado no final direito */}
+            <div className="w-px h-4 bg-zinc-800 mx-1" />
+            <button
+              type="button"
+              onClick={() => setWorkflowToDelete(activeWorkflow)}
+              className="p-1.5 rounded-lg border border-transparent hover:border-rose-900/40 hover:bg-rose-950/30 text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer"
+              title="Excluir este fluxo"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
@@ -2921,11 +2828,48 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
           </div>
 
           {/* ======================================================================== */}
-          {/* 5. DOCK FLUTUANTE INFERIOR CENTRAL (Customizado)                */}
+          {/* 5. DOCK FLUTUANTE INFERIOR CENTRAL COM BOTÃO DE EXECUÇÃO À ESQUERDA       */}
+          {/* ======================================================================== */}
           <div
             onPointerDown={e => e.stopPropagation()}
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#141416]/95 backdrop-blur-xl border border-zinc-800/90 rounded-2xl p-1.5 shadow-2xl z-30"
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2.5 z-30"
           >
+            {/* Botão Executar / Parar Fluxo (Quadradinho arredondado flutuante ao lado esquerdo) */}
+            {isExecuting ? (
+              <button
+                type="button"
+                onClick={() => onStopWorkflow?.()}
+                className="w-11 h-11 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white border border-rose-500/50 shadow-2xl shadow-rose-950/60 flex items-center justify-center transition-all cursor-pointer active:scale-95 animate-pulse"
+                title="Parar execução do fluxo"
+              >
+                <Square className="w-4 h-4 fill-current" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  if (validation.valid) {
+                    handleStartRun(false)
+                  }
+                }}
+                disabled={!validation.valid}
+                className={`w-11 h-11 rounded-2xl border shadow-2xl flex items-center justify-center transition-all cursor-pointer backdrop-blur-xl ${
+                  validation.valid
+                    ? 'bg-zinc-100 hover:bg-white text-zinc-950 border-white/20 shadow-black/40 hover:shadow-[0_0_20px_rgba(255,255,255,0.25)] active:scale-95'
+                    : 'bg-[#141416]/95 border-zinc-800 text-zinc-600 cursor-not-allowed opacity-60'
+                }`}
+                title={
+                  validation.valid
+                    ? 'Executar fluxo completo'
+                    : `Não é possível executar:\n${validation.errors.join('\n')}`
+                }
+              >
+                <Play className="w-4 h-4 fill-current ml-0.5" />
+              </button>
+            )}
+
+            {/* Barra de Ferramentas Principal */}
+            <div className="flex items-center gap-1 bg-[#141416]/95 backdrop-blur-xl border border-zinc-800/90 rounded-2xl p-1.5 shadow-2xl">
             <button
               type="button"
               onClick={() => setToolMode('pointer')}
@@ -2985,6 +2929,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             </button>
           </div>
         </div>
+      </div>
 {/* 6. INSPETOR LATERAL DEDICADO DO NÓ OU FLUXO */}
         {inspectorOpen && (
           <aside
