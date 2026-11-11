@@ -279,6 +279,27 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
   commitTasks
 }) => {
   const activeWorkflow = workflows.find(w => w.id === selectedWorkflowId) || workflows[0]
+
+  // Estado Ativo / Inativo (Publicado vs Rascunho / Pausado)
+  const isWorkflowActive = activeWorkflow?.active !== undefined
+    ? activeWorkflow.active
+    : activeWorkflow?.status === 'published'
+
+  const handleToggleWorkflowActive = (targetWf?: WorkflowDefinition) => {
+    const wf = targetWf || activeWorkflow
+    if (!wf) return
+    const currentActive = wf.active !== undefined ? wf.active : wf.status === 'published'
+    const nextActive = !currentActive
+    const updated: WorkflowDefinition = {
+      ...wf,
+      active: nextActive,
+      status: nextActive ? 'published' : 'draft',
+      publishedVersion: nextActive ? (wf.publishedVersion || wf.version) : wf.publishedVersion,
+      updatedAt: Date.now()
+    }
+    onSaveWorkflow(updated)
+  }
+
   const [clearedRunId, setClearedRunId] = useState<string | null>(null)
   const isCurrentRunCleared = Boolean(
     (clearedRunId && activeRun && clearedRunId === activeRun.id) ||
@@ -477,6 +498,7 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       id: `wf_${Date.now()}`,
       version: 1,
       status: 'draft',
+      active: false,
       name: `Fluxo de trabalho sem título ${workflows.length + 1}`,
       description: 'Fluxo visual customizado.',
       nodes: [
@@ -947,51 +969,85 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
             {filteredWorkflows.map(wf => {
               const isSelected = wf.id === activeWorkflow.id
               const realNodesCount = wf.nodes.filter(n => n.kind !== 'sticky_note' && n.kind !== 'text_block').length
+              const isWfActive = wf.active !== undefined ? wf.active : wf.status === 'published'
+
               return (
                 <div
                   key={wf.id}
                   onClick={() => onSelectWorkflow(wf.id)}
-                  className={`w-full group text-left p-2.5 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-2 ${
+                  className={`w-full group text-left p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
                     isSelected
                       ? 'bg-[#18181c] border-emerald-500/40 text-white shadow-xs'
                       : 'bg-[#121214] border-zinc-800/60 text-zinc-300 hover:bg-[#151518] hover:border-zinc-700/60'
                   }`}
                 >
                   <div className="min-w-0 flex-1 space-y-1">
-                    <div className="font-semibold text-xs truncate">{wf.name}</div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                          isWfActive ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-zinc-600'
+                        }`}
+                        title={isWfActive ? 'Fluxo ativo' : 'Fluxo inativo'}
+                      />
+                      <span className="font-semibold text-xs truncate">{wf.name}</span>
+                    </div>
                     <div className="flex items-center gap-2 text-[10px] text-zinc-500">
                       <span>{realNodesCount} blocos</span>
                       <span>•</span>
-                      <span className={wf.status === 'published' ? 'text-emerald-400/90' : 'text-amber-400/90'}>
-                        {wf.status === 'published' ? 'Publicado' : 'Rascunho'}
+                      <span className={isWfActive ? 'text-emerald-400/90 font-medium' : 'text-zinc-500'}>
+                        {isWfActive ? 'Ativo' : 'Inativo'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Ações rápidas */}
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Seletor rápido Ativo/Inativo e Ações */}
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleDuplicateWorkflow(wf)
+                        handleToggleWorkflowActive(wf)
                       }}
-                      className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer"
-                      title="Duplicar fluxo"
+                      className={`p-1 rounded-lg border transition-all cursor-pointer ${
+                        isWfActive
+                          ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-400 hover:bg-emerald-900/50'
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
+                      }`}
+                      title={isWfActive ? 'Fluxo ativo. Clique para pausar/desativar.' : 'Fluxo inativo. Clique para ativar e publicar.'}
                     >
-                      <Copy className="w-3 h-3" />
+                      <span
+                        className={`w-6 h-3.5 flex items-center rounded-full p-0.5 transition-colors ${
+                          isWfActive ? 'bg-emerald-500 justify-end' : 'bg-zinc-700 justify-start'
+                        }`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full bg-white shadow-xs" />
+                      </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setWorkflowToDelete(wf)
-                      }}
-                      className="p-1 rounded hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 cursor-pointer"
-                      title="Excluir fluxo"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDuplicateWorkflow(wf)
+                        }}
+                        className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                        title="Duplicar fluxo"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setWorkflowToDelete(wf)
+                        }}
+                        className="p-1 rounded hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                        title="Excluir fluxo"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
@@ -1093,6 +1149,43 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
               )}
             </div>
 
+            {/* BOTÃO SELETOR ATIVO / INATIVO (ESTILO N8N / MAKE) */}
+            <div className="flex items-center gap-2 pl-2 border-l border-zinc-800/80">
+              <button
+                type="button"
+                onClick={() => handleToggleWorkflowActive()}
+                className={`group flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer select-none text-xs font-semibold shadow-xs active:scale-95 ${
+                  isWorkflowActive
+                    ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300 hover:bg-emerald-950/70 hover:border-emerald-500/70'
+                    : 'bg-zinc-900/80 border-zinc-700/60 text-zinc-400 hover:bg-zinc-850 hover:text-zinc-200'
+                }`}
+                title={
+                  isWorkflowActive
+                    ? 'Fluxo ativo (publicado). Gatilhos agendados e automações estão operacionais. Clique para pausar/desativar.'
+                    : 'Fluxo inativo (rascunho/pausado). Gatilhos automáticos não serão disparados. Clique para ativar e publicar.'
+                }
+              >
+                {/* Switch visual animado */}
+                <span
+                  className={`w-7 h-4 flex items-center rounded-full p-0.5 transition-colors ${
+                    isWorkflowActive ? 'bg-emerald-500 justify-end' : 'bg-zinc-700 justify-start'
+                  }`}
+                >
+                  <span className="w-3 h-3 rounded-full bg-white shadow-xs" />
+                </span>
+
+                <span className="text-[11px] font-semibold">
+                  {isWorkflowActive ? 'Ativo' : 'Inativo'}
+                </span>
+
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    isWorkflowActive ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-zinc-500'
+                  }`}
+                />
+              </button>
+            </div>
+
             <button
               type="button"
               onClick={handleFitView}
@@ -1106,6 +1199,12 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
           {/* Direita: Botão Pílula Branco "▷ Executar fluxo de trabalho" OU Botão Vermelho "⏹ Parar Fluxo" */}
           <div className="flex items-center gap-2">
+            {!isWorkflowActive && (
+              <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900/80 border border-zinc-800 text-[11px] text-zinc-400 font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                <span>Pausado</span>
+              </span>
+            )}
             {!validation.valid && !isExecuting && (
               <div
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-950/70 border border-amber-800/60 text-amber-300 text-[11px]"
@@ -1169,6 +1268,23 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
       {/* 2. ÁREA DO CANVAS INFINITO COM DOT-GRID ESCURO (#09090b)                      */}
       {/* ============================================================================ */}
       <div className="flex-1 flex overflow-hidden relative">
+        {/* Banner Flutuante de Fluxo Pausado / Inativo */}
+        {!isWorkflowActive && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#121215]/95 border border-zinc-800/90 text-xs text-zinc-400 shadow-xl backdrop-blur-md animate-in fade-in duration-150 select-none">
+            <span className="w-2 h-2 rounded-full bg-zinc-500" />
+            <span className="text-zinc-300 font-medium">Fluxo em Pausa</span>
+            <span className="text-zinc-500">•</span>
+            <span className="text-zinc-400">Gatilhos automáticos desativados</span>
+            <button
+              type="button"
+              onClick={() => handleToggleWorkflowActive()}
+              className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 ml-1 underline cursor-pointer"
+            >
+              Ativar agora
+            </button>
+          </div>
+        )}
+
         {/* PAINEL DA ÚLTIMA EXECUÇÃO — mostra de forma clara o que aconteceu (teste x produção) e onde ficou o resultado */}
         {runForThisWorkflow && dismissedRunId !== runForThisWorkflow.id && (() => {
           const run = runForThisWorkflow
@@ -1702,6 +1818,23 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
                         <Send className="w-3 h-3 text-blue-400" />
                       )}
                       <span>{node.label || NODE_META[node.kind]?.label || 'Etapa'}</span>
+                      {node.kind === 'input' && !execState && (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleToggleWorkflowActive()
+                          }}
+                          className={`text-[9.5px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1.5 cursor-pointer transition-all ${
+                            isWorkflowActive
+                              ? 'text-emerald-400 bg-emerald-950/50 border border-emerald-800/50 hover:bg-emerald-900/50'
+                              : 'text-zinc-400 bg-zinc-900/90 border border-zinc-700/60 hover:bg-zinc-800 hover:text-zinc-300'
+                          }`}
+                          title={isWorkflowActive ? 'Fluxo ativo. Clique para pausar.' : 'Fluxo pausado. Clique para ativar.'}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${isWorkflowActive ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`} />
+                          <span>{isWorkflowActive ? 'Ativo' : 'Pausado'}</span>
+                        </span>
+                      )}
                       {execState && (
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-medium ${execState.status === 'completed' ? 'text-emerald-400 bg-emerald-950/40' : execState.status === 'failed' ? 'text-rose-400 bg-rose-950/40' : execState.status === 'skipped' || execState.status === 'pending' ? 'text-zinc-500 bg-zinc-900' : 'text-amber-400 bg-amber-950/40'}`}>
                           {({ completed: 'Concluído', failed: 'Falhou', running: 'Executando', pending: 'Não executado', skipped: 'Ignorado', waiting_approval: 'Aguardando aprovação' } as Record<string, string>)[execState.status] || execState.status}
@@ -1925,24 +2058,16 @@ export const WorkflowCanvasEditor: React.FC<WorkflowCanvasEditorProps> = ({
 
                               <button
                                 type="button"
-                                onClick={() => {
-                                  const nextActive = activeWorkflow.active === false ? true : false
-                                  onSaveWorkflow({
-                                    ...activeWorkflow,
-                                    active: nextActive,
-                                    version: activeWorkflow.version + 1,
-                                    updatedAt: Date.now()
-                                  })
-                                }}
+                                onClick={() => handleToggleWorkflowActive()}
                                 className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1.5 cursor-pointer font-medium transition-colors shrink-0 ${
-                                  activeWorkflow.active !== false
+                                  isWorkflowActive
                                     ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 hover:bg-emerald-900/50'
                                     : 'bg-zinc-800 text-zinc-400 border border-zinc-700/60 hover:bg-zinc-700/60'
                                 }`}
-                                title={activeWorkflow.active !== false ? 'Pausar agendamento' : 'Ativar agendamento'}
+                                title={isWorkflowActive ? 'Pausar agendamento' : 'Ativar agendamento'}
                               >
-                                <span className={`w-1.5 h-1.5 rounded-full ${activeWorkflow.active !== false ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`} />
-                                <span>{activeWorkflow.active !== false ? 'Agendado' : 'Pausado'}</span>
+                                <span className={`w-1.5 h-1.5 rounded-full ${isWorkflowActive ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`} />
+                                <span>{isWorkflowActive ? 'Agendado' : 'Pausado'}</span>
                               </button>
                             </div>
                           </div>

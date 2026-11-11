@@ -578,6 +578,7 @@ export const INITIAL_WORKFLOWS: WorkflowDefinition[] = [
     version: 1,
     publishedVersion: 1,
     status: 'published',
+    active: true,
     name: 'Plano Estratégico com Tarefas e Nota',
     description: 'Fluxo direto e 100% funcional: recebe um tema ou solicitação, gera um plano estruturado por IA, cria tarefas de ação no quadro e salva a entrega como nota no cofre.',
     nodes: [
@@ -646,6 +647,7 @@ export const INITIAL_WORKFLOWS: WorkflowDefinition[] = [
     version: 1,
     publishedVersion: 1,
     status: 'published',
+    active: true,
     name: 'Fluxo de Proposta Comercial com Revisão',
     description: 'Lê o Modelo de Proposta, Catálogo e Briefing do Cliente, executa o Especialista em Propostas, valida pendências, solicita aprovação e gera a entrega.',
     nodes: [
@@ -5087,6 +5089,10 @@ export async function executeAutomationRun(params: {
       if (!wf) {
         return { updatedStore: store, skippedReason: 'Fluxo vinculado à rotina não encontrado.' }
       }
+      const isWfActive = wf.active !== undefined ? wf.active : wf.status === 'published'
+      if (!isWfActive) {
+        return { updatedStore: store, skippedReason: `Fluxo "${wf.name}" está inativo/pausado.` }
+      }
       run = await executeWorkflowRun({
         workflow: wf,
         allAgents: store.agents,
@@ -5332,7 +5338,8 @@ export async function evaluateAutomationsBackground(params: {
 
   // 5. Avaliação em segundo plano para Fluxos de Trabalho Agendados e por Eventos
   for (const wf of (workingStore.workflows || [])) {
-    if (wf.status === 'draft' && wf.active !== true) continue
+    const isWfActive = wf.active !== undefined ? wf.active : wf.status === 'published'
+    if (!isWfActive) continue
     if (runningRoutineLock.has(`wf_${wf.id}`)) continue
 
     const triggerNode = wf.nodes.find(n => n.kind === 'input')
