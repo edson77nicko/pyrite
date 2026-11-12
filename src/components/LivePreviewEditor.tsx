@@ -1220,17 +1220,161 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
   }, [pushHistorySnapshot, refreshBlocks, handleSync])
   const insertTableBlock = () => insertBlock(tableShell(DEFAULT_TABLE))
 
+  const removeHighlightFromRange = useCallback((range: Range): boolean => {
+    let removed = false
+    const startNode = range.startContainer
+    const startEl = startNode instanceof HTMLElement ? startNode : startNode.parentElement
+    const markAncestor = startEl?.closest('mark, span[style*="background"]') as HTMLElement | null
+
+    if (markAncestor && containerRef.current?.contains(markAncestor)) {
+      const isFullMark = range.toString().trim() === (markAncestor.textContent || '').trim() ||
+        (range.startOffset === 0 && range.endOffset >= (markAncestor.textContent?.length || 0))
+
+      if (isFullMark) {
+        const parent = markAncestor.parentNode
+        if (parent) {
+          while (markAncestor.firstChild) {
+            parent.insertBefore(markAncestor.firstChild, markAncestor)
+          }
+          parent.removeChild(markAncestor)
+          parent.normalize()
+          removed = true
+        }
+      } else {
+        const fullText = markAncestor.textContent || ''
+        const selText = range.toString()
+        const markClass = markAncestor.className
+        const markTag = markAncestor.tagName.toLowerCase()
+        const markStyle = markAncestor.getAttribute('style') || ''
+
+        const beforeText = fullText.slice(0, range.startOffset)
+        const afterText = fullText.slice(range.endOffset)
+
+        const frag = document.createDocumentFragment()
+        if (beforeText) {
+          const b = document.createElement(markTag)
+          if (markClass) b.className = markClass
+          if (markStyle) b.setAttribute('style', markStyle)
+          b.textContent = beforeText
+          frag.appendChild(b)
+        }
+        const plain = document.createTextNode(selText)
+        frag.appendChild(plain)
+        if (afterText) {
+          const a = document.createElement(markTag)
+          if (markClass) a.className = markClass
+          if (markStyle) a.setAttribute('style', markStyle)
+          a.textContent = afterText
+          frag.appendChild(a)
+        }
+        markAncestor.replaceWith(frag)
+        removed = true
+      }
+    }
+
+    const liveContainer = containerRef.current
+    if (liveContainer) {
+      const marks = liveContainer.querySelectorAll('mark, span[style*="background"]')
+      marks.forEach(m => {
+        try {
+          if (range.intersectsNode(m)) {
+            const parent = m.parentNode
+            if (parent) {
+              while (m.firstChild) {
+                parent.insertBefore(m.firstChild, m)
+              }
+              parent.removeChild(m)
+              parent.normalize()
+              removed = true
+            }
+          }
+        } catch {}
+      })
+    }
+
+    return removed
+  }, [])
+
   const formatBlockSafe = (tag: string) => {
     containerRef.current?.focus()
     const targetTag = tag.toLowerCase()
 
-    // 1. Direct DOM Block Transformation (Cleanest for H1-H6 <-> P <-> Blockquote)
+    // 1. Direct DOM Block Transformation (H1-H6 <-> P <-> Blockquote <-> List <-> Task)
     const sel = window.getSelection()
     if (sel && sel.rangeCount) {
+      const range = sel.getRangeAt(0)
+      if (targetTag === 'p') {
+        removeHighlightFromRange(range)
+      }
+
       const anchorNode = sel.anchorNode
-      const currentBlock = (anchorNode instanceof HTMLElement ? anchorNode : anchorNode?.parentElement)?.closest('h1, h2, h3, h4, h5, h6, blockquote, p') as HTMLElement | null
+      const currentBlock = (anchorNode instanceof HTMLElement ? anchorNode : anchorNode?.parentElement)?.closest('h1, h2, h3, h4, h5, h6, blockquote, p, li, [data-type="task"], div.task-item') as HTMLElement | null
 
       if (currentBlock && containerRef.current?.contains(currentBlock)) {
+        // If in a list item (li) and transforming to paragraph (p)
+        if (targetTag === 'p' && currentBlock.tagName.toLowerCase() === 'li') {
+          const parentList = currentBlock.closest('ul, ol')
+          const p = document.createElement('p')
+          p.className = 'my-0.5 text-zinc-300 leading-[1.5]'
+          p.innerHTML = currentBlock.innerHTML || '<br>'
+
+          if (parentList && containerRef.current?.contains(parentList)) {
+            const allLis = Array.from(parentList.querySelectorAll(':scope > li'))
+            if (allLis.length <= 1) {
+              parentList.replaceWith(p)
+            } else {
+              const index = allLis.indexOf(currentBlock)
+              if (index === 0) {
+                parentList.parentNode?.insertBefore(p, parentList)
+                currentBlock.remove()
+              } else if (index === allLis.length - 1) {
+                parentList.parentNode?.insertBefore(p, parentList.nextSibling)
+                currentBlock.remove()
+              } else {
+                const secondList = parentList.cloneNode(false) as HTMLElement
+                let nextLi = currentBlock.nextElementSibling
+                while (nextLi) {
+                  const toMove = nextLi
+                  nextLi = nextLi.nextElementSibling
+                  secondList.appendChild(toMove)
+                }
+                parentList.parentNode?.insertBefore(p, parentList.nextSibling)
+                parentList.parentNode?.insertBefore(secondList, p.nextSibling)
+                currentBlock.remove()
+              }
+            }
+          }
+
+          const r = document.createRange()
+          r.selectNodeContents(p)
+          r.collapse(false)
+          sel.removeAllRanges()
+          sel.addRange(r)
+
+          refreshBlocks()
+          handleSync()
+          return
+        }
+
+        // If in a task item and transforming to paragraph (p)
+        if (targetTag === 'p' && (currentBlock.getAttribute('data-type') === 'task' || currentBlock.classList.contains('task-item'))) {
+          const textSpan = currentBlock.querySelector('.task-text')
+          const p = document.createElement('p')
+          p.className = 'my-0.5 text-zinc-300 leading-[1.5]'
+          p.innerHTML = textSpan?.innerHTML || currentBlock.textContent || '<br>'
+          currentBlock.replaceWith(p)
+
+          const r = document.createRange()
+          r.selectNodeContents(p)
+          r.collapse(false)
+          sel.removeAllRanges()
+          sel.addRange(r)
+
+          refreshBlocks()
+          handleSync()
+          return
+        }
+
         const newEl = document.createElement(targetTag)
 
         if (targetTag === 'p') {
@@ -1248,11 +1392,11 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
         newEl.innerHTML = currentBlock.innerHTML || '<br>'
         currentBlock.replaceWith(newEl)
 
-        const range = document.createRange()
-        range.selectNodeContents(newEl)
-        range.collapse(false)
+        const r = document.createRange()
+        r.selectNodeContents(newEl)
+        r.collapse(false)
         sel.removeAllRanges()
-        sel.addRange(range)
+        sel.addRange(r)
 
         refreshBlocks()
         handleSync()
@@ -1261,27 +1405,70 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     }
 
     // 2. Fallback to execCommand
-    let ok = false
     try {
-      ok = document.execCommand('formatBlock', false, `<${tag.toUpperCase()}>`)
-    } catch {
-      ok = false
-    }
-    if (!ok) {
-      try {
-        ok = document.execCommand('formatBlock', false, `<${tag.toLowerCase()}>`)
-      } catch {
-        ok = false
-      }
-    }
-    if (!ok) {
-      try {
-        document.execCommand('formatBlock', false, tag)
-      } catch {}
-    }
+      document.execCommand('formatBlock', false, `<${tag.toUpperCase()}>`)
+    } catch {}
     refreshBlocks()
     handleSync()
   }
+
+  // Convert selected text or current block into bullet list (ul > li)
+  const applyBulletList = useCallback(() => {
+    pushHistorySnapshot(true)
+    const sel = window.getSelection()
+    if (!sel || !sel.rangeCount) return
+
+    const selectedText = sel.toString()
+    if (!sel.isCollapsed && selectedText.includes('\n')) {
+      const rawLines = selectedText.split(/\r?\n/)
+      const lis = rawLines
+        .map(line => line.replace(/^(\s*[-*]\s*|\s*\d+\.\s*)/, '').trim())
+        .filter(Boolean)
+        .map(clean => `<li>${formatInlineHtml(clean, allNotes)}</li>`)
+        .join('')
+
+      if (lis) {
+        document.execCommand('insertHTML', false, `<ul class="list-disc pl-5 my-1.5 space-y-0.5 text-zinc-300">${lis}</ul>`)
+        setSelectionToolbar(null)
+        refreshBlocks()
+        handleSync()
+        return
+      }
+    }
+
+    const range = sel.getRangeAt(0)
+    const anchorNode = range.startContainer
+    const currentBlock = (anchorNode instanceof HTMLElement ? anchorNode : anchorNode?.parentElement)?.closest('h1, h2, h3, h4, h5, h6, blockquote, p, [data-type="task"], div.task-item') as HTMLElement | null
+
+    if (currentBlock && containerRef.current?.contains(currentBlock)) {
+      const textSpan = currentBlock.querySelector('.task-text')
+      const cleanHtml = (textSpan?.innerHTML || currentBlock.innerHTML || '<br>').replace(/^(\s*[-*]\s*|\s*\d+\.\s*)/, '')
+      const ul = document.createElement('ul')
+      ul.className = 'list-disc pl-5 my-1.5 space-y-0.5 text-zinc-300'
+      const li = document.createElement('li')
+      li.innerHTML = cleanHtml || '<br>'
+      ul.appendChild(li)
+      currentBlock.replaceWith(ul)
+
+      const r = document.createRange()
+      r.selectNodeContents(li)
+      r.collapse(false)
+      sel.removeAllRanges()
+      sel.addRange(r)
+
+      setSelectionToolbar(null)
+      refreshBlocks()
+      handleSync()
+      return
+    }
+
+    try {
+      document.execCommand('insertUnorderedList')
+    } catch {}
+    setSelectionToolbar(null)
+    refreshBlocks()
+    handleSync()
+  }, [allNotes, pushHistorySnapshot, refreshBlocks, handleSync])
 
   const applyTextColor = (color: string) => {
     pushHistorySnapshot(true)
@@ -1318,6 +1505,8 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     const range = sel.getRangeAt(0)
     const selectedText = range.toString()
     if (!selectedText) return
+
+    removeHighlightFromRange(range)
 
     if (bgColor === 'transparent' || bgColor === 'default') {
       document.execCommand('removeFormat')
@@ -1360,7 +1549,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       else if (type === 'h3') formatBlockSafe('h3')
       else if (type === 'bullet') {
         containerRef.current?.focus()
-        document.execCommand('insertUnorderedList')
+        applyBulletList()
       }
       else if (type === 'number') {
         containerRef.current?.focus()
@@ -2053,8 +2242,19 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       const selectedText = sel.toString()
       document.execCommand('insertHTML', false, `<code class="bg-zinc-800 text-[var(--accent)] px-1 py-0.5 rounded font-mono text-xs">${escapeHtml(selectedText)}</code>`)
     } else if (type === 'highlight') {
-      const selectedText = sel.toString()
-      document.execCommand('insertHTML', false, `<mark class="bg-[var(--accent-glow-subtle)] text-[var(--accent)] px-1 py-0.5 rounded font-normal border border-[var(--accent)]/30">${escapeHtml(selectedText)}</mark>`)
+      const range = sel.getRangeAt(0)
+      const startEl = range.startContainer instanceof HTMLElement ? range.startContainer : range.startContainer.parentElement
+      const markAncestor = startEl?.closest('mark, span[style*="background"]') as HTMLElement | null
+      const hasMarksInside = Array.from(containerRef.current?.querySelectorAll('mark, span[style*="background"]') || []).some(m => {
+        try { return range.intersectsNode(m) } catch { return false }
+      })
+
+      if (markAncestor || hasMarksInside) {
+        removeHighlightFromRange(range)
+      } else {
+        const selectedText = sel.toString()
+        document.execCommand('insertHTML', false, `<mark class="bg-[var(--accent-glow-subtle)] text-[var(--accent)] px-1 py-0.5 rounded font-normal border border-[var(--accent)]/30">${escapeHtml(selectedText)}</mark>`)
+      }
     } else if (type === 'link') {
       const selectedText = sel.toString().trim()
       const range = sel.getRangeAt(0).cloneRange()
@@ -2077,9 +2277,17 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     } else if (type === 'h3') {
       formatBlockSafe('h3')
     } else if (type === 'p') {
+      const range = sel.getRangeAt(0)
+      removeHighlightFromRange(range)
       formatBlockSafe('p')
     } else if (type === 'bullet') {
-      document.execCommand('insertUnorderedList')
+      const anchorNode = sel.anchorNode
+      const inList = (anchorNode instanceof HTMLElement ? anchorNode : anchorNode?.parentElement)?.closest('li, ul')
+      if (inList) {
+        formatBlockSafe('p')
+      } else {
+        applyBulletList()
+      }
     } else if (type === 'task') {
       applyTaskList()
     } else if (type === 'callout') {
@@ -2290,7 +2498,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       setHoveredBlock({
         element: target,
         top: rect.top,
-        left: Math.max(8, containerRect.left - 48),
+        left: Math.max(8, rect.left - 54),
         right: containerRect.right
       })
     }
@@ -2360,7 +2568,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       setHoveredBlock({
         element,
         top: rect.top,
-        left: Math.max(8, containerRect.left - 48),
+        left: Math.max(8, rect.left - 54),
         right: containerRect.right
       })
     }

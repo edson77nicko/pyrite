@@ -92,13 +92,13 @@ export const EditorBlockGutter: React.FC<EditorBlockGutterProps> = ({
       }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="appflowy-block-gutter flex items-center gap-0.5 select-none -translate-y-0.5 group/gutter"
+      className="appflowy-block-gutter flex items-center gap-0.5 select-none -translate-y-0.5 group/gutter pointer-events-none"
     >
       {/* + Button: Insert new line below */}
       <button
         type="button"
         onClick={() => onInsertBelow(hoveredBlock.element)}
-        className="w-6 h-6 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors cursor-pointer"
+        className="w-5 h-6 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors cursor-pointer pointer-events-auto"
         title="Adicionar bloco abaixo (AppFlowy style)"
       >
         <Plus className="w-3.5 h-3.5" />
@@ -110,7 +110,7 @@ export const EditorBlockGutter: React.FC<EditorBlockGutterProps> = ({
         onDragStart={(e) => onDragStart(e, hoveredBlock.element)}
         onDragEnd={onDragEnd}
         onClick={handleOpenMenu}
-        className="w-6 h-6 flex items-center justify-center rounded text-zinc-400 hover:text-amber-400 hover:bg-zinc-800/80 transition-colors cursor-grab active:cursor-grabbing"
+        className="w-5 h-6 flex items-center justify-center rounded text-zinc-400 hover:text-amber-400 hover:bg-zinc-800/80 transition-colors cursor-grab active:cursor-grabbing pointer-events-auto"
         title="Arraste para mover linha ou clique para opções do bloco"
       >
         <GripVertical className="w-3.5 h-3.5" />
@@ -126,7 +126,7 @@ export const EditorBlockGutter: React.FC<EditorBlockGutterProps> = ({
             left: '0px',
             zIndex: 100
           }}
-          className="w-56 bg-[#16161b] border border-zinc-800 rounded-xl shadow-2xl p-1.5 text-xs text-zinc-300 shadow-black/80 space-y-1 animate-in fade-in zoom-in-95 duration-100"
+          className="w-56 bg-[#16161b] border border-zinc-800 rounded-xl shadow-2xl p-1.5 text-xs text-zinc-300 shadow-black/80 space-y-1 animate-in fade-in zoom-in-95 duration-100 pointer-events-auto"
         >
           {/* Ask AI Option */}
           <button

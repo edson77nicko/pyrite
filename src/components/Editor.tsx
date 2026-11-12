@@ -376,7 +376,7 @@ export const Editor: React.FC<EditorProps> = ({
 
       {/* 3. Editor Surface & Sidebars area (Below Header Toolbar) */}
       <div className="flex-1 flex overflow-hidden relative">
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 py-6 flex justify-center custom-chat-scrollbar">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pl-12 pr-6 py-6 md:pl-16 md:pr-8 flex justify-center custom-chat-scrollbar">
           <div className={`w-full ${widthClasses} flex flex-col`}>
             {/* Note Title Input */}
             <div className="pb-4 mb-2 border-b border-zinc-800/60">
