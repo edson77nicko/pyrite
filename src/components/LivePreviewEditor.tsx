@@ -183,82 +183,120 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;')
 }
 
-function formatInlineHtml(text: string, allNotes: Note[] = []): string {
+export function healCorruptedHtml(text: string): string {
   if (!text) return ''
+  return text
+    .replace(/&lt;span\b([\s\S]*?)style\s*=\s*(&quot;|"|')(.*?)\2([\s\S]*?)&gt;([\s\S]*?)&lt;\/span&gt;/gi, (_match, before, _q, style, after, inner) => {
+      const cleanBefore = (before || '').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      const cleanAfter = (after || '').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      const cleanStyle = style.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      const b = cleanBefore.trim() ? ' ' + cleanBefore.trim() : ''
+      const a = cleanAfter.trim() ? ' ' + cleanAfter.trim() : ''
+      return `<span${b} style="${cleanStyle}"${a}>${inner}</span>`
+    })
+    .replace(/&lt;mark\b([\s\S]*?)&gt;([\s\S]*?)&lt;\/mark&gt;/gi, (_match, attrs, inner) => {
+      const cleanAttrs = (attrs || '').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      const a = cleanAttrs.trim() ? ' ' + cleanAttrs.trim() : ''
+      return `<mark${a}>${inner}</mark>`
+    })
+}
 
-  const tokenRegex = /(<span style="[^"]*">[^<]*<\/span>|\[\[[^\[\]\r\n]+\]\]|!\[[^\]\r\n]*\]\([^\)\r\n]+\)|\[[^\[\]\r\n]+\]\([^\)\r\n]+\)|\*\*[^\*\r\n]+\*\*|==[^=\r\n]+==|~~[^~\r\n]+~~|`[^`\r\n]+`|\*[^\*\r\n]+\*)/g
-  const parts = text.split(tokenRegex)
+function formatInlineHtml(rawText: string, allNotes: Note[] = []): string {
+  if (!rawText) return ''
 
-  return parts.map(part => {
-    if (!part) return ''
+  // 1. Heal any previously escaped / corrupted styled spans or marks
+  let text = healCorruptedHtml(rawText)
 
-    // 0. Notion custom styled span (color / background)
-    if (part.startsWith('<span style=') && part.endsWith('</span>')) {
-      return part
-    }
+  // 2. Protect valid inline HTML tags (<span ...>, </span>, <mark ...>, </mark>, <br>, etc.)
+  const htmlTagPlaceholders: string[] = []
+  const htmlTagRegex = /<\/?(?:span|mark|b|i|strong|em|u|s|del|sub|sup|code|a|br)\b[^>]*>/gi
 
-    // 1. Wikilinks [[Target]] or [[Target|Alias]]
-    if (part.startsWith('[[') && part.endsWith(']]') && part.length >= 4) {
-      const inner = part.slice(2, -2)
-      const [target, alias] = inner.split(/\\?\|/)
-      const destination = target.split('#')[0].replace(/[\[\]]/g, '').trim()
-      const displayName = (alias || target).split('#')[0].replace(/[\[\]]/g, '').trim()
-      const exists = allNotes.some(n => n.title.toLowerCase().trim() === destination.toLowerCase().trim())
+  text = text.replace(htmlTagRegex, (match) => {
+    const placeholder = `\x01HTMLTAG${htmlTagPlaceholders.length}\x02`
+    htmlTagPlaceholders.push(match)
+    return placeholder
+  })
 
-      const pillClass = exists
-        ? 'wiki-link-exists text-[var(--accent)] hover:opacity-90 bg-[var(--accent-glow-subtle)] border border-[var(--accent)]/30'
-        : 'wiki-link-unresolved text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
+  // 3. Process markdown tokens recursively
+  function parseMarkdown(str: string): string {
+    if (!str) return ''
 
-      return `<span class="wiki-link ${exists ? 'wiki-link-exists' : 'wiki-link-unresolved'} inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" ${alias && alias !== destination ? `data-alias="${escapeHtml(alias)}"` : ''} title="${exists ? `Abrir nota: &quot;${destination}&quot; (Botão direito para editar)` : `Criar nota: &quot;${destination}&quot; (Botão direito para editar)`}"><span class="underline ${exists ? 'decoration-[var(--accent)]/40 hover:decoration-[var(--accent)]' : 'decoration-zinc-500/50 hover:decoration-zinc-400'} underline-offset-2">${escapeHtml(displayName)}</span></span>`
-    }
+    const tokenRegex = /(\[\[[^\[\]\r\n]+\]\]|!\[[^\]\r\n]*\]\([^\)\r\n]+\)|\[[^\[\]\r\n]+\]\([^\)\r\n]+\)|\*\*[^\*\r\n]+\*\*|==[^=\r\n]+==|~~[^~\r\n]+~~|`[^`\r\n]+`|\*[^\*\r\n]+\*)/g
+    const parts = str.split(tokenRegex)
 
-    // 2. Markdown Image ![alt](src)
-    if (part.startsWith('![') && part.includes('](') && part.endsWith(')')) {
-      const match = part.match(/^!\[(.*?)\]\((.+)\)$/)
-      if (match) {
-        const alt = match[1] || 'imagem'
-        const src = match[2]
-        return `<img src="${src}" alt="${escapeHtml(alt)}" class="rounded-xl max-w-full my-3 shadow-md border border-zinc-800" />`
+    return parts.map(part => {
+      if (!part) return ''
+
+      // 1. Wikilinks [[Target]] or [[Target|Alias]]
+      if (part.startsWith('[[') && part.endsWith(']]') && part.length >= 4) {
+        const inner = part.slice(2, -2)
+        const [target, alias] = inner.split(/\\?\|/)
+        const destination = target.split('#')[0].replace(/[\[\]]/g, '').trim()
+        const displayName = (alias || target).split('#')[0].replace(/[\[\]]/g, '').trim()
+        const exists = allNotes.some(n => n.title.toLowerCase().trim() === destination.toLowerCase().trim())
+
+        const pillClass = exists
+          ? 'wiki-link-exists text-[var(--accent)] hover:opacity-90 bg-[var(--accent-glow-subtle)] border border-[var(--accent)]/30'
+          : 'wiki-link-unresolved text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 border border-dashed border-zinc-700/80'
+
+        return `<span class="wiki-link ${exists ? 'wiki-link-exists' : 'wiki-link-unresolved'} inline-flex items-center cursor-pointer font-medium select-none rounded px-1.5 py-0 mx-0.5 text-xs transition-colors shadow-sm ${pillClass}" contenteditable="false" data-wiki="${escapeHtml(destination)}" ${alias && alias !== destination ? `data-alias="${escapeHtml(alias)}"` : ''} title="${exists ? `Abrir nota: &quot;${destination}&quot; (Botão direito para editar)` : `Criar nota: &quot;${destination}&quot; (Botão direito para editar)`}"><span class="underline ${exists ? 'decoration-[var(--accent)]/40 hover:decoration-[var(--accent)]' : 'decoration-zinc-500/50 hover:decoration-zinc-400'} underline-offset-2">${escapeHtml(displayName)}</span></span>`
       }
-    }
 
-    // 3. Markdown Standard Link [text](url)
-    if (part.startsWith('[') && !part.startsWith('[[') && part.includes('](') && part.endsWith(')')) {
-      const match = part.match(/^\[(.*?)\]\((.+)\)$/)
-      if (match) {
-        const linkText = match[1]
-        const href = match[2]
-        return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-[var(--accent)] hover:underline underline-offset-2 font-medium">${escapeHtml(linkText)}</a>`
+      // 2. Markdown Image ![alt](src)
+      if (part.startsWith('![') && part.includes('](') && part.endsWith(')')) {
+        const match = part.match(/^!\[(.*?)\]\((.+)\)$/)
+        if (match) {
+          const alt = match[1] || 'imagem'
+          const src = match[2]
+          return `<img src="${src}" alt="${escapeHtml(alt)}" class="rounded-xl max-w-full my-3 shadow-md border border-zinc-800" />`
+        }
       }
-    }
 
-    // 4. Bold **text**
-    if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
-      return `<strong class="font-semibold text-zinc-100">${escapeHtml(part.slice(2, -2))}</strong>`
-    }
+      // 3. Markdown Standard Link [text](url)
+      if (part.startsWith('[') && !part.startsWith('[[') && part.includes('](') && part.endsWith(')')) {
+        const match = part.match(/^\[(.*?)\]\((.+)\)$/)
+        if (match) {
+          const linkText = match[1]
+          const href = match[2]
+          return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-[var(--accent)] hover:underline underline-offset-2 font-medium">${parseMarkdown(linkText)}</a>`
+        }
+      }
 
-    // 5. Highlight ==text==
-    if (part.startsWith('==') && part.endsWith('==') && part.length >= 4) {
-      return `<mark class="bg-[var(--accent-glow)] text-[var(--accent)] px-1 py-0.5 rounded font-normal">${escapeHtml(part.slice(2, -2))}</mark>`
-    }
+      // 4. Bold **text**
+      if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
+        return `<strong class="font-semibold text-zinc-100">${parseMarkdown(part.slice(2, -2))}</strong>`
+      }
 
-    // 6. Strikethrough ~~text~~
-    if (part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) {
-      return `<del class="line-through text-zinc-500">${escapeHtml(part.slice(2, -2))}</del>`
-    }
+      // 5. Highlight ==text==
+      if (part.startsWith('==') && part.endsWith('==') && part.length >= 4) {
+        return `<mark class="bg-[var(--accent-glow)] text-[var(--accent)] px-1 py-0.5 rounded font-normal">${parseMarkdown(part.slice(2, -2))}</mark>`
+      }
 
-    // 7. Code `text`
-    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
-      return `<code class="bg-zinc-800 text-[var(--accent)] px-1 py-0.5 rounded font-mono text-xs">${escapeHtml(part.slice(1, -1))}</code>`
-    }
+      // 6. Strikethrough ~~text~~
+      if (part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) {
+        return `<del class="line-through text-zinc-500">${parseMarkdown(part.slice(2, -2))}</del>`
+      }
 
-    // 8. Italic *text*
-    if (part.startsWith('*') && part.endsWith('*') && part.length >= 2) {
-      return `<em class="italic text-zinc-200">${escapeHtml(part.slice(1, -1))}</em>`
-    }
+      // 7. Code `text`
+      if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+        return `<code class="bg-zinc-800 text-[var(--accent)] px-1 py-0.5 rounded font-mono text-xs">${escapeHtml(part.slice(1, -1))}</code>`
+      }
 
-    return escapeHtml(part)
-  }).join('')
+      // 8. Italic *text*
+      if (part.startsWith('*') && part.endsWith('*') && part.length >= 2) {
+        return `<em class="italic text-zinc-200">${parseMarkdown(part.slice(1, -1))}</em>`
+      }
+
+      return escapeHtml(part)
+    }).join('')
+  }
+
+  const rendered = parseMarkdown(text)
+
+  // 4. Restore protected HTML tags
+  return rendered.replace(/\x01HTMLTAG(\d+)\x02/g, (_match, index) => {
+    return htmlTagPlaceholders[Number(index)] || ''
+  })
 }
 
 export function stripDuplicateTitleFromContent(content: string, title?: string): string {
@@ -1658,9 +1696,9 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       }
     }
 
-    // Handle plain text or markdown pasting
+    // Handle plain text, markdown or styled HTML pasting
     const text = e.clipboardData?.getData('text/plain')
-    if (text && (/#{1,6}\s+/.test(text) || /\r?\n/.test(text))) {
+    if (text && (/#{1,6}\s+/.test(text) || /\r?\n/.test(text) || /<\/?(?:span|mark)\b|&lt;\/?(?:span|mark)\b/i.test(text))) {
       e.preventDefault()
       pushHistorySnapshot(true)
       const convertedHtml = markdownToHtml(text, allNotes, note.title)
@@ -2576,22 +2614,24 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
 
   const handleBlockTransform = (element: HTMLElement, type: 'p' | 'h1' | 'h2' | 'h3' | 'task' | 'bullet' | 'number' | 'callout' | 'code') => {
     pushHistorySnapshot(true)
+    const textSpan = element.querySelector('.task-text')
+    const innerHtml = textSpan ? textSpan.innerHTML : (element.innerHTML || '<br>')
     const rawText = element.textContent?.trim() || ''
 
     if (type === 'h1') {
       const h1 = document.createElement('h1')
       h1.className = 'text-2xl font-serif font-bold text-zinc-100 my-3 pb-1 border-b border-zinc-800/60 tracking-tight'
-      h1.innerHTML = formatInlineHtml(rawText, allNotes) || '<br>'
+      h1.innerHTML = innerHtml
       element.replaceWith(h1)
     } else if (type === 'h2') {
       const h2 = document.createElement('h2')
       h2.className = 'text-xl font-serif font-semibold text-zinc-200 mt-6 mb-2 tracking-tight'
-      h2.innerHTML = formatInlineHtml(rawText, allNotes) || '<br>'
+      h2.innerHTML = innerHtml
       element.replaceWith(h2)
     } else if (type === 'h3') {
       const h3 = document.createElement('h3')
       h3.className = 'text-lg font-serif font-medium text-zinc-200 mt-4 mb-1.5 tracking-tight'
-      h3.innerHTML = formatInlineHtml(rawText, allNotes) || '<br>'
+      h3.innerHTML = innerHtml
       element.replaceWith(h3)
     } else if (type === 'task') {
       const task = document.createElement('div')
@@ -2599,18 +2639,18 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
       task.setAttribute('data-type', 'task')
       task.innerHTML = `
         <input type="checkbox" contenteditable="false" class="task-checkbox mt-1 w-4 h-4 cursor-pointer shrink-0 select-none" />
-        <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">${formatInlineHtml(rawText, allNotes) || '<br>'}</span>
+        <span class="task-text flex-1 text-[13px] md:text-sm text-zinc-200 leading-relaxed">${innerHtml}</span>
       `
       element.replaceWith(task)
     } else if (type === 'bullet') {
       const ul = document.createElement('ul')
       ul.className = 'list-disc pl-5 my-1.5 space-y-0.5 text-zinc-300'
-      ul.innerHTML = `<li>${formatInlineHtml(rawText, allNotes) || '<br>'}</li>`
+      ul.innerHTML = `<li>${innerHtml}</li>`
       element.replaceWith(ul)
     } else if (type === 'number') {
       const ol = document.createElement('ol')
       ol.className = 'list-decimal pl-5 my-1.5 space-y-0.5 text-zinc-300'
-      ol.innerHTML = `<li>${formatInlineHtml(rawText, allNotes) || '<br>'}</li>`
+      ol.innerHTML = `<li>${innerHtml}</li>`
       element.replaceWith(ol)
     } else if (type === 'callout') {
       const shell = document.createElement('div')
@@ -2623,7 +2663,7 @@ export const LivePreviewEditor: React.FC<LivePreviewEditorProps> = ({
     } else {
       const p = document.createElement('p')
       p.className = 'my-0.5 text-zinc-300 leading-[1.5]'
-      p.innerHTML = formatInlineHtml(rawText, allNotes) || '<br>'
+      p.innerHTML = innerHtml
       element.replaceWith(p)
     }
 

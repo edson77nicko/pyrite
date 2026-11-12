@@ -10,6 +10,7 @@ import {
   parseHeaderMeta
 } from '../utils/artifactParser'
 import { splitTableRow } from '../utils/markdownTable'
+import { healCorruptedHtml } from './LivePreviewEditor'
 
 interface MarkdownRendererProps {
   content: string
@@ -73,8 +74,51 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     return parts.length > 0 ? parts : text
   }
 
-  // Basic formatting: bold, italic, strikethrough, highlights ==...==, tags, inline math $...$, code `...`
+  // Basic formatting: bold, italic, strikethrough, highlights ==...==, tags, inline math $...$, code `...`, styled spans
   const renderBasicFormatting = (text: string): React.ReactNode => {
+    // 0. Notion custom styled spans or mark elements
+    if (text.includes('<span') || text.includes('&lt;span') || text.includes('<mark') || text.includes('&lt;mark')) {
+      const healed = healCorruptedHtml(text)
+      const spanRegex = /(<span\b[^>]*>[\s\S]*?<\/span>|<mark\b[^>]*>[\s\S]*?<\/mark>)/i
+      if (spanRegex.test(healed)) {
+        const parts = healed.split(/(<span\b[^>]*>[\s\S]*?<\/span>|<mark\b[^>]*>[\s\S]*?<\/mark>)/gi)
+        return parts.map((part, idx) => {
+          if (!part) return null
+          const spanMatch = part.match(/^<span\b([^>]*)>([\s\S]*?)<\/span>$/i)
+          if (spanMatch) {
+            const rawAttrs = spanMatch[1]
+            const inner = spanMatch[2]
+            const styleMatch = rawAttrs.match(/style="([^"]*)"/i) || rawAttrs.match(/style='([^']*)'/i)
+            const styleStr = styleMatch ? styleMatch[1] : ''
+            const styleObj: React.CSSProperties = {}
+            if (styleStr) {
+              styleStr.split(';').forEach(rule => {
+                const [prop, val] = rule.split(':').map(s => s.trim())
+                if (prop && val) {
+                  const camelProp = prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase())
+                  ;(styleObj as any)[camelProp] = val
+                }
+              })
+            }
+            return (
+              <span key={`span-${idx}`} style={styleObj}>
+                {renderBasicFormatting(inner)}
+              </span>
+            )
+          }
+          const markMatch = part.match(/^<mark\b([^>]*)>([\s\S]*?)<\/mark>$/i)
+          if (markMatch) {
+            return (
+              <mark key={`mark-${idx}`} className="bg-amber-400/25 text-amber-200 px-1 py-0.5 rounded font-normal border-b border-amber-400/50">
+                {renderBasicFormatting(markMatch[2])}
+              </mark>
+            )
+          }
+          return renderBasicFormatting(part)
+        })
+      }
+    }
+
     // 1. Math formulas $formula$
     if (text.includes('$')) {
       const mathParts = text.split(/\$([^$]+)\$/g)
