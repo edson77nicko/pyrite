@@ -30,7 +30,6 @@ import type {
   TriggerMode
 } from '../types/agents'
 import { AgentIcon } from './AgentIcon'
-import { renderDynamicIcon } from './IconPickerPopover'
 
 export interface Organogram3DViewProps {
   squads: TeamDefinition[]
@@ -85,28 +84,38 @@ export function getDynamicAccentColor(overrideHex?: string): { hex: string; num:
 }
 
 // =============================================================================
-// PALETA DE CORES NATIVA DO PYRITE (TITÂNIO ESCURO & ALTO CONTRASTE)
+// PALETA DE CORES NATIVA DO PYRITE (TITÂNIO ESCURO REFINADO & ALTO CONTRASTE)
 // =============================================================================
 const PYRITE_3D = {
-  floorBg: 0x09090b,          // Obsidian / Zinc-950 puro do Pyrite
-  platformNavy: 0x121215,     // Titânio escuro da plataforma
-  platformSteel: 0x18181b,    // Chapa de aço Zinc-900
-  platformTrim: 0x27272a,     // Friso Zinc-800
-  gridColor: 0x27272a,        // Linhas de grade Zinc-800
+  floorBg: 0x0e131d,          // Dark studio slate (subtle navy tint, nunca preto 100% puro)
+  platformNavy: 0x222a3a,     // Titânio escuro azulado elegante
+  platformSteel: 0x2b3548,    // Aço estrutural slate Zinc/Titanium
+  platformTrim: 0x3d4a63,     // Friso arquitetônico metálico
+  platformDeck: 0x1d2433,     // Superfície do piso do pod
+  gridColor: 0x263147,        // Linhas de grade visíveis e elegantes
   // STATUS CONECTADO (ONLINE)
   statusOnline: 0x10b981,     // Esmeralda conectado
   // STATUS DESCONECTADO (OFFLINE / PAUSADO)
-  statusOffline: 0x52525b,    // Zinc-600 standby
-  screenOffline: 0x09090b,    // Tela desligada fosca
-  // MESA E ESPECIALISTA (ALTO CONTRASTE IDENTICO A REFERENCIA)
-  deskWood: 0xefe7db,         // Madeira birch clara (destaque brilhante sobre fundo escuro)
-  deskLegDark: 0x27272a,      // Estrutura Zinc-800
-  drawerUnit: 0xd8cfc0,       // Gaveteiro claro
-  chairMesh: 0x18181b,        // Cadeira ergonômica carvão
+  statusOffline: 0x64748b,    // Slate-500 standby
+  screenOffline: 0x181e28,    // Tela desligada fosca
+  // MESA E ESCRITÓRIO (ALTO CONTRASTE IDENTICO A REFERENCIA)
+  deskWood: 0xf5eedf,         // Madeira birch clara (destaque brilhante sobre piso)
+  deskLegDark: 0x293244,      // Estrutura metálica grafite
+  drawerUnit: 0xd9d0c1,       // Gaveteiro claro
+  chairMesh: 0x222a38,        // Cadeira ergonômica carvão
   chairChrome: 0x94a3b8,      // Metal cromado da cadeira
-  agentSuit: 0x18181b,        // Traje executivo escuro
-  agentSkin: 0xfcd34d,        // Pele natural
-  agentHair: 0x27272a         // Cabelo esculpido
+
+  // ROBLOX-STYLE AVATARS: Paletas de roupas, pele e cabelo para variedade visual rica
+  skinTones: [0xfcd34d, 0xfde047, 0xf59e0b, 0xfbb6ce, 0xd97706],
+  hairTones: [0x1e293b, 0x475569, 0xb45309, 0x0f172a, 0x334155],
+  outfitTones: [
+    { top: 0x2563eb, pants: 0x1e293b, shoes: 0xffffff, accent: 0x60a5fa }, // Royal Tech
+    { top: 0x7c3aed, pants: 0x0f172a, shoes: 0xf1f5f9, accent: 0xa78bfa }, // Violet AI
+    { top: 0x059669, pants: 0x1e293b, shoes: 0xffffff, accent: 0x34d399 }, // Emerald Pro
+    { top: 0xd97706, pants: 0x1e293b, shoes: 0xffffff, accent: 0xfbbf24 }, // Amber Studio
+    { top: 0x0284c7, pants: 0x0f172a, shoes: 0xf8fafc, accent: 0x38bdf8 }, // Cyan Agile
+    { top: 0xe11d48, pants: 0x1e293b, shoes: 0xffffff, accent: 0xfb7185 }  // Crimson Lead
+  ]
 }
 
 const getAvailableIntegrations = (accentHex: string) => [
@@ -139,7 +148,7 @@ function createRoundedRectShape(width: number, depth: number, radius: number): T
 }
 
 // =============================================================================
-// EDIFÍCIO CORPORATIVO CENTRAL (MINIATURA MODERNA DE HEADQUARTERS)
+// EDIFÍCIO CORPORATIVO CENTRAL (MINIATURA MODERNA E ILUMINADA DE HEADQUARTERS)
 // =============================================================================
 function createCorporateHQBuilding(
   accentNum: number,
@@ -152,38 +161,39 @@ function createCorporateHQBuilding(
   const accentEmissiveMat = new THREE.MeshStandardMaterial({
     color: accentNum,
     emissive: accentNum,
-    emissiveIntensity: 2.2,
-    roughness: 0.2
+    emissiveIntensity: 2.8,
+    roughness: 0.15
   })
 
+  // Janelas arquitetônicas iluminadas (Azul-ciano nítido de arranha-céus modernos)
   const windowGlassMat = new THREE.MeshStandardMaterial({
-    color: 0x18181b,
-    emissive: accentNum,
-    emissiveIntensity: 0.65,
-    roughness: 0.2,
-    metalness: 0.9
+    color: 0x38bdf8,
+    emissive: 0x38bdf8,
+    emissiveIntensity: 2.2,
+    roughness: 0.1,
+    metalness: 0.85
   })
 
-  // 1. Térreo / Lobby de Entrada (Podium)
+  // 1. Térreo / Lobby de Entrada (Podium visível em titânio slate)
   const lobbyWidth = 14
   const lobbyHeight = 6.0
   const lobbyDepth = 14
   const podiumGeo = new THREE.BoxGeometry(lobbyWidth, lobbyHeight, lobbyDepth)
   const podiumMat = new THREE.MeshStandardMaterial({
     color: platformSteel,
-    roughness: 0.35,
+    roughness: 0.32,
     metalness: 0.8
   })
   const podium = new THREE.Mesh(podiumGeo, podiumMat)
   podium.position.y = lobbyHeight / 2
   building.add(podium)
 
-  // Vidro da entrada principal (fachada frontal envidraçada)
+  // Vidro da entrada principal (fachada frontal envidraçada luminosa)
   const lobbyGlassGeo = new THREE.PlaneGeometry(7.0, 3.8)
   const lobbyGlassMat = new THREE.MeshStandardMaterial({
-    color: 0x09090b,
-    emissive: accentNum,
-    emissiveIntensity: 1.4,
+    color: 0x38bdf8,
+    emissive: 0x38bdf8,
+    emissiveIntensity: 2.5,
     roughness: 0.1,
     metalness: 0.95
   })
@@ -193,7 +203,7 @@ function createCorporateHQBuilding(
 
   // Marquise de entrada com fita LED na cor de destaque
   const canopyGeo = new THREE.BoxGeometry(9.0, 0.6, 3.5)
-  const canopyMat = new THREE.MeshStandardMaterial({ color: platformTrim, metalness: 0.85, roughness: 0.25 })
+  const canopyMat = new THREE.MeshStandardMaterial({ color: platformTrim, metalness: 0.88, roughness: 0.25 })
   const canopy = new THREE.Mesh(canopyGeo, canopyMat)
   canopy.position.set(0, 4.6, lobbyDepth / 2 + 1.7)
   building.add(canopy)
@@ -210,7 +220,7 @@ function createCorporateHQBuilding(
   const midGeo = new THREE.BoxGeometry(midWidth, midHeight, midDepth)
   const midMat = new THREE.MeshStandardMaterial({
     color: platformNavy,
-    roughness: 0.4,
+    roughness: 0.35,
     metalness: 0.85
   })
   const midTower = new THREE.Mesh(midGeo, midMat)
@@ -229,9 +239,9 @@ function createCorporateHQBuilding(
     building.add(winSide)
   }
 
-  // Frisos arquitetônicos verticais nas esquinas da torre média
-  const cornerFinGeo = new THREE.BoxGeometry(0.5, midHeight, 0.5)
-  const finMat = new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.95, roughness: 0.2 })
+  // Frisos arquitetônicos verticais nas esquinas da torre média (Alumínio cromado polido)
+  const cornerFinGeo = new THREE.BoxGeometry(0.55, midHeight, 0.55)
+  const finMat = new THREE.MeshStandardMaterial({ color: 0xdbe3ed, metalness: 0.95, roughness: 0.15 })
   ;[-midWidth / 2, midWidth / 2].forEach(fx => {
     ;[-midDepth / 2, midDepth / 2].forEach(fz => {
       const fin = new THREE.Mesh(cornerFinGeo, finMat)
@@ -242,7 +252,7 @@ function createCorporateHQBuilding(
 
   // 3. Terraço de Transição / Cornice Luminosa
   const terraceGeo = new THREE.BoxGeometry(11.5, 0.8, 11.5)
-  const terraceMat = new THREE.MeshStandardMaterial({ color: platformTrim, metalness: 0.8, roughness: 0.3 })
+  const terraceMat = new THREE.MeshStandardMaterial({ color: platformTrim, metalness: 0.85, roughness: 0.25 })
   const terrace = new THREE.Mesh(terraceGeo, terraceMat)
   terrace.position.y = lobbyHeight + midHeight + 0.4
   building.add(terrace)
@@ -290,31 +300,384 @@ function createCorporateHQBuilding(
   roof.position.y = roofElevation
   building.add(roof)
 
-  // Mastro da Antena
-  const spireMastGeo = new THREE.CylinderGeometry(0.16, 0.35, 6.5, 8)
-  const spireMastMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.95, roughness: 0.15 })
+  // Mastro da Antena Cromada
+  const spireMastGeo = new THREE.CylinderGeometry(0.18, 0.38, 7.0, 8)
+  const spireMastMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.95, roughness: 0.15 })
   const spireMast = new THREE.Mesh(spireMastGeo, spireMastMat)
-  const spireElevation = roofElevation + 0.45 + 3.25
+  const spireElevation = roofElevation + 0.45 + 3.5
   spireMast.position.set(0, spireElevation, 0)
   building.add(spireMast)
 
   // Beacon Luminoso pulsante no topo
-  const beaconGeo = new THREE.SphereGeometry(0.6, 12, 12)
+  const beaconGeo = new THREE.SphereGeometry(0.7, 14, 14)
   const beaconMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: accentNum,
-    emissiveIntensity: 3.5,
+    emissiveIntensity: 4.5,
     roughness: 0.1
   })
   const beacon = new THREE.Mesh(beaconGeo, beaconMat)
-  beacon.position.set(0, spireElevation + 3.5, 0)
+  beacon.position.set(0, spireElevation + 3.8, 0)
   building.add(beacon)
 
   return building
 }
 
 // =============================================================================
-// CONSTRUTOR DE ESTAÇÃO DE TRABALHO DETALHADA (EXATAMENTE COMO NA REFERÊNCIA)
+// PLACA 3D COM O NOME DO ESQUADRÃO EMBUTIDA NO CHÃO DA PLATAFORMA DA EQUIPE
+// =============================================================================
+function createSquadFloorPlaque(params: {
+  squad: TeamDefinition
+  accentColorHex: string
+  accentColorNum: number
+  agentCount: number
+  width?: number
+  depth?: number
+}): THREE.Group {
+  const { squad, accentColorHex, accentColorNum, agentCount, width = 48, depth = 13 } = params
+  const plaqueGroup = new THREE.Group()
+  plaqueGroup.userData = { squadId: squad.id, isPlaque: true }
+
+  // Canvas 2D de alta densidade de pixels para texto nítido sem serrilhado
+  const canvas = document.createElement('canvas')
+  canvas.width = 1024
+  canvas.height = 280
+  const ctx = canvas.getContext('2d')
+  if (ctx) {
+    // 1. Fundo com gradiente titânio elegante
+    const grad = ctx.createLinearGradient(0, 0, 1024, 280)
+    grad.addColorStop(0, '#1c222e')
+    grad.addColorStop(0.5, '#242c3b')
+    grad.addColorStop(1, '#1b202b')
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, 1024, 280)
+
+    // Borda exterior chanfrada
+    ctx.strokeStyle = '#3d4a63'
+    ctx.lineWidth = 10
+    ctx.strokeRect(5, 5, 1014, 270)
+
+    // Barra vertical de acento na esquerda
+    ctx.fillStyle = accentColorHex
+    ctx.fillRect(20, 22, 18, 236)
+
+    // Linha de divisão horizontal sutil
+    ctx.strokeStyle = `${accentColorHex}55`
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(56, 186)
+    ctx.lineTo(980, 186)
+    ctx.stroke()
+
+    // 2. Título do Departamento
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 74px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    ctx.textBaseline = 'top'
+    const cleanName = squad.name || 'Departamento'
+    ctx.fillText(cleanName.toUpperCase(), 60, 38, 900)
+
+    // 3. Subtítulo com contagem de agentes
+    ctx.fillStyle = accentColorHex
+    ctx.font = '600 40px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace'
+    const agentText = `(${agentCount} ${agentCount === 1 ? 'ESPECIALISTA' : 'ESPECIALISTAS ATIVOS'})`
+    ctx.fillText(agentText, 60, 126)
+
+    // 4. Status badge no canto inferior direito
+    ctx.fillStyle = '#10b981'
+    ctx.beginPath()
+    ctx.arc(880, 230, 10, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.fillStyle = '#94a3b8'
+    ctx.font = '600 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace'
+    ctx.fillText('ONLINE', 905, 218)
+  }
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.minFilter = THREE.LinearFilter
+  texture.magFilter = THREE.LinearFilter
+  texture.generateMipmaps = false
+
+  // Base da placa física (Moldura metálica)
+  const frameGeo = new THREE.BoxGeometry(width + 1.2, 0.4, depth + 1.2)
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: 0x3b4558,
+    metalness: 0.9,
+    roughness: 0.25
+  })
+  const frameMesh = new THREE.Mesh(frameGeo, frameMat)
+  plaqueGroup.add(frameMesh)
+
+  // Face frontal com a textura renderizada
+  const faceGeo = new THREE.PlaneGeometry(width, depth)
+  const faceMat = new THREE.MeshStandardMaterial({
+    map: texture,
+    roughness: 0.35,
+    metalness: 0.3
+  })
+  const faceMesh = new THREE.Mesh(faceGeo, faceMat)
+  faceMesh.rotation.x = -Math.PI / 2
+  faceMesh.position.y = 0.22
+  plaqueGroup.add(faceMesh)
+
+  // Fita LED na borda da placa
+  const ledGeo = new THREE.BoxGeometry(width + 1.4, 0.15, 0.3)
+  const ledMat = new THREE.MeshStandardMaterial({
+    color: accentColorNum,
+    emissive: accentColorNum,
+    emissiveIntensity: 2.2
+  })
+  const ledMesh = new THREE.Mesh(ledGeo, ledMat)
+  ledMesh.position.set(0, 0.1, depth / 2 + 0.6)
+  plaqueGroup.add(ledMesh)
+
+  return plaqueGroup
+}
+
+// =============================================================================
+// AVATAR 3D ESTILIZADO ROBLOX (MAIS CURVAS, DETALHES, R15 E ALTA VISIBILIDADE)
+// =============================================================================
+function createRobloxAgentFigure(params: {
+  agent: AgentProfileVersion
+  isConnected: boolean
+  accentColorNum: number
+  agentIndex?: number
+}): THREE.Group {
+  const { isConnected, accentColorNum, agentIndex = 0 } = params
+  const figure = new THREE.Group()
+  figure.position.set(-1.0, 0, 5.8)
+
+  const theme = PYRITE_3D.outfitTones[agentIndex % PYRITE_3D.outfitTones.length]
+  const skinColor = PYRITE_3D.skinTones[agentIndex % PYRITE_3D.skinTones.length]
+  const hairColor = PYRITE_3D.hairTones[agentIndex % PYRITE_3D.hairTones.length]
+
+  // Materiais refinados de alto contraste
+  const topMat = new THREE.MeshStandardMaterial({
+    color: isConnected ? theme.top : 0x334155,
+    roughness: 0.45,
+    metalness: 0.15
+  })
+  const pantsMat = new THREE.MeshStandardMaterial({
+    color: isConnected ? theme.pants : 0x1e293b,
+    roughness: 0.65
+  })
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: skinColor,
+    roughness: 0.38
+  })
+  const hairMat = new THREE.MeshStandardMaterial({
+    color: hairColor,
+    roughness: 0.8
+  })
+  const shoeMat = new THREE.MeshStandardMaterial({
+    color: theme.shoes,
+    roughness: 0.3
+  })
+  const shoeSoleMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.2
+  })
+  const accentMat = new THREE.MeshStandardMaterial({
+    color: theme.accent,
+    emissive: isConnected ? theme.accent : 0x000000,
+    emissiveIntensity: isConnected ? 1.5 : 0
+  })
+
+  // 1. QUADRIL & PERNAS (Postura sentada ergonômica Roblox)
+  const pelvisGeo = new THREE.BoxGeometry(4.8, 1.6, 3.4)
+  const pelvis = new THREE.Mesh(pelvisGeo, pantsMat)
+  pelvis.position.set(0, 4.6, 0.2)
+  figure.add(pelvis)
+
+  // Coxas (estendidas horizontalmente para frente sobre a cadeira)
+  const thighGeo = new THREE.CylinderGeometry(1.0, 1.0, 4.4, 12)
+  thighGeo.rotateX(Math.PI / 2)
+  ;[-1.4, 1.4].forEach(legX => {
+    const thigh = new THREE.Mesh(thighGeo, pantsMat)
+    thigh.position.set(legX, 4.6, -1.8)
+    figure.add(thigh)
+  })
+
+  // Joelhos arredondados
+  const kneeGeo = new THREE.SphereGeometry(1.05, 10, 10)
+  ;[-1.4, 1.4].forEach(kneeX => {
+    const knee = new THREE.Mesh(kneeGeo, pantsMat)
+    knee.position.set(kneeX, 4.6, -4.0)
+    figure.add(knee)
+  })
+
+  // Canelas (descendo verticalmente em direção ao chão)
+  const shinGeo = new THREE.CylinderGeometry(0.95, 0.9, 3.6, 12)
+  ;[-1.4, 1.4].forEach(shinX => {
+    const shin = new THREE.Mesh(shinGeo, pantsMat)
+    shin.position.set(shinX, 2.7, -4.0)
+    figure.add(shin)
+  })
+
+  // Tênis estilizados Roblox (Sneakers com solado de borracha branco)
+  const soleGeo = new THREE.BoxGeometry(1.9, 0.45, 3.2)
+  const shoeBodyGeo = new THREE.BoxGeometry(1.8, 0.9, 3.0)
+  ;[-1.4, 1.4].forEach(footX => {
+    const sole = new THREE.Mesh(soleGeo, shoeSoleMat)
+    sole.position.set(footX, 0.4, -4.4)
+    figure.add(sole)
+
+    const shoeBody = new THREE.Mesh(shoeBodyGeo, shoeMat)
+    shoeBody.position.set(footX, 1.0, -4.4)
+    figure.add(shoeBody)
+  })
+
+  // 2. TORSO ROBLOX (Com curvas, gola e crachá corporativo lanyard)
+  const upperTorsoGeo = new THREE.BoxGeometry(5.4, 4.2, 3.6)
+  const upperTorso = new THREE.Mesh(upperTorsoGeo, topMat)
+  upperTorso.position.set(0, 7.5, 0.2)
+  figure.add(upperTorso)
+
+  // Gola / Detalhe no peito
+  const collarGeo = new THREE.BoxGeometry(2.4, 0.4, 0.3)
+  const collar = new THREE.Mesh(collarGeo, accentMat)
+  collar.position.set(0, 9.4, -1.65)
+  figure.add(collar)
+
+  // Crachá corporativo pendurado
+  const lanyardGeo = new THREE.BoxGeometry(1.2, 1.6, 0.15)
+  const badgeMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: accentColorNum,
+    emissiveIntensity: 0.4
+  })
+  const badge = new THREE.Mesh(lanyardGeo, badgeMat)
+  badge.position.set(0, 7.2, -1.7)
+  figure.add(badge)
+
+  // 3. BRAÇOS E MÃOS (Postura de digitação no teclado da mesa)
+  // Ombros arredondados
+  const shoulderGeo = new THREE.SphereGeometry(1.0, 10, 10)
+  ;[-3.1, 3.1].forEach(sx => {
+    const shoulder = new THREE.Mesh(shoulderGeo, topMat)
+    shoulder.position.set(sx, 9.0, 0.2)
+    figure.add(shoulder)
+  })
+
+  // Braços superiores (inclinando suavemente para a frente e para baixo)
+  const upperArmGeo = new THREE.CylinderGeometry(0.85, 0.8, 3.2, 10)
+  ;[-2.8, 2.8].forEach((armX, i) => {
+    const upperArm = new THREE.Mesh(upperArmGeo, topMat)
+    upperArm.position.set(armX, 7.6, -0.9)
+    upperArm.rotation.x = 0.55
+    upperArm.rotation.z = (i === 0 ? 1 : -1) * 0.15
+    figure.add(upperArm)
+  })
+
+  // Cotovelos
+  const elbowGeo = new THREE.SphereGeometry(0.85, 8, 8)
+  ;[-2.5, 2.5].forEach(ex => {
+    const elbow = new THREE.Mesh(elbowGeo, topMat)
+    elbow.position.set(ex, 6.4, -2.1)
+    figure.add(elbow)
+  })
+
+  // Antebraços (estendidos em direção ao teclado da mesa)
+  const forearmGeo = new THREE.CylinderGeometry(0.8, 0.75, 3.4, 10)
+  forearmGeo.rotateX(Math.PI / 2)
+  ;[-2.0, 2.0].forEach((faX, i) => {
+    const forearm = new THREE.Mesh(forearmGeo, topMat)
+    forearm.position.set(faX, 6.8, -3.7)
+    forearm.rotation.y = (i === 0 ? 1 : -1) * 0.2
+    figure.add(forearm)
+  })
+
+  // Mãos arredondadas Roblox (apoiadas no teclado/mouse)
+  const handGeo = new THREE.SphereGeometry(0.75, 10, 10)
+  ;[-1.6, 1.8].forEach(hx => {
+    const hand = new THREE.Mesh(handGeo, skinMat)
+    hand.position.set(hx, 6.9, -5.3)
+    figure.add(hand)
+  })
+
+  // 4. CABEÇA ROBLOX COM CURVAS E DETALHES
+  // Cabeça (Cilindro com topo e base suavizados)
+  const headGeo = new THREE.CylinderGeometry(1.8, 1.8, 2.8, 20)
+  const head = new THREE.Mesh(headGeo, skinMat)
+  head.position.set(0, 11.5, 0.2)
+  figure.add(head)
+
+  // Topo arredondado da cabeça
+  const headCapGeo = new THREE.SphereGeometry(1.8, 16, 12)
+  const headTopCap = new THREE.Mesh(headCapGeo, skinMat)
+  headTopCap.position.set(0, 12.8, 0.2)
+  headTopCap.scale.set(1, 0.35, 1)
+  figure.add(headTopCap)
+
+  // Cabelo esculpido com volume estilizado
+  const hairCapGeo = new THREE.SphereGeometry(2.05, 16, 14)
+  const hair = new THREE.Mesh(hairCapGeo, hairMat)
+  hair.position.set(0, 12.5, 0.4)
+  hair.scale.set(1.05, 0.85, 1.05)
+  figure.add(hair)
+
+  // Franja frontal estilizada
+  const fringeGeo = new THREE.BoxGeometry(2.4, 0.8, 0.8)
+  const fringe = new THREE.Mesh(fringeGeo, hairMat)
+  fringe.position.set(0, 12.6, -1.35)
+  fringe.rotation.x = -0.2
+  figure.add(fringe)
+
+  // Fone Gamer / Studio Headset de alta fidelidade
+  const headsetArchGeo = new THREE.TorusGeometry(2.1, 0.24, 8, 24)
+  const headsetArchMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    metalness: 0.8,
+    roughness: 0.2
+  })
+  const headsetArch = new THREE.Mesh(headsetArchGeo, headsetArchMat)
+  headsetArch.rotation.z = Math.PI / 2
+  headsetArch.position.set(0, 12.5, 0.2)
+  figure.add(headsetArch)
+
+  // Conchas auriculares do fone com anel LED luminoso nas laterais
+  const earCupGeo = new THREE.CylinderGeometry(0.85, 0.85, 0.6, 16)
+  earCupGeo.rotateZ(Math.PI / 2)
+  const earCupMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4, metalness: 0.7 })
+
+  const ledRingGeo = new THREE.TorusGeometry(0.7, 0.12, 8, 16)
+  ledRingGeo.rotateY(Math.PI / 2)
+  const ledRingMat = new THREE.MeshStandardMaterial({
+    color: isConnected ? accentColorNum : 0x64748b,
+    emissive: isConnected ? accentColorNum : 0x000000,
+    emissiveIntensity: isConnected ? 2.5 : 0
+  })
+
+  ;[-2.1, 2.1].forEach((cupX, i) => {
+    const earCup = new THREE.Mesh(earCupGeo, earCupMat)
+    earCup.position.set(cupX, 11.8, 0.2)
+    figure.add(earCup)
+
+    const ledRing = new THREE.Mesh(ledRingGeo, ledRingMat)
+    ledRing.position.set(cupX + (i === 0 ? -0.32 : 0.32), 11.8, 0.2)
+    figure.add(ledRing)
+  })
+
+  // Óculos / Visor Tech futurista
+  const visorFrameGeo = new THREE.BoxGeometry(3.0, 0.8, 0.5)
+  const visorMat = new THREE.MeshStandardMaterial({
+    color: isConnected ? accentColorNum : 0x475569,
+    emissive: isConnected ? accentColorNum : 0x000000,
+    emissiveIntensity: isConnected ? 2.0 : 0,
+    roughness: 0.1,
+    metalness: 0.9,
+    transparent: true,
+    opacity: 0.85
+  })
+  const visor = new THREE.Mesh(visorFrameGeo, visorMat)
+  visor.position.set(0, 11.8, -1.6)
+  figure.add(visor)
+
+  return figure
+}
+
+// =============================================================================
+// CONSTRUTOR DE ESTAÇÃO DE TRABALHO DETALHADA (COM AGENTE ROBLOX E ALTO CONTRASTE)
 // =============================================================================
 function createWorkstationMesh(params: {
   agent: AgentProfileVersion
@@ -324,8 +687,9 @@ function createWorkstationMesh(params: {
   z: number
   facingAngle?: number
   accentColorNum: number
+  agentIndex?: number
 }): THREE.Group {
-  const { agent, squadId, isConnected, x, z, facingAngle = 0, accentColorNum } = params
+  const { agent, squadId, isConnected, x, z, facingAngle = 0, accentColorNum, agentIndex = 0 } = params
 
   const group = new THREE.Group()
   group.position.set(x, 0, z)
@@ -438,7 +802,7 @@ function createWorkstationMesh(params: {
   mug.position.set(-8.0, deskElevation + 1.2, -2.2)
   group.add(mug)
 
-  // 2. Monitores Duplos Angulados (como no print de referência)
+  // 2. Monitores Duplos Angulados
   const monWidth = 7.4
   const monHeight = 4.8
   const monDepth = 0.5
@@ -455,7 +819,7 @@ function createWorkstationMesh(params: {
   const monChassisMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.6, metalness: 0.6 })
   const screenGeo = new THREE.PlaneGeometry(monWidth - 0.5, monHeight - 0.5)
 
-  // Telas: se conectado, telas luminosas quentes na cor de destaque; se desconectado, apagadas
+  // Telas: se conectado, telas luminosas na cor de destaque; se desconectado, apagadas
   const leftScreenMat = new THREE.MeshStandardMaterial({
     color: isConnected ? accentColorNum : PYRITE_3D.screenOffline,
     emissive: isConnected ? accentColorNum : 0x000000,
@@ -487,7 +851,7 @@ function createWorkstationMesh(params: {
   rightMon.add(rightScreen)
   group.add(rightMon)
 
-  // Fita de LED na borda da mesa indicando status do agente (Verde se ativo, cinza se pausado)
+  // Fita de LED na borda da mesa indicando status do agente
   const deskLedGeo = new THREE.BoxGeometry(deskTopWidth, 0.3, 0.3)
   const deskLedMat = new THREE.MeshStandardMaterial({
     color: isConnected ? PYRITE_3D.statusOnline : PYRITE_3D.statusOffline,
@@ -545,66 +909,13 @@ function createWorkstationMesh(params: {
 
   group.add(chairGroup)
 
-  // 4. Boneco do Especialista (Sentado na Cadeira)
-  const agentFigure = new THREE.Group()
-  agentFigure.position.set(-1.0, 0, 5.8)
-
-  const thighsGeo = new THREE.BoxGeometry(4.5, 1.6, 6.0)
-  const pantsMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.8 })
-  const thighs = new THREE.Mesh(thighsGeo, pantsMat)
-  thighs.position.set(0, 5.1, -2.4)
-  agentFigure.add(thighs)
-
-  const torsoGeo = new THREE.BoxGeometry(5.4, 6.4, 3.5)
-  const suitMat = new THREE.MeshStandardMaterial({
-    color: isConnected ? PYRITE_3D.agentSuit : 0x27272a,
-    roughness: 0.5
+  // 4. PERSONAGEM ROBLOX R15 COM CURVAS, DETALHE E ALTO CONTRASTE
+  const agentFigure = createRobloxAgentFigure({
+    agent,
+    isConnected,
+    accentColorNum,
+    agentIndex
   })
-  const torso = new THREE.Mesh(torsoGeo, suitMat)
-  torso.position.set(0, 8.4, 0.3)
-  agentFigure.add(torso)
-
-  const armForeGeo = new THREE.BoxGeometry(1.4, 1.4, 5.2)
-  const leftArm = new THREE.Mesh(armForeGeo, suitMat)
-  leftArm.position.set(-2.6, 7.4, -2.0)
-  leftArm.rotation.x = 0.2
-  agentFigure.add(leftArm)
-
-  const rightArm = new THREE.Mesh(armForeGeo, suitMat)
-  rightArm.position.set(2.6, 7.4, -2.0)
-  rightArm.rotation.x = 0.2
-  agentFigure.add(rightArm)
-
-  const headGeo = new THREE.SphereGeometry(2.3, 14, 14)
-  const headMat = new THREE.MeshStandardMaterial({ color: PYRITE_3D.agentSkin, roughness: 0.5 })
-  const head = new THREE.Mesh(headGeo, headMat)
-  head.position.set(0, 13.5, 0.5)
-  agentFigure.add(head)
-
-  const hairGeo = new THREE.SphereGeometry(2.45, 14, 14)
-  const hairMat = new THREE.MeshStandardMaterial({ color: PYRITE_3D.agentHair, roughness: 0.9 })
-  const hair = new THREE.Mesh(hairGeo, hairMat)
-  hair.position.set(0, 14.1, 0.9)
-  hair.scale.set(1.02, 0.95, 0.9)
-  agentFigure.add(hair)
-
-  const headsetBandGeo = new THREE.TorusGeometry(2.2, 0.22, 8, 16)
-  const headsetMat = new THREE.MeshStandardMaterial({ color: 0x27272a, metalness: 0.8 })
-  const headset = new THREE.Mesh(headsetBandGeo, headsetMat)
-  headset.rotation.z = Math.PI / 2
-  headset.position.set(0, 13.9, 0.5)
-  agentFigure.add(headset)
-
-  const visorGeo = new THREE.BoxGeometry(3.4, 1.0, 1.3)
-  const visorMat = new THREE.MeshStandardMaterial({
-    color: isConnected ? accentColorNum : PYRITE_3D.statusOffline,
-    emissive: isConnected ? accentColorNum : 0x000000,
-    emissiveIntensity: isConnected ? 2.5 : 0
-  })
-  const visor = new THREE.Mesh(visorGeo, visorMat)
-  visor.position.set(0, 13.5, -1.4)
-  agentFigure.add(visor)
-
   group.add(agentFigure)
 
   // Hitbox invisível para clique e raycasting
@@ -688,7 +999,15 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   const controlsRef = useRef<OrbitControls | null>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
   const deskMeshesRef = useRef<Map<string, THREE.Object3D>>(new Map())
-  const pulseSpheresRef = useRef<{ mesh: THREE.Mesh; curve: THREE.CatmullRomCurve3; speed: number; progress: number }[]>([])
+  const plaqueMeshesRef = useRef<Map<string, THREE.Object3D>>(new Map())
+  const pulseStreamsRef = useRef<{
+    lead: THREE.Mesh
+    trail: THREE.Mesh[]
+    curve: THREE.CatmullRomCurve3
+    speed: number
+    progress: number
+    dockRing: THREE.Mesh
+  }[]>([])
 
   const selectedAgent = useMemo(() => {
     if (!selectedAgentId) return null
@@ -758,7 +1077,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     const ttHeight = canvas.clientHeight || 150
 
     const ttScene = new THREE.Scene()
-    ttScene.background = new THREE.Color(0x121215)
+    ttScene.background = new THREE.Color(0x131924)
 
     const ttCamera = new THREE.PerspectiveCamera(30, ttWidth / ttHeight, 1, 1000)
     ttCamera.position.set(0, 24, 46)
@@ -773,10 +1092,10 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     ttRenderer.setSize(ttWidth, ttHeight)
     ttRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
 
-    const ttAmbient = new THREE.AmbientLight(0xffffff, 1.35)
+    const ttAmbient = new THREE.AmbientLight(0xffffff, 2.0)
     ttScene.add(ttAmbient)
 
-    const ttDirLight = new THREE.DirectionalLight(0xffffff, 1.6)
+    const ttDirLight = new THREE.DirectionalLight(0xffffff, 2.2)
     ttDirLight.position.set(20, 35, 25)
     ttScene.add(ttDirLight)
 
@@ -796,14 +1115,14 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     const ringMat = new THREE.MeshStandardMaterial({
       color: dynamicAccent.num,
       emissive: dynamicAccent.num,
-      emissiveIntensity: 2.0
+      emissiveIntensity: 2.2
     })
     const ring = new THREE.Mesh(ringGeo, ringMat)
     ring.rotation.x = Math.PI / 2
     ring.position.y = 1.6
     ttGroup.add(ring)
 
-    // Estação do agente detalhada na base giratória
+    // Estação do agente detalhada na base giratória com Roblox Avatar
     const isConn = selectedAgent.state !== 'paused'
     const miniStation = createWorkstationMesh({
       agent: selectedAgent,
@@ -812,7 +1131,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       x: 0,
       z: -2,
       facingAngle: 0,
-      accentColorNum: dynamicAccent.num
+      accentColorNum: dynamicAccent.num,
+      agentIndex: 0
     })
     ttGroup.add(miniStation)
 
@@ -877,24 +1197,28 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     }
     controlsRef.current = controls
 
-    // 3. Iluminação Pyrite (Quente Ouro/Acento + Neutro Titânio)
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.4)
+    // 3. Iluminação Pyrite (Luminosa, nítida e rica em contraste arquitetônico)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 2.2)
     scene.add(ambientLight)
 
-    const dirLight = new THREE.DirectionalLight(0xfffbeb, 1.6)
+    const dirLight = new THREE.DirectionalLight(0xffffff, 2.4)
     dirLight.position.set(160, 320, 200)
     scene.add(dirLight)
 
-    const vaultPointLight = new THREE.PointLight(dynamicAccent.num, 2.4, 400)
-    vaultPointLight.position.set(0, 48, 0)
+    const fillLight = new THREE.DirectionalLight(0x93c5fd, 1.2)
+    fillLight.position.set(-160, 200, -180)
+    scene.add(fillLight)
+
+    const vaultPointLight = new THREE.PointLight(dynamicAccent.num, 3.8, 500)
+    vaultPointLight.position.set(0, 52, 0)
     scene.add(vaultPointLight)
 
-    // 4. Piso Industrial com Grid Pyrite
+    // 4. Piso Industrial com Grid Pyrite Elegante
     const floorSize = 1800
-    const gridHelper = new THREE.GridHelper(floorSize, 50, dynamicAccent.num, 0x1f1f23)
+    const gridHelper = new THREE.GridHelper(floorSize, 50, dynamicAccent.num, 0x2a354a)
     gridHelper.position.y = -0.5
     // @ts-ignore
-    gridHelper.material.opacity = 0.18
+    gridHelper.material.opacity = 0.28
     // @ts-ignore
     gridHelper.material.transparent = true
     scene.add(gridHelper)
@@ -908,7 +1232,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     const hubRadius = 26
     const baseCylGeo = new THREE.CylinderGeometry(hubRadius, hubRadius + 3, 5, 48)
     const baseCylMat = new THREE.MeshStandardMaterial({
-      color: PYRITE_3D.platformNavy,
+      color: 0x242a38,
       roughness: 0.35,
       metalness: 0.85
     })
@@ -921,7 +1245,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     const goldRingMat = new THREE.MeshStandardMaterial({
       color: dynamicAccent.num,
       emissive: dynamicAccent.num,
-      emissiveIntensity: 2.2,
+      emissiveIntensity: 2.8,
       roughness: 0.2,
       metalness: 0.8
     })
@@ -933,9 +1257,9 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     // Platô superior biselado da praça
     const topPlateGeo = new THREE.CylinderGeometry(hubRadius - 3, hubRadius - 3, 2, 48)
     const topPlateMat = new THREE.MeshStandardMaterial({
-      color: PYRITE_3D.platformSteel,
-      roughness: 0.5,
-      metalness: 0.8
+      color: 0x333c4f,
+      roughness: 0.35,
+      metalness: 0.88
     })
     const topPlate = new THREE.Mesh(topPlateGeo, topPlateMat)
     topPlate.position.y = 6.0
@@ -944,7 +1268,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     // Núcleo circular embutido da praça
     const coreDiscGeo = new THREE.CylinderGeometry(hubRadius - 5, hubRadius - 5, 0.6, 36)
     const coreDiscMat = new THREE.MeshStandardMaterial({
-      color: PYRITE_3D.platformNavy,
+      color: 0x222a3a,
       roughness: 0.25,
       metalness: 0.9
     })
@@ -956,14 +1280,14 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     const coreRingMat = new THREE.MeshStandardMaterial({
       color: dynamicAccent.num,
       emissive: dynamicAccent.num,
-      emissiveIntensity: 1.8
+      emissiveIntensity: 2.0
     })
     const coreRing = new THREE.Mesh(coreRingGeo, coreRingMat)
     coreRing.rotation.x = Math.PI / 2
     coreRing.position.y = 7.6
     hubGroup.add(coreRing)
 
-    // PREDIOZINHO CORPORATIVO NO CENTRO (MINIATURA DA CORPORAÇÃO)
+    // PREDIOZINHO CORPORATIVO NO CENTRO (MINIATURA DA CORPORAÇÃO VISÍVEL E DETALHADA)
     const hqBuilding = createCorporateHQBuilding(
       dynamicAccent.num,
       PYRITE_3D.platformSteel,
@@ -976,34 +1300,34 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     scene.add(hubGroup)
 
     // =======================================================================
-    // 6. PLATAFORMAS DOS DEPARTAMENTOS (ESTRUTURA MODULAR POD COM CANTOS ARREDONDADOS)
+    // 6. PLATAFORMAS DOS DEPARTAMENTOS (BASE ÚNICA SEM DUPLICAÇÃO + ESPAÇAMENTO REAL)
     // =======================================================================
     const totalSquads = squads.length
     deskMeshesRef.current.clear()
-    pulseSpheresRef.current = []
+    plaqueMeshesRef.current.clear()
+    pulseStreamsRef.current = []
 
-    // Coordenadas das plataformas (organização aberta triangular como no print de referência)
+    // Coordenadas das plataformas (distribuição harmoniosa no mapa 3D)
     const computeSquadCoords = (idx: number, total: number) => {
-      if (total === 1) return { x: 0, z: -170 }
+      if (total === 1) return { x: 0, z: -175 }
       if (total === 2) {
-        // Exatamente como no print de referência: esquadrões flanqueando o Hub central
-        return idx === 0 ? { x: -175, z: -60 } : { x: 175, z: -60 }
+        return idx === 0 ? { x: -180, z: -60 } : { x: 180, z: -60 }
       }
       if (total === 3) {
         if (idx === 0) return { x: -185, z: -65 }
         if (idx === 1) return { x: 185, z: -65 }
-        return { x: 0, z: 160 }
+        return { x: 0, z: 165 }
       }
       if (total === 4) {
         if (idx === 0) return { x: -190, z: -75 }
         if (idx === 1) return { x: 190, z: -75 }
-        if (idx === 2) return { x: -190, z: 95 }
-        return { x: 190, z: 95 }
+        if (idx === 2) return { x: -190, z: 100 }
+        return { x: 190, z: 100 }
       }
       const angle = (idx / total) * Math.PI * 2 - Math.PI / 2
       return {
-        x: Math.round(Math.cos(angle) * 230),
-        z: Math.round(Math.sin(angle) * 160)
+        x: Math.round(Math.cos(angle) * 235),
+        z: Math.round(Math.sin(angle) * 165)
       }
     }
 
@@ -1021,54 +1345,22 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       platformGroup.position.set(sqX, 0, sqZ)
 
       const agentCount = squadAgents.length
-      // Organização em pares de mesas opostas (como na referência)
       const cols = agentCount > 4 ? 3 : agentCount > 2 ? 2 : Math.max(1, agentCount)
       const rows = agentCount > 1 ? 2 : 1
 
-      // Dimensões otimizadas do pod (estreitas e com contorno arredondado)
-      const deskPitchX = 27
-      const deskPitchZ = 19
-      const marginX = 8
-      const marginZ = 7
+      // Dimensões da plataforma com espaçamento generoso para evitar colisões entre personagens
+      const deskPitchX = 30
+      const deskPitchZ = 34
+      const marginX = 14
+      const marginZ = 12
 
-      const platWidth = Math.max(68, cols * deskPitchX + marginX * 2)
-      const platDepth = Math.max(46, rows * deskPitchZ + marginZ * 2)
-      const platHeight = 6
+      const platWidth = Math.max(84, cols * deskPitchX + marginX * 2)
+      const platDepth = Math.max(66, rows * deskPitchZ + marginZ * 2)
+      const platHeight = 4.8
 
-      // Base arredondada do pod com chanfro (Tier 1 - Titânio escuro)
-      const baseShape = createRoundedRectShape(platWidth + 4, platDepth + 4, 8)
-      const baseGeo = new THREE.ExtrudeGeometry(baseShape, {
-        depth: 2.2,
-        bevelEnabled: true,
-        bevelSegments: 2,
-        steps: 1,
-        bevelSize: 1.2,
-        bevelThickness: 1.2
-      })
-      baseGeo.rotateX(Math.PI / 2)
-      const baseMat = new THREE.MeshStandardMaterial({
-        color: PYRITE_3D.platformNavy,
-        roughness: 0.5,
-        metalness: 0.85
-      })
-      const baseMesh = new THREE.Mesh(baseGeo, baseMat)
-      baseMesh.position.y = 1.1
-      platformGroup.add(baseMesh)
-
-      // Anel perimétrico de underglow LED luminoso na cor selecionada
-      const glowGeo = new THREE.BoxGeometry(platWidth + 2.5, 0.4, platDepth + 2.5)
-      const glowMat = new THREE.MeshStandardMaterial({
-        color: dynamicAccent.num,
-        emissive: dynamicAccent.num,
-        emissiveIntensity: 1.8
-      })
-      const glowMesh = new THREE.Mesh(glowGeo, glowMat)
-      glowMesh.position.y = 2.4
-      platformGroup.add(glowMesh)
-
-      // Corpo principal do pod com cantos arredondados (Tier 2 - Aço escovado Zinc-900)
-      const mainShape = createRoundedRectShape(platWidth, platDepth, 7)
-      const mainGeo = new THREE.ExtrudeGeometry(mainShape, {
+      // BASE ÚNICA DA PLATAFORMA (SEM DUPLICAÇÃO DE BASES: UM ÚNICO CORPO ELEGANTE)
+      const podShape = createRoundedRectShape(platWidth, platDepth, 8)
+      const podGeo = new THREE.ExtrudeGeometry(podShape, {
         depth: platHeight,
         bevelEnabled: true,
         bevelSegments: 3,
@@ -1076,37 +1368,61 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
         bevelSize: 1.4,
         bevelThickness: 1.4
       })
-      mainGeo.rotateX(Math.PI / 2)
-      const mainMat = new THREE.MeshStandardMaterial({
+      podGeo.rotateX(Math.PI / 2)
+      const podMat = new THREE.MeshStandardMaterial({
         color: PYRITE_3D.platformSteel,
-        roughness: 0.38,
-        metalness: 0.8
+        roughness: 0.32,
+        metalness: 0.82
       })
-      const mainMesh = new THREE.Mesh(mainGeo, mainMat)
-      mainMesh.position.y = platHeight / 2 + 2.2
-      platformGroup.add(mainMesh)
+      const podMesh = new THREE.Mesh(podGeo, podMat)
+      podMesh.position.y = platHeight / 2 + 0.6
+      platformGroup.add(podMesh)
 
-      // Friso metálico chanfrado na borda superior
-      const trimGeo = new THREE.BoxGeometry(platWidth + 0.6, 0.4, platDepth + 0.6)
+      // Friso metálico superior chanfrado
+      const trimGeo = new THREE.BoxGeometry(platWidth + 0.8, 0.3, platDepth + 0.8)
       const trimMat = new THREE.MeshStandardMaterial({
-        color: 0x3f3f46,
+        color: PYRITE_3D.platformTrim,
         metalness: 0.9,
-        roughness: 0.25
+        roughness: 0.2
       })
       const trimMesh = new THREE.Mesh(trimGeo, trimMat)
-      trimMesh.position.y = platHeight + 2.4
+      trimMesh.position.y = platHeight + 0.7
       platformGroup.add(trimMesh)
 
-      // Trilho rebaixado central entre as mesas (corredor de dados)
-      const runnerGeo = new THREE.BoxGeometry(platWidth - 6, 0.15, 2.5)
+      // Underglow LED na base inferior da plataforma
+      const glowGeo = new THREE.BoxGeometry(platWidth - 2, 0.35, platDepth - 2)
+      const glowMat = new THREE.MeshStandardMaterial({
+        color: dynamicAccent.num,
+        emissive: dynamicAccent.num,
+        emissiveIntensity: 2.2
+      })
+      const glowMesh = new THREE.Mesh(glowGeo, glowMat)
+      glowMesh.position.y = 0.35
+      platformGroup.add(glowMesh)
+
+      // Trilho de dados central no piso entre as fileiras de mesas
+      const runnerGeo = new THREE.BoxGeometry(platWidth - 10, 0.15, 3.0)
       const runnerMat = new THREE.MeshStandardMaterial({
         color: dynamicAccent.num,
         emissive: dynamicAccent.num,
-        emissiveIntensity: 1.4
+        emissiveIntensity: 1.8
       })
       const runnerMesh = new THREE.Mesh(runnerGeo, runnerMat)
-      runnerMesh.position.set(0, platHeight + 2.45, 0)
+      runnerMesh.position.set(0, platHeight + 0.75, -2)
       platformGroup.add(runnerMesh)
+
+      // PLACA 3D COM O NOME DO ESQUADRÃO EMBUTIDA NO CHÃO DA PLATAFORMA (SEM BALÃOZINHO BLOQUEANDO)
+      const squadPlaque = createSquadFloorPlaque({
+        squad: sq,
+        accentColorHex: dynamicAccent.hex,
+        accentColorNum: dynamicAccent.num,
+        agentCount: squadAgents.length,
+        width: Math.min(platWidth - 14, 52),
+        depth: 13
+      })
+      squadPlaque.position.set(0, platHeight + 0.75, platDepth / 2 - 9)
+      platformGroup.add(squadPlaque)
+      plaqueMeshesRef.current.set(sq.id, squadPlaque)
 
       // Terminal/Dock de conexão dos cabos de dados voltado para o Hub Central
       const isLeftSide = sqX < 0
@@ -1124,7 +1440,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       dockMesh.position.set(dockLocalX, platHeight + 1.2, 0)
       platformGroup.add(dockMesh)
 
-      // Colar do dock
+      // Colar do dock (com anel pulsante de transição de energia conectada)
       const dockRingGeo = new THREE.CylinderGeometry(2.4, 2.6, 1.8, 16)
       const dockRingMat = new THREE.MeshStandardMaterial({
         color: dynamicAccent.num,
@@ -1137,7 +1453,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       dockRing.position.set(dockLocalX + (isLeftSide ? 2.8 : -2.8), platHeight + 1.2, 0)
       platformGroup.add(dockRing)
 
-      // 7. CRIAÇÃO DE CADA ESTAÇÃO DE TRABALHO EM PARES OPOSTOS (CLUSTER OPEN-PLAN)
+      // 7. CRIAÇÃO DE CADA ESTAÇÃO DE TRABALHO COM ESPAÇAMENTO GENEROSO (ZERO COLISÃO ENTRE AGENTES)
       squadAgents.forEach(({ step, agent }, agIdx) => {
         let deskX = 0
         let deskZ = 0
@@ -1145,26 +1461,26 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
         if (agentCount === 1) {
           deskX = 0
-          deskZ = 0
+          deskZ = -10
           facingAngle = 0
         } else if (agentCount === 2) {
-          // 2 mesas se encarando
+          // 2 mesas se encarando com corredor espaçoso no meio
           deskX = 0
-          deskZ = agIdx === 0 ? -9.5 : 9.5
+          deskZ = agIdx === 0 ? -18 : 14
           facingAngle = agIdx === 0 ? 0 : Math.PI
         } else if (agentCount <= 4) {
-          // 2 colunas de mesas se encarando
+          // 2 colunas de mesas com amplo espaçamento entre fileiras
           const col = agIdx % 2
           const row = Math.floor(agIdx / 2)
           deskX = (col === 0 ? -1 : 1) * (deskPitchX / 2)
-          deskZ = row === 0 ? -9.5 : 9.5
+          deskZ = row === 0 ? -18 : 14
           facingAngle = row === 0 ? 0 : Math.PI
         } else {
-          // 3 colunas de mesas se encarando
+          // 3 colunas de mesas
           const col = agIdx % 3
           const row = Math.floor(agIdx / 3)
           deskX = (col - 1) * deskPitchX
-          deskZ = row === 0 ? -9.5 : 9.5
+          deskZ = row === 0 ? -18 : 14
           facingAngle = row === 0 ? 0 : Math.PI
         }
 
@@ -1177,10 +1493,11 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
           x: deskX,
           z: deskZ,
           facingAngle,
-          accentColorNum: dynamicAccent.num
+          accentColorNum: dynamicAccent.num,
+          agentIndex: agIdx
         })
 
-        workstation.position.y = platHeight + 2.2
+        workstation.position.y = platHeight + 0.6
 
         platformGroup.add(workstation)
         deskMeshesRef.current.set(agent.id, workstation)
@@ -1189,14 +1506,13 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       scene.add(platformGroup)
 
       // =======================================================================
-      // 8. CONDUÍTES FLUÍDOS CONTÍNUOS QUE CONECTAM O HUB DIRETAMENTE AO POD
+      // 8. CONDUÍTES FLUÍDOS SUPER ILUMINADOS COM COMETA DE ENERGIA ANIMADO
       // =======================================================================
       const angle = Math.atan2(sqZ, sqX)
       const startX = Math.cos(angle) * (hubRadius + 1)
       const startZ = Math.sin(angle) * (hubRadius + 1)
       const startY = 3.8
 
-      // Soquete metálico no Hub central
       const hubPortGeo = new THREE.CylinderGeometry(2.6, 2.8, 2.0, 16)
       const hubPortMat = new THREE.MeshStandardMaterial({
         color: PYRITE_3D.platformTrim,
@@ -1209,14 +1525,12 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       hubPort.rotation.y = -angle
       scene.add(hubPort)
 
-      // Ponto exato de chegada no dock do pod
       const dockWorldX = sqX + dockLocalX + (isLeftSide ? 2.5 : -2.5)
       const dockWorldZ = sqZ
       const dockWorldY = platHeight + 1.2
 
       const dist = Math.hypot(dockWorldX - startX, dockWorldZ - startZ)
 
-      // Curva suave tangencial (S-Spline elegante sobre o piso)
       const p0 = new THREE.Vector3(startX, startY, startZ)
       const p1 = new THREE.Vector3(
         startX + Math.cos(angle) * dist * 0.38,
@@ -1232,25 +1546,25 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
       const curve = new THREE.CatmullRomCurve3([p0, p1, p2, p3])
 
-      // 1. Tubo de blindagem externo de vidro/aço translúcido
-      const armorTubeGeo = new THREE.TubeGeometry(curve, 32, 2.2, 10, false)
+      // 1. Tubo de blindagem externo translúcido com brilho sutil
+      const armorTubeGeo = new THREE.TubeGeometry(curve, 32, 2.4, 10, false)
       const armorTubeMat = new THREE.MeshStandardMaterial({
-        color: 0x27272a,
-        roughness: 0.15,
-        metalness: 0.85,
+        color: 0x38bdf8,
+        roughness: 0.1,
+        metalness: 0.2,
         transparent: true,
-        opacity: 0.65
+        opacity: 0.35
       })
       const armorTube = new THREE.Mesh(armorTubeGeo, armorTubeMat)
       scene.add(armorTube)
 
-      // 2. Fibra interna de laser/dados luminosa na cor selecionada
-      const coreTubeGeo = new THREE.TubeGeometry(curve, 32, 0.95, 8, false)
+      // 2. Fibra interna de alta luminescência (super iluminada)
+      const coreTubeGeo = new THREE.TubeGeometry(curve, 32, 1.1, 8, false)
       const coreTubeMat = new THREE.MeshStandardMaterial({
-        color: dynamicAccent.num,
+        color: 0xffffff,
         emissive: dynamicAccent.num,
-        emissiveIntensity: 2.8,
-        roughness: 0.1
+        emissiveIntensity: 4.2,
+        roughness: 0.05
       })
       const coreTube = new THREE.Mesh(coreTubeGeo, coreTubeMat)
       scene.add(coreTube)
@@ -1258,28 +1572,47 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       // 3. Abraçadeiras metálicas de fixação no piso ao longo do conduíte
       ;[0.28, 0.55, 0.82].forEach(pct => {
         const clampPt = curve.getPointAt(pct)
-        const clampGeo = new THREE.TorusGeometry(2.3, 0.35, 8, 16)
-        const clampMat = new THREE.MeshStandardMaterial({ color: 0x52525b, metalness: 0.9, roughness: 0.2 })
+        const clampGeo = new THREE.TorusGeometry(2.5, 0.4, 8, 16)
+        const clampMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.9, roughness: 0.2 })
         const clampMesh = new THREE.Mesh(clampGeo, clampMat)
         clampMesh.position.copy(clampPt)
         scene.add(clampMesh)
       })
 
-      // 4. Esfera de pulso de dados animada que viaja pelo conduíte
-      const pulseGeo = new THREE.SphereGeometry(2.0, 12, 12)
-      const pulseMat = new THREE.MeshStandardMaterial({
+      // 4. Fluxo de energia em cometa (Lead orb + 4 partículas na cauda)
+      const leadOrbGeo = new THREE.SphereGeometry(2.3, 14, 14)
+      const leadOrbMat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
         emissive: dynamicAccent.num,
-        emissiveIntensity: 3.8
+        emissiveIntensity: 4.8
       })
-      const pulseMesh = new THREE.Mesh(pulseGeo, pulseMat)
-      scene.add(pulseMesh)
+      const leadOrb = new THREE.Mesh(leadOrbGeo, leadOrbMat)
+      scene.add(leadOrb)
 
-      pulseSpheresRef.current.push({
-        mesh: pulseMesh,
+      const trailMeshes: THREE.Mesh[] = []
+      const trailSizes = [1.8, 1.4, 1.0, 0.7]
+      const trailOpacities = [0.85, 0.65, 0.45, 0.25]
+      trailSizes.forEach((sz, tIdx) => {
+        const tGeo = new THREE.SphereGeometry(sz, 10, 10)
+        const tMat = new THREE.MeshStandardMaterial({
+          color: dynamicAccent.num,
+          emissive: dynamicAccent.num,
+          emissiveIntensity: 3.5 - tIdx * 0.6,
+          transparent: true,
+          opacity: trailOpacities[tIdx]
+        })
+        const tMesh = new THREE.Mesh(tGeo, tMat)
+        scene.add(tMesh)
+        trailMeshes.push(tMesh)
+      })
+
+      pulseStreamsRef.current.push({
+        lead: leadOrb,
+        trail: trailMeshes,
         curve,
-        speed: 0.0035 + (sIdx % 3) * 0.001,
-        progress: sIdx * 0.35
+        speed: 0.004 + (sIdx % 3) * 0.0012,
+        progress: sIdx * 0.35,
+        dockRing
       })
     })
 
@@ -1297,10 +1630,36 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       const cameraDist = camera.position.distanceTo(controls.target)
       const zoomed = cameraDist < 360
 
-      pulseSpheresRef.current.forEach(p => {
-        p.progress = (p.progress + p.speed) % 1
-        const pos = p.curve.getPointAt(p.progress)
-        p.mesh.position.copy(pos)
+      // Atualização dos cometas de energia e onda de choque no dock
+      pulseStreamsRef.current.forEach(stream => {
+        stream.progress = (stream.progress + stream.speed) % 1
+        const leadPos = stream.curve.getPointAt(stream.progress)
+        stream.lead.position.copy(leadPos)
+
+        stream.trail.forEach((tMesh, tIdx) => {
+          const trailLag = (tIdx + 1) * 0.028
+          let trailProg = stream.progress - trailLag
+          if (trailProg < 0) trailProg += 1
+          const tPos = stream.curve.getPointAt(trailProg)
+          tMesh.position.copy(tPos)
+        })
+
+        // Efeito de transição de energia conectando com a base do esquadrão
+        if (stream.progress > 0.82) {
+          const dockFactor = (stream.progress - 0.82) / 0.18
+          const surge = Math.sin(dockFactor * Math.PI)
+          // @ts-ignore
+          if (stream.dockRing.material) {
+            // @ts-ignore
+            stream.dockRing.material.emissiveIntensity = 1.8 + surge * 3.6
+          }
+        } else {
+          // @ts-ignore
+          if (stream.dockRing.material) {
+            // @ts-ignore
+            stream.dockRing.material.emissiveIntensity = 1.8
+          }
+        }
       })
 
       renderer.render(scene, camera)
@@ -1308,7 +1667,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       // 1. Tag do Hub Central (acima da antena da torre corporativa)
       const hubEl = tagRefs.current.get('hub')
       if (hubEl) {
-        tempVec.set(0, 46, 0)
+        tempVec.set(0, 48, 0)
         tempVec.project(camera)
         if (tempVec.z < 1) {
           const sx = (tempVec.x * 0.5 + 0.5) * width
@@ -1320,24 +1679,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
         }
       }
 
-      // 2. Tags dos Esquadrões e dos Agentes
-      squads.forEach((sq, sIdx) => {
-        const sqEl = tagRefs.current.get(`squad-${sq.id}`)
-        if (sqEl) {
-          const { x: sqX, z: sqZ } = computeSquadCoords(sIdx, totalSquads)
-          // Rótulo posicionado limpamente no chão em frente à plataforma (como na referência)
-          tempVec.set(sqX, 2, sqZ + 36)
-          tempVec.project(camera)
-          if (tempVec.z < 1) {
-            const sx = (tempVec.x * 0.5 + 0.5) * width
-            const sy = (-tempVec.y * 0.5 + 0.5) * height
-            sqEl.style.transform = `translate3d(${sx}px, ${sy}px, 0) translate(-50%, -50%)`
-            sqEl.style.display = 'block'
-          } else {
-            sqEl.style.display = 'none'
-          }
-        }
-
+      // 2. Tags dos Agentes (Exibidas ao aproximar o zoom ou ao selecionar)
+      squads.forEach(sq => {
         const pipeline = sq.pipeline || []
         pipeline.forEach(p => {
           const agEl = tagRefs.current.get(`agent-${p.agentId}`)
@@ -1378,7 +1721,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     }
     window.addEventListener('resize', handleResize)
 
-    // Raycasting
+    // Raycasting para Estações de Trabalho e Placas no Chão
     const raycaster = new THREE.Raycaster()
     const mouse = new THREE.Vector2()
 
@@ -1389,15 +1732,20 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
       raycaster.setFromCamera(mouse, camera)
       const allDesks = Array.from(deskMeshesRef.current.values())
-      const intersects = raycaster.intersectObjects(allDesks, true)
+      const allPlaques = Array.from(plaqueMeshesRef.current.values())
+      const intersects = raycaster.intersectObjects([...allDesks, ...allPlaques], true)
 
       if (intersects.length > 0) {
         let curr: THREE.Object3D | null = intersects[0].object
-        while (curr && !curr.userData.agentId && curr.parent) {
+        while (curr && !curr.userData.agentId && !curr.userData.squadId && curr.parent) {
           curr = curr.parent
         }
-        if (curr && curr.userData.agentId) {
+        if (curr?.userData.agentId) {
           hoveredAgentIdRef.current = curr.userData.agentId
+          canvas.style.cursor = 'pointer'
+          return
+        }
+        if (curr?.userData.squadId && curr.userData.isPlaque) {
           canvas.style.cursor = 'pointer'
           return
         }
@@ -1413,15 +1761,18 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
       raycaster.setFromCamera(mouse, camera)
       const allDesks = Array.from(deskMeshesRef.current.values())
-      const intersects = raycaster.intersectObjects(allDesks, true)
+      const allPlaques = Array.from(plaqueMeshesRef.current.values())
+      const intersects = raycaster.intersectObjects([...allDesks, ...allPlaques], true)
 
       if (intersects.length > 0) {
         let curr: THREE.Object3D | null = intersects[0].object
-        while (curr && !curr.userData.agentId && curr.parent) {
+        while (curr && !curr.userData.agentId && !curr.userData.squadId && curr.parent) {
           curr = curr.parent
         }
-        if (curr && curr.userData.agentId) {
+        if (curr?.userData.agentId) {
           setSelectedAgentId(curr.userData.agentId)
+        } else if (curr?.userData.squadId && curr.userData.isPlaque) {
+          onSelectSquad(curr.userData.squadId)
         }
       }
     }
@@ -1660,76 +2011,28 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
           </div>
         </div>
 
-        {/* Tags dos Esquadrões e dos Agentes */}
-        {squads.map(sq => {
-          const count = (sq.pipeline || []).length
-          return (
-            <React.Fragment key={sq.id}>
-              {/* Rótulo do Departamento no Piso (Estilo limpo da referência) */}
-              <div
-                ref={el => {
-                  if (el) tagRefs.current.set(`squad-${sq.id}`, el)
-                  else tagRefs.current.delete(`squad-${sq.id}`)
-                }}
-                className="absolute top-0 left-0 pointer-events-auto whitespace-nowrap min-w-max shrink-0 z-20 hidden"
-                style={{ willChange: 'transform' }}
-              >
-                <div className="flex flex-col items-center pointer-events-auto select-none">
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-[#09090b]/85 border border-zinc-800/80 shadow-lg backdrop-blur-sm">
-                    <div className="w-4 h-4 rounded-md bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0">
-                      {renderDynamicIcon(sq.icon || 'Users', 'w-2.5 h-2.5 text-[var(--accent)]')}
-                    </div>
-                    <span className="text-xs font-bold text-zinc-100 tracking-tight whitespace-nowrap">
-                      {sq.name}
-                    </span>
-                    <span className="text-[11px] text-[var(--accent)] font-mono font-medium whitespace-nowrap">
-                      ({count} {count === 1 ? 'Agente' : 'Agentes'})
-                    </span>
-                  </div>
+        {/* Tags Flutuantes dos Agentes do Esquadrão (Capsule badges em perspectiva) */}
+        {squads.map(sq => (
+          <React.Fragment key={sq.id}>
+            {(sq.pipeline || []).map(p => {
+              const ag = agents.find(a => a.id === p.agentId)
+              if (!ag) return null
+              const isSelected = selectedAgentId === ag.id
+              const isConn = p.enabled !== false && ag.state !== 'paused'
 
-                  <div className="flex items-center gap-1.5 mt-1">
-                    {onOpenSquadChat && (
-                      <button
-                        type="button"
-                        onClick={() => onOpenSquadChat(sq)}
-                        className="p-1 rounded-lg bg-[#141417]/90 hover:bg-[var(--accent)] hover:text-zinc-950 text-zinc-300 border border-zinc-800 transition-colors cursor-pointer shadow-sm"
-                        title={`Conversar com equipe de ${sq.name}`}
-                      >
-                        <MessageSquare className="w-3 h-3" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onSelectSquad(sq.id)}
-                      className="px-2 py-0.5 rounded-lg bg-[#141417]/90 hover:bg-[var(--accent)] hover:text-zinc-950 text-zinc-200 border border-zinc-800 text-[10px] font-medium flex items-center gap-0.5 transition-colors cursor-pointer shadow-sm"
-                    >
-                      <span>Gerenciar</span>
-                      <ChevronRight className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tags Flutuantes dos Agentes do Esquadrão (Capsule badges da referência) */}
-              {(sq.pipeline || []).map(p => {
-                const ag = agents.find(a => a.id === p.agentId)
-                if (!ag) return null
-                const isSelected = selectedAgentId === ag.id
-                const isConn = p.enabled !== false && ag.state !== 'paused'
-
-                return (
-                  <div
-                    key={ag.id}
-                    ref={el => {
-                      if (el) tagRefs.current.set(`agent-${ag.id}`, el)
-                      else tagRefs.current.delete(`agent-${ag.id}`)
-                    }}
-                    onClick={() => setSelectedAgentId(ag.id)}
-                    className={`absolute top-0 left-0 pointer-events-auto cursor-pointer transition-transform duration-100 whitespace-nowrap min-w-max shrink-0 hidden ${
-                      isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'
-                    }`}
-                    style={{ willChange: 'transform' }}
-                  >
+              return (
+                <div
+                  key={ag.id}
+                  ref={el => {
+                    if (el) tagRefs.current.set(`agent-${ag.id}`, el)
+                    else tagRefs.current.delete(`agent-${ag.id}`)
+                  }}
+                  onClick={() => setSelectedAgentId(ag.id)}
+                  className={`absolute top-0 left-0 pointer-events-auto cursor-pointer transition-transform duration-100 whitespace-nowrap min-w-max shrink-0 hidden ${
+                    isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'
+                  }`}
+                  style={{ willChange: 'transform' }}
+                >
                     <div
                       className={`px-2 py-0.5 rounded-full border text-[10px] font-medium flex items-center gap-1.5 shadow-xl backdrop-blur-md ${
                         isSelected
@@ -1755,8 +2058,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                 )
               })}
             </React.Fragment>
-          )
-        })}
+          ))}
       </div>
 
       {/* =========================================================================
@@ -2102,14 +2404,27 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
             </div>
 
             {selectedAgentCurrentSquad && (
-              <button
-                type="button"
-                onClick={() => onSelectSquad(selectedAgentCurrentSquad.id)}
-                className="w-full py-1.5 rounded-xl bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <span>Ver no Esquadrão ({selectedAgentCurrentSquad.name})</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+              <div className="space-y-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => onSelectSquad(selectedAgentCurrentSquad.id)}
+                  className="w-full py-1.5 rounded-xl bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span>Ver no Esquadrão ({selectedAgentCurrentSquad.name})</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+
+                {onOpenSquadChat && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenSquadChat(selectedAgentCurrentSquad)}
+                    className="w-full py-1.5 rounded-xl bg-zinc-800/30 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Chat com Equipe ({selectedAgentCurrentSquad.name})</span>
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </aside>
