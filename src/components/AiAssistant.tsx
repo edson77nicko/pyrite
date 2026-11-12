@@ -925,7 +925,7 @@ export const SquadActionsCollapsible: React.FC<{
           onClick={() => onOpenSquad(first.id)}
           className="text-[11px] text-zinc-500 hover:text-amber-300 flex items-center gap-0.5 ml-auto shrink-0 transition-colors cursor-pointer"
         >
-          <span>Abrir Squads</span>
+          <span>Abrir Departamentos</span>
           <span>→</span>
         </button>
       </div>
@@ -1989,8 +1989,8 @@ ${effectiveNote.content || '(nota vazia)'}
                     customPrompt: undefined
                   }))
               const pipeline = rawPipeline.filter(p => p.enabled !== false)
-              return `ESQUADRÃO MULTIAGENTE ATIVO (MODO ESTEIRA COLABORATIVA):
-Nome do Esquadrão: ${selectedSquad.name}
+              return `DEPARTAMENTO MULTIAGENTE ATIVO (MODO ESTEIRA COLABORATIVA):
+Nome do Departamento: ${selectedSquad.name}
 Missão / Objetivo: ${selectedSquad.objective || selectedSquad.description}
 Total de Etapas na Esteira: ${pipeline.length}
 
@@ -2002,10 +2002,10 @@ ${pipeline
   })
   .join('\n')}
 
-DIRETRIZ DE ORQUESTRAÇÃO DO ESQUADRÃO:
-- Você é a inteligência coordenadora deste esquadrão multiagente.
+DIRETRIZ DE ORQUESTRAÇÃO DO DEPARTAMENTO:
+- Você é a inteligência coordenadora deste departamento multiagente.
 - Processe o pedido do usuário executando o encadeamento das etapas acima para entregar um trabalho completo de ponta a ponta.
-- Se o objetivo do esquadrão ou de alguma etapa envolver criar componentes web ou interfaces, gere o código HTML responsivo moderno e visualmente incrível em blocos de código html.
+- Se o objetivo do departamento ou de alguma etapa envolver criar componentes web ou interfaces, gere o código HTML responsivo moderno e visualmente incrível em blocos de código html.
 - Se o usuário pedir para gerar nota ou documento no cofre, gere o bloco <<<CREATE_NOTE>>>...<<<END_CREATE_NOTE>>>.
 - Se houver tarefas e planos de ação a desdobrar, forneça os blocos de ação de tarefa formatados em json.\n`
             })()
@@ -2888,11 +2888,11 @@ Diretrizes gerais:
                   </button>
 
                   <div className="max-h-64 overflow-y-auto space-y-2 pr-0.5 custom-scrollbar">
-                    {/* 2. Seção Esquadrões */}
+                    {/* 2. Seção Departamentos */}
                     {multiAgentStore?.teams && multiAgentStore.teams.length > 0 && (
                       <div className="space-y-0.5">
                         <div className="px-2 pt-1 pb-0.5 text-[9.5px] font-mono uppercase text-zinc-500 tracking-wider">
-                          Esquadrões ({multiAgentStore.teams.length})
+                          Departamentos ({multiAgentStore.teams.length})
                         </div>
                         {multiAgentStore.teams.map(sq => {
                           const isCur = selectedSquad?.id === sq.id

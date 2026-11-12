@@ -1417,7 +1417,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       <aside className="w-11 shrink-0 h-full bg-[#09090b] border-r border-zinc-900 flex flex-col items-center py-2.5 gap-1.5 z-30">
         {[
           { id: 'agents' as PrimarySection, icon: Bot, title: 'Agentes' },
-          { id: 'squads' as PrimarySection, icon: Users, title: 'Esquadrões' },
+          { id: 'squads' as PrimarySection, icon: Users, title: 'Departamentos' },
           { id: 'workflows' as PrimarySection, icon: Workflow, title: 'Fluxos de Trabalho' },
           { id: 'activity' as PrimarySection, icon: Activity, title: 'Atividade' }
         ].map(nav => {
@@ -1600,7 +1600,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             {/* COLUNA ESQUERDA: LISTA DE AGENTES (Print 01 e Print 04) */}
             {isAgentListOpen && (
               <aside className="w-68 shrink-0 h-full bg-[#0c0c0e] border-r border-zinc-900/90 flex flex-col">
-                {/* Topo da coluna: Seletor de Abas Agentes / Esquadrões */}
+                {/* Topo da coluna: Seletor de Abas Agentes / Departamentos */}
                 <div className="h-11 px-2.5 flex items-center justify-between border-b border-zinc-900/80">
                   <div className="flex items-center p-0.5 bg-[#151518] rounded-xl border border-zinc-800/70">
                     <button
@@ -1629,7 +1629,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      Esquadrões
+                      Departamentos
                     </button>
                   </div>
 
@@ -1656,7 +1656,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                         type="button"
                         onClick={() => setActiveSection('squads')}
                         className="p-1 rounded-lg hover:bg-zinc-800/70 hover:text-zinc-100 cursor-pointer"
-                        title="Gerenciar esquadrões"
+                        title="Gerenciar departamentos"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
@@ -1678,13 +1678,13 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           setSquadSearchQuery(e.target.value)
                         }
                       }}
-                      placeholder={chatSidebarTab === 'agents' ? 'Buscar agente...' : 'Buscar esquadrão...'}
+                      placeholder={chatSidebarTab === 'agents' ? 'Buscar agente...' : 'Buscar departamento...'}
                       className="w-full bg-[#161618] border border-zinc-800/60 rounded-xl pl-8 pr-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
                     />
                   </div>
                 </div>
 
-                {/* Conteúdo: Lista de Agentes ou Lista de Esquadrões */}
+                {/* Conteúdo: Lista de Agentes ou Lista de Departamentos */}
                 {chatSidebarTab === 'agents' ? (
                   <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5">
                     {filteredAgents.map(ag => {
@@ -1816,10 +1816,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                               {renderDynamicIcon(curSquad?.icon || 'Users', 'w-3.5 h-3.5 text-[var(--accent)]')}
                             </div>
                             <span className="text-xs font-semibold text-zinc-100 truncate max-w-[150px]">
-                              {curSquad?.name || 'Esquadrão'}
+                              {curSquad?.name || 'Departamento'}
                             </span>
                             <span className="text-[10px] px-1.5 py-0.2 rounded bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-[var(--accent)] font-semibold">
-                              Esquadrão
+                              Departamento
                             </span>
                           </div>
 
@@ -2265,7 +2265,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 </div>
               )}
 
-              {/* Banner de Esquadrão Ativo no Chat */}
+              {/* Banner de Departamento Ativo no Chat */}
               {useTeamDelegation && (() => {
                 const activeSquad = teams.find(t => t.id === selectedTeamId) || teams[0]
                 const stepCount = activeSquad?.pipeline?.length || activeSquad?.nodes.length || 0
@@ -2276,7 +2276,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                         <Sparkles className="w-3.5 h-3.5" />
                       </div>
                       <div className="truncate">
-                        <span className="font-semibold text-zinc-100">Esquadrão Ativo: {activeSquad?.name}</span>
+                        <span className="font-semibold text-zinc-100">Departamento Ativo: {activeSquad?.name}</span>
                         <span className="text-zinc-400 text-[11px] ml-2">
                           ({stepCount} especialistas em esteira colaborativa)
                         </span>
@@ -2754,7 +2754,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           onChange={e => setUseTeamDelegation(e.target.checked)}
                           className="rounded bg-zinc-800 border-zinc-700 text-emerald-500"
                         />
-                        <span>Acionar Esquadrão em esteira colaborativa</span>
+                        <span>Acionar Departamento em esteira colaborativa</span>
                       </label>
                     </div>
                   </div>
@@ -3710,10 +3710,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         )}
 
         {/* ========================================================================== */}
-        {/* ESQUADRÕES: GESTÃO ELEGANTE DE ESQUADRÕES & ESTEIRAS                       */}
+        {/* DEPARTAMENTOS: GESTÃO ELEGANTE DE DEPARTAMENTOS & ESTEIRAS                 */}
         {/* ========================================================================== */}
         {activeSection === 'squads' && (
-          <ErrorBoundary fallbackTitle="Gestão de Esquadrão">
+          <ErrorBoundary fallbackTitle="Gestão de Departamentos">
             <SquadManagementView
               squads={teams}
               agents={store.agents}

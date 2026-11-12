@@ -168,7 +168,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
   onSaveAgent,
   onOpenAgentChat
 }) => {
-  // Identifica se estamos na visão de Organograma Geral ou em um Esquadrão específico
+  // Identifica se estamos na visão de Organograma Geral ou em um Departamento específico
   const isOverview = selectedSquadId === 'overview' || !selectedSquadId
   const activeSquad = useMemo(() => {
     if (isOverview) return null
@@ -190,7 +190,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
   const [squadNameInput, setSquadNameInput] = useState('')
   const iconPickerButtonRef = useRef<HTMLButtonElement | null>(null)
 
-  // Formulário de novo esquadrão
+  // Formulário de novo departamento
   const [newSquadName, setNewSquadName] = useState('')
   const [newSquadObjective, setNewSquadObjective] = useState('')
   const [newSquadLeadAgentId, setNewSquadLeadAgentId] = useState('')
@@ -210,7 +210,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
     { id: string; d: string; active: boolean; side: 'left' | 'right' }[]
   >([])
 
-  // Obter pipeline do esquadrão ativo com fallback retrocompatível
+  // Obter pipeline do departamento ativo com fallback retrocompatível
   const getSquadPipeline = useCallback((squad?: TeamDefinition | null): SquadPipelineStep[] => {
     if (!squad) return []
     if (squad.pipeline && squad.pipeline.length > 0) {
@@ -449,7 +449,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       id: `squad-${Date.now()}`,
       version: 1,
       name: newSquadName.trim(),
-      description: 'Esquadrão especializado com arquitetura centralizada.',
+      description: 'Departamento especializado com arquitetura centralizada.',
       objective: newSquadObjective.trim() || 'Processar demandas de ponta a ponta com especialistas conectados.',
       coordinatorAgentId: leadId,
       maxParallelSubtasks: 6,
@@ -643,7 +643,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
               />
             </div>
 
-            {/* Função no Esquadrão */}
+            {/* Função no Departamento */}
             <div className="space-y-1">
               <label className="text-zinc-300 font-medium text-[11px]">Função nesta Etapa</label>
               <input
@@ -722,7 +722,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
   }
 
   // ====================================================================
-  // 5. RENDERIZADOR DA VISÃO ESPECÍFICA DO ESQUADRÃO (EMPALME / CENTRAL HUB)
+  // 5. RENDERIZADOR DA VISÃO ESPECÍFICA DO DEPARTAMENTO (EMPALME / CENTRAL HUB)
   // ====================================================================
   const renderSquadDetail = () => {
     if (!activeSquad) return null
@@ -799,7 +799,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                     type="button"
                     onClick={() => setIsIconPickerOpen(v => !v)}
                     className="w-8 h-8 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700/80 flex items-center justify-center text-zinc-200 transition-colors cursor-pointer shadow-xs"
-                    title="Alterar ícone do esquadrão"
+                    title="Alterar ícone do departamento"
                   >
                     {renderDynamicIcon(activeSquad.icon || 'Users', 'w-4 h-4 text-zinc-200')}
                   </button>
@@ -821,7 +821,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                   )}
                 </div>
 
-                {/* Nome do Esquadrão */}
+                {/* Nome do Departamento */}
                 {isEditingSquadName ? (
                   <div className="flex items-center gap-1.5">
                     <input
@@ -932,17 +932,17 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                 <span>Especialista</span>
               </button>
 
-              {/* Botão Excluir Esquadrão */}
+              {/* Botão Excluir Departamento */}
               {squads.length > 1 && (
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm(`Deseja realmente excluir o esquadrão "${activeSquad.name}"?`)) {
+                    if (window.confirm(`Deseja realmente excluir o departamento "${activeSquad.name}"?`)) {
                       onDeleteSquad(activeSquad.id)
                     }
                   }}
                   className="p-2 rounded-xl border border-zinc-800 text-zinc-400 hover:text-rose-400 hover:bg-rose-950/20 transition-colors cursor-pointer"
-                  title="Excluir este esquadrão"
+                  title="Excluir este departamento"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -1011,7 +1011,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
   return (
     <div className="flex-1 flex overflow-hidden bg-[#0a0a0c]">
       {/* ==================================================================== */}
-      {/* COLUNA ESQUERDA: LISTA DE ESQUADRÕES + ORGANOGRAMA GERAL             */}
+      {/* COLUNA ESQUERDA: LISTA DE DEPARTAMENTOS + ORGANOGRAMA GERAL           */}
       {/* ==================================================================== */}
       {!isSidebarCollapsed && (
         <aside className="w-72 shrink-0 h-full bg-[#0e0e11] border-r border-zinc-800/80 flex flex-col animate-in slide-in-from-left-2 duration-150">
@@ -1022,7 +1022,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                 <Users className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-xs font-semibold text-zinc-100">Esquadrões</div>
+                <div className="text-xs font-semibold text-zinc-100">Departamentos</div>
                 <div className="text-[10px] text-zinc-500">{squads.length} departamentos</div>
               </div>
             </div>
@@ -1076,7 +1076,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
           </button>
         </div>
 
-        {/* Busca de Esquadrões na Sidebar */}
+        {/* Busca de Departamentos na Sidebar */}
         <div className="p-2.5 border-b border-zinc-800/60">
           <div className="relative flex items-center">
             <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 pointer-events-none" />
@@ -1084,13 +1084,13 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
               type="text"
               value={squadSearchQuery}
               onChange={e => setSquadSearchQuery(e.target.value)}
-              placeholder="Buscar esquadrão..."
+              placeholder="Buscar departamento..."
               className="w-full bg-[#151518] border border-zinc-800/80 rounded-xl pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
             />
           </div>
         </div>
 
-        {/* Lista de Esquadrões */}
+        {/* Lista de Departamentos */}
         <div className="flex-1 overflow-y-auto custom-chat-scrollbar p-2.5 space-y-1.5">
           <div className="text-[9.5px] font-mono uppercase tracking-wider text-zinc-500 px-1 pt-1 pb-0.5">
             Departamentos ({squads.length})
@@ -1141,7 +1141,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       )}
 
       {/* ==================================================================== */}
-      {/* PAINEL CENTRAL: ORGANOGRAMA DO COFRE OU DETALHE DO ESQUADRÃO         */}
+      {/* PAINEL CENTRAL: ORGANOGRAMA DO COFRE OU DETALHE DO DEPARTAMENTO       */}
       {/* ==================================================================== */}
       {isOverview ? (
         <Organogram3DView
@@ -1173,7 +1173,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
               title="Expandir barra lateral"
             >
               <PanelLeft className="w-4 h-4 text-[var(--accent)]" />
-              <span className="text-xs font-medium">Esquadrões</span>
+              <span className="text-xs font-medium">Departamentos</span>
             </button>
           )}
           {renderSquadDetail()}
@@ -1181,7 +1181,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
       )}
 
       {/* ==================================================================== */}
-      {/* MODAL: NOVO ESQUADRÃO (Com Seletor de Agentes Customizado do Projeto)*/}
+      {/* MODAL: NOVO DEPARTAMENTO (Com Seletor de Agentes Customizado do Proj) */}
       {/* ==================================================================== */}
       {isNewSquadModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -1189,7 +1189,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-[var(--accent)]" />
-                <h3 className="font-semibold text-sm text-zinc-100">Criar Novo Esquadrão</h3>
+                <h3 className="font-semibold text-sm text-zinc-100">Criar Novo Departamento</h3>
               </div>
               <button
                 type="button"
@@ -1202,18 +1202,18 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
 
             <div className="space-y-3.5 text-xs">
               <div className="space-y-1">
-                <label className="text-zinc-300 font-medium">Nome do Esquadrão</label>
+                <label className="text-zinc-300 font-medium">Nome do Departamento</label>
                 <input
                   type="text"
                   value={newSquadName}
                   onChange={e => setNewSquadName(e.target.value)}
-                  placeholder="Ex: Esquadrão Criação Web & Landing Pages"
+                  placeholder="Ex: Departamento Criação Web & Landing Pages"
                   className="w-full bg-[#1b1b20] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-zinc-300 font-medium">Objetivo / Missão do Esquadrão</label>
+                <label className="text-zinc-300 font-medium">Objetivo / Missão do Departamento</label>
                 <textarea
                   value={newSquadObjective}
                   onChange={e => setNewSquadObjective(e.target.value)}
@@ -1246,7 +1246,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                 onClick={handleCreateSquad}
                 className="px-4 py-1.5 rounded-xl bg-[var(--accent)] hover:brightness-110 disabled:opacity-40 text-zinc-950 font-semibold text-xs cursor-pointer shadow-sm transition-all"
               >
-                Criar Esquadrão
+                Criar Departamento
               </button>
             </div>
           </div>
@@ -1283,7 +1283,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
               />
 
               <div className="space-y-1">
-                <label className="text-zinc-300 font-medium">Função específica neste Esquadrão</label>
+                <label className="text-zinc-300 font-medium">Função específica neste Departamento</label>
                 <input
                   type="text"
                   value={newMemberRole}
@@ -1345,7 +1345,7 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                 onClick={handleAddMember}
                 className="px-4 py-1.5 rounded-xl bg-[var(--accent)] hover:brightness-110 disabled:opacity-40 text-zinc-950 font-semibold text-xs cursor-pointer shadow-sm transition-all"
               >
-                Adicionar ao Esquadrão
+                Adicionar ao Departamento
               </button>
             </div>
           </div>

@@ -435,7 +435,7 @@ export const INITIAL_TEAMS: TeamDefinition[] = [
   {
     id: 'squad-web-delivery',
     version: 1,
-    name: 'Esquadrão Criação Web & Landing Page',
+    name: 'Departamento Criação Web & Landing Page',
     description: 'Criação de páginas web completas, landing pages interativas com código HTML/Tailwind, copy persuasiva e tarefas de publicação.',
     objective: 'Desenvolver páginas e componentes web visualmente incríveis com código HTML funcional renderizado no chat, gerando notas e tarefas no quadro.',
     color: '#3b82f6',
@@ -504,7 +504,7 @@ export const INITIAL_TEAMS: TeamDefinition[] = [
   {
     id: 'squad-commercial',
     version: 1,
-    name: 'Esquadrão Comercial & Propostas',
+    name: 'Departamento Comercial & Propostas',
     description: 'Elaboração de propostas executivas, auditoria de preços e desdobramento de tarefas de implantação.',
     objective: 'Formular propostas de alto valor, checar consistência de regras e agendar tarefas de acompanhamento.',
     color: '#10b981',
@@ -1878,7 +1878,7 @@ export function buildSpecialistDeliverable(params: {
     extractedTopics.push(`Atendimento ao pedido: ${prompt.slice(0, 100)}`)
   }
   if (customPrompt) {
-    extractedTopics.unshift(`[Orientação do Esquadrão - ${roleInSquad || specialist.name}]: ${customPrompt}`)
+    extractedTopics.unshift(`[Orientação do Departamento - ${roleInSquad || specialist.name}]: ${customPrompt}`)
   }
   if (expectedOutput) {
     extractedTopics.push(`[Formato de Entrega Solicitado]: ${expectedOutput.toUpperCase()}`)
@@ -2960,7 +2960,7 @@ export async function executeAgentRun(params: {
 
     if (teamDefinition) {
       if (teamDefinition.pipeline && teamDefinition.pipeline.length > 0) {
-        // Ordem direta da esteira do Esquadrão
+        // Ordem direta da esteira do Departamento
         orderedMembers = teamDefinition.pipeline
           .slice()
           .sort((a, b) => a.order - b.order)
@@ -3066,7 +3066,7 @@ export async function executeAgentRun(params: {
           const squadRole = (member as any).roleInSquad || sp.roleDescription
           const prevDraftContext = latestReviewableDraft ? `\n\n--- Rascunho / Entrega Anterior na Esteira ---\n${clip(latestReviewableDraft, 2500)}` : ''
           const memberAiRes = await callWorkflowAi({
-            system: `Você é o agente "${sp.name}". Sua função no esquadrão: ${squadRole}. Tom: ${sp.workStyle.tone}. Responda em português do Brasil em Markdown.`,
+            system: `Você é o agente "${sp.name}". Sua função no departamento: ${squadRole}. Tom: ${sp.workStyle.tone}. Responda em português do Brasil em Markdown.`,
             user: `Instrução:\n${squadPrompt}${prevDraftContext}`,
             agent: sp,
             abortSignal
@@ -3094,7 +3094,7 @@ export async function executeAgentRun(params: {
         endedAt: Math.max(stepStartedAt + 1, stepEndedAt),
         outputPreview: memberContent || spOut.content,
         findings: (member as any).customPrompt
-          ? [`Orientação do esquadrão: ${(member as any).customPrompt}`, ...spOut.findings]
+          ? [`Orientação do departamento: ${(member as any).customPrompt}`, ...spOut.findings]
           : spOut.findings
       })
 

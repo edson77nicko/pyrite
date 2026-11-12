@@ -324,7 +324,7 @@ function createCorporateHQBuilding(
 }
 
 // =============================================================================
-// PLACA 3D COM O NOME DO ESQUADRÃO EMBUTIDA NO CHÃO DA PLATAFORMA DA EQUIPE
+// PLACA 3D COM O NOME DO DEPARTAMENTO EMBUTIDA NO CHÃO DA PLATAFORMA DA EQUIPE
 // =============================================================================
 function createSquadFloorPlaque(params: {
   squad: TeamDefinition
@@ -334,63 +334,51 @@ function createSquadFloorPlaque(params: {
   width?: number
   depth?: number
 }): THREE.Group {
-  const { squad, accentColorHex, accentColorNum, agentCount, width = 48, depth = 13 } = params
+  const { squad, accentColorHex, accentColorNum, agentCount, width = 34, depth = 8.5 } = params
   const plaqueGroup = new THREE.Group()
   plaqueGroup.userData = { squadId: squad.id, isPlaque: true }
 
-  // Canvas 2D de alta densidade de pixels para texto nítido sem serrilhado
+  // Canvas 2D de alta densidade com fundo matte grafite escuro (nunca branco ou reflexivo)
   const canvas = document.createElement('canvas')
-  canvas.width = 1024
-  canvas.height = 280
+  canvas.width = 800
+  canvas.height = 200
   const ctx = canvas.getContext('2d')
   if (ctx) {
-    // 1. Fundo com gradiente titânio elegante
-    const grad = ctx.createLinearGradient(0, 0, 1024, 280)
-    grad.addColorStop(0, '#1c222e')
-    grad.addColorStop(0.5, '#242c3b')
-    grad.addColorStop(1, '#1b202b')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, 1024, 280)
+    // 1. Fundo grafite titânio escuro sólido matte (alto padrão de design)
+    ctx.fillStyle = '#0f141d'
+    ctx.fillRect(0, 0, 800, 200)
 
-    // Borda exterior chanfrada
-    ctx.strokeStyle = '#3d4a63'
-    ctx.lineWidth = 10
-    ctx.strokeRect(5, 5, 1014, 270)
+    // Borda perimétrica fina e sofisticada
+    ctx.strokeStyle = '#222b3d'
+    ctx.lineWidth = 6
+    ctx.strokeRect(3, 3, 794, 194)
 
-    // Barra vertical de acento na esquerda
+    // Barra vertical de acento discreta e elegante
     ctx.fillStyle = accentColorHex
-    ctx.fillRect(20, 22, 18, 236)
+    ctx.fillRect(16, 20, 8, 160)
 
-    // Linha de divisão horizontal sutil
-    ctx.strokeStyle = `${accentColorHex}55`
-    ctx.lineWidth = 3
-    ctx.beginPath()
-    ctx.moveTo(56, 186)
-    ctx.lineTo(980, 186)
-    ctx.stroke()
-
-    // 2. Título do Departamento
-    ctx.fillStyle = '#ffffff'
-    ctx.font = 'bold 74px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    // 2. Título do Departamento (Fonte reduzida, limpa, moderna e compacta)
+    ctx.fillStyle = '#f8fafc'
+    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     ctx.textBaseline = 'top'
     const cleanName = squad.name || 'Departamento'
-    ctx.fillText(cleanName.toUpperCase(), 60, 38, 900)
+    ctx.fillText(cleanName.toUpperCase(), 36, 34, 720)
 
-    // 3. Subtítulo com contagem de agentes
+    // 3. Subtítulo (Discreto, minimalista e legível)
     ctx.fillStyle = accentColorHex
-    ctx.font = '600 40px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace'
-    const agentText = `(${agentCount} ${agentCount === 1 ? 'ESPECIALISTA' : 'ESPECIALISTAS ATIVOS'})`
-    ctx.fillText(agentText, 60, 126)
+    ctx.font = '600 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace'
+    const agentText = `${agentCount} ${agentCount === 1 ? 'ESPECIALISTA' : 'ESPECIALISTAS'}`
+    ctx.fillText(agentText, 36, 92)
 
-    // 4. Status badge no canto inferior direito
+    // 4. Status badge (Indicador verde elegante)
     ctx.fillStyle = '#10b981'
     ctx.beginPath()
-    ctx.arc(880, 230, 10, 0, Math.PI * 2)
+    ctx.arc(42, 150, 7, 0, Math.PI * 2)
     ctx.fill()
 
-    ctx.fillStyle = '#94a3b8'
-    ctx.font = '600 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace'
-    ctx.fillText('ONLINE', 905, 218)
+    ctx.fillStyle = '#64748b'
+    ctx.font = '600 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace'
+    ctx.fillText('ONLINE & ATIVO', 58, 142)
   }
 
   const texture = new THREE.CanvasTexture(canvas)
@@ -398,37 +386,38 @@ function createSquadFloorPlaque(params: {
   texture.magFilter = THREE.LinearFilter
   texture.generateMipmaps = false
 
-  // Base da placa física (Moldura metálica)
-  const frameGeo = new THREE.BoxGeometry(width + 1.2, 0.4, depth + 1.2)
+  // Base da placa física (Moldura em titânio escuro fosco de baixo perfil)
+  const frameGeo = new THREE.BoxGeometry(width + 0.8, 0.2, depth + 0.8)
   const frameMat = new THREE.MeshStandardMaterial({
-    color: 0x3b4558,
-    metalness: 0.9,
-    roughness: 0.25
+    color: 0x181e28,
+    metalness: 0.3,
+    roughness: 0.8
   })
   const frameMesh = new THREE.Mesh(frameGeo, frameMat)
+  frameMesh.userData = { squadId: squad.id, isPlaque: true }
   plaqueGroup.add(frameMesh)
 
-  // Face frontal com a textura renderizada
+  // Face com MeshBasicMaterial fosco para jamais estourar ou embranquecer com a luz 3D
   const faceGeo = new THREE.PlaneGeometry(width, depth)
-  const faceMat = new THREE.MeshStandardMaterial({
-    map: texture,
-    roughness: 0.35,
-    metalness: 0.3
+  const faceMat = new THREE.MeshBasicMaterial({
+    map: texture
   })
   const faceMesh = new THREE.Mesh(faceGeo, faceMat)
   faceMesh.rotation.x = -Math.PI / 2
-  faceMesh.position.y = 0.22
+  faceMesh.position.y = 0.12
+  faceMesh.userData = { squadId: squad.id, isPlaque: true }
   plaqueGroup.add(faceMesh)
 
-  // Fita LED na borda da placa
-  const ledGeo = new THREE.BoxGeometry(width + 1.4, 0.15, 0.3)
+  // Fita LED sutil na base da placa
+  const ledGeo = new THREE.BoxGeometry(width + 1.0, 0.1, 0.2)
   const ledMat = new THREE.MeshStandardMaterial({
     color: accentColorNum,
     emissive: accentColorNum,
-    emissiveIntensity: 2.2
+    emissiveIntensity: 1.6
   })
   const ledMesh = new THREE.Mesh(ledGeo, ledMat)
-  ledMesh.position.set(0, 0.1, depth / 2 + 0.6)
+  ledMesh.position.set(0, 0.06, depth / 2 + 0.4)
+  ledMesh.userData = { squadId: squad.id, isPlaque: true }
   plaqueGroup.add(ledMesh)
 
   return plaqueGroup
@@ -918,12 +907,22 @@ function createWorkstationMesh(params: {
   })
   group.add(agentFigure)
 
-  // Hitbox invisível para clique e raycasting
+  // Hitbox invisível com detecção precisa de clique e raycasting
   const hitGeo = new THREE.BoxGeometry(deskTopWidth + 4, 18, deskTopDepth + 12)
-  const hitMat = new THREE.MeshBasicMaterial({ visible: false })
+  const hitMat = new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false
+  })
   const hitMesh = new THREE.Mesh(hitGeo, hitMat)
   hitMesh.position.set(0, 9, 2)
+  hitMesh.userData = { agentId: agent.id, squadId }
   group.add(hitMesh)
+
+  // Propagar userData para todos os elementos filhos garantindo clique 100% responsivo
+  group.traverse(child => {
+    child.userData = { agentId: agent.id, squadId }
+  })
 
   return group
 }
@@ -1333,13 +1332,46 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
     squads.forEach((sq, sIdx) => {
       const { x: sqX, z: sqZ } = computeSquadCoords(sIdx, totalSquads)
-      const pipeline = sq.pipeline || []
-      const squadAgents = pipeline
-        .map(p => ({
-          step: p,
-          agent: agents.find(a => a.id === p.agentId)
-        }))
-        .filter(item => Boolean(item.agent)) as { step: SquadPipelineStep; agent: AgentProfileVersion }[]
+
+      // Coletar todos os agentes únicos pertencentes a este departamento
+      const agentMap = new Map<string, { agent: AgentProfileVersion; isConnected: boolean; role: string }>()
+
+      if (sq.coordinatorAgentId) {
+        const ag = agents.find(a => a.id === sq.coordinatorAgentId)
+        if (ag) {
+          agentMap.set(ag.id, {
+            agent: ag,
+            isConnected: ag.state !== 'paused',
+            role: 'Coordenador'
+          })
+        }
+      }
+
+      ;(sq.pipeline || []).forEach(step => {
+        const ag = agents.find(a => a.id === step.agentId)
+        if (ag) {
+          agentMap.set(ag.id, {
+            agent: ag,
+            isConnected: step.enabled !== false && ag.state !== 'paused',
+            role: step.roleInSquad || ag.roleDescription || 'Especialista'
+          })
+        }
+      })
+
+      ;(sq.nodes || []).forEach(n => {
+        if (n.agentId && !agentMap.has(n.agentId)) {
+          const ag = agents.find(a => a.id === n.agentId)
+          if (ag) {
+            agentMap.set(ag.id, {
+              agent: ag,
+              isConnected: ag.state !== 'paused',
+              role: (n as any).roleInSquad || n.roleInTeam || ag.roleDescription || 'Especialista'
+            })
+          }
+        }
+      })
+
+      const squadAgents = Array.from(agentMap.values())
 
       const platformGroup = new THREE.Group()
       platformGroup.position.set(sqX, 0, sqZ)
@@ -1400,27 +1432,16 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       glowMesh.position.y = 0.35
       platformGroup.add(glowMesh)
 
-      // Trilho de dados central no piso entre as fileiras de mesas
-      const runnerGeo = new THREE.BoxGeometry(platWidth - 10, 0.15, 3.0)
-      const runnerMat = new THREE.MeshStandardMaterial({
-        color: dynamicAccent.num,
-        emissive: dynamicAccent.num,
-        emissiveIntensity: 1.8
-      })
-      const runnerMesh = new THREE.Mesh(runnerGeo, runnerMat)
-      runnerMesh.position.set(0, platHeight + 0.75, -2)
-      platformGroup.add(runnerMesh)
-
-      // PLACA 3D COM O NOME DO ESQUADRÃO EMBUTIDA NO CHÃO DA PLATAFORMA (SEM BALÃOZINHO BLOQUEANDO)
+      // PLACA 3D COM O NOME DO DEPARTAMENTO EMBUTIDA NO CHÃO DA PLATAFORMA
       const squadPlaque = createSquadFloorPlaque({
         squad: sq,
         accentColorHex: dynamicAccent.hex,
         accentColorNum: dynamicAccent.num,
         agentCount: squadAgents.length,
-        width: Math.min(platWidth - 14, 52),
-        depth: 13
+        width: 34,
+        depth: 8.5
       })
-      squadPlaque.position.set(0, platHeight + 0.75, platDepth / 2 - 9)
+      squadPlaque.position.set(0, platHeight + 0.65, platDepth / 2 - 5.5)
       platformGroup.add(squadPlaque)
       plaqueMeshesRef.current.set(sq.id, squadPlaque)
 
@@ -1454,7 +1475,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       platformGroup.add(dockRing)
 
       // 7. CRIAÇÃO DE CADA ESTAÇÃO DE TRABALHO COM ESPAÇAMENTO GENEROSO (ZERO COLISÃO ENTRE AGENTES)
-      squadAgents.forEach(({ step, agent }, agIdx) => {
+      squadAgents.forEach(({ agent, isConnected }, agIdx) => {
         let deskX = 0
         let deskZ = 0
         let facingAngle = 0
@@ -1483,8 +1504,6 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
           deskZ = row === 0 ? -18 : 14
           facingAngle = row === 0 ? 0 : Math.PI
         }
-
-        const isConnected = step.enabled !== false && agent.state !== 'paused'
 
         const workstation = createWorkstationMesh({
           agent,
@@ -1644,7 +1663,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
           tMesh.position.copy(tPos)
         })
 
-        // Efeito de transição de energia conectando com a base do esquadrão
+        // Efeito de transição de energia conectando com a base do departamento
         if (stream.progress > 0.82) {
           const dockFactor = (stream.progress - 0.82) / 0.18
           const surge = Math.sin(dockFactor * Math.PI)
@@ -1681,12 +1700,18 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
       // 2. Tags dos Agentes (Exibidas ao aproximar o zoom ou ao selecionar)
       squads.forEach(sq => {
-        const pipeline = sq.pipeline || []
-        pipeline.forEach(p => {
-          const agEl = tagRefs.current.get(`agent-${p.agentId}`)
+        const squadAgentIds = new Set<string>()
+        if (sq.coordinatorAgentId) squadAgentIds.add(sq.coordinatorAgentId)
+        ;(sq.pipeline || []).forEach(p => squadAgentIds.add(p.agentId))
+        ;(sq.nodes || []).forEach(n => {
+          if (n.agentId) squadAgentIds.add(n.agentId)
+        })
+
+        squadAgentIds.forEach(agId => {
+          const agEl = tagRefs.current.get(`agent-${agId}`)
           if (agEl) {
-            const desk = deskMeshesRef.current.get(p.agentId)
-            const isTargeted = selectedAgentIdRef.current === p.agentId || hoveredAgentIdRef.current === p.agentId
+            const desk = deskMeshesRef.current.get(agId)
+            const isTargeted = selectedAgentIdRef.current === agId || hoveredAgentIdRef.current === agId
             const shouldShow = zoomed || isTargeted
 
             if (desk && shouldShow) {
@@ -1735,9 +1760,10 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       const allPlaques = Array.from(plaqueMeshesRef.current.values())
       const intersects = raycaster.intersectObjects([...allDesks, ...allPlaques], true)
 
-      if (intersects.length > 0) {
-        let curr: THREE.Object3D | null = intersects[0].object
-        while (curr && !curr.userData.agentId && !curr.userData.squadId && curr.parent) {
+      // 1. Prioridade absoluta para agentes
+      for (const hit of intersects) {
+        let curr: THREE.Object3D | null = hit.object
+        while (curr && !curr.userData.agentId && curr.parent) {
           curr = curr.parent
         }
         if (curr?.userData.agentId) {
@@ -1745,11 +1771,21 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
           canvas.style.cursor = 'pointer'
           return
         }
+      }
+
+      // 2. Placa do departamento
+      for (const hit of intersects) {
+        let curr: THREE.Object3D | null = hit.object
+        while (curr && !curr.userData.squadId && curr.parent) {
+          curr = curr.parent
+        }
         if (curr?.userData.squadId && curr.userData.isPlaque) {
+          hoveredAgentIdRef.current = null
           canvas.style.cursor = 'pointer'
           return
         }
       }
+
       hoveredAgentIdRef.current = null
       canvas.style.cursor = 'default'
     }
@@ -1764,15 +1800,27 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       const allPlaques = Array.from(plaqueMeshesRef.current.values())
       const intersects = raycaster.intersectObjects([...allDesks, ...allPlaques], true)
 
-      if (intersects.length > 0) {
-        let curr: THREE.Object3D | null = intersects[0].object
-        while (curr && !curr.userData.agentId && !curr.userData.squadId && curr.parent) {
+      // 1. Prioridade máxima para selecionar o agente clicado
+      for (const hit of intersects) {
+        let curr: THREE.Object3D | null = hit.object
+        while (curr && !curr.userData.agentId && curr.parent) {
           curr = curr.parent
         }
         if (curr?.userData.agentId) {
           setSelectedAgentId(curr.userData.agentId)
-        } else if (curr?.userData.squadId && curr.userData.isPlaque) {
+          return
+        }
+      }
+
+      // 2. Se não clicou em nenhum agente, verifica se clicou na placa do departamento
+      for (const hit of intersects) {
+        let curr: THREE.Object3D | null = hit.object
+        while (curr && !curr.userData.squadId && curr.parent) {
+          curr = curr.parent
+        }
+        if (curr?.userData.squadId && curr.userData.isPlaque) {
           onSelectSquad(curr.userData.squadId)
+          return
         }
       }
     }
@@ -2011,28 +2059,36 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
           </div>
         </div>
 
-        {/* Tags Flutuantes dos Agentes do Esquadrão (Capsule badges em perspectiva) */}
-        {squads.map(sq => (
-          <React.Fragment key={sq.id}>
-            {(sq.pipeline || []).map(p => {
-              const ag = agents.find(a => a.id === p.agentId)
-              if (!ag) return null
-              const isSelected = selectedAgentId === ag.id
-              const isConn = p.enabled !== false && ag.state !== 'paused'
+        {/* Tags Flutuantes dos Agentes do Departamento (Capsule badges em perspectiva) */}
+        {squads.map(sq => {
+          const squadAgentIds = new Set<string>()
+          if (sq.coordinatorAgentId) squadAgentIds.add(sq.coordinatorAgentId)
+          ;(sq.pipeline || []).forEach(p => squadAgentIds.add(p.agentId))
+          ;(sq.nodes || []).forEach(n => {
+            if (n.agentId) squadAgentIds.add(n.agentId)
+          })
 
-              return (
-                <div
-                  key={ag.id}
-                  ref={el => {
-                    if (el) tagRefs.current.set(`agent-${ag.id}`, el)
-                    else tagRefs.current.delete(`agent-${ag.id}`)
-                  }}
-                  onClick={() => setSelectedAgentId(ag.id)}
-                  className={`absolute top-0 left-0 pointer-events-auto cursor-pointer transition-transform duration-100 whitespace-nowrap min-w-max shrink-0 hidden ${
-                    isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'
-                  }`}
-                  style={{ willChange: 'transform' }}
-                >
+          return (
+            <React.Fragment key={sq.id}>
+              {Array.from(squadAgentIds).map(agentId => {
+                const ag = agents.find(a => a.id === agentId)
+                if (!ag) return null
+                const isSelected = selectedAgentId === ag.id
+                const isConn = ag.state !== 'paused'
+
+                return (
+                  <div
+                    key={ag.id}
+                    ref={el => {
+                      if (el) tagRefs.current.set(`agent-${ag.id}`, el)
+                      else tagRefs.current.delete(`agent-${ag.id}`)
+                    }}
+                    onClick={() => setSelectedAgentId(ag.id)}
+                    className={`absolute top-0 left-0 pointer-events-auto cursor-pointer transition-transform duration-100 whitespace-nowrap min-w-max shrink-0 hidden ${
+                      isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'
+                    }`}
+                    style={{ willChange: 'transform' }}
+                  >
                     <div
                       className={`px-2 py-0.5 rounded-full border text-[10px] font-medium flex items-center gap-1.5 shadow-xl backdrop-blur-md ${
                         isSelected
@@ -2058,7 +2114,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                 )
               })}
             </React.Fragment>
-          ))}
+          )
+        })}
       </div>
 
       {/* =========================================================================
@@ -2227,10 +2284,10 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
               </div>
             </div>
 
-            {/* 3. Departamento (Esquadrão) */}
+            {/* 3. Departamento */}
             <div>
               <label className="block text-[11px] font-medium text-zinc-400 mb-1.5">
-                Departamento (Esquadrão)
+                Departamento
               </label>
               <select
                 value={formSquadId}
@@ -2410,7 +2467,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
                   onClick={() => onSelectSquad(selectedAgentCurrentSquad.id)}
                   className="w-full py-1.5 rounded-xl bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  <span>Ver no Esquadrão ({selectedAgentCurrentSquad.name})</span>
+                  <span>Ver no Departamento ({selectedAgentCurrentSquad.name})</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
 
