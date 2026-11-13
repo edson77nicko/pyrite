@@ -153,38 +153,45 @@ function createRoundedRectShape(width: number, depth: number, radius: number): T
 function createCorporateHQBuilding(accentNum: number): THREE.Group {
   const building = new THREE.Group()
 
-  // 1. Materiais da Fachada Corporativa (Fiel às referências do usuário)
-  // Concreto / pedra arquitetônica em tom quente elegante (Clean off-white / light slate)
+  // 1. Materiais da Fachada Corporativa (Alta Legibilidade e Contraste)
+  // Concreto / pedra arquitetônica em tom ardósia suave elegante (Clean Slate)
   const facadeWallMat = new THREE.MeshStandardMaterial({
-    color: 0xe2e8f0, // Tom claro de concreto/pedra arquitetônica (alta legibilidade)
-    roughness: 0.65,
-    metalness: 0.08
-  })
-
-  // Janelas de vidro azul-ciano nítidas (Reflexivas com brilho suave)
-  const windowGlassMat = new THREE.MeshStandardMaterial({
-    color: 0x0284c7, // Azul vibrante de janela corporativa
-    emissive: 0x0369a1,
-    emissiveIntensity: 0.75,
-    roughness: 0.12,
-    metalness: 0.82
-  })
-
-  // Molduras de janela / acabamentos brancos puros
-  const trimWhiteMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    roughness: 0.35,
-    metalness: 0.15
-  })
-
-  // Base do pórtico e soleiras
-  const stepStoneMat = new THREE.MeshStandardMaterial({
-    color: 0xcbd5e1,
-    roughness: 0.7,
+    color: 0xdbe4ee, // Cinza ardósia suave arquitetônico (não monocromático lavado)
+    roughness: 0.55,
     metalness: 0.1
   })
 
-  // Folhagem verde das árvores e arbustos (paisagismo corporativo)
+  // Faixas horizontais de divisão de andares (Spandrel panels / frisos de pavimento)
+  const floorBandMat = new THREE.MeshStandardMaterial({
+    color: 0x334155, // Ardósia escura de alto contraste que divide nitidamente cada andar
+    roughness: 0.35,
+    metalness: 0.35
+  })
+
+  // Janelas de vidro azul-ciano nítidas (Vidro espelhado corporativo aceso)
+  const windowGlassMat = new THREE.MeshStandardMaterial({
+    color: 0x0284c7, // Azul elétrico corporativo
+    emissive: 0x0369a1,
+    emissiveIntensity: 0.95,
+    roughness: 0.1,
+    metalness: 0.85
+  })
+
+  // Molduras de janela em branco puro (Criam alto relevo e delimitam cada janela)
+  const winFrameMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.25,
+    metalness: 0.15
+  })
+
+  // Base do pórtico, degraus e acabamentos técnicos
+  const stepStoneMat = new THREE.MeshStandardMaterial({
+    color: 0x64748b,
+    roughness: 0.6,
+    metalness: 0.2
+  })
+
+  // Folhagem verde viva das árvores e arbustos
   const foliageMat = new THREE.MeshStandardMaterial({
     color: 0x16a34a,
     roughness: 0.75,
@@ -197,7 +204,7 @@ function createCorporateHQBuilding(accentNum: number): THREE.Group {
     roughness: 0.85
   })
 
-  // Gramado da praça sob o edifício
+  // Gramado verde da praça
   const lawnMat = new THREE.MeshStandardMaterial({
     color: 0x15803d,
     roughness: 0.85
@@ -211,191 +218,240 @@ function createCorporateHQBuilding(accentNum: number): THREE.Group {
     roughness: 0.15
   })
 
-  // 2. GRAMADO VERDE CIRCULAR NA BASE DO EDIFÍCIO
+  // 2. GRAMADO VERDE CIRCULAR E CALÇADA NA BASE
   const lawnGeo = new THREE.CylinderGeometry(20, 20.5, 0.4, 40)
   const lawn = new THREE.Mesh(lawnGeo, lawnMat)
   lawn.position.y = 0.2
   building.add(lawn)
 
   // Calçada / base de concreto sob o prédio
-  const basePlinthGeo = new THREE.BoxGeometry(19, 0.6, 17)
+  const basePlinthGeo = new THREE.BoxGeometry(18.5, 0.4, 15.5)
   const basePlinth = new THREE.Mesh(basePlinthGeo, stepStoneMat)
   basePlinth.position.y = 0.4
   building.add(basePlinth)
 
-  // 3. CORPO PRINCIPAL DO EDIFÍCIO (TORRE DE ESCRITÓRIOS EM CONCRETO CLARO)
-  const towerW = 16.5
-  const towerH = 34
-  const towerD = 14.5
+  // 3. CORPO PRINCIPAL DO EDIFÍCIO (TORRE COM CANTOS ARREDONDADOS)
+  const towerW = 16.0
+  const towerH = 32.0
+  const towerD = 13.0
+  const towerBaseY = 0.4
 
-  const towerShape = createRoundedRectShape(towerW, towerD, 1.8)
+  const towerShape = createRoundedRectShape(towerW, towerD, 1.4)
+  // bevelEnabled: false garante dimensões exatas sem dilatação que esconda as janelas
   const towerGeo = new THREE.ExtrudeGeometry(towerShape, {
     depth: towerH,
-    bevelEnabled: true,
-    bevelSegments: 2,
-    steps: 1,
-    bevelSize: 0.4,
-    bevelThickness: 0.4
+    bevelEnabled: false
   })
-  // -Math.PI / 2 rotaciona a extrusão para o eixo +Y vertical ascendente (sem vazar para baixo do chão)
   towerGeo.rotateX(-Math.PI / 2)
   const tower = new THREE.Mesh(towerGeo, facadeWallMat)
-  tower.position.set(0, 0.4, 0)
+  tower.position.set(0, towerBaseY, 0)
   building.add(tower)
 
-  // 4. GRADE DE JANELAS AZUIS INDIVIDUAIS (8 ANDARES COM VIDROS RETANGULARES NÍTIDOS)
-  const floors = 8
-  const startY = 6.2
-  const floorSpacing = 3.3
+  // 4. DIVISÕES DE ANDARES (FAIXAS HORIZONTAIS DE PAVIMENTO / CORNIJAS)
+  // Criam as separações rítmicas de cada um dos pavimentos, visíveis de qualquer distância
+  const bandLevels = [6.0, 9.6, 13.2, 16.8, 20.4, 24.0, 27.6, 31.2]
+  const bandShape = createRoundedRectShape(towerW + 0.35, towerD + 0.35, 1.5)
+  const bandGeo = new THREE.ExtrudeGeometry(bandShape, {
+    depth: 0.35,
+    bevelEnabled: false
+  })
+  bandGeo.rotateX(-Math.PI / 2)
+
+  bandLevels.forEach(by => {
+    const band = new THREE.Mesh(bandGeo, floorBandMat)
+    band.position.set(0, by, 0)
+    building.add(band)
+  })
+
+  // 5. GRADE DE JANELAS AZUIS INDIVIDUAIS COM MOLDURAS (7 ANDARES DE ESCRITÓRIOS)
+  const floorCentersY = [7.8, 11.4, 15.0, 18.6, 22.2, 25.8, 29.4]
   const winW = 2.2
-  const winH = 1.9
-  const winGeo = new THREE.BoxGeometry(winW, winH, 0.35)
-  const winFrameGeo = new THREE.BoxGeometry(winW + 0.35, winH + 0.35, 0.2)
+  const winH = 2.0
+  const winFrameGeo = new THREE.BoxGeometry(winW + 0.35, winH + 0.35, 0.4)
+  const winGeo = new THREE.BoxGeometry(winW, winH, 0.45)
 
-  for (let f = 0; f < floors; f++) {
-    const wy = startY + f * floorSpacing
-
-    // Fachada Frontal (Z = towerD / 2)
-    // 4 colunas de janelas: 2 na esquerda (-5.5, -2.4) e 2 na direita (2.4, 5.5)
-    ;[-5.5, -2.4, 2.4, 5.5].forEach(wx => {
-      const frame = new THREE.Mesh(winFrameGeo, trimWhiteMat)
-      frame.position.set(wx, wy, towerD / 2 + 0.05)
+  floorCentersY.forEach(wy => {
+    // Fachada Frontal (Z = +towerD / 2 = +6.5)
+    // 4 colunas de janelas com molduras e vidros azuis saltando para fora da parede
+    ;[-5.2, -1.8, 1.8, 5.2].forEach(wx => {
+      const frame = new THREE.Mesh(winFrameGeo, winFrameMat)
+      frame.position.set(wx, wy, towerD / 2 + 0.15)
       building.add(frame)
 
       const win = new THREE.Mesh(winGeo, windowGlassMat)
-      win.position.set(wx, wy, towerD / 2 + 0.12)
+      win.position.set(wx, wy, towerD / 2 + 0.22)
       building.add(win)
     })
 
-    // Fachada Traseira (Z = -towerD / 2)
-    ;[-5.5, -2.4, 2.4, 5.5].forEach(wx => {
-      const frame = new THREE.Mesh(winFrameGeo, trimWhiteMat)
-      frame.position.set(wx, wy, -towerD / 2 - 0.05)
+    // Fachada Traseira (Z = -towerD / 2 = -6.5)
+    ;[-5.2, -1.8, 1.8, 5.2].forEach(wx => {
+      const frame = new THREE.Mesh(winFrameGeo, winFrameMat)
+      frame.position.set(wx, wy, -towerD / 2 - 0.15)
       building.add(frame)
 
       const win = new THREE.Mesh(winGeo, windowGlassMat)
-      win.position.set(wx, wy, -towerD / 2 - 0.12)
+      win.position.set(wx, wy, -towerD / 2 - 0.22)
       building.add(win)
     })
 
-    // Fachada Lateral Esquerda e Direita (X = -towerW / 2 e +towerW / 2)
-    const sideWinGeo = new THREE.BoxGeometry(0.35, winH, winW)
-    const sideFrameGeo = new THREE.BoxGeometry(0.2, winH + 0.35, winW + 0.35)
-    ;[-3.2, 3.2].forEach(wz => {
+    // Fachadas Laterais Esquerda e Direita (X = -towerW / 2 e +towerW / 2 = -8.0 e +8.0)
+    const sideFrameGeo = new THREE.BoxGeometry(0.4, winH + 0.35, winW + 0.35)
+    const sideWinGeo = new THREE.BoxGeometry(0.45, winH, winW)
+    ;[-3.2, 0, 3.2].forEach(wz => {
       // Lateral Esquerda
-      const leftFrame = new THREE.Mesh(sideFrameGeo, trimWhiteMat)
-      leftFrame.position.set(-towerW / 2 - 0.05, wy, wz)
+      const leftFrame = new THREE.Mesh(sideFrameGeo, winFrameMat)
+      leftFrame.position.set(-towerW / 2 - 0.15, wy, wz)
       building.add(leftFrame)
 
       const leftWin = new THREE.Mesh(sideWinGeo, windowGlassMat)
-      leftWin.position.set(-towerW / 2 - 0.12, wy, wz)
+      leftWin.position.set(-towerW / 2 - 0.22, wy, wz)
       building.add(leftWin)
 
       // Lateral Direita
-      const rightFrame = new THREE.Mesh(sideFrameGeo, trimWhiteMat)
-      rightFrame.position.set(towerW / 2 + 0.05, wy, wz)
+      const rightFrame = new THREE.Mesh(sideFrameGeo, winFrameMat)
+      rightFrame.position.set(towerW / 2 + 0.15, wy, wz)
       building.add(rightFrame)
 
       const rightWin = new THREE.Mesh(sideWinGeo, windowGlassMat)
-      rightWin.position.set(towerW / 2 + 0.12, wy, wz)
+      rightWin.position.set(towerW / 2 + 0.22, wy, wz)
       building.add(rightWin)
     })
-  }
+  })
 
-  // 5. PÓRTICO DE ENTRADA PRINCIPAL (IDÊNTICO À REFERÊNCIA DO USUÁRIO)
+  // 6. LOBBY DO TÉRREO & PÓRTICO DE ENTRADA PRINCIPAL
   const porticoGroup = new THREE.Group()
-  const porticoZ = towerD / 2 + 2.2
+  const porticoZ = towerD / 2 + 1.8
 
   // Degraus da entrada
-  const stepsGeo = new THREE.BoxGeometry(8.2, 0.6, 4.4)
-  const steps = new THREE.Mesh(stepsGeo, stepStoneMat)
-  steps.position.set(0, 0.5, porticoZ)
-  porticoGroup.add(steps)
+  const step1Geo = new THREE.BoxGeometry(8.4, 0.35, 4.2)
+  const step1 = new THREE.Mesh(step1Geo, stepStoneMat)
+  step1.position.set(0, 0.35, porticoZ)
+  porticoGroup.add(step1)
 
-  // Portas de vidro de entrada (vidro duplo com moldura)
-  const doorGeo = new THREE.PlaneGeometry(4.2, 4.2)
+  const step2Geo = new THREE.BoxGeometry(7.6, 0.35, 3.4)
+  const step2 = new THREE.Mesh(step2Geo, stepStoneMat)
+  step2.position.set(0, 0.7, porticoZ)
+  porticoGroup.add(step2)
+
+  // Vidro do Lobby Térreo (Painéis envidraçados modernos na fachada frontal)
+  const lobbyGlassGeo = new THREE.BoxGeometry(10.0, 4.4, 0.3)
+  const lobbyGlass = new THREE.Mesh(lobbyGlassGeo, windowGlassMat)
+  lobbyGlass.position.set(0, 3.2, towerD / 2 + 0.12)
+  building.add(lobbyGlass)
+
+  // Portas duplas de vidro de entrada com moldura escura
+  const doorGeo = new THREE.BoxGeometry(4.6, 3.8, 0.4)
   const doorMat = new THREE.MeshStandardMaterial({
-    color: 0x0284c7,
+    color: 0x0369a1,
     emissive: 0x0284c7,
-    emissiveIntensity: 0.6,
+    emissiveIntensity: 0.8,
     roughness: 0.1,
     metalness: 0.9
   })
   const doors = new THREE.Mesh(doorGeo, doorMat)
-  doors.position.set(0, 2.7, towerD / 2 + 0.08)
+  doors.position.set(0, 2.7, towerD / 2 + 0.25)
   porticoGroup.add(doors)
 
-  // Friso central da porta dupla
-  const doorFrameGeo = new THREE.BoxGeometry(0.2, 4.2, 0.1)
-  const doorFrame = new THREE.Mesh(doorFrameGeo, trimWhiteMat)
-  doorFrame.position.set(0, 2.7, towerD / 2 + 0.15)
+  // Friso central da porta dupla e puxadores
+  const doorFrameGeo = new THREE.BoxGeometry(0.25, 3.8, 0.45)
+  const doorFrame = new THREE.Mesh(doorFrameGeo, winFrameMat)
+  doorFrame.position.set(0, 2.7, towerD / 2 + 0.28)
   porticoGroup.add(doorFrame)
 
   // Duas colunas cilíndricas brancas sustentando a marquise
-  const colGeo = new THREE.CylinderGeometry(0.32, 0.32, 5.0, 16)
+  const colGeo = new THREE.CylinderGeometry(0.35, 0.35, 4.6, 16)
   ;[-3.4, 3.4].forEach(cx => {
-    const col = new THREE.Mesh(colGeo, trimWhiteMat)
-    col.position.set(cx, 3.1, porticoZ + 1.4)
+    const col = new THREE.Mesh(colGeo, winFrameMat)
+    col.position.set(cx, 3.0, porticoZ + 1.2)
     porticoGroup.add(col)
   })
 
-  // Marquise / Teto do pórtico (Teto branco clássico de entrada corporativa)
-  const canopyGeo = new THREE.BoxGeometry(8.0, 0.7, 4.6)
-  const canopy = new THREE.Mesh(canopyGeo, trimWhiteMat)
-  canopy.position.set(0, 5.8, porticoZ)
+  // Marquise / Teto do pórtico com friso LED
+  const canopyGeo = new THREE.BoxGeometry(8.2, 0.65, 4.4)
+  const canopy = new THREE.Mesh(canopyGeo, winFrameMat)
+  canopy.position.set(0, 5.5, porticoZ)
   porticoGroup.add(canopy)
+
+  const canopyLedGeo = new THREE.BoxGeometry(8.0, 0.15, 0.2)
+  const canopyLed = new THREE.Mesh(canopyLedGeo, accentEmissiveMat)
+  canopyLed.position.set(0, 5.2, porticoZ + 2.25)
+  porticoGroup.add(canopyLed)
 
   building.add(porticoGroup)
 
-  // 6. COBERTURA: ÁTICO / CASA DE MÁQUINAS DO ELEVADOR (PENTHOUSE ROOFTOP)
-  const penthouseW = 8.0
-  const penthouseH = 3.6
-  const penthouseD = 7.0
-  const penthouseShape = createRoundedRectShape(penthouseW, penthouseD, 1.0)
-  const penthouseGeo = new THREE.ExtrudeGeometry(penthouseShape, {
-    depth: penthouseH,
-    bevelEnabled: true,
-    bevelSegments: 2,
-    steps: 1,
-    bevelSize: 0.3,
-    bevelThickness: 0.3
+  // 7. COBERTURA: PLATIBANDA, ÁTICO / PENTHOUSE E ANTENA
+  const roofTopY = towerBaseY + towerH // 32.4
+
+  // Parapeito perimetral do telhado (Platibanda contornando a laje)
+  const parapetShape = createRoundedRectShape(towerW + 0.2, towerD + 0.2, 1.45)
+  const parapetGeo = new THREE.ExtrudeGeometry(parapetShape, {
+    depth: 0.8,
+    bevelEnabled: false
   })
-  // -Math.PI / 2 rotaciona para o eixo +Y vertical ascendente
-  penthouseGeo.rotateX(-Math.PI / 2)
-  const penthouse = new THREE.Mesh(penthouseGeo, facadeWallMat)
-  penthouse.position.set(0, towerH + 0.4, -0.4)
-  building.add(penthouse)
-
-  // Friso superior da penthouse
-  const penthouseCapGeo = new THREE.BoxGeometry(penthouseW + 0.4, 0.4, penthouseD + 0.4)
-  const penthouseCap = new THREE.Mesh(penthouseCapGeo, stepStoneMat)
-  penthouseCap.position.set(0, towerH + 0.4 + penthouseH + 0.2, -0.4)
-  building.add(penthouseCap)
-
-  // Parapeito perimetral do telhado
-  const parapetGeo = new THREE.BoxGeometry(towerW + 0.2, 0.8, towerD + 0.2)
-  const parapet = new THREE.Mesh(parapetGeo, stepStoneMat)
-  parapet.position.set(0, towerH + 0.4 + 0.4, 0)
+  parapetGeo.rotateX(-Math.PI / 2)
+  const parapet = new THREE.Mesh(parapetGeo, floorBandMat)
+  parapet.position.set(0, roofTopY, 0)
   building.add(parapet)
 
-  // Emblema Corporativo luminoso no topo da torre (Face Frontal da Penthouse)
-  const logoGeo = new THREE.BoxGeometry(2.4, 1.8, 0.2)
+  // Piso da laje de cobertura (Rooftop ardósia)
+  const roofSlabGeo = new THREE.BoxGeometry(towerW - 0.4, 0.2, towerD - 0.4)
+  const roofSlab = new THREE.Mesh(roofSlabGeo, floorBandMat)
+  roofSlab.position.set(0, roofTopY + 0.1, 0)
+  building.add(roofSlab)
+
+  // Penthouse (Casa de máquinas dos elevadores / Ático central)
+  const penthouseW = 8.0
+  const penthouseH = 3.6
+  const penthouseD = 6.4
+  const penthouseShape = createRoundedRectShape(penthouseW, penthouseD, 0.8)
+  const penthouseGeo = new THREE.ExtrudeGeometry(penthouseShape, {
+    depth: penthouseH,
+    bevelEnabled: false
+  })
+  penthouseGeo.rotateX(-Math.PI / 2)
+  const penthouse = new THREE.Mesh(penthouseGeo, facadeWallMat)
+  penthouse.position.set(0, roofTopY + 0.1, -0.3)
+  building.add(penthouse)
+
+  // Tampa superior chanfrada da Penthouse
+  const capShape = createRoundedRectShape(penthouseW + 0.4, penthouseD + 0.4, 0.9)
+  const capGeo = new THREE.ExtrudeGeometry(capShape, {
+    depth: 0.4,
+    bevelEnabled: false
+  })
+  capGeo.rotateX(-Math.PI / 2)
+  const cap = new THREE.Mesh(capGeo, floorBandMat)
+  cap.position.set(0, roofTopY + 0.1 + penthouseH, -0.3)
+  building.add(cap)
+
+  // Emblema Corporativo luminoso no topo da torre (Face frontal da Penthouse)
+  const logoGeo = new THREE.BoxGeometry(2.6, 1.8, 0.3)
   const logoMesh = new THREE.Mesh(logoGeo, accentEmissiveMat)
-  logoMesh.position.set(0, towerH + 0.4 + penthouseH / 2, penthouseD / 2 - 0.4 + 0.15)
+  logoMesh.position.set(0, roofTopY + 0.1 + penthouseH / 2, -0.3 + penthouseD / 2 + 0.15)
   building.add(logoMesh)
 
-  // 7. PAISAGISMO CORPORATIVO (ÁRVORES E ARBUSTOS DA PRAÇA - IDÊNTICO ÀS IMAGENS)
-  // Duas árvores icônicas ladeando o pórtico de entrada
+  // Mastro da Antena no topo da cobertura
+  const mastGeo = new THREE.CylinderGeometry(0.12, 0.18, 4.5, 8)
+  const mast = new THREE.Mesh(mastGeo, floorBandMat)
+  mast.position.set(0, roofTopY + 0.1 + penthouseH + 0.4 + 2.25, -0.3)
+  building.add(mast)
+
+  // Sinalizador luminoso no topo da antena
+  const beaconGeo = new THREE.SphereGeometry(0.35, 10, 10)
+  const beacon = new THREE.Mesh(beaconGeo, accentEmissiveMat)
+  beacon.position.set(0, roofTopY + 0.1 + penthouseH + 0.4 + 4.5, -0.3)
+  building.add(beacon)
+
+  // 8. PAISAGISMO CORPORATIVO (ÁRVORES E ARBUSTOS DA PRAÇA)
   ;[-6.2, 6.2].forEach(tx => {
     const treeGroup = new THREE.Group()
-    treeGroup.position.set(tx, 0.4, towerD / 2 + 2.5)
+    treeGroup.position.set(tx, 0.4, towerD / 2 + 2.4)
 
     const trunkGeo = new THREE.CylinderGeometry(0.28, 0.36, 2.4, 8)
     const trunk = new THREE.Mesh(trunkGeo, trunkMat)
     trunk.position.y = 1.2
     treeGroup.add(trunk)
 
-    // Copa da árvore em esferas orgânicas
     const crownGeo = new THREE.SphereGeometry(1.65, 12, 12)
     const crown = new THREE.Mesh(crownGeo, foliageMat)
     crown.position.y = 2.8
@@ -409,17 +465,17 @@ function createCorporateHQBuilding(accentNum: number): THREE.Group {
   const bushGeo = new THREE.SphereGeometry(1.15, 10, 10)
   const bushPositions = [
     // Lado esquerdo
-    [-towerW / 2 - 1.2, 0.9, -3.5],
+    [-towerW / 2 - 1.2, 0.9, -3.2],
     [-towerW / 2 - 1.2, 0.9, 0.5],
-    [-towerW / 2 - 1.2, 0.9, 4.5],
+    [-towerW / 2 - 1.2, 0.9, 4.2],
     // Lado direito
-    [towerW / 2 + 1.2, 0.9, -3.5],
+    [towerW / 2 + 1.2, 0.9, -3.2],
     [towerW / 2 + 1.2, 0.9, 0.5],
-    [towerW / 2 + 1.2, 0.9, 4.5],
+    [towerW / 2 + 1.2, 0.9, 4.2],
     // Fundos
-    [-4.5, 0.9, -towerD / 2 - 1.2],
+    [-4.2, 0.9, -towerD / 2 - 1.2],
     [0, 0.9, -towerD / 2 - 1.2],
-    [4.5, 0.9, -towerD / 2 - 1.2]
+    [4.2, 0.9, -towerD / 2 - 1.2]
   ]
 
   bushPositions.forEach(([bx, by, bz]) => {
@@ -1142,6 +1198,19 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   // Referência para controles e objetos 3D
   const controlsRef = useRef<OrbitControls | null>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
+  const savedCameraPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 240, 380))
+  const savedTargetRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0))
+  const isCameraInitializedRef = useRef<boolean>(false)
+
+  // Assinaturas para evitar recriação desnecessária da cena 3D por re-renders externos
+  const squadsSignature = useMemo(() => {
+    return squads.map(s => `${s.id}_${s.name}_${s.coordinatorAgentId}_${(s.pipeline || []).length}_${(s.nodes || []).length}`).join(';')
+  }, [squads])
+
+  const agentsSignature = useMemo(() => {
+    return agents.map(a => `${a.id}_${a.name}_${a.state}`).join(';')
+  }, [agents])
+
   const allWorkstationsRef = useRef<THREE.Object3D[]>([])
   const deskMeshesRef = useRef<Map<string, THREE.Object3D>>(new Map())
   const plaqueMeshesRef = useRef<Map<string, THREE.Object3D>>(new Map())
@@ -1314,8 +1383,11 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     scene.background = new THREE.Color(PYRITE_3D.floorBg)
 
     const camera = new THREE.PerspectiveCamera(34, width / height, 1, 3000)
-    camera.position.set(0, 240, 380)
-    camera.lookAt(0, 0, 0)
+    if (isCameraInitializedRef.current) {
+      camera.position.copy(savedCameraPosRef.current)
+    } else {
+      camera.position.set(0, 240, 380)
+    }
     cameraRef.current = camera
 
     const renderer = new THREE.WebGLRenderer({
@@ -1335,12 +1407,18 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     controls.maxPolarAngle = Math.PI / 2 - 0.04
     controls.minDistance = 90
     controls.maxDistance = 1100
-    controls.target.set(0, 0, 0)
+    if (isCameraInitializedRef.current) {
+      controls.target.copy(savedTargetRef.current)
+    } else {
+      controls.target.set(0, 0, 0)
+      isCameraInitializedRef.current = true
+    }
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.PAN,
       MIDDLE: THREE.MOUSE.DOLLY,
       RIGHT: THREE.MOUSE.ROTATE
     }
+    controls.update()
     controlsRef.current = controls
 
     // 3. Iluminação Pyrite (Luminosa, nítida e rica em contraste arquitetônico)
@@ -1789,6 +1867,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       animId = requestAnimationFrame(animate)
 
       controls.update()
+      savedCameraPosRef.current.copy(camera.position)
+      savedTargetRef.current.copy(controls.target)
 
       const cameraDist = camera.position.distanceTo(controls.target)
       const zoomed = cameraDist < 360
@@ -1934,7 +2014,19 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       canvas.style.cursor = 'default'
     }
 
+    let pointerDownPos = { x: 0, y: 0 }
+    let pointerDownTime = 0
+    const handleCanvasMouseDown = (e: MouseEvent) => {
+      pointerDownPos = { x: e.clientX, y: e.clientY }
+      pointerDownTime = Date.now()
+    }
+
     const handleCanvasClick = (e: MouseEvent) => {
+      // Se moveu mais de 6 pixels ou segurou arrastando por mais de 350ms, foi um movimento de câmera (pan/órbita), não um clique!
+      const dragDist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y)
+      const pressDuration = Date.now() - pointerDownTime
+      if (dragDist > 6 || pressDuration > 350) return
+
       const rect = canvas.getBoundingClientRect()
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
@@ -1968,18 +2060,20 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       }
     }
 
+    canvas.addEventListener('mousedown', handleCanvasMouseDown)
     canvas.addEventListener('mousemove', handleCanvasMouseMove)
     canvas.addEventListener('click', handleCanvasClick)
 
     return () => {
       cancelAnimationFrame(animId)
       window.removeEventListener('resize', handleResize)
+      canvas.removeEventListener('mousedown', handleCanvasMouseDown)
       canvas.removeEventListener('mousemove', handleCanvasMouseMove)
       canvas.removeEventListener('click', handleCanvasClick)
       controls.dispose()
       renderer.dispose()
     }
-  }, [squads, agents, vaultName, dynamicAccent.hex])
+  }, [squadsSignature, agentsSignature, vaultName, dynamicAccent.hex])
 
   // Resetar câmera e alvo para a perspectiva compacta padrão
   const handleResetCamera = (e: React.MouseEvent) => {
@@ -1988,6 +2082,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     cameraRef.current.position.set(0, 240, 380)
     controlsRef.current.target.set(0, 0, 0)
     controlsRef.current.update()
+    savedCameraPosRef.current.set(0, 240, 380)
+    savedTargetRef.current.set(0, 0, 0)
   }
 
   const handleZoom = (e: React.MouseEvent, delta: number) => {
