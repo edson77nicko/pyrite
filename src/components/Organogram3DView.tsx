@@ -148,214 +148,285 @@ function createRoundedRectShape(width: number, depth: number, radius: number): T
 }
 
 // =============================================================================
-// EDIFÍCIO CORPORATIVO CENTRAL (ARRANHA-CÉU MODERNO DE SEDE CORPORATIVA / HQ)
+// EDIFÍCIO CORPORATIVO CENTRAL (MINIATURA 3D ESTILIZADA DE ESCRITÓRIO MODERNO)
 // =============================================================================
 function createCorporateHQBuilding(accentNum: number): THREE.Group {
   const building = new THREE.Group()
 
-  // 1. Materiais arquitetônicos corporativos modernos
-  const glassFacadeMat = new THREE.MeshStandardMaterial({
-    color: 0x0284c7, // Azul celeste profundo de vidro laminado
+  // 1. Materiais da Fachada Corporativa (Fiel às referências do usuário)
+  // Concreto / pedra arquitetônica em tom quente elegante (Clean off-white / light slate)
+  const facadeWallMat = new THREE.MeshStandardMaterial({
+    color: 0xe2e8f0, // Tom claro de concreto/pedra arquitetônica (alta legibilidade)
+    roughness: 0.65,
+    metalness: 0.08
+  })
+
+  // Janelas de vidro azul-ciano nítidas (Reflexivas com brilho suave)
+  const windowGlassMat = new THREE.MeshStandardMaterial({
+    color: 0x0284c7, // Azul vibrante de janela corporativa
     emissive: 0x0369a1,
-    emissiveIntensity: 1.6,
-    roughness: 0.08,
-    metalness: 0.92,
-    transparent: true,
-    opacity: 0.88
-  })
-
-  const warmOfficeMat = new THREE.MeshStandardMaterial({
-    color: 0xfef08a, // Luz interna de escritórios ativos
-    emissive: 0xfef08a,
-    emissiveIntensity: 2.2,
-    roughness: 0.2
-  })
-
-  const steelFrameMat = new THREE.MeshStandardMaterial({
-    color: 0x334155, // Spandrels e estrutura em aço titânio escuro
-    roughness: 0.35,
-    metalness: 0.85
-  })
-
-  const chromeFinMat = new THREE.MeshStandardMaterial({
-    color: 0xf1f5f9, // Frisos cromados polidos
+    emissiveIntensity: 0.75,
     roughness: 0.12,
-    metalness: 0.98
+    metalness: 0.82
   })
 
+  // Molduras de janela / acabamentos brancos puros
+  const trimWhiteMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.35,
+    metalness: 0.15
+  })
+
+  // Base do pórtico e soleiras
+  const stepStoneMat = new THREE.MeshStandardMaterial({
+    color: 0xcbd5e1,
+    roughness: 0.7,
+    metalness: 0.1
+  })
+
+  // Folhagem verde das árvores e arbustos (paisagismo corporativo)
+  const foliageMat = new THREE.MeshStandardMaterial({
+    color: 0x16a34a,
+    roughness: 0.75,
+    metalness: 0.05
+  })
+
+  // Tronco das árvores
+  const trunkMat = new THREE.MeshStandardMaterial({
+    color: 0x78350f,
+    roughness: 0.85
+  })
+
+  // Gramado da praça sob o edifício
+  const lawnMat = new THREE.MeshStandardMaterial({
+    color: 0x15803d,
+    roughness: 0.85
+  })
+
+  // Emblema e iluminação de acento corporativo
   const accentEmissiveMat = new THREE.MeshStandardMaterial({
     color: accentNum,
     emissive: accentNum,
-    emissiveIntensity: 3.2,
+    emissiveIntensity: 2.8,
     roughness: 0.15
   })
 
-  // 2. TÉRREO: GRAND LOBBY / ÁTRIO CORPORATIVO COM ENTRADA PRINCIPAL
-  const lobbyW = 18
-  const lobbyH = 8.0
-  const lobbyD = 18
-  const lobbyGeo = new THREE.BoxGeometry(lobbyW, lobbyH, lobbyD)
-  const lobby = new THREE.Mesh(lobbyGeo, steelFrameMat)
-  lobby.position.y = lobbyH / 2
-  building.add(lobby)
+  // 2. GRAMADO VERDE CIRCULAR NA BASE DO EDIFÍCIO
+  const lawnGeo = new THREE.CylinderGeometry(20, 20.5, 0.4, 40)
+  const lawn = new THREE.Mesh(lawnGeo, lawnMat)
+  lawn.position.y = 0.2
+  building.add(lawn)
 
-  // Fachada envidraçada panorâmica do lobby
-  const lobbyFrontGlass = new THREE.Mesh(
-    new THREE.PlaneGeometry(lobbyW - 2, lobbyH - 1.5),
-    glassFacadeMat
-  )
-  lobbyFrontGlass.position.set(0, lobbyH / 2, lobbyD / 2 + 0.06)
-  building.add(lobbyFrontGlass)
+  // Calçada / base de concreto sob o prédio
+  const basePlinthGeo = new THREE.BoxGeometry(19, 0.6, 17)
+  const basePlinth = new THREE.Mesh(basePlinthGeo, stepStoneMat)
+  basePlinth.position.y = 0.4
+  building.add(basePlinth)
 
-  // Recepção interna iluminada
-  const lobbyInteriorLight = new THREE.Mesh(
-    new THREE.BoxGeometry(10, 2.8, 0.4),
-    warmOfficeMat
-  )
-  lobbyInteriorLight.position.set(0, 2.5, lobbyD / 2 - 2)
-  building.add(lobbyInteriorLight)
-
-  // Marquise executiva cantilever suspensa sobre a entrada
-  const canopy = new THREE.Mesh(
-    new THREE.BoxGeometry(12, 0.6, 5.0),
-    chromeFinMat
-  )
-  canopy.position.set(0, lobbyH - 1.2, lobbyD / 2 + 2.5)
-  building.add(canopy)
-
-  // Fita de LED no contorno da marquise na cor de destaque
-  const canopyGlow = new THREE.Mesh(
-    new THREE.BoxGeometry(12.2, 0.2, 0.25),
-    accentEmissiveMat
-  )
-  canopyGlow.position.set(0, lobbyH - 1.2, lobbyD / 2 + 5.0)
-  building.add(canopyGlow)
-
-  // 3. TORRE PRINCIPAL DE ESCRITÓRIOS (ARRANHA-CÉU CORPORATIVO ELEGANTE)
-  const towerW = 14
+  // 3. CORPO PRINCIPAL DO EDIFÍCIO (TORRE DE ESCRITÓRIOS EM CONCRETO CLARO)
+  const towerW = 16.5
   const towerH = 34
-  const towerD = 14
-  const towerElevation = lobbyH + towerH / 2
-  const towerGeo = new THREE.BoxGeometry(towerW, towerH, towerD)
-  const mainTower = new THREE.Mesh(towerGeo, steelFrameMat)
-  mainTower.position.y = towerElevation
-  building.add(mainTower)
+  const towerD = 14.5
+  const towerElevation = towerH / 2 + 0.4
 
-  // 7 andares de escritórios com painéis de vidro e iluminação de salas de trabalho
-  const floors = 7
-  const floorHeight = towerH / floors
+  const towerShape = createRoundedRectShape(towerW, towerD, 1.8)
+  const towerGeo = new THREE.ExtrudeGeometry(towerShape, {
+    depth: towerH,
+    bevelEnabled: true,
+    bevelSegments: 2,
+    steps: 1,
+    bevelSize: 0.4,
+    bevelThickness: 0.4
+  })
+  towerGeo.rotateX(Math.PI / 2)
+  const tower = new THREE.Mesh(towerGeo, facadeWallMat)
+  tower.position.y = towerElevation
+  building.add(tower)
+
+  // 4. GRADE DE JANELAS AZUIS INDIVIDUAIS (8 ANDARES COM VIDROS RETANGULARES NÍTIDOS)
+  const floors = 8
+  const startY = 6.2
+  const floorSpacing = 3.3
+  const winW = 2.2
+  const winH = 1.9
+  const winGeo = new THREE.BoxGeometry(winW, winH, 0.35)
+  const winFrameGeo = new THREE.BoxGeometry(winW + 0.35, winH + 0.35, 0.2)
+
   for (let f = 0; f < floors; f++) {
-    const floorY = lobbyH + f * floorHeight + floorHeight / 2
+    const wy = startY + f * floorSpacing
 
-    // Friso de laje entre andares
-    const slab = new THREE.Mesh(
-      new THREE.BoxGeometry(towerW + 0.3, 0.5, towerD + 0.3),
-      steelFrameMat
-    )
-    slab.position.y = lobbyH + f * floorHeight
-    building.add(slab)
+    // Fachada Frontal (Z = towerD / 2)
+    // 4 colunas de janelas: 2 na esquerda (-5.5, -2.4) e 2 na direita (2.4, 5.5)
+    ;[-5.5, -2.4, 2.4, 5.5].forEach(wx => {
+      const frame = new THREE.Mesh(winFrameGeo, trimWhiteMat)
+      frame.position.set(wx, wy, towerD / 2 + 0.05)
+      building.add(frame)
 
-    // Painéis de vidro frontais e traseiros
-    const glassFB = new THREE.Mesh(
-      new THREE.BoxGeometry(towerW - 1.4, floorHeight - 1.0, towerD + 0.15),
-      f % 2 === 0 ? glassFacadeMat : warmOfficeMat
-    )
-    glassFB.position.set(0, floorY, 0)
-    building.add(glassFB)
+      const win = new THREE.Mesh(winGeo, windowGlassMat)
+      win.position.set(wx, wy, towerD / 2 + 0.12)
+      building.add(win)
+    })
 
-    // Painéis de vidro laterais
-    const glassLR = new THREE.Mesh(
-      new THREE.BoxGeometry(towerW + 0.15, floorHeight - 1.0, towerD - 1.4),
-      f % 2 === 0 ? warmOfficeMat : glassFacadeMat
-    )
-    glassLR.position.set(0, floorY, 0)
-    building.add(glassLR)
+    // Fachada Traseira (Z = -towerD / 2)
+    ;[-5.5, -2.4, 2.4, 5.5].forEach(wx => {
+      const frame = new THREE.Mesh(winFrameGeo, trimWhiteMat)
+      frame.position.set(wx, wy, -towerD / 2 - 0.05)
+      building.add(frame)
+
+      const win = new THREE.Mesh(winGeo, windowGlassMat)
+      win.position.set(wx, wy, -towerD / 2 - 0.12)
+      building.add(win)
+    })
+
+    // Fachada Lateral Esquerda e Direita (X = -towerW / 2 e +towerW / 2)
+    const sideWinGeo = new THREE.BoxGeometry(0.35, winH, winW)
+    const sideFrameGeo = new THREE.BoxGeometry(0.2, winH + 0.35, winW + 0.35)
+    ;[-3.2, 3.2].forEach(wz => {
+      // Lateral Esquerda
+      const leftFrame = new THREE.Mesh(sideFrameGeo, trimWhiteMat)
+      leftFrame.position.set(-towerW / 2 - 0.05, wy, wz)
+      building.add(leftFrame)
+
+      const leftWin = new THREE.Mesh(sideWinGeo, windowGlassMat)
+      leftWin.position.set(-towerW / 2 - 0.12, wy, wz)
+      building.add(leftWin)
+
+      // Lateral Direita
+      const rightFrame = new THREE.Mesh(sideFrameGeo, trimWhiteMat)
+      rightFrame.position.set(towerW / 2 + 0.05, wy, wz)
+      building.add(rightFrame)
+
+      const rightWin = new THREE.Mesh(sideWinGeo, windowGlassMat)
+      rightWin.position.set(towerW / 2 + 0.12, wy, wz)
+      building.add(rightWin)
+    })
   }
 
-  // Pilares cromados verticais esguios nos 4 cantos da torre (Mullions arquitetônicos)
-  const finGeo = new THREE.BoxGeometry(0.5, towerH, 0.5)
-  ;[-towerW / 2, towerW / 2].forEach(fx => {
-    ;[-towerD / 2, towerD / 2].forEach(fz => {
-      const fin = new THREE.Mesh(finGeo, chromeFinMat)
-      fin.position.set(fx, towerElevation, fz)
-      building.add(fin)
-    })
+  // 5. PÓRTICO DE ENTRADA PRINCIPAL (IDÊNTICO À REFERÊNCIA DO USUÁRIO)
+  const porticoGroup = new THREE.Group()
+  const porticoZ = towerD / 2 + 2.2
+
+  // Degraus da entrada
+  const stepsGeo = new THREE.BoxGeometry(8.2, 0.6, 4.4)
+  const steps = new THREE.Mesh(stepsGeo, stepStoneMat)
+  steps.position.set(0, 0.5, porticoZ)
+  porticoGroup.add(steps)
+
+  // Portas de vidro de entrada (vidro duplo com moldura)
+  const doorGeo = new THREE.PlaneGeometry(4.2, 4.2)
+  const doorMat = new THREE.MeshStandardMaterial({
+    color: 0x0284c7,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.6,
+    roughness: 0.1,
+    metalness: 0.9
+  })
+  const doors = new THREE.Mesh(doorGeo, doorMat)
+  doors.position.set(0, 2.7, towerD / 2 + 0.08)
+  porticoGroup.add(doors)
+
+  // Friso central da porta dupla
+  const doorFrameGeo = new THREE.BoxGeometry(0.2, 4.2, 0.1)
+  const doorFrame = new THREE.Mesh(doorFrameGeo, trimWhiteMat)
+  doorFrame.position.set(0, 2.7, towerD / 2 + 0.15)
+  porticoGroup.add(doorFrame)
+
+  // Duas colunas cilíndricas brancas sustentando a marquise
+  const colGeo = new THREE.CylinderGeometry(0.32, 0.32, 5.0, 16)
+  ;[-3.4, 3.4].forEach(cx => {
+    const col = new THREE.Mesh(colGeo, trimWhiteMat)
+    col.position.set(cx, 3.1, porticoZ + 1.4)
+    porticoGroup.add(col)
   })
 
-  // 4. ASA EXECUTIVA ANEXA (PAVILHÃO LATERAL QUE DÁ COMPLEXIDADE E IDENTIDADE CORPORATIVA)
-  const wingW = 8
-  const wingH = 18
-  const wingD = 12
-  const wingX = towerW / 2 + wingW / 2 - 1.5
-  const wingY = lobbyH + wingH / 2
-  const wing = new THREE.Mesh(
-    new THREE.BoxGeometry(wingW, wingH, wingD),
-    steelFrameMat
-  )
-  wing.position.set(wingX, wingY, -1)
-  building.add(wing)
+  // Marquise / Teto do pórtico (Teto branco clássico de entrada corporativa)
+  const canopyGeo = new THREE.BoxGeometry(8.0, 0.7, 4.6)
+  const canopy = new THREE.Mesh(canopyGeo, trimWhiteMat)
+  canopy.position.set(0, 5.8, porticoZ)
+  porticoGroup.add(canopy)
 
-  // Janelas envidraçadas da asa executiva (4 andares)
-  for (let wf = 0; wf < 4; wf++) {
-    const wy = lobbyH + wf * 4.2 + 2.1
-    const wingGlass = new THREE.Mesh(
-      new THREE.BoxGeometry(wingW + 0.15, 2.4, wingD - 2),
-      glassFacadeMat
-    )
-    wingGlass.position.set(wingX, wy, -1)
-    building.add(wingGlass)
-  }
+  building.add(porticoGroup)
 
-  // Terraço ajardinado no topo da asa executiva com guarda-corpo de vidro
-  const terraceParapet = new THREE.Mesh(
-    new THREE.BoxGeometry(wingW + 0.2, 0.8, wingD + 0.2),
-    glassFacadeMat
-  )
-  terraceParapet.position.set(wingX, lobbyH + wingH + 0.4, -1)
-  building.add(terraceParapet)
+  // 6. COBERTURA: ÁTICO / CASA DE MÁQUINAS DO ELEVADOR (PENTHOUSE ROOFTOP)
+  const penthouseW = 8.0
+  const penthouseH = 3.6
+  const penthouseD = 7.0
+  const penthouseShape = createRoundedRectShape(penthouseW, penthouseD, 1.0)
+  const penthouseGeo = new THREE.ExtrudeGeometry(penthouseShape, {
+    depth: penthouseH,
+    bevelEnabled: true,
+    bevelSegments: 2,
+    steps: 1,
+    bevelSize: 0.3,
+    bevelThickness: 0.3
+  })
+  penthouseGeo.rotateX(Math.PI / 2)
+  const penthouse = new THREE.Mesh(penthouseGeo, facadeWallMat)
+  penthouse.position.set(0, towerH + 0.4 + penthouseH / 2, -0.4)
+  building.add(penthouse)
 
-  // 5. COBERTURA / PENTHOUSE EXECUTIVA & HELIPONTO
-  const crownW = 11
-  const crownH = 7.5
-  const crownD = 11
-  const crownY = lobbyH + towerH + crownH / 2
-  const crown = new THREE.Mesh(
-    new THREE.BoxGeometry(crownW, crownH, crownD),
-    glassFacadeMat
-  )
-  crown.position.set(0, crownY, 0)
-  building.add(crown)
+  // Friso superior da penthouse
+  const penthouseCapGeo = new THREE.BoxGeometry(penthouseW + 0.4, 0.4, penthouseD + 0.4)
+  const penthouseCap = new THREE.Mesh(penthouseCapGeo, stepStoneMat)
+  penthouseCap.position.set(0, towerH + 0.4 + penthouseH + 0.2, -0.4)
+  building.add(penthouseCap)
 
-  // Moldura do coroamento arquitetônico
-  const crownCap = new THREE.Mesh(
-    new THREE.BoxGeometry(crownW + 0.8, 1.2, crownD + 0.8),
-    chromeFinMat
-  )
-  crownCap.position.set(0, lobbyH + towerH + crownH + 0.6, 0)
-  building.add(crownCap)
+  // Parapeito perimetral do telhado
+  const parapetGeo = new THREE.BoxGeometry(towerW + 0.2, 0.8, towerD + 0.2)
+  const parapet = new THREE.Mesh(parapetGeo, stepStoneMat)
+  parapet.position.set(0, towerH + 0.4 + 0.4, 0)
+  building.add(parapet)
 
-  // Logotipo / Emblema Corporativo luminoso no topo da torre (Face Frontal)
-  const logoGeo = new THREE.BoxGeometry(3.5, 3.5, 0.4)
+  // Emblema Corporativo luminoso no topo da torre (Face Frontal da Penthouse)
+  const logoGeo = new THREE.BoxGeometry(2.4, 1.8, 0.2)
   const logoMesh = new THREE.Mesh(logoGeo, accentEmissiveMat)
-  logoMesh.position.set(0, crownY, crownD / 2 + 0.25)
+  logoMesh.position.set(0, towerH + 0.4 + penthouseH / 2, penthouseD / 2 - 0.4 + 0.15)
   building.add(logoMesh)
 
-  // Heliponto corporativo no topo
-  const heliPadY = lobbyH + towerH + crownH + 1.25
-  const heliPad = new THREE.Mesh(
-    new THREE.CylinderGeometry(4.2, 4.2, 0.3, 24),
-    steelFrameMat
-  )
-  heliPad.position.set(0, heliPadY, 0)
-  building.add(heliPad)
+  // 7. PAISAGISMO CORPORATIVO (ÁRVORES E ARBUSTOS DA PRAÇA - IDÊNTICO ÀS IMAGENS)
+  // Duas árvores icônicas ladeando o pórtico de entrada
+  ;[-6.2, 6.2].forEach(tx => {
+    const treeGroup = new THREE.Group()
+    treeGroup.position.set(tx, 0.4, towerD / 2 + 2.5)
 
-  const heliRing = new THREE.Mesh(
-    new THREE.TorusGeometry(3.6, 0.18, 8, 24),
-    accentEmissiveMat
-  )
-  heliRing.rotation.x = Math.PI / 2
-  heliRing.position.set(0, heliPadY + 0.2, 0)
-  building.add(heliRing)
+    const trunkGeo = new THREE.CylinderGeometry(0.28, 0.36, 2.4, 8)
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat)
+    trunk.position.y = 1.2
+    treeGroup.add(trunk)
+
+    // Copa da árvore em esferas orgânicas
+    const crownGeo = new THREE.SphereGeometry(1.65, 12, 12)
+    const crown = new THREE.Mesh(crownGeo, foliageMat)
+    crown.position.y = 2.8
+    crown.scale.set(1.0, 1.25, 1.0)
+    treeGroup.add(crown)
+
+    building.add(treeGroup)
+  })
+
+  // Arbustos verdes arredondados contornando a base do edifício
+  const bushGeo = new THREE.SphereGeometry(1.15, 10, 10)
+  const bushPositions = [
+    // Lado esquerdo
+    [-towerW / 2 - 1.2, 0.9, -3.5],
+    [-towerW / 2 - 1.2, 0.9, 0.5],
+    [-towerW / 2 - 1.2, 0.9, 4.5],
+    // Lado direito
+    [towerW / 2 + 1.2, 0.9, -3.5],
+    [towerW / 2 + 1.2, 0.9, 0.5],
+    [towerW / 2 + 1.2, 0.9, 4.5],
+    // Fundos
+    [-4.5, 0.9, -towerD / 2 - 1.2],
+    [0, 0.9, -towerD / 2 - 1.2],
+    [4.5, 0.9, -towerD / 2 - 1.2]
+  ]
+
+  bushPositions.forEach(([bx, by, bz]) => {
+    const bush = new THREE.Mesh(bushGeo, foliageMat)
+    bush.position.set(bx, by, bz)
+    bush.scale.set(1.1, 0.9, 1.1)
+    building.add(bush)
+  })
 
   return building
 }
