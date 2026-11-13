@@ -148,183 +148,220 @@ function createRoundedRectShape(width: number, depth: number, radius: number): T
 }
 
 // =============================================================================
-// EDIFÍCIO CORPORATIVO CENTRAL (MINIATURA MODERNA E ILUMINADA DE HEADQUARTERS)
+// EDIFÍCIO CORPORATIVO CENTRAL (ARRANHA-CÉU MODERNO DE SEDE CORPORATIVA / HQ)
 // =============================================================================
-function createCorporateHQBuilding(
-  accentNum: number,
-  platformSteel: number,
-  platformNavy: number,
-  platformTrim: number
-): THREE.Group {
+function createCorporateHQBuilding(accentNum: number): THREE.Group {
   const building = new THREE.Group()
+
+  // 1. Materiais arquitetônicos corporativos modernos
+  const glassFacadeMat = new THREE.MeshStandardMaterial({
+    color: 0x0284c7, // Azul celeste profundo de vidro laminado
+    emissive: 0x0369a1,
+    emissiveIntensity: 1.6,
+    roughness: 0.08,
+    metalness: 0.92,
+    transparent: true,
+    opacity: 0.88
+  })
+
+  const warmOfficeMat = new THREE.MeshStandardMaterial({
+    color: 0xfef08a, // Luz interna de escritórios ativos
+    emissive: 0xfef08a,
+    emissiveIntensity: 2.2,
+    roughness: 0.2
+  })
+
+  const steelFrameMat = new THREE.MeshStandardMaterial({
+    color: 0x334155, // Spandrels e estrutura em aço titânio escuro
+    roughness: 0.35,
+    metalness: 0.85
+  })
+
+  const chromeFinMat = new THREE.MeshStandardMaterial({
+    color: 0xf1f5f9, // Frisos cromados polidos
+    roughness: 0.12,
+    metalness: 0.98
+  })
 
   const accentEmissiveMat = new THREE.MeshStandardMaterial({
     color: accentNum,
     emissive: accentNum,
-    emissiveIntensity: 2.8,
+    emissiveIntensity: 3.2,
     roughness: 0.15
   })
 
-  // Janelas arquitetônicas iluminadas (Azul-ciano nítido de arranha-céus modernos)
-  const windowGlassMat = new THREE.MeshStandardMaterial({
-    color: 0x38bdf8,
-    emissive: 0x38bdf8,
-    emissiveIntensity: 2.2,
-    roughness: 0.1,
-    metalness: 0.85
-  })
+  // 2. TÉRREO: GRAND LOBBY / ÁTRIO CORPORATIVO COM ENTRADA PRINCIPAL
+  const lobbyW = 18
+  const lobbyH = 8.0
+  const lobbyD = 18
+  const lobbyGeo = new THREE.BoxGeometry(lobbyW, lobbyH, lobbyD)
+  const lobby = new THREE.Mesh(lobbyGeo, steelFrameMat)
+  lobby.position.y = lobbyH / 2
+  building.add(lobby)
 
-  // 1. Térreo / Lobby de Entrada (Podium visível em titânio slate)
-  const lobbyWidth = 14
-  const lobbyHeight = 6.0
-  const lobbyDepth = 14
-  const podiumGeo = new THREE.BoxGeometry(lobbyWidth, lobbyHeight, lobbyDepth)
-  const podiumMat = new THREE.MeshStandardMaterial({
-    color: platformSteel,
-    roughness: 0.32,
-    metalness: 0.8
-  })
-  const podium = new THREE.Mesh(podiumGeo, podiumMat)
-  podium.position.y = lobbyHeight / 2
-  building.add(podium)
+  // Fachada envidraçada panorâmica do lobby
+  const lobbyFrontGlass = new THREE.Mesh(
+    new THREE.PlaneGeometry(lobbyW - 2, lobbyH - 1.5),
+    glassFacadeMat
+  )
+  lobbyFrontGlass.position.set(0, lobbyH / 2, lobbyD / 2 + 0.06)
+  building.add(lobbyFrontGlass)
 
-  // Vidro da entrada principal (fachada frontal envidraçada luminosa)
-  const lobbyGlassGeo = new THREE.PlaneGeometry(7.0, 3.8)
-  const lobbyGlassMat = new THREE.MeshStandardMaterial({
-    color: 0x38bdf8,
-    emissive: 0x38bdf8,
-    emissiveIntensity: 2.5,
-    roughness: 0.1,
-    metalness: 0.95
-  })
-  const lobbyGlass = new THREE.Mesh(lobbyGlassGeo, lobbyGlassMat)
-  lobbyGlass.position.set(0, 2.4, lobbyDepth / 2 + 0.05)
-  building.add(lobbyGlass)
+  // Recepção interna iluminada
+  const lobbyInteriorLight = new THREE.Mesh(
+    new THREE.BoxGeometry(10, 2.8, 0.4),
+    warmOfficeMat
+  )
+  lobbyInteriorLight.position.set(0, 2.5, lobbyD / 2 - 2)
+  building.add(lobbyInteriorLight)
 
-  // Marquise de entrada com fita LED na cor de destaque
-  const canopyGeo = new THREE.BoxGeometry(9.0, 0.6, 3.5)
-  const canopyMat = new THREE.MeshStandardMaterial({ color: platformTrim, metalness: 0.88, roughness: 0.25 })
-  const canopy = new THREE.Mesh(canopyGeo, canopyMat)
-  canopy.position.set(0, 4.6, lobbyDepth / 2 + 1.7)
+  // Marquise executiva cantilever suspensa sobre a entrada
+  const canopy = new THREE.Mesh(
+    new THREE.BoxGeometry(12, 0.6, 5.0),
+    chromeFinMat
+  )
+  canopy.position.set(0, lobbyH - 1.2, lobbyD / 2 + 2.5)
   building.add(canopy)
 
-  const canopyLedGeo = new THREE.BoxGeometry(8.8, 0.2, 0.25)
-  const canopyLed = new THREE.Mesh(canopyLedGeo, accentEmissiveMat)
-  canopyLed.position.set(0, 4.3, lobbyDepth / 2 + 3.4)
-  building.add(canopyLed)
+  // Fita de LED no contorno da marquise na cor de destaque
+  const canopyGlow = new THREE.Mesh(
+    new THREE.BoxGeometry(12.2, 0.2, 0.25),
+    accentEmissiveMat
+  )
+  canopyGlow.position.set(0, lobbyH - 1.2, lobbyD / 2 + 5.0)
+  building.add(canopyGlow)
 
-  // 2. Torre Central - Bloco Intermediário
-  const midWidth = 10.5
-  const midHeight = 12.0
-  const midDepth = 10.5
-  const midGeo = new THREE.BoxGeometry(midWidth, midHeight, midDepth)
-  const midMat = new THREE.MeshStandardMaterial({
-    color: platformNavy,
-    roughness: 0.35,
-    metalness: 0.85
-  })
-  const midTower = new THREE.Mesh(midGeo, midMat)
-  midTower.position.y = lobbyHeight + midHeight / 2
-  building.add(midTower)
+  // 3. TORRE PRINCIPAL DE ESCRITÓRIOS (ARRANHA-CÉU CORPORATIVO ELEGANTE)
+  const towerW = 14
+  const towerH = 34
+  const towerD = 14
+  const towerElevation = lobbyH + towerH / 2
+  const towerGeo = new THREE.BoxGeometry(towerW, towerH, towerD)
+  const mainTower = new THREE.Mesh(towerGeo, steelFrameMat)
+  mainTower.position.y = towerElevation
+  building.add(mainTower)
 
-  // Faixas horizontais de janelas iluminadas na torre média
-  for (let t = 0; t < 3; t++) {
-    const wy = lobbyHeight + 2.2 + t * 3.0
-    const winFB = new THREE.Mesh(new THREE.BoxGeometry(8.2, 1.1, midDepth + 0.1), windowGlassMat)
-    winFB.position.set(0, wy, 0)
-    building.add(winFB)
+  // 7 andares de escritórios com painéis de vidro e iluminação de salas de trabalho
+  const floors = 7
+  const floorHeight = towerH / floors
+  for (let f = 0; f < floors; f++) {
+    const floorY = lobbyH + f * floorHeight + floorHeight / 2
 
-    const winSide = new THREE.Mesh(new THREE.BoxGeometry(midWidth + 0.1, 1.1, 8.2), windowGlassMat)
-    winSide.position.set(0, wy, 0)
-    building.add(winSide)
+    // Friso de laje entre andares
+    const slab = new THREE.Mesh(
+      new THREE.BoxGeometry(towerW + 0.3, 0.5, towerD + 0.3),
+      steelFrameMat
+    )
+    slab.position.y = lobbyH + f * floorHeight
+    building.add(slab)
+
+    // Painéis de vidro frontais e traseiros
+    const glassFB = new THREE.Mesh(
+      new THREE.BoxGeometry(towerW - 1.4, floorHeight - 1.0, towerD + 0.15),
+      f % 2 === 0 ? glassFacadeMat : warmOfficeMat
+    )
+    glassFB.position.set(0, floorY, 0)
+    building.add(glassFB)
+
+    // Painéis de vidro laterais
+    const glassLR = new THREE.Mesh(
+      new THREE.BoxGeometry(towerW + 0.15, floorHeight - 1.0, towerD - 1.4),
+      f % 2 === 0 ? warmOfficeMat : glassFacadeMat
+    )
+    glassLR.position.set(0, floorY, 0)
+    building.add(glassLR)
   }
 
-  // Frisos arquitetônicos verticais nas esquinas da torre média (Alumínio cromado polido)
-  const cornerFinGeo = new THREE.BoxGeometry(0.55, midHeight, 0.55)
-  const finMat = new THREE.MeshStandardMaterial({ color: 0xdbe3ed, metalness: 0.95, roughness: 0.15 })
-  ;[-midWidth / 2, midWidth / 2].forEach(fx => {
-    ;[-midDepth / 2, midDepth / 2].forEach(fz => {
-      const fin = new THREE.Mesh(cornerFinGeo, finMat)
-      fin.position.set(fx, lobbyHeight + midHeight / 2, fz)
+  // Pilares cromados verticais esguios nos 4 cantos da torre (Mullions arquitetônicos)
+  const finGeo = new THREE.BoxGeometry(0.5, towerH, 0.5)
+  ;[-towerW / 2, towerW / 2].forEach(fx => {
+    ;[-towerD / 2, towerD / 2].forEach(fz => {
+      const fin = new THREE.Mesh(finGeo, chromeFinMat)
+      fin.position.set(fx, towerElevation, fz)
       building.add(fin)
     })
   })
 
-  // 3. Terraço de Transição / Cornice Luminosa
-  const terraceGeo = new THREE.BoxGeometry(11.5, 0.8, 11.5)
-  const terraceMat = new THREE.MeshStandardMaterial({ color: platformTrim, metalness: 0.85, roughness: 0.25 })
-  const terrace = new THREE.Mesh(terraceGeo, terraceMat)
-  terrace.position.y = lobbyHeight + midHeight + 0.4
-  building.add(terrace)
+  // 4. ASA EXECUTIVA ANEXA (PAVILHÃO LATERAL QUE DÁ COMPLEXIDADE E IDENTIDADE CORPORATIVA)
+  const wingW = 8
+  const wingH = 18
+  const wingD = 12
+  const wingX = towerW / 2 + wingW / 2 - 1.5
+  const wingY = lobbyH + wingH / 2
+  const wing = new THREE.Mesh(
+    new THREE.BoxGeometry(wingW, wingH, wingD),
+    steelFrameMat
+  )
+  wing.position.set(wingX, wingY, -1)
+  building.add(wing)
 
-  const terraceLightGeo = new THREE.BoxGeometry(11.7, 0.25, 11.7)
-  const terraceLight = new THREE.Mesh(terraceLightGeo, accentEmissiveMat)
-  terraceLight.position.y = lobbyHeight + midHeight + 0.7
-  building.add(terraceLight)
-
-  // 4. Bloco Superior / Penthouse Executiva
-  const topWidth = 7.2
-  const topHeight = 8.5
-  const topDepth = 7.2
-  const topGeo = new THREE.BoxGeometry(topWidth, topHeight, topDepth)
-  const topMat = new THREE.MeshStandardMaterial({
-    color: platformSteel,
-    roughness: 0.25,
-    metalness: 0.92
-  })
-  const topTower = new THREE.Mesh(topGeo, topMat)
-  const topElevation = lobbyHeight + midHeight + 0.8 + topHeight / 2
-  topTower.position.y = topElevation
-  building.add(topTower)
-
-  // Janelas do bloco executivo
-  for (let t = 0; t < 2; t++) {
-    const wy = lobbyHeight + midHeight + 2.5 + t * 3.2
-    const winTop = new THREE.Mesh(new THREE.BoxGeometry(5.6, 1.2, topDepth + 0.1), windowGlassMat)
-    winTop.position.set(0, wy, 0)
-    building.add(winTop)
+  // Janelas envidraçadas da asa executiva (4 andares)
+  for (let wf = 0; wf < 4; wf++) {
+    const wy = lobbyH + wf * 4.2 + 2.1
+    const wingGlass = new THREE.Mesh(
+      new THREE.BoxGeometry(wingW + 0.15, 2.4, wingD - 2),
+      glassFacadeMat
+    )
+    wingGlass.position.set(wingX, wy, -1)
+    building.add(wingGlass)
   }
 
-  // Emblema Corporativo no topo da torre (Face Frontal)
-  const emblemGeo = new THREE.CylinderGeometry(1.2, 1.2, 0.25, 6)
-  const emblem = new THREE.Mesh(emblemGeo, accentEmissiveMat)
-  emblem.rotation.x = Math.PI / 2
-  emblem.position.set(0, topElevation + 1.8, topDepth / 2 + 0.15)
-  building.add(emblem)
+  // Terraço ajardinado no topo da asa executiva com guarda-corpo de vidro
+  const terraceParapet = new THREE.Mesh(
+    new THREE.BoxGeometry(wingW + 0.2, 0.8, wingD + 0.2),
+    glassFacadeMat
+  )
+  terraceParapet.position.set(wingX, lobbyH + wingH + 0.4, -1)
+  building.add(terraceParapet)
 
-  // 5. Cobertura / Heliponto & Spire / Antena
-  const roofGeo = new THREE.BoxGeometry(5.4, 0.9, 5.4)
-  const roofMat = new THREE.MeshStandardMaterial({ color: platformNavy, metalness: 0.75, roughness: 0.4 })
-  const roof = new THREE.Mesh(roofGeo, roofMat)
-  const roofElevation = lobbyHeight + midHeight + 0.8 + topHeight + 0.45
-  roof.position.y = roofElevation
-  building.add(roof)
+  // 5. COBERTURA / PENTHOUSE EXECUTIVA & HELIPONTO
+  const crownW = 11
+  const crownH = 7.5
+  const crownD = 11
+  const crownY = lobbyH + towerH + crownH / 2
+  const crown = new THREE.Mesh(
+    new THREE.BoxGeometry(crownW, crownH, crownD),
+    glassFacadeMat
+  )
+  crown.position.set(0, crownY, 0)
+  building.add(crown)
 
-  // Mastro da Antena Cromada
-  const spireMastGeo = new THREE.CylinderGeometry(0.18, 0.38, 7.0, 8)
-  const spireMastMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.95, roughness: 0.15 })
-  const spireMast = new THREE.Mesh(spireMastGeo, spireMastMat)
-  const spireElevation = roofElevation + 0.45 + 3.5
-  spireMast.position.set(0, spireElevation, 0)
-  building.add(spireMast)
+  // Moldura do coroamento arquitetônico
+  const crownCap = new THREE.Mesh(
+    new THREE.BoxGeometry(crownW + 0.8, 1.2, crownD + 0.8),
+    chromeFinMat
+  )
+  crownCap.position.set(0, lobbyH + towerH + crownH + 0.6, 0)
+  building.add(crownCap)
 
-  // Beacon Luminoso pulsante no topo
-  const beaconGeo = new THREE.SphereGeometry(0.7, 14, 14)
-  const beaconMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    emissive: accentNum,
-    emissiveIntensity: 4.5,
-    roughness: 0.1
-  })
-  const beacon = new THREE.Mesh(beaconGeo, beaconMat)
-  beacon.position.set(0, spireElevation + 3.8, 0)
-  building.add(beacon)
+  // Logotipo / Emblema Corporativo luminoso no topo da torre (Face Frontal)
+  const logoGeo = new THREE.BoxGeometry(3.5, 3.5, 0.4)
+  const logoMesh = new THREE.Mesh(logoGeo, accentEmissiveMat)
+  logoMesh.position.set(0, crownY, crownD / 2 + 0.25)
+  building.add(logoMesh)
+
+  // Heliponto corporativo no topo
+  const heliPadY = lobbyH + towerH + crownH + 1.25
+  const heliPad = new THREE.Mesh(
+    new THREE.CylinderGeometry(4.2, 4.2, 0.3, 24),
+    steelFrameMat
+  )
+  heliPad.position.set(0, heliPadY, 0)
+  building.add(heliPad)
+
+  const heliRing = new THREE.Mesh(
+    new THREE.TorusGeometry(3.6, 0.18, 8, 24),
+    accentEmissiveMat
+  )
+  heliRing.rotation.x = Math.PI / 2
+  heliRing.position.set(0, heliPadY + 0.2, 0)
+  building.add(heliRing)
 
   return building
 }
 
 // =============================================================================
-// PLACA 3D COM O NOME DO DEPARTAMENTO EMBUTIDA NO CHÃO DA PLATAFORMA DA EQUIPE
+// PLACA 3D DO DEPARTAMENTO (TÓTEM EXECUTIVO CHANFRADO COM ALTA VISIBILIDADE)
 // =============================================================================
 function createSquadFloorPlaque(params: {
   squad: TeamDefinition
@@ -332,53 +369,70 @@ function createSquadFloorPlaque(params: {
   accentColorNum: number
   agentCount: number
   width?: number
-  depth?: number
+  height?: number
 }): THREE.Group {
-  const { squad, accentColorHex, accentColorNum, agentCount, width = 34, depth = 8.5 } = params
+  const { squad, accentColorHex, accentColorNum, agentCount, width = 36, height = 11 } = params
   const plaqueGroup = new THREE.Group()
   plaqueGroup.userData = { squadId: squad.id, isPlaque: true }
 
-  // Canvas 2D de alta densidade com fundo matte grafite escuro (nunca branco ou reflexivo)
+  // Canvas 2D de ultra alta resolução (1024 x 320)
   const canvas = document.createElement('canvas')
-  canvas.width = 800
-  canvas.height = 200
+  canvas.width = 1024
+  canvas.height = 320
   const ctx = canvas.getContext('2d')
   if (ctx) {
-    // 1. Fundo grafite titânio escuro sólido matte (alto padrão de design)
-    ctx.fillStyle = '#0f141d'
-    ctx.fillRect(0, 0, 800, 200)
+    // 1. Fundo profundo grafite/obsidiana com acabamento acetinado
+    const grad = ctx.createLinearGradient(0, 0, 1024, 320)
+    grad.addColorStop(0, '#0d131f')
+    grad.addColorStop(0.5, '#131b2e')
+    grad.addColorStop(1, '#0b101a')
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, 1024, 320)
 
-    // Borda perimétrica fina e sofisticada
-    ctx.strokeStyle = '#222b3d'
-    ctx.lineWidth = 6
-    ctx.strokeRect(3, 3, 794, 194)
+    // Borda perimétrica chanfrada com brilho elegante
+    ctx.strokeStyle = '#2d3b55'
+    ctx.lineWidth = 8
+    ctx.strokeRect(4, 4, 1016, 312)
 
-    // Barra vertical de acento discreta e elegante
+    // Moldura interna fina
+    ctx.strokeStyle = `${accentColorHex}44`
+    ctx.lineWidth = 3
+    ctx.strokeRect(16, 16, 992, 288)
+
+    // Barra vertical de destaque na cor do departamento
     ctx.fillStyle = accentColorHex
-    ctx.fillRect(16, 20, 8, 160)
+    ctx.fillRect(26, 28, 12, 264)
 
-    // 2. Título do Departamento (Fonte reduzida, limpa, moderna e compacta)
-    ctx.fillStyle = '#f8fafc'
-    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    // 2. Título do Departamento (Limpo, moderno, caixa alta)
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 50px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     ctx.textBaseline = 'top'
     const cleanName = squad.name || 'Departamento'
-    ctx.fillText(cleanName.toUpperCase(), 36, 34, 720)
+    ctx.fillText(cleanName.toUpperCase(), 54, 44, 920)
 
-    // 3. Subtítulo (Discreto, minimalista e legível)
+    // Divisória sutil
+    ctx.strokeStyle = '#2d3b55'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(54, 148)
+    ctx.lineTo(970, 148)
+    ctx.stroke()
+
+    // 3. Subtítulo (Contagem de especialistas)
     ctx.fillStyle = accentColorHex
-    ctx.font = '600 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace'
-    const agentText = `${agentCount} ${agentCount === 1 ? 'ESPECIALISTA' : 'ESPECIALISTAS'}`
-    ctx.fillText(agentText, 36, 92)
+    ctx.font = '600 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace'
+    const agentText = `${agentCount} ${agentCount === 1 ? 'ESPECIALISTA CONECTADO' : 'ESPECIALISTAS CONECTADOS'}`
+    ctx.fillText(agentText, 54, 172)
 
     // 4. Status badge (Indicador verde elegante)
     ctx.fillStyle = '#10b981'
     ctx.beginPath()
-    ctx.arc(42, 150, 7, 0, Math.PI * 2)
+    ctx.arc(68, 262, 10, 0, Math.PI * 2)
     ctx.fill()
 
-    ctx.fillStyle = '#64748b'
-    ctx.font = '600 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace'
-    ctx.fillText('ONLINE & ATIVO', 58, 142)
+    ctx.fillStyle = '#94a3b8'
+    ctx.font = '600 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace'
+    ctx.fillText('ONLINE & ATIVO', 90, 248)
   }
 
   const texture = new THREE.CanvasTexture(canvas)
@@ -386,39 +440,58 @@ function createSquadFloorPlaque(params: {
   texture.magFilter = THREE.LinearFilter
   texture.generateMipmaps = false
 
-  // Base da placa física (Moldura em titânio escuro fosco de baixo perfil)
-  const frameGeo = new THREE.BoxGeometry(width + 0.8, 0.2, depth + 0.8)
+  // Base Pedestal / Púlpito chanfrado elevado do chão
+  const pedestalGeo = new THREE.BoxGeometry(width + 2, 2.4, 7)
+  const pedestalMat = new THREE.MeshStandardMaterial({
+    color: 0x182030,
+    metalness: 0.85,
+    roughness: 0.3
+  })
+  const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat)
+  pedestal.position.set(0, 1.2, 0)
+  plaqueGroup.add(pedestal)
+
+  // Friso LED inferior na base do pedestal
+  const ledGeo = new THREE.BoxGeometry(width + 2.2, 0.3, 0.4)
+  const ledMat = new THREE.MeshStandardMaterial({
+    color: accentColorNum,
+    emissive: accentColorNum,
+    emissiveIntensity: 2.8
+  })
+  const ledMesh = new THREE.Mesh(ledGeo, ledMat)
+  ledMesh.position.set(0, 0.3, 3.6)
+  plaqueGroup.add(ledMesh)
+
+  // Painel Tilted Display (Inclinado ~36° para a linha de visão da câmera)
+  const panelGroup = new THREE.Group()
+  panelGroup.position.set(0, 2.0, 0)
+  panelGroup.rotation.x = -Math.PI / 5
+
+  // Moldura chanfrada traseira da placa
+  const frameGeo = new THREE.BoxGeometry(width, height, 1.0)
   const frameMat = new THREE.MeshStandardMaterial({
-    color: 0x181e28,
-    metalness: 0.3,
-    roughness: 0.8
+    color: 0x1c2436,
+    metalness: 0.9,
+    roughness: 0.25
   })
   const frameMesh = new THREE.Mesh(frameGeo, frameMat)
-  frameMesh.userData = { squadId: squad.id, isPlaque: true }
-  plaqueGroup.add(frameMesh)
+  panelGroup.add(frameMesh)
 
-  // Face com MeshBasicMaterial fosco para jamais estourar ou embranquecer com a luz 3D
-  const faceGeo = new THREE.PlaneGeometry(width, depth)
+  // Face frontal com a textura do canvas em MeshBasicMaterial (Zero reflexo branco)
+  const faceGeo = new THREE.PlaneGeometry(width - 0.4, height - 0.4)
   const faceMat = new THREE.MeshBasicMaterial({
     map: texture
   })
   const faceMesh = new THREE.Mesh(faceGeo, faceMat)
-  faceMesh.rotation.x = -Math.PI / 2
-  faceMesh.position.y = 0.12
-  faceMesh.userData = { squadId: squad.id, isPlaque: true }
-  plaqueGroup.add(faceMesh)
+  faceMesh.position.z = 0.52
+  panelGroup.add(faceMesh)
 
-  // Fita LED sutil na base da placa
-  const ledGeo = new THREE.BoxGeometry(width + 1.0, 0.1, 0.2)
-  const ledMat = new THREE.MeshStandardMaterial({
-    color: accentColorNum,
-    emissive: accentColorNum,
-    emissiveIntensity: 1.6
+  plaqueGroup.add(panelGroup)
+
+  // Propagar userData para clique e raycasting 100% responsivo
+  plaqueGroup.traverse(child => {
+    child.userData = { squadId: squad.id, isPlaque: true }
   })
-  const ledMesh = new THREE.Mesh(ledGeo, ledMat)
-  ledMesh.position.set(0, 0.06, depth / 2 + 0.4)
-  ledMesh.userData = { squadId: squad.id, isPlaque: true }
-  plaqueGroup.add(ledMesh)
 
   return plaqueGroup
 }
@@ -997,6 +1070,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
   // Referência para controles e objetos 3D
   const controlsRef = useRef<OrbitControls | null>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
+  const allWorkstationsRef = useRef<THREE.Object3D[]>([])
   const deskMeshesRef = useRef<Map<string, THREE.Object3D>>(new Map())
   const plaqueMeshesRef = useRef<Map<string, THREE.Object3D>>(new Map())
   const pulseStreamsRef = useRef<{
@@ -1017,6 +1091,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     if (!selectedAgentId) return null
     return (
       squads.find(sq =>
+        sq.coordinatorAgentId === selectedAgentId ||
         (sq.pipeline || []).some(p => p.agentId === selectedAgentId) ||
         (sq.nodes || []).some(n => n.agentId === selectedAgentId)
       ) || null
@@ -1287,12 +1362,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     hubGroup.add(coreRing)
 
     // PREDIOZINHO CORPORATIVO NO CENTRO (MINIATURA DA CORPORAÇÃO VISÍVEL E DETALHADA)
-    const hqBuilding = createCorporateHQBuilding(
-      dynamicAccent.num,
-      PYRITE_3D.platformSteel,
-      PYRITE_3D.platformNavy,
-      PYRITE_3D.platformTrim
-    )
+    const hqBuilding = createCorporateHQBuilding(dynamicAccent.num)
     hqBuilding.position.y = 7.6
     hubGroup.add(hqBuilding)
 
@@ -1304,6 +1374,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
     const totalSquads = squads.length
     deskMeshesRef.current.clear()
     plaqueMeshesRef.current.clear()
+    allWorkstationsRef.current = []
     pulseStreamsRef.current = []
 
     // Coordenadas das plataformas (distribuição harmoniosa no mapa 3D)
@@ -1411,7 +1482,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       platformGroup.add(podMesh)
 
       // Friso metálico superior chanfrado
-      const trimGeo = new THREE.BoxGeometry(platWidth + 0.8, 0.3, platDepth + 0.8)
+      const trimGeo = new THREE.BoxGeometry(platWidth + 0.8, 0.2, platDepth + 0.8)
       const trimMat = new THREE.MeshStandardMaterial({
         color: PYRITE_3D.platformTrim,
         metalness: 0.9,
@@ -1432,16 +1503,16 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       glowMesh.position.y = 0.35
       platformGroup.add(glowMesh)
 
-      // PLACA 3D COM O NOME DO DEPARTAMENTO EMBUTIDA NO CHÃO DA PLATAFORMA
+      // PLACA 3D COM O NOME DO DEPARTAMENTO ELEVADA E INCLINADA PARA A CÂMERA
       const squadPlaque = createSquadFloorPlaque({
         squad: sq,
         accentColorHex: dynamicAccent.hex,
         accentColorNum: dynamicAccent.num,
         agentCount: squadAgents.length,
-        width: 34,
-        depth: 8.5
+        width: 36,
+        height: 10
       })
-      squadPlaque.position.set(0, platHeight + 0.65, platDepth / 2 - 5.5)
+      squadPlaque.position.set(0, platHeight + 0.82, platDepth / 2 - 4.5)
       platformGroup.add(squadPlaque)
       plaqueMeshesRef.current.set(sq.id, squadPlaque)
 
@@ -1519,7 +1590,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
         workstation.position.y = platHeight + 0.6
 
         platformGroup.add(workstation)
-        deskMeshesRef.current.set(agent.id, workstation)
+        allWorkstationsRef.current.push(workstation)
+        deskMeshesRef.current.set(`${sq.id}_${agent.id}`, workstation)
       })
 
       scene.add(platformGroup)
@@ -1708,9 +1780,10 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
         })
 
         squadAgentIds.forEach(agId => {
-          const agEl = tagRefs.current.get(`agent-${agId}`)
+          const tagKey = `${sq.id}_${agId}`
+          const agEl = tagRefs.current.get(tagKey)
           if (agEl) {
-            const desk = deskMeshesRef.current.get(agId)
+            const desk = deskMeshesRef.current.get(tagKey)
             const isTargeted = selectedAgentIdRef.current === agId || hoveredAgentIdRef.current === agId
             const shouldShow = zoomed || isTargeted
 
@@ -1756,9 +1829,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
 
       raycaster.setFromCamera(mouse, camera)
-      const allDesks = Array.from(deskMeshesRef.current.values())
       const allPlaques = Array.from(plaqueMeshesRef.current.values())
-      const intersects = raycaster.intersectObjects([...allDesks, ...allPlaques], true)
+      const intersects = raycaster.intersectObjects([...allWorkstationsRef.current, ...allPlaques], true)
 
       // 1. Prioridade absoluta para agentes
       for (const hit of intersects) {
@@ -1796,9 +1868,8 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
 
       raycaster.setFromCamera(mouse, camera)
-      const allDesks = Array.from(deskMeshesRef.current.values())
       const allPlaques = Array.from(plaqueMeshesRef.current.values())
-      const intersects = raycaster.intersectObjects([...allDesks, ...allPlaques], true)
+      const intersects = raycaster.intersectObjects([...allWorkstationsRef.current, ...allPlaques], true)
 
       // 1. Prioridade máxima para selecionar o agente clicado
       for (const hit of intersects) {
@@ -2078,10 +2149,10 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
 
                 return (
                   <div
-                    key={ag.id}
+                    key={`${sq.id}_${ag.id}`}
                     ref={el => {
-                      if (el) tagRefs.current.set(`agent-${ag.id}`, el)
-                      else tagRefs.current.delete(`agent-${ag.id}`)
+                      if (el) tagRefs.current.set(`${sq.id}_${ag.id}`, el)
+                      else tagRefs.current.delete(`${sq.id}_${ag.id}`)
                     }}
                     onClick={() => setSelectedAgentId(ag.id)}
                     className={`absolute top-0 left-0 pointer-events-auto cursor-pointer transition-transform duration-100 whitespace-nowrap min-w-max shrink-0 hidden ${
