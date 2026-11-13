@@ -227,7 +227,6 @@ function createCorporateHQBuilding(accentNum: number): THREE.Group {
   const towerW = 16.5
   const towerH = 34
   const towerD = 14.5
-  const towerElevation = towerH / 2 + 0.4
 
   const towerShape = createRoundedRectShape(towerW, towerD, 1.8)
   const towerGeo = new THREE.ExtrudeGeometry(towerShape, {
@@ -238,9 +237,10 @@ function createCorporateHQBuilding(accentNum: number): THREE.Group {
     bevelSize: 0.4,
     bevelThickness: 0.4
   })
-  towerGeo.rotateX(Math.PI / 2)
+  // -Math.PI / 2 rotaciona a extrusão para o eixo +Y vertical ascendente (sem vazar para baixo do chão)
+  towerGeo.rotateX(-Math.PI / 2)
   const tower = new THREE.Mesh(towerGeo, facadeWallMat)
-  tower.position.y = towerElevation
+  tower.position.set(0, 0.4, 0)
   building.add(tower)
 
   // 4. GRADE DE JANELAS AZUIS INDIVIDUAIS (8 ANDARES COM VIDROS RETANGULARES NÍTIDOS)
@@ -360,9 +360,10 @@ function createCorporateHQBuilding(accentNum: number): THREE.Group {
     bevelSize: 0.3,
     bevelThickness: 0.3
   })
-  penthouseGeo.rotateX(Math.PI / 2)
+  // -Math.PI / 2 rotaciona para o eixo +Y vertical ascendente
+  penthouseGeo.rotateX(-Math.PI / 2)
   const penthouse = new THREE.Mesh(penthouseGeo, facadeWallMat)
-  penthouse.position.set(0, towerH + 0.4 + penthouseH / 2, -0.4)
+  penthouse.position.set(0, towerH + 0.4, -0.4)
   building.add(penthouse)
 
   // Friso superior da penthouse
@@ -1829,7 +1830,7 @@ export const Organogram3DView: React.FC<Organogram3DViewProps> = ({
       // 1. Tag do Hub Central (acima da antena da torre corporativa)
       const hubEl = tagRefs.current.get('hub')
       if (hubEl) {
-        tempVec.set(0, 48, 0)
+        tempVec.set(0, 50, 0)
         tempVec.project(camera)
         if (tempVec.z < 1) {
           const sx = (tempVec.x * 0.5 + 0.5) * width
