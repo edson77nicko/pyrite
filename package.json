@@ -1,7 +1,7 @@
 {
   "name": "pyrite",
   "private": true,
-  "version": "1.0.145",
+  "version": "1.0.146",
   "description": "Pyrite - Local-First Knowledge Management & Thinking Environment",
   "author": "Pyrite Team",
   "type": "module",

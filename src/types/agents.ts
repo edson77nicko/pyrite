@@ -123,6 +123,7 @@ export interface AgentProfileVersion {
   deliverables: AgentDeliverableConfig
   aiConfig: {
     useDefault: boolean
+    purpose?: 'text' | 'code' | 'image'
     provider?: string
     model?: string
     temperature?: number
@@ -440,6 +441,8 @@ export interface WorkflowNodeExecution {
 export interface AgentRun {
   id: string
   idempotencyKey: string
+  conversationId?: string
+  conversationTitle?: string
   agentId: string
   agentName: string
   agentVersion: number

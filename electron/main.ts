@@ -693,6 +693,9 @@ interface StoredAiConfig {
   isEncrypted?: boolean
   sessionOnly?: boolean
   model: string
+  codeModel?: string
+  useCustomCodeModel?: boolean
+  imageModel?: string
   multimodal: boolean
   updatedAt: number
 }
@@ -750,6 +753,9 @@ ipcMain.handle('ai:saveConfig', async (_event, params: {
   provider: string
   apiKey?: string
   model: string
+  codeModel?: string
+  useCustomCodeModel?: boolean
+  imageModel?: string
   multimodal: boolean
   setActive?: boolean
 }) => {
@@ -766,6 +772,15 @@ ipcMain.handle('ai:saveConfig', async (_event, params: {
 
   const entry = creds.providers[p]
   entry.model = params.model.trim()
+  if (params.codeModel !== undefined) {
+    entry.codeModel = params.codeModel.trim()
+  }
+  if (params.useCustomCodeModel !== undefined) {
+    entry.useCustomCodeModel = !!params.useCustomCodeModel
+  }
+  if (params.imageModel !== undefined) {
+    entry.imageModel = params.imageModel.trim()
+  }
   entry.multimodal = !!params.multimodal
   entry.updatedAt = Date.now()
 
@@ -801,12 +816,23 @@ ipcMain.handle('ai:saveConfig', async (_event, params: {
 
 ipcMain.handle('ai:getAllConfigs', async () => {
   const creds = readAiCredentials()
-  const summary: Record<string, { model: string; multimodal: boolean; hasKey: boolean; isEncrypted: boolean }> = {}
+  const summary: Record<string, {
+    model: string
+    codeModel?: string
+    useCustomCodeModel?: boolean
+    imageModel?: string
+    multimodal: boolean
+    hasKey: boolean
+    isEncrypted: boolean
+  }> = {}
 
   for (const [key, val] of Object.entries(creds.providers || {})) {
     const hasMemoryKey = sessionMemoryApiKeys.has(key)
     summary[key] = {
       model: val.model,
+      codeModel: val.codeModel || '',
+      useCustomCodeModel: !!val.useCustomCodeModel,
+      imageModel: val.imageModel || '',
       multimodal: !!val.multimodal,
       hasKey: (!!val.encryptedKey && val.encryptedKey.length > 0) || hasMemoryKey,
       isEncrypted: !!val.isEncrypted

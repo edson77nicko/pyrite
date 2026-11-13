@@ -59,7 +59,6 @@ import {
   StopCircle,
   Search,
   PanelLeft,
-  PanelRight,
   ArrowUp,
   ChevronRight,
   ChevronDown,
@@ -79,7 +78,9 @@ import {
   Users,
   Maximize2,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  Code,
+  MessageSquare
 } from 'lucide-react'
 import { CustomSelect } from './CustomSelect'
 
@@ -406,6 +407,17 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const projGroupDropdownRef = useRef<HTMLDivElement>(null)
   const modelDropdownRef = useRef<HTMLDivElement>(null)
   const composerPlusRef = useRef<HTMLDivElement>(null)
+  const convDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Gerenciamento de Conversas Múltiplas do Agente
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [isConvDropdownOpen, setIsConvDropdownOpen] = useState(false)
+
+  // Ao trocar de agente, resetar o seletor de conversa ativa para carregar a mais recente
+  useEffect(() => {
+    setActiveConversationId(null)
+    setIsConvDropdownOpen(false)
+  }, [selectedAgentId])
 
   const loadInstalledAiSkills = () => {
     if (typeof window === 'undefined') return
@@ -479,6 +491,13 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       ) {
         setIsProjGroupDropdownOpen(false)
       }
+      if (
+        isConvDropdownOpen &&
+        convDropdownRef.current &&
+        !convDropdownRef.current.contains(target)
+      ) {
+        setIsConvDropdownOpen(false)
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
@@ -487,7 +506,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('touchstart', handleClickOutside)
     }
-  }, [isProjectDropdownOpen, isModelDropdownOpen, isComposerPlusOpen, isProjGroupDropdownOpen])
+  }, [isProjectDropdownOpen, isModelDropdownOpen, isComposerPlusOpen, isProjGroupDropdownOpen, isConvDropdownOpen])
 
   // Identificação inteligente de Itens vs Projetos
   const isItemProject = (p: ProjectContext) => {
@@ -992,6 +1011,105 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
   // executeRoutineDirectly removed
 
+  // Conversas do agente selecionado
+  const allRunsForAgent = useMemo(() => {
+    return store.runs.filter(r => r.agentId === selectedAgent?.id)
+  }, [store.runs, selectedAgent?.id])
+
+  const agentConversations = useMemo(() => {
+    const map = new Map<string, {
+      id: string
+      title: string
+      updatedAt: number
+      runs: AgentRun[]
+    }>()
+
+    for (const run of allRunsForAgent) {
+      const convId = run.conversationId || run.id
+      const existing = map.get(convId)
+      if (existing) {
+        existing.runs.push(run)
+        if (run.updatedAt > existing.updatedAt) {
+          existing.updatedAt = run.updatedAt
+        }
+        if (!existing.title && (run.conversationTitle || run.prompt)) {
+          existing.title = run.conversationTitle || run.prompt.slice(0, 35)
+        }
+      } else {
+        map.set(convId, {
+          id: convId,
+          title: run.conversationTitle || (run.prompt ? run.prompt.slice(0, 35) : 'Conversa'),
+          updatedAt: run.updatedAt || run.startedAt,
+          runs: [run]
+        })
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.updatedAt - a.updatedAt)
+  }, [allRunsForAgent])
+
+  const currentConversationId = activeConversationId || agentConversations[0]?.id || `conv_${selectedAgent?.id || 'default'}`
+  const currentConversation = agentConversations.find(c => c.id === currentConversationId)
+
+  const agentRuns = useMemo(() => {
+    return allRunsForAgent
+      .filter(r => (r.conversationId || r.id) === currentConversationId)
+      .slice()
+      .reverse()
+  }, [allRunsForAgent, currentConversationId])
+
+  const handleStartNewConversation = () => {
+    const newId = `conv_${Date.now()}`
+    setActiveConversationId(newId)
+    setSelectedRunId(null)
+    setPromptInput('')
+    setIsConvDropdownOpen(false)
+    setStatusBanner({
+      type: 'info',
+      text: 'Nova conversa iniciada. Envie sua mensagem abaixo.'
+    })
+  }
+
+  const handleClearCurrentConversation = async () => {
+    if (agentRuns.length === 0) {
+      setStatusBanner({
+        type: 'info',
+        text: 'Esta conversa já está vazia.'
+      })
+      return
+    }
+    if (!window.confirm('Tem certeza que deseja limpar todas as mensagens desta conversa?')) {
+      return
+    }
+
+    const runIdsToRemove = new Set(agentRuns.map(r => r.id))
+    const nextRuns = store.runs.filter(r => !runIdsToRemove.has(r.id))
+    await onUpdateStore({ ...store, runs: nextRuns })
+    setSelectedRunId(null)
+    setPromptInput('')
+    setActiveConversationId(`conv_${Date.now()}`)
+    setStatusBanner({
+      type: 'success',
+      text: 'Conversa limpa com sucesso.'
+    })
+  }
+
+  const handleDeleteConversation = async (convId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!window.confirm('Deseja excluir esta conversa do histórico?')) {
+      return
+    }
+    const nextRuns = store.runs.filter(r => (r.conversationId || r.id) !== convId)
+    await onUpdateStore({ ...store, runs: nextRuns })
+    if (currentConversationId === convId) {
+      setActiveConversationId(`conv_${Date.now()}`)
+    }
+    setStatusBanner({
+      type: 'info',
+      text: 'Conversa removida do histórico.'
+    })
+  }
+
   const handleRunAgent = async (opts: {
     isTest: boolean
     overridePrompt?: string
@@ -1043,12 +1161,17 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     }
 
     try {
+      const targetConvId = opts.existingRunToUpdate?.conversationId || currentConversationId
+      const targetConvTitle = opts.existingRunToUpdate?.conversationTitle || currentConversation?.title || effectivePrompt.slice(0, 35)
+
       const resultRun = await executeAgentRun({
         agent: selectedAgent,
         allAgents: store.agents,
         allNotes: notes,
         allProjects: allUnifiedAsProjects,
         prompt: effectivePrompt,
+        conversationId: targetConvId,
+        conversationTitle: targetConvTitle,
         isTestRun: opts.isTest,
         projectContext: effectiveProject,
         explicitClientName: effectiveProject?.clientName,
@@ -1401,11 +1524,6 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       ag.roleDescription.toLowerCase().includes(agentSearchQuery.toLowerCase()) ||
       ag.workStyle.tone.toLowerCase().includes(agentSearchQuery.toLowerCase())
   )
-
-  const agentRuns = store.runs
-    .filter(r => r.agentId === selectedAgent?.id)
-    .slice()
-    .reverse()
 
 
 
@@ -1861,16 +1979,111 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     )
                   )}
 
+                  {/* Seletor e Histórico de Conversas */}
+                  <div className="relative" ref={convDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsConvDropdownOpen(v => !v)
+                        setIsProjectDropdownOpen(false)
+                        setIsModelDropdownOpen(false)
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#18181b] border border-zinc-800/80 hover:border-zinc-700 text-xs text-zinc-200 transition-colors cursor-pointer"
+                      title="Histórico de conversas deste agente"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-zinc-400" />
+                      <span className="truncate max-w-[130px] font-medium">
+                        {currentConversation?.title || (agentRuns.length > 0 ? 'Conversa Ativa' : 'Nova Conversa')}
+                      </span>
+                      {agentConversations.length > 0 && (
+                        <span className="text-[10px] text-zinc-500 font-mono">
+                          ({agentConversations.length})
+                        </span>
+                      )}
+                      <ChevronDown className="w-3 h-3 text-zinc-500" />
+                    </button>
+
+                    {isConvDropdownOpen && (
+                      <div className="absolute left-0 top-full mt-1.5 w-72 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1.5 animate-in fade-in zoom-in-95 duration-100">
+                        <div className="flex items-center justify-between px-2 py-1 text-[10px] uppercase font-semibold text-zinc-500">
+                          <span>Conversas com {selectedAgent?.name}</span>
+                          <span className="font-mono">{agentConversations.length}</span>
+                        </div>
+
+                        {/* Botão + Nova Conversa no dropdown */}
+                        <button
+                          type="button"
+                          onClick={handleStartNewConversation}
+                          className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl bg-[var(--accent)]/15 hover:bg-[var(--accent)]/25 text-[var(--accent)] text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Iniciar Nova Conversa</span>
+                        </button>
+
+                        <div className="max-h-56 overflow-y-auto space-y-1 pr-0.5 custom-scrollbar">
+                          {agentConversations.length === 0 ? (
+                            <div className="text-[11px] text-zinc-500 px-3 py-4 text-center">
+                              Nenhuma conversa salva ainda.
+                            </div>
+                          ) : (
+                            agentConversations.map(conv => {
+                              const isCurrent = conv.id === currentConversationId
+                              return (
+                                <div
+                                  key={conv.id}
+                                  onClick={() => {
+                                    setActiveConversationId(conv.id)
+                                    setIsConvDropdownOpen(false)
+                                  }}
+                                  className={`group flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs cursor-pointer transition-colors ${
+                                    isCurrent
+                                      ? 'bg-zinc-800 text-white font-medium'
+                                      : 'text-zinc-300 hover:bg-zinc-800/60'
+                                  }`}
+                                >
+                                  <div className="min-w-0 pr-2">
+                                    <div className="truncate text-xs">{conv.title}</div>
+                                    <div className="text-[10px] text-zinc-500">
+                                      {conv.runs.length} msg(s) · {formatTimeShort(conv.updatedAt)}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={e => handleDeleteConversation(conv.id, e)}
+                                    className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-red-400 transition-opacity rounded cursor-pointer"
+                                    title="Excluir esta conversa"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Botão Rápido: Nova Conversa */}
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedRunId(null)
-                      setPromptInput('')
-                    }}
-                    className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 cursor-pointer"
-                    title="Nova conversa com este agente"
+                    onClick={handleStartNewConversation}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#18181b] border border-zinc-800/80 hover:border-zinc-700 text-xs text-zinc-300 transition-colors cursor-pointer"
+                    title="Iniciar nova conversa limpa com este agente"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="hidden sm:inline">Nova Conversa</span>
+                  </button>
+
+                  {/* Botão: Limpar Conversa Atual */}
+                  <button
+                    type="button"
+                    onClick={handleClearCurrentConversation}
+                    disabled={agentRuns.length === 0}
+                    className="p-1.5 rounded-xl border border-zinc-800/80 bg-[#18181b] hover:bg-zinc-800 text-zinc-400 hover:text-red-400 disabled:opacity-40 disabled:hover:text-zinc-400 transition-colors cursor-pointer"
+                    title="Limpar mensagens da conversa atual"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
@@ -2239,14 +2452,15 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsAgentSettingsOpen(v => !v)}
-                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
                       isAgentSettingsOpen
-                        ? 'bg-zinc-800 text-zinc-100'
-                        : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
+                        ? 'bg-[var(--accent)] text-zinc-950 font-bold shadow-md'
+                        : 'bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-200'
                     }`}
-                    title="Configurações do agente"
+                    title="Configurações e Perfil do Agente"
                   >
-                    <PanelRight className="w-4 h-4" />
+                    <Settings className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Configurações do Agente</span>
                   </button>
                 </div>
               </header>
@@ -2330,6 +2544,24 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                         <span>{formatTimeShort(selectedAgent.createdAt || Date.now())}</span>
                       </div>
                     </div>
+
+                    {/* Quando não há mensagens na conversa atual */}
+                    {agentRuns.length === 0 && (
+                      <div className="py-8 flex flex-col items-center justify-center text-center gap-2 border border-dashed border-zinc-850 rounded-2xl p-6 bg-zinc-900/20">
+                        <AgentIcon
+                          variant={selectedAgent.icon}
+                          state="waiting"
+                          size={32}
+                          className="opacity-70"
+                        />
+                        <div className="text-xs font-semibold text-zinc-300">
+                          {currentConversation?.title || 'Nova Conversa'}
+                        </div>
+                        <p className="text-[11px] text-zinc-500 max-w-sm">
+                          Esta sessão está pronta. Digite seu pedido abaixo para iniciar a conversa com {selectedAgent.name}.
+                        </p>
+                      </div>
+                    )}
 
                     {/* Histórico real de conversas / execuções deste agente */}
                     {agentRuns.map(run => {
@@ -2943,10 +3175,55 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     />
                   </div>
 
-                  {/* Seção Cérebro (Modelo, Raciocínio, Modelos de reserva) */}
+                  {/* Seção Cérebro (Finalidade, Modelo, Raciocínio, Modelos de reserva) */}
                   <div className="space-y-2 pt-1">
                     <div className="text-[11px] text-zinc-400 font-medium">Cérebro</div>
                     <div className="bg-[#18181b] border border-zinc-800/80 rounded-2xl divide-y divide-zinc-800/70">
+                      {/* Finalidade do Agente */}
+                      <div className="px-3 py-2.5 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between text-zinc-200 font-medium">
+                          <span>Finalidade</span>
+                          <span className="text-[10px] text-[var(--accent)] font-semibold capitalize">
+                            {(selectedAgent.aiConfig?.purpose || 'text') === 'text' ? 'Texto' : (selectedAgent.aiConfig?.purpose === 'code' ? 'Código' : 'Imagem')}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1 bg-[#121215] p-1 rounded-xl">
+                          {(
+                            [
+                              { id: 'text', label: 'Texto', icon: FileText },
+                              { id: 'code', label: 'Código', icon: Code },
+                              { id: 'image', label: 'Imagem', icon: Sparkles }
+                            ] as const
+                          ).map(purp => {
+                            const isSel = (selectedAgent.aiConfig?.purpose || 'text') === purp.id
+                            const Icon = purp.icon
+                            return (
+                              <button
+                                key={purp.id}
+                                type="button"
+                                onClick={() => {
+                                  onUpdateStore(
+                                    updateAgentProfileWithVersion(store, {
+                                      ...selectedAgent,
+                                      aiConfig: {
+                                        ...selectedAgent.aiConfig,
+                                        purpose: purp.id
+                                      }
+                                    })
+                                  )
+                                }}
+                                className={`flex items-center justify-center gap-1 py-1 rounded-lg text-[10px] font-medium transition-colors cursor-pointer ${
+                                  isSel ? 'bg-zinc-800 text-white font-semibold' : 'text-zinc-400 hover:text-white'
+                                }`}
+                              >
+                                <Icon className="w-3 h-3" />
+                                <span>{purp.label}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+
                       <div className="px-3 py-2.5 flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2 text-zinc-200 font-medium">
                           <Cpu className="w-3.5 h-3.5 text-zinc-400" />
@@ -3863,9 +4140,98 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               </div>
             )}
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3 text-xs max-h-[65vh] overflow-y-auto pr-0.5 custom-scrollbar">
+              {/* Escolha do Ícone e Avatar */}
+              <div className="space-y-1.5">
+                <label className="block text-zinc-400 font-medium">Ícone e Avatar</label>
+                <div className="bg-[#1c1c1f] border border-zinc-800 rounded-xl p-2.5">
+                  <AgentIconPicker
+                    selectedVariant={newAgentDraft.icon}
+                    state="available"
+                    size={34}
+                    onSelect={variantId => {
+                      const def = resolveAgentIconVariant(variantId)
+                      setNewAgentDraft({
+                        ...newAgentDraft,
+                        icon: def.id,
+                        color: def.bg
+                      })
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Escolha da Finalidade */}
+              <div className="space-y-1.5">
+                <label className="block text-zinc-400 font-medium">Finalidade do Agente</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNewAgentDraft({
+                        ...newAgentDraft,
+                        aiConfig: { ...newAgentDraft.aiConfig, purpose: 'text' }
+                      })
+                    }
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      (newAgentDraft.aiConfig?.purpose || 'text') === 'text'
+                        ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-white shadow-sm'
+                        : 'bg-[#1c1c1f] border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <div className="font-semibold text-xs flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-[var(--accent)]" />
+                      <span>Gerar Texto</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">Redação, sínteses, notas</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNewAgentDraft({
+                        ...newAgentDraft,
+                        aiConfig: { ...newAgentDraft.aiConfig, purpose: 'code' }
+                      })
+                    }
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      newAgentDraft.aiConfig?.purpose === 'code'
+                        ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-white shadow-sm'
+                        : 'bg-[#1c1c1f] border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <div className="font-semibold text-xs flex items-center gap-1.5">
+                      <Code className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Gerar Código</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">Programação e scripts</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNewAgentDraft({
+                        ...newAgentDraft,
+                        aiConfig: { ...newAgentDraft.aiConfig, purpose: 'image' }
+                      })
+                    }
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      newAgentDraft.aiConfig?.purpose === 'image'
+                        ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-white shadow-sm'
+                        : 'bg-[#1c1c1f] border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <div className="font-semibold text-xs flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Gerar Imagem</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">Visuais e ilustrações</div>
+                  </button>
+                </div>
+              </div>
+
               <div>
-                <label className="block text-zinc-400 mb-1">Nome</label>
+                <label className="block text-zinc-400 mb-1 font-medium">Nome</label>
                 <input
                   type="text"
                   value={newAgentDraft.name}
@@ -3874,7 +4240,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-zinc-400 mb-1">Título</label>
+                <label className="block text-zinc-400 mb-1 font-medium">Título</label>
                 <input
                   type="text"
                   value={newAgentDraft.workStyle.tone}
@@ -3888,7 +4254,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-zinc-400 mb-1">Descrição</label>
+                <label className="block text-zinc-400 mb-1 font-medium">Descrição</label>
                 <textarea
                   value={newAgentDraft.roleDescription}
                   onChange={e =>
@@ -3910,6 +4276,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               <button
                 type="button"
                 onClick={async () => {
+                  const newConvId = `conv_${Date.now()}`
                   const created: AgentProfileVersion = {
                     ...newAgentDraft,
                     id: `agent_custom_${Date.now()}`,
@@ -3918,6 +4285,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   }
                   await onUpdateStore(updateAgentProfileWithVersion(store, created))
                   setSelectedAgentId(created.id)
+                  setActiveConversationId(newConvId)
+                  setIsAgentSettingsOpen(true)
                   setIsNewAgentModalOpen(false)
                 }}
                 className="px-4 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs cursor-pointer"

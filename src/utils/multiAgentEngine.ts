@@ -199,6 +199,7 @@ export const INITIAL_AGENTS: AgentProfileVersion[] = [
     },
     aiConfig: {
       useDefault: true,
+      purpose: 'text',
       temperature: 0.3
     },
     limits: {
@@ -2259,6 +2260,7 @@ export function generateAgentDraftFromPrompt(
     },
     aiConfig: {
       useDefault: true,
+      purpose: 'text',
       temperature: 0.3
     },
     limits: {
@@ -2377,6 +2379,34 @@ export function registerWorkflowCommitTasks(fn: WorkflowCommitTasksFn | null) {
 }
 
 /**
+ * Determina o modelo correto de IA a ser utilizado pelo agente considerando:
+ * 1. Modelo próprio configurado no agente (se useDefault for false e model estiver definido)
+ * 2. Finalidade do agente (code -> codeModel se customizado; image -> imageModel; text -> model padrão)
+ */
+export function resolveAgentModel(
+  agent?: AgentProfileVersion,
+  providerCfg?: {
+    model: string
+    codeModel?: string
+    useCustomCodeModel?: boolean
+    imageModel?: string
+  }
+): string | undefined {
+  if (!agent) return providerCfg?.model
+  if (agent.aiConfig?.useDefault === false && agent.aiConfig?.model) {
+    return agent.aiConfig.model
+  }
+  if (!providerCfg) return undefined
+  if (agent.aiConfig?.purpose === 'code' && providerCfg.useCustomCodeModel && providerCfg.codeModel) {
+    return providerCfg.codeModel
+  }
+  if (agent.aiConfig?.purpose === 'image' && providerCfg.imageModel) {
+    return providerCfg.imageModel
+  }
+  return providerCfg.model
+}
+
+/**
  * Chamada real de IA para etapas do fluxo (LLM / Agente) usando o provedor configurado em
  * "Configurações de IA" (ou o provedor próprio do agente). Nunca devolve texto simulado:
  * se a IA não estiver disponível, retorna `success: false` com o motivo.
@@ -2393,8 +2423,9 @@ export async function callWorkflowAi(params: {
     return { success: false, error: 'A IA só está disponível no aplicativo desktop do Pyrite.' }
   }
   let provider = ''
+  let cfg: any = null
   try {
-    const cfg = await window.electronAPI.aiGetAllConfigs()
+    cfg = await window.electronAPI.aiGetAllConfigs()
     provider =
       agent && agent.aiConfig.useDefault === false && agent.aiConfig.provider
         ? agent.aiConfig.provider
@@ -2409,11 +2440,12 @@ export async function callWorkflowAi(params: {
     return { success: false, error: `Falha ao ler as configurações de IA: ${err?.message || 'erro desconhecido'}` }
   }
 
+  const chosenModel = resolveAgentModel(agent, cfg?.providers?.[provider])
   const res = await callAiChatWithAbort(
     {
       provider,
-      model: agent && agent.aiConfig.useDefault === false ? agent.aiConfig.model : undefined,
-      temperature: temperature ?? agent?.aiConfig.temperature ?? 0.3,
+      model: chosenModel,
+      temperature: temperature ?? agent?.aiConfig?.temperature ?? 0.3,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user }
@@ -2441,6 +2473,8 @@ export async function executeAgentRun(params: {
   allProjects?: ProjectContext[]
   prompt: string
   isTestRun: boolean
+  conversationId?: string
+  conversationTitle?: string
   projectContext?: ProjectContext
   explicitClientName?: string
   extraRequestNotes?: Note[]
@@ -2460,6 +2494,8 @@ export async function executeAgentRun(params: {
     allProjects = [],
     prompt,
     isTestRun,
+    conversationId,
+    conversationTitle,
     projectContext,
     explicitClientName,
     extraRequestNotes,
@@ -2493,6 +2529,8 @@ export async function executeAgentRun(params: {
     const runningSnapshot: AgentRun = {
       id: runId,
       idempotencyKey,
+      conversationId,
+      conversationTitle,
       agentId: agent.id,
       agentName: agent.name,
       agentVersion: agent.version,
@@ -2544,6 +2582,8 @@ export async function executeAgentRun(params: {
     return {
       id: runId,
       idempotencyKey,
+      conversationId,
+      conversationTitle,
       agentId: agent.id,
       agentName: agent.name,
       agentVersion: agent.version,
@@ -2612,6 +2652,8 @@ export async function executeAgentRun(params: {
       return {
         id: runId,
         idempotencyKey,
+        conversationId,
+        conversationTitle,
         agentId: agent.id,
         agentName: agent.name,
         agentVersion: agent.version,
@@ -2643,6 +2685,8 @@ export async function executeAgentRun(params: {
     return {
       id: runId,
       idempotencyKey,
+      conversationId,
+      conversationTitle,
       agentId: agent.id,
       agentName: agent.name,
       agentVersion: agent.version,
@@ -2734,10 +2778,11 @@ export async function executeAgentRun(params: {
             } catch {}
           }
 
+          const chosenModel = resolveAgentModel(agent, cfg.providers?.[activeProv])
           const res = await callAiChatWithAbort(
             {
               provider: activeProv,
-              model: agent.aiConfig.model,
+              model: chosenModel,
               temperature: agent.aiConfig.temperature ?? 0.3,
               messages: [
                 {
@@ -2756,6 +2801,8 @@ export async function executeAgentRun(params: {
             return {
               id: runId,
               idempotencyKey,
+              conversationId,
+              conversationTitle,
               agentId: agent.id,
               agentName: agent.name,
               agentVersion: agent.version,
@@ -2856,6 +2903,8 @@ export async function executeAgentRun(params: {
     return {
       id: runId,
       idempotencyKey,
+      conversationId,
+      conversationTitle,
       agentId: agent.id,
       agentName: agent.name,
       agentVersion: agent.version,
@@ -2890,6 +2939,8 @@ export async function executeAgentRun(params: {
     return {
       id: runId,
       idempotencyKey,
+      conversationId,
+      conversationTitle,
       agentId: agent.id,
       agentName: agent.name,
       agentVersion: agent.version,
@@ -3212,6 +3263,8 @@ export async function executeAgentRun(params: {
   return {
     id: runId,
     idempotencyKey,
+    conversationId,
+    conversationTitle,
     agentId: agent.id,
     agentName: agent.name,
     agentVersion: agent.version,

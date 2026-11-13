@@ -21,7 +21,9 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
-  Sliders
+  Sliders,
+  Code,
+  Image as ImageIcon
 } from 'lucide-react'
 
 export interface AiSettingsModalProps {
@@ -40,17 +42,73 @@ export interface ProviderMeta {
   name: string
   defaultModel: string
   placeholderModel: string
+  defaultCodeModel: string
+  defaultImageModel: string
   keyPrefix: string
   badge: string
 }
 
 export const PROVIDERS: ProviderMeta[] = [
-  { id: 'openrouter', name: 'OpenRouter', defaultModel: 'google/gemini-2.5-flash', placeholderModel: 'google/gemini-2.5-flash ou anthropic/claude-3.5-sonnet', keyPrefix: 'sk-or-v1-...', badge: 'Recomendado' },
-  { id: 'openai', name: 'OpenAI', defaultModel: 'gpt-4o', placeholderModel: 'gpt-4o ou gpt-4o-mini', keyPrefix: 'sk-...', badge: 'Oficial' },
-  { id: 'gemini', name: 'Gemini', defaultModel: 'gemini-2.5-flash', placeholderModel: 'gemini-2.5-flash ou gemini-1.5-pro', keyPrefix: 'AIza...', badge: 'Google' },
-  { id: 'deepseek', name: 'DeepSeek', defaultModel: 'deepseek-chat', placeholderModel: 'deepseek-chat ou deepseek-reasoner', keyPrefix: 'sk-...', badge: 'Raciocínio' },
-  { id: 'groq', name: 'Groq', defaultModel: 'llama-3.3-70b-versatile', placeholderModel: 'llama-3.3-70b-versatile ou mixtral-8x7b-32768', keyPrefix: 'gsk_...', badge: 'Ultra-rápido' },
-  { id: 'ollama', name: 'Ollama (Local)', defaultModel: 'llama3', placeholderModel: 'llama3, mistral ou qwen2.5 (localhost:11434)', keyPrefix: 'sem chave', badge: 'Offline' }
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    defaultModel: 'google/gemini-2.5-flash',
+    placeholderModel: 'google/gemini-2.5-flash ou anthropic/claude-3.5-sonnet',
+    defaultCodeModel: 'anthropic/claude-3.5-sonnet',
+    defaultImageModel: 'recraft/recraft-20b',
+    keyPrefix: 'sk-or-v1-...',
+    badge: 'Recomendado'
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    defaultModel: 'gpt-4o',
+    placeholderModel: 'gpt-4o ou gpt-4o-mini',
+    defaultCodeModel: 'gpt-4o',
+    defaultImageModel: 'dall-e-3',
+    keyPrefix: 'sk-...',
+    badge: 'Oficial'
+  },
+  {
+    id: 'gemini',
+    name: 'Gemini',
+    defaultModel: 'gemini-2.5-flash',
+    placeholderModel: 'gemini-2.5-flash ou gemini-1.5-pro',
+    defaultCodeModel: 'gemini-2.5-flash',
+    defaultImageModel: 'imagen-3.0-generate-002',
+    keyPrefix: 'AIza...',
+    badge: 'Google'
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    defaultModel: 'deepseek-chat',
+    placeholderModel: 'deepseek-chat ou deepseek-reasoner',
+    defaultCodeModel: 'deepseek-coder',
+    defaultImageModel: 'deepseek-chat',
+    keyPrefix: 'sk-...',
+    badge: 'Raciocínio'
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    defaultModel: 'llama-3.3-70b-versatile',
+    placeholderModel: 'llama-3.3-70b-versatile ou mixtral-8x7b-32768',
+    defaultCodeModel: 'llama-3.3-70b-versatile',
+    defaultImageModel: 'llama-3.3-70b-versatile',
+    keyPrefix: 'gsk_...',
+    badge: 'Ultra-rápido'
+  },
+  {
+    id: 'ollama',
+    name: 'Ollama (Local)',
+    defaultModel: 'llama3',
+    placeholderModel: 'llama3, mistral ou qwen2.5 (localhost:11434)',
+    defaultCodeModel: 'qwen2.5-coder',
+    defaultImageModel: 'llava',
+    keyPrefix: 'sem chave',
+    badge: 'Offline'
+  }
 ]
 
 export interface CustomSkillFile {
@@ -111,6 +169,30 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
     deepseek: 'deepseek-chat',
     groq: 'llama-3.3-70b-versatile',
     ollama: 'llama3'
+  })
+  const [codeModels, setCodeModels] = useState<Record<ProviderKey, string>>({
+    openrouter: 'anthropic/claude-3.5-sonnet',
+    openai: 'gpt-4o',
+    gemini: 'gemini-2.5-flash',
+    deepseek: 'deepseek-coder',
+    groq: 'llama-3.3-70b-versatile',
+    ollama: 'qwen2.5-coder'
+  })
+  const [useCustomCodeModelMap, setUseCustomCodeModelMap] = useState<Record<ProviderKey, boolean>>({
+    openrouter: false,
+    openai: false,
+    gemini: false,
+    deepseek: false,
+    groq: false,
+    ollama: false
+  })
+  const [imageModels, setImageModels] = useState<Record<ProviderKey, string>>({
+    openrouter: 'recraft/recraft-20b',
+    openai: 'dall-e-3',
+    gemini: 'imagen-3.0-generate-002',
+    deepseek: 'deepseek-chat',
+    groq: 'llama-3.3-70b-versatile',
+    ollama: 'llava'
   })
   const [multimodalMap, setMultimodalMap] = useState<Record<ProviderKey, boolean>>({
     openrouter: true,
@@ -187,17 +269,26 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
       }
 
       const newModels = { ...models }
+      const newCodeModels = { ...codeModels }
+      const newUseCustomCodeModel = { ...useCustomCodeModelMap }
+      const newImageModels = { ...imageModels }
       const newMultimodal = { ...multimodalMap }
       const newHasKeys = { ...hasKeyMap }
 
       for (const [pKey, info] of Object.entries(data.providers || {})) {
         const pk = pKey as ProviderKey
         if (info.model) newModels[pk] = info.model
+        if (info.codeModel) newCodeModels[pk] = info.codeModel
+        if (info.useCustomCodeModel !== undefined) newUseCustomCodeModel[pk] = !!info.useCustomCodeModel
+        if (info.imageModel) newImageModels[pk] = info.imageModel
         newMultimodal[pk] = !!info.multimodal
         newHasKeys[pk] = pk === 'ollama' ? true : !!info.hasKey
       }
 
       setModels(newModels)
+      setCodeModels(newCodeModels)
+      setUseCustomCodeModelMap(newUseCustomCodeModel)
+      setImageModels(newImageModels)
       setMultimodalMap(newMultimodal)
       setHasKeyMap(newHasKeys)
       setInputKey('')
@@ -220,6 +311,9 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
 
   const currentProviderMeta = PROVIDERS.find(p => p.id === activeProvider) || PROVIDERS[0]
   const currentModel = models[activeProvider] ?? currentProviderMeta.defaultModel
+  const currentCodeModel = codeModels[activeProvider] ?? currentProviderMeta.defaultCodeModel
+  const currentUseCustomCodeModel = useCustomCodeModelMap[activeProvider] ?? false
+  const currentImageModel = imageModels[activeProvider] ?? currentProviderMeta.defaultImageModel
   const currentMultimodal = multimodalMap[activeProvider] ?? true
   const hasKey = activeProvider === 'ollama' ? true : (hasKeyMap[activeProvider] ?? false)
 
@@ -233,6 +327,30 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
 
   const handleModelChange = (val: string) => {
     setModels(prev => ({
+      ...prev,
+      [activeProvider]: val
+    }))
+    setSaveSuccess(false)
+  }
+
+  const handleCodeModelChange = (val: string) => {
+    setCodeModels(prev => ({
+      ...prev,
+      [activeProvider]: val
+    }))
+    setSaveSuccess(false)
+  }
+
+  const handleUseCustomCodeModelToggle = () => {
+    setUseCustomCodeModelMap(prev => ({
+      ...prev,
+      [activeProvider]: !prev[activeProvider]
+    }))
+    setSaveSuccess(false)
+  }
+
+  const handleImageModelChange = (val: string) => {
+    setImageModels(prev => ({
       ...prev,
       [activeProvider]: val
     }))
@@ -274,6 +392,9 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
         provider: activeProvider,
         apiKey: inputKey.trim() || undefined,
         model: currentModel.trim() || currentProviderMeta.defaultModel,
+        codeModel: currentCodeModel.trim() || currentProviderMeta.defaultCodeModel,
+        useCustomCodeModel: currentUseCustomCodeModel,
+        imageModel: currentImageModel.trim() || currentProviderMeta.defaultImageModel,
         multimodal: currentMultimodal,
         setActive: true
       })
@@ -607,11 +728,12 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Section: Modelo de IA */}
+                {/* Section: Modelo Principal (Texto) */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="block text-zinc-400 text-[11px] font-medium">
-                      Modelo do Provedor
+                    <label className="flex items-center gap-1.5 text-zinc-400 text-[11px] font-medium">
+                      <FileText className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>Modelo Principal (Texto & Conversa)</span>
                     </label>
                     <span className="text-[10px] text-zinc-500 font-mono">
                       Padrão: {currentProviderMeta.defaultModel}
@@ -635,6 +757,87 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
                         <X className="w-3.5 h-3.5" />
                       </button>
                     )}
+                  </div>
+                </div>
+
+                {/* Section: Modelo para Código */}
+                <div className="space-y-1.5 bg-[#111216] border border-zinc-800/80 rounded-2xl p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-zinc-850 border border-zinc-800 flex items-center justify-center text-blue-400">
+                        <Code className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <span className="font-semibold text-zinc-200 text-xs block">
+                          Modelo para Geração de Código
+                        </span>
+                        <span className="text-[10px] text-zinc-500">
+                          Utilizado quando o agente tem a finalidade de Gerar Código
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={!currentUseCustomCodeModel}
+                        onChange={handleUseCustomCodeModelToggle}
+                        className="rounded border-zinc-700 bg-zinc-900 text-[var(--accent)] focus:ring-0 cursor-pointer"
+                      />
+                      <span>Usar o mesmo modelo principal para código</span>
+                    </label>
+
+                    {currentUseCustomCodeModel && (
+                      <div className="mt-2.5 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-zinc-400">Modelo dedicado para código</span>
+                          <span className="text-[10px] text-zinc-500 font-mono">
+                            Sugestão: {currentProviderMeta.defaultCodeModel}
+                          </span>
+                        </div>
+                        <input
+                          type="text"
+                          value={currentCodeModel}
+                          onChange={e => handleCodeModelChange(e.target.value)}
+                          placeholder={currentProviderMeta.defaultCodeModel}
+                          className="w-full bg-[#16171d] border border-zinc-800 focus:border-blue-500/80 rounded-xl px-3 py-2 text-zinc-100 font-mono text-xs placeholder-zinc-600 transition-all outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Section: Modelo para Imagem */}
+                <div className="space-y-1.5 bg-[#111216] border border-zinc-800/80 rounded-2xl p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-zinc-850 border border-zinc-800 flex items-center justify-center text-purple-400">
+                        <ImageIcon className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <span className="font-semibold text-zinc-200 text-xs block">
+                          Modelo para Geração de Imagem
+                        </span>
+                        <span className="text-[10px] text-zinc-500">
+                          Utilizado quando o agente tem a finalidade de Gerar Imagem
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-zinc-500 font-mono">
+                      Sugestão: {currentProviderMeta.defaultImageModel}
+                    </span>
+                  </div>
+
+                  <div className="pt-2">
+                    <input
+                      type="text"
+                      value={currentImageModel}
+                      onChange={e => handleImageModelChange(e.target.value)}
+                      placeholder={currentProviderMeta.defaultImageModel}
+                      className="w-full bg-[#16171d] border border-zinc-800 focus:border-purple-500/80 rounded-xl px-3 py-2 text-zinc-100 font-mono text-xs placeholder-zinc-600 transition-all outline-none"
+                    />
                   </div>
                 </div>
 

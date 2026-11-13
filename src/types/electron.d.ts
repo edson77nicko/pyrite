@@ -56,12 +56,23 @@ export interface ElectronAPI {
     provider: string
     apiKey?: string
     model: string
+    codeModel?: string
+    useCustomCodeModel?: boolean
+    imageModel?: string
     multimodal: boolean
     setActive?: boolean
   }) => Promise<{ success: boolean; error?: string }>
   aiGetAllConfigs: () => Promise<{
     activeProvider: string
-    providers: Record<string, { model: string; multimodal: boolean; hasKey: boolean; isEncrypted: boolean }>
+    providers: Record<string, {
+      model: string
+      codeModel?: string
+      useCustomCodeModel?: boolean
+      imageModel?: string
+      multimodal: boolean
+      hasKey: boolean
+      isEncrypted: boolean
+    }>
   }>
   aiDeleteKey: (provider: string) => Promise<{ success: boolean }>
   aiChat: (params: {
