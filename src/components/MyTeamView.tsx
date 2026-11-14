@@ -998,10 +998,34 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
   // executeRoutineDirectly removed
 
-  // Conversas do agente selecionado
-  const allRunsForAgent = useMemo(() => {
-    return store.runs.filter(r => r.agentId === selectedAgent?.id)
-  }, [store.runs, selectedAgent?.id])
+  // Reseta a conversa ativa ao trocar de agente
+  useEffect(() => {
+    setActiveConversationId(null)
+    setSelectedRunId(null)
+  }, [selectedAgentId])
+
+  // Identifica execuções automáticas do sistema (rotinas, fluxos, eventos) que pertencem estritamente à aba de Atividades
+  const isSystemExecutionRun = useCallback((r: AgentRun): boolean => {
+    if (r.routineId || r.workflowId) return true
+    if (r.isTestRun) return true
+    const prompt = r.prompt || ''
+    if (
+      prompt.startsWith('[Rotina') ||
+      prompt.startsWith('[Fluxo') ||
+      prompt.startsWith('[Tarefa Concluída') ||
+      prompt.startsWith('[Tarefa:')
+    ) {
+      return true
+    }
+    return false
+  }, [])
+
+  // Apenas execuções de conversação direta do usuário com o agente no chat
+  const allChatRunsForAgent = useMemo(() => {
+    return store.runs.filter(
+      r => r.agentId === selectedAgent?.id && !isSystemExecutionRun(r)
+    )
+  }, [store.runs, selectedAgent?.id, isSystemExecutionRun])
 
   const agentConversations = useMemo(() => {
     const map = new Map<string, {
@@ -1011,7 +1035,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       runs: AgentRun[]
     }>()
 
-    for (const run of allRunsForAgent) {
+    for (const run of allChatRunsForAgent) {
       const convId = run.conversationId || run.id
       const existing = map.get(convId)
       if (existing) {
@@ -1033,17 +1057,17 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     }
 
     return Array.from(map.values()).sort((a, b) => b.updatedAt - a.updatedAt)
-  }, [allRunsForAgent])
+  }, [allChatRunsForAgent])
 
   const currentConversationId = activeConversationId || agentConversations[0]?.id || `conv_${selectedAgent?.id || 'default'}`
   const currentConversation = agentConversations.find(c => c.id === currentConversationId)
 
   const agentRuns = useMemo(() => {
-    return allRunsForAgent
+    return allChatRunsForAgent
       .filter(r => (r.conversationId || r.id) === currentConversationId)
       .slice()
       .reverse()
-  }, [allRunsForAgent, currentConversationId])
+  }, [allChatRunsForAgent, currentConversationId])
 
   const handleStartNewConversation = () => {
     const newId = `conv_${Date.now()}`
@@ -1065,13 +1089,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       })
       return
     }
-    if (!window.confirm('Tem certeza que deseja limpar todas as mensagens desta conversa?')) {
-      return
-    }
 
+    const currentStore = storeRef.current
     const runIdsToRemove = new Set(agentRuns.map(r => r.id))
-    const nextRuns = store.runs.filter(r => !runIdsToRemove.has(r.id))
-    await onUpdateStore({ ...store, runs: nextRuns })
+    const nextRuns = currentStore.runs.filter(r => !runIdsToRemove.has(r.id))
+    await onUpdateStore({ ...currentStore, runs: nextRuns })
     setSelectedRunId(null)
     setPromptInput('')
     setActiveConversationId(`conv_${Date.now()}`)
@@ -1081,19 +1103,20 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     })
   }
 
-  const handleDeleteConversation = async (convId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!window.confirm('Deseja excluir esta conversa do histórico?')) {
-      return
+  const handleDeleteConversation = async (convId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation()
+      e.preventDefault()
     }
+    const currentStore = storeRef.current
     const targetGroup = agentConversations.find(c => c.id === convId)
     const runIdsToRemove = new Set(targetGroup ? targetGroup.runs.map(r => r.id) : [convId])
-    const nextRuns = store.runs.filter(r => {
+    const nextRuns = currentStore.runs.filter(r => {
       if (runIdsToRemove.has(r.id)) return false
       const rConv = r.conversationId || r.id
       return rConv !== convId
     })
-    await onUpdateStore({ ...store, runs: nextRuns })
+    await onUpdateStore({ ...currentStore, runs: nextRuns })
     if (currentConversationId === convId) {
       const remaining = agentConversations.filter(c => c.id !== convId)
       setActiveConversationId(remaining[0]?.id || `conv_${Date.now()}`)
@@ -1103,6 +1126,57 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     setStatusBanner({
       type: 'info',
       text: 'Conversa removida do histórico.'
+    })
+  }
+
+  const handleDeleteAllConversations = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const currentStore = storeRef.current
+    const convIdsToRemove = new Set(agentConversations.map(c => c.id))
+    const runIdsToRemove = new Set<string>()
+    for (const c of agentConversations) {
+      for (const r of c.runs) {
+        runIdsToRemove.add(r.id)
+      }
+    }
+    const nextRuns = currentStore.runs.filter(r => {
+      if (runIdsToRemove.has(r.id)) return false
+      const rConv = r.conversationId || r.id
+      return !convIdsToRemove.has(rConv)
+    })
+    await onUpdateStore({ ...currentStore, runs: nextRuns })
+    setActiveConversationId(`conv_${Date.now()}`)
+    setSelectedRunId(null)
+    setPromptInput('')
+    setIsConvDropdownOpen(false)
+    setStatusBanner({
+      type: 'info',
+      text: 'Todas as conversas deste agente foram removidas.'
+    })
+  }
+
+  const handleClearAllActivityRuns = async () => {
+    const currentStore = storeRef.current
+    if (currentStore.runs.length === 0) return
+    await onUpdateStore({ ...currentStore, runs: [] })
+    setSelectedRunId(null)
+    setStatusBanner({
+      type: 'info',
+      text: 'Histórico de atividades limpo com sucesso.'
+    })
+  }
+
+  const handleDeleteSingleActivityRun = async (runId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const currentStore = storeRef.current
+    const nextRuns = currentStore.runs.filter(r => r.id !== runId)
+    await onUpdateStore({ ...currentStore, runs: nextRuns })
+    if (selectedRunId === runId) {
+      setSelectedRunId(null)
+    }
+    setStatusBanner({
+      type: 'info',
+      text: 'Execução removida do histórico de atividades.'
     })
   }
 
@@ -1198,6 +1272,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         ...latestStore,
         runs: finalRuns
       })
+      setActiveConversationId(targetConvId)
       setSelectedRunId(resultRun.id)
       setAnswerInputs({})
       if (!opts.existingRunToUpdate) {
@@ -1996,8 +2071,20 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     {isConvDropdownOpen && (
                       <div className="absolute left-0 top-full mt-1.5 w-72 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1.5 animate-in fade-in zoom-in-95 duration-100">
                         <div className="flex items-center justify-between px-2 py-1 text-[10px] uppercase font-semibold text-zinc-500">
-                          <span>Histórico de Conversas</span>
-                          <span className="font-mono bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">{agentConversations.length}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span>Histórico de Conversas</span>
+                            <span className="font-mono bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">{agentConversations.length}</span>
+                          </div>
+                          {agentConversations.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleDeleteAllConversations}
+                              className="text-[10px] lowercase first-letter:uppercase text-zinc-400 hover:text-red-400 hover:underline transition-colors cursor-pointer"
+                              title="Excluir todas as conversas deste agente"
+                            >
+                              Limpar todas
+                            </button>
+                          )}
                         </div>
 
                         {/* Botão + Nova Conversa no dropdown */}
@@ -3908,7 +3995,24 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         {activeSection === 'activity' && (
           <div className="flex-1 overflow-y-auto p-6 bg-[#111113]">
             <div className="max-w-4xl mx-auto space-y-4">
-              <h2 className="text-sm font-semibold text-zinc-100">Atividade dos Agentes</h2>
+              <div className="flex items-center justify-between pb-1">
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-100">Atividade dos Agentes</h2>
+                  <p className="text-[11px] text-zinc-500">Histórico de execuções de rotinas, fluxos e tarefas do sistema.</p>
+                </div>
+                {store.runs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllActivityRuns}
+                    className="text-xs text-zinc-400 hover:text-red-400 flex items-center gap-1.5 transition-colors cursor-pointer px-2.5 py-1 rounded-xl hover:bg-zinc-800 border border-zinc-800"
+                    title="Limpar histórico de execuções das atividades"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Limpar Atividades</span>
+                  </button>
+                )}
+              </div>
+
               {store.runs.length === 0 ? (
                 <div className="text-xs text-zinc-500 py-8 text-center">
                   Nenhuma execução registrada ainda.
@@ -3918,14 +4022,19 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   {store.runs.map(r => (
                     <div
                       key={r.id}
-                      onClick={() => {
-                        setSelectedAgentId(r.agentId)
-                        setSelectedRunId(r.id)
-                        setActiveSection('agents')
-                      }}
-                      className="p-3.5 rounded-2xl bg-[#18181b] border border-zinc-800/80 hover:border-zinc-700 flex items-center justify-between gap-4 cursor-pointer transition-colors"
+                      className="group p-3.5 rounded-2xl bg-[#18181b] border border-zinc-800/80 hover:border-zinc-700 flex items-center justify-between gap-4 transition-colors"
                     >
-                      <div className="min-w-0 space-y-0.5">
+                      <div
+                        onClick={() => {
+                          setSelectedAgentId(r.agentId)
+                          setSelectedRunId(r.id)
+                          if (r.conversationId) {
+                            setActiveConversationId(r.conversationId)
+                          }
+                          setActiveSection('agents')
+                        }}
+                        className="min-w-0 space-y-0.5 flex-1 cursor-pointer"
+                      >
                         <div className="flex items-center gap-2">
                           <span
                             className="w-4 h-4 rounded-md flex items-center justify-center text-[8px] text-white font-bold"
@@ -3939,12 +4048,33 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           <span className="text-[11px] text-zinc-500">
                             {new Date(r.startedAt).toLocaleString('pt-BR')}
                           </span>
+                          {r.routineId && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] bg-purple-950/60 border border-purple-800/40 text-purple-300 font-medium">
+                              Rotina
+                            </span>
+                          )}
+                          {r.workflowId && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] bg-blue-950/60 border border-blue-800/40 text-blue-300 font-medium">
+                              Fluxo
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-zinc-400 truncate">{r.prompt}</p>
                       </div>
-                      <span className="text-[11px] text-zinc-300 shrink-0">
-                        {r.calculation ? formatCentsBRL(r.calculation.netTotalCents) : r.status}
-                      </span>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-[11px] text-zinc-300">
+                          {r.calculation ? formatCentsBRL(r.calculation.netTotalCents) : r.status}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={e => handleDeleteSingleActivityRun(r.id, e)}
+                          className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-red-400 transition-opacity rounded cursor-pointer"
+                          title="Excluir esta execução"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
