@@ -916,6 +916,17 @@ export const SquadManagementView: React.FC<SquadManagementViewProps> = ({
                 </button>
               </div>
 
+              {/* Botão Mesa Redonda / Sala do Departamento (Inspirado no OpenMausBot Rooms) */}
+              <button
+                type="button"
+                onClick={() => onOpenSquadChat?.(activeSquad)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-cyan-500/30 bg-gradient-to-r from-emerald-500/15 to-cyan-500/15 hover:from-emerald-500/25 hover:to-cyan-500/25 text-cyan-300 text-xs font-semibold cursor-pointer transition-all shadow-xs"
+                title="Abrir a Mesa Redonda e conversar com os especialistas deste departamento"
+              >
+                <Users className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Mesa Redonda / Sala</span>
+              </button>
+
               {/* Botão Adicionar Especialista */}
               <button
                 type="button"

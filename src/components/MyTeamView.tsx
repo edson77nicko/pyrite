@@ -60,6 +60,7 @@ import {
   Search,
   PanelLeft,
   ArrowUp,
+  ArrowRight,
   ChevronRight,
   ChevronDown,
   Check,
@@ -407,6 +408,13 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   // Gerenciamento de Conversas Múltiplas do Agente
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isConvDropdownOpen, setIsConvDropdownOpen] = useState(false)
+
+  // Sistema de @Menções e Diálogo Inter-Agentes (Inspirado no OpenMausBot)
+  const [isMentionOpen, setIsMentionOpen] = useState(false)
+  const [mentionFilter, setMentionFilter] = useState('')
+  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0)
+  const composerInputRef = useRef<HTMLInputElement | null>(null)
+  const [expandedConsultationStepIds, setExpandedConsultationStepIds] = useState<Record<string, boolean>>({})
 
   // Ao trocar de agente, resetar o seletor de conversa ativa para carregar a mais recente
   useEffect(() => {
@@ -1061,6 +1069,40 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
   const currentConversationId = activeConversationId || agentConversations[0]?.id || `conv_${selectedAgent?.id || 'default'}`
   const currentConversation = agentConversations.find(c => c.id === currentConversationId)
+
+  // Lista filtrada de especialistas para o popover de @menções (OpenMausBot MentionMenu)
+  const mentionFilteredAgents = useMemo(() => {
+    if (!isMentionOpen) return []
+    const q = mentionFilter.toLowerCase().trim()
+    return store.agents.filter(a => {
+      if (!q) return true
+      const name = a.name.toLowerCase()
+      const role = a.roleDescription.toLowerCase()
+      const specialist = a.specialistRole.toLowerCase()
+      return name.includes(q) || role.includes(q) || specialist.includes(q)
+    })
+  }, [isMentionOpen, mentionFilter, store.agents])
+
+  const handleSelectMention = (ag: AgentProfileVersion) => {
+    const inputEl = composerInputRef.current
+    const cursorPos = inputEl?.selectionStart ?? promptInput.length
+    const textBefore = promptInput.slice(0, cursorPos)
+    const textAfter = promptInput.slice(cursorPos)
+    const atIndex = textBefore.lastIndexOf('@')
+    if (atIndex !== -1) {
+      const mentionTag = `@${ag.name.replace(/\s+/g, '')} `
+      const nextText = textBefore.slice(0, atIndex) + mentionTag + textAfter
+      setPromptInput(nextText)
+      setIsMentionOpen(false)
+      setTimeout(() => {
+        if (inputEl) {
+          inputEl.focus()
+          const newPos = atIndex + mentionTag.length
+          inputEl.setSelectionRange(newPos, newPos)
+        }
+      }, 10)
+    }
+  }
 
   const agentRuns = useMemo(() => {
     return allChatRunsForAgent
@@ -2801,6 +2843,128 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             )}
                           </div>
 
+                          {/* ======================================================================== */}
+                          {/* CONSULTAS INTER-AGENTES / DIÁLOGO ENTRE ROBÔS (Inspirado no HandoffChip) */}
+                          {/* ======================================================================== */}
+                          {run.subagentSteps.filter(st => st.isConsultation).length > 0 && (
+                            <div className="space-y-2 w-full max-w-2xl pl-1">
+                              {run.subagentSteps.filter(st => st.isConsultation).map(st => {
+                                const callerAgent = store.agents.find(a => a.id === st.callerAgentId) || selectedAgent
+                                const targetAgent = store.agents.find(a => a.id === st.specialistId)
+                                const isExpanded = Boolean(expandedConsultationStepIds[st.id])
+                                return (
+                                  <div
+                                    key={st.id}
+                                    className="rounded-2xl border border-cyan-500/25 bg-[#12161f] p-3 text-xs shadow-md transition-all"
+                                  >
+                                    <div
+                                      onClick={() =>
+                                        setExpandedConsultationStepIds(prev => ({
+                                          ...prev,
+                                          [st.id]: !isExpanded
+                                        }))
+                                      }
+                                      className="flex items-center justify-between gap-3 cursor-pointer select-none"
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <AgentIcon variant={callerAgent?.icon || 'Bot'} size={20} className="shrink-0 rounded-md" />
+                                          <span className="font-semibold text-zinc-200 text-xs truncate">
+                                            {st.callerAgentName || callerAgent?.name}
+                                          </span>
+                                        </div>
+                                        <ArrowRight className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <AgentIcon variant={targetAgent?.icon || 'Bot'} size={20} className="shrink-0 rounded-md" />
+                                          <span className="font-semibold text-cyan-300 text-xs truncate">
+                                            {st.specialistName}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-[10px] uppercase font-semibold tracking-wider px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300">
+                                          Consulta Inter-Agentes
+                                        </span>
+                                        <ChevronDown
+                                          className={`w-3.5 h-3.5 text-zinc-400 transition-transform ${
+                                            isExpanded ? 'rotate-180' : ''
+                                          }`}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Diálogo Expandido */}
+                                    {isExpanded && (
+                                      <div className="mt-2.5 pt-2.5 border-t border-cyan-500/20 space-y-2 text-[11px] text-zinc-300 animate-in fade-in duration-100">
+                                        {st.consultationQuery && (
+                                          <div className="bg-[#0e1118] p-2.5 rounded-xl border border-zinc-800/80">
+                                            <div className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider mb-1">
+                                              Demanda / Pergunta
+                                            </div>
+                                            <div className="text-zinc-300 leading-relaxed">{st.consultationQuery}</div>
+                                          </div>
+                                        )}
+                                        {st.consultationReply && (
+                                          <div className="bg-[#0b1419] p-2.5 rounded-xl border border-cyan-900/40">
+                                            <div className="text-[10px] text-cyan-400 font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                                              <span>Parecer de @{st.specialistName}</span>
+                                            </div>
+                                            <div className="text-zinc-200 leading-relaxed whitespace-pre-wrap">
+                                              {st.consultationReply}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+
+                          {/* ======================================================================== */}
+                          {/* MESA REDONDA: RESPOSTAS DOS ESPECIALISTAS DO DEPARTAMENTO               */}
+                          {/* ======================================================================== */}
+                          {run.peerReplies && run.peerReplies.length > 0 && (
+                            <div className="space-y-3 w-full max-w-2xl pl-2 border-l-2 border-[var(--accent)]/30">
+                              <div className="text-[10px] uppercase tracking-wider font-semibold text-[var(--accent)] flex items-center gap-1.5">
+                                <Users className="w-3 h-3" />
+                                <span>Mesa Redonda: Contribuições do Departamento</span>
+                              </div>
+                              {run.peerReplies.map(peer => (
+                                <div
+                                  key={`${peer.agentId}_${peer.createdAt}`}
+                                  className="bg-[#16161b] border border-zinc-800/80 rounded-2xl p-3.5 space-y-2 text-xs shadow-sm"
+                                >
+                                  {/* PeerLabel (Inspirado no OpenMausBot) */}
+                                  <div className="flex items-center justify-between gap-2 pb-1 border-b border-zinc-800/60">
+                                    <div className="flex items-center gap-2">
+                                      <AgentIcon variant={peer.agentIcon} size={20} className="shrink-0 rounded-md" />
+                                      <span className="font-semibold text-zinc-100 text-xs">{peer.agentName}</span>
+                                      {peer.roleInSquad && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 font-medium">
+                                          {peer.roleInSquad}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-zinc-500 font-mono">
+                                      {formatTimeShort(peer.createdAt)}
+                                    </span>
+                                  </div>
+                                  <div className="text-zinc-200 text-xs leading-relaxed whitespace-pre-wrap">
+                                    <MarkdownRenderer
+                                      content={peer.text}
+                                      onNavigate={title => {
+                                        const found = notes.find(n => n.title.toLowerCase() === title.toLowerCase())
+                                        if (found) onOpenNote(found.id)
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                           {/* Linha de evento centralizada quando uma entrega foi gravada (igual ao "Rotina criada · Nova Rotina 18:23" do Print 01!) */}
                           {run.artifacts.map(art => (
                             <div
@@ -2953,6 +3117,45 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   </div>
                 )}
 
+                {/* Popover de Autocomplete de @Menções (MentionMenu do OpenMausBot) */}
+                {isMentionOpen && mentionFilteredAgents.length > 0 && (
+                  <div className="absolute bottom-16 left-6 right-6 max-w-md bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-50 space-y-1 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-2 py-1 text-[10px] uppercase font-semibold text-zinc-400 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Users className="w-3 h-3 text-[var(--accent)]" />
+                        <span>Mencionar Especialista da Equipe</span>
+                      </div>
+                      <span className="text-[9px] text-zinc-500 font-mono">↑↓ Navegar • Enter Selecionar</span>
+                    </div>
+                    <div className="max-h-52 overflow-y-auto space-y-0.5 custom-scrollbar">
+                      {mentionFilteredAgents.map((ag, idx) => (
+                        <button
+                          key={ag.id}
+                          type="button"
+                          onClick={() => handleSelectMention(ag)}
+                          onMouseEnter={() => setMentionSelectedIndex(idx)}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between gap-2.5 transition-colors cursor-pointer ${
+                            idx === mentionSelectedIndex
+                              ? 'bg-zinc-800 text-white font-medium'
+                              : 'text-zinc-300 hover:bg-zinc-800/60'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <AgentIcon variant={ag.icon} size={22} className="shrink-0 rounded-lg" />
+                            <div className="truncate">
+                              <span className="font-semibold text-xs block text-zinc-100">{ag.name}</span>
+                              <span className="text-[10px] text-zinc-400 block truncate">{ag.roleDescription}</span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-700/60 text-zinc-300 font-mono shrink-0">
+                            @{ag.name.replace(/\s+/g, '')}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-[#18181b] border border-zinc-800/90 rounded-full px-2.5 py-1.5 flex items-center gap-2.5 shadow-lg">
                   <button
                     type="button"
@@ -2964,16 +3167,52 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   </button>
 
                   <input
+                    ref={composerInputRef}
                     type="text"
                     value={promptInput}
-                    onChange={e => setPromptInput(e.target.value)}
+                    onChange={e => {
+                      const val = e.target.value
+                      setPromptInput(val)
+                      const pos = e.target.selectionStart || val.length
+                      const textBefore = val.slice(0, pos)
+                      const lastAt = textBefore.lastIndexOf('@')
+                      if (lastAt !== -1 && !/\s/.test(textBefore.slice(lastAt + 1))) {
+                        setMentionFilter(textBefore.slice(lastAt + 1))
+                        setIsMentionOpen(true)
+                        setMentionSelectedIndex(0)
+                      } else {
+                        setIsMentionOpen(false)
+                      }
+                    }}
                     onKeyDown={e => {
+                      if (isMentionOpen && mentionFilteredAgents.length > 0) {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault()
+                          setMentionSelectedIndex(i => (i + 1) % mentionFilteredAgents.length)
+                          return
+                        }
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault()
+                          setMentionSelectedIndex(i => (i - 1 + mentionFilteredAgents.length) % mentionFilteredAgents.length)
+                          return
+                        }
+                        if (e.key === 'Enter' || e.key === 'Tab') {
+                          e.preventDefault()
+                          handleSelectMention(mentionFilteredAgents[mentionSelectedIndex] || mentionFilteredAgents[0])
+                          return
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault()
+                          setIsMentionOpen(false)
+                          return
+                        }
+                      }
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault()
                         handleRunAgent({ isTest: false })
                       }
                     }}
-                    placeholder={`Mensagem para ${selectedAgent?.name || 'Agente'}`}
+                    placeholder={`Mensagem para ${selectedAgent?.name || 'Agente'} (digite @ para consultar especialista)`}
                     className="flex-1 bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none"
                   />
 

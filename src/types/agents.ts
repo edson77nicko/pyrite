@@ -279,6 +279,21 @@ export interface SubagentStep {
   endedAt?: number
   outputPreview?: string
   findings?: string[]
+  isConsultation?: boolean
+  callerAgentId?: string
+  callerAgentName?: string
+  consultationQuery?: string
+  consultationReply?: string
+}
+
+export interface PeerAgentReply {
+  agentId: string
+  agentName: string
+  agentIcon: string
+  agentColor?: string
+  roleInSquad?: string
+  text: string
+  createdAt: number
 }
 
 // ==========================================
@@ -473,6 +488,7 @@ export interface AgentRun {
     detail: string
   }[]
   subagentSteps: SubagentStep[]
+  peerReplies?: PeerAgentReply[]
   changeSet?: ChangeSet
   approval?: ApprovalRecord
   artifacts: AgentArtifact[]
