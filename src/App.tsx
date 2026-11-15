@@ -667,7 +667,12 @@ export const App: React.FC = () => {
     })
   }
 
-  const handleCreateTaskBoard = (name: string, icon: string = 'CheckCircle2', category: 'project' | 'item' = 'project') => {
+  const handleCreateTaskBoard = (
+    name: string,
+    icon: string = 'CheckCircle2',
+    category: 'project' | 'item' = 'project',
+    parentId?: string | null
+  ) => {
     const newBoardId = `board_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     const defaultProps = JSON.parse(JSON.stringify(DEFAULT_TASK_SETTINGS.properties))
     const newBoard: TaskBoard = {
@@ -676,6 +681,7 @@ export const App: React.FC = () => {
       icon: icon || (category === 'item' ? 'Folder' : 'CheckCircle2'),
       createdAt: Date.now(),
       category,
+      parentId: parentId || null,
       properties: defaultProps
     }
     const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
@@ -737,16 +743,68 @@ export const App: React.FC = () => {
     )
   }
 
+  const handleMoveTaskBoard = (
+    boardId: string,
+    newParentId: string | null,
+    newCategory?: 'project' | 'item'
+  ) => {
+    const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
+    const targetParent = newParentId ? currentBoards.find(b => b.id === newParentId) : null
+    const determinedCategory = newCategory || targetParent?.category
+
+    let updatedBoards = currentBoards.map(b => {
+      if (b.id === boardId) {
+        return {
+          ...b,
+          parentId: newParentId,
+          category: determinedCategory || b.category || 'project'
+        }
+      }
+      return b
+    })
+
+    // If category changed, propagate to all descendants so tree stays consistent
+    if (determinedCategory) {
+      const updateChildrenCategory = (pId: string, cat: 'project' | 'item') => {
+        updatedBoards = updatedBoards.map(b => {
+          if (b.parentId === pId) {
+            return { ...b, category: cat }
+          }
+          return b
+        })
+        const children = updatedBoards.filter(b => b.parentId === pId)
+        children.forEach(c => updateChildrenCategory(c.id, cat))
+      }
+      updateChildrenCategory(boardId, determinedCategory)
+    }
+
+    handleUpdateTaskSettings({ ...taskSettings, boards: updatedBoards })
+  }
+
+  const handleMoveTaskToBoard = (taskId: string, targetBoardId: string) => {
+    setTasks(prev => {
+      const updated = prev.map(t => (t.id === taskId ? { ...t, boardId: targetBoardId, updatedAt: Date.now() } : t))
+      saveTasks(updated, vaultPath || 'default')
+      return updated
+    })
+  }
+
   const handleDeleteTaskBoard = (boardId: string) => {
     if (boardId === 'default') return
     const currentBoards = taskSettings.boards && taskSettings.boards.length > 0 ? taskSettings.boards : DEFAULT_BOARDS
-    const updatedBoards = currentBoards.filter(b => b.id !== boardId)
+    const deletingBoard = currentBoards.find(b => b.id === boardId)
+    const fallbackParent = deletingBoard?.parentId || null
+
+    const updatedBoards = currentBoards
+      .filter(b => b.id !== boardId)
+      .map(b => (b.parentId === boardId ? { ...b, parentId: fallbackParent } : b))
+
     handleUpdateTaskSettings({ ...taskSettings, boards: updatedBoards })
     setTabs(prev => prev.filter(t => t.noteId !== `__tasks__:${boardId}`))
     if (activeBoardId === boardId) {
-      setActiveBoardId('default')
+      setActiveBoardId(fallbackParent || 'default')
     }
-    const updatedTasks = tasks.map(t => (t.boardId === boardId ? { ...t, boardId: 'default' } : t))
+    const updatedTasks = tasks.map(t => (t.boardId === boardId ? { ...t, boardId: fallbackParent || 'default' } : t))
     setTasks(updatedTasks)
     saveTasks(updatedTasks, vaultPath || 'default')
   }
@@ -1868,6 +1926,8 @@ export const App: React.FC = () => {
           onRenameTaskBoard={handleRenameTaskBoard}
           onChangeTaskBoardIcon={handleChangeTaskBoardIcon}
           onDeleteTaskBoard={handleDeleteTaskBoard}
+          onMoveTaskBoard={handleMoveTaskBoard}
+          onMoveTaskToBoard={handleMoveTaskToBoard}
           isOpen={isLeftSidebarOpen && currentView !== 'agents'}
         />
 

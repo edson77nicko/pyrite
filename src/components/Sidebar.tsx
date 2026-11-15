@@ -1,6 +1,6 @@
 import { SidebarMenu } from './SidebarMenu'
 import type { SidebarAction } from './SidebarMenu'
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import pyriteLogo from '../assets/icone_pyrite.png'
 import type { Note, NoteType, ViewMode } from '../types'
 import type { TaskBoard, TaskItem } from '../types/tasks'
@@ -26,7 +26,9 @@ import {
   CodeXml,
   RotateCw,
   FileInput,
-  LocateFixed
+  LocateFixed,
+  ArrowRightLeft,
+  Unlink
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -51,10 +53,12 @@ interface SidebarProps {
   onRefreshVault?: () => void
   onImportHtml?: (targetFolder?: string) => void
   onSelectTaskBoard?: (boardId: string) => void
-  onCreateTaskBoard?: (name: string, icon?: string, category?: 'project' | 'item') => void
+  onCreateTaskBoard?: (name: string, icon?: string, category?: 'project' | 'item', parentId?: string | null) => void
   onRenameTaskBoard?: (boardId: string, newName: string) => void
   onChangeTaskBoardIcon?: (boardId: string, newIcon: string) => void
   onDeleteTaskBoard?: (boardId: string) => void
+  onMoveTaskBoard?: (boardId: string, newParentId: string | null, newCategory?: 'project' | 'item') => void
+  onMoveTaskToBoard?: (taskId: string, targetBoardId: string) => void
   pendingTasksCount?: number
   onManage: (action: SidebarAction, target: { note?: Note; folder?: string }, value?: string) => Promise<void>
   isOpen: boolean
@@ -65,6 +69,12 @@ interface TreeNode {
   fullPath: string
   children: TreeNode[]
   notes: Note[]
+}
+
+export interface BoardTreeNode {
+  board: TaskBoard
+  children: BoardTreeNode[]
+  depth: number
 }
 
 const BOARD_ICON_OPTIONS = [
@@ -104,6 +114,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRenameTaskBoard,
   onChangeTaskBoardIcon,
   onDeleteTaskBoard,
+  onMoveTaskBoard,
+  onMoveTaskToBoard,
   pendingTasksCount: _pendingTasksCount,
   isOpen,
   onManage
@@ -548,11 +560,77 @@ export const Sidebar: React.FC<SidebarProps> = ({
     })
   }
 
+  // Estados para recolher/expandir subprojetos/subitens
+  const [collapsedBoards, setCollapsedBoards] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('pyrite_sidebar_collapsed_boards')
+      return saved ? JSON.parse(saved) : {}
+    } catch {
+      return {}
+    }
+  })
+
+  const toggleBoardCollapse = (boardId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setCollapsedBoards(prev => {
+      const next = { ...prev, [boardId]: !prev[boardId] }
+      try {
+        localStorage.setItem('pyrite_sidebar_collapsed_boards', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }
+
+  // Subprojeto / subitem creation state
+  const [creatingSubBoardParentId, setCreatingSubBoardParentId] = useState<string | null>(null)
+  const [newSubBoardName, setNewSubBoardName] = useState('')
+  const [newSubBoardIcon, setNewSubBoardIcon] = useState('CheckCircle2')
+
+  // Drag and drop states for boards and tasks
+  const [draggedBoardId, setDraggedBoardId] = useState<string | null>(null)
+  const [boardDragOverId, setBoardDragOverId] = useState<string | null>(null)
+  const [boardDragOverType, setBoardDragOverType] = useState<'nest' | 'task' | null>(null)
+  const [headerDragOverCategory, setHeaderDragOverCategory] = useState<'project' | 'item' | null>(null)
+
   const effectiveBoards: TaskBoard[] = taskBoards.length > 0
     ? taskBoards
     : [{ id: 'default', name: 'Geral', icon: 'CheckCircle2', createdAt: Date.now(), category: 'project' }]
 
-  const projectBoards = effectiveBoards.filter(b => b.category !== 'item')
+  const isDescendantBoard = useCallback((potentialParentId: string, checkBoardId: string): boolean => {
+    if (potentialParentId === checkBoardId) return true
+    let curr = effectiveBoards.find(b => b.id === checkBoardId)
+    const visited = new Set<string>()
+    while (curr && curr.parentId && !visited.has(curr.id)) {
+      visited.add(curr.id)
+      const pId: string = curr.parentId
+      if (pId === potentialParentId) return true
+      curr = effectiveBoards.find(b => b.id === pId)
+    }
+    return false
+  }, [effectiveBoards])
+
+  const buildBoardTree = useCallback((category: 'project' | 'item'): BoardTreeNode[] => {
+    const visited = new Set<string>()
+
+    const buildSubTree = (board: TaskBoard, depth: number): BoardTreeNode => {
+      visited.add(board.id)
+      const rawChildren = effectiveBoards.filter(b => b.parentId === board.id && !visited.has(b.id))
+      const children = rawChildren.map(c => buildSubTree(c, depth + 1))
+      return { board, children, depth }
+    }
+
+    const rootBoards = effectiveBoards.filter(b => {
+      const isRoot = !b.parentId || !effectiveBoards.some(parent => parent.id === b.parentId)
+      const boardCategory = b.category || 'project'
+      return isRoot && boardCategory === category
+    })
+
+    return rootBoards.map(b => buildSubTree(b, 0))
+  }, [effectiveBoards])
+
+  const projectBoardNodes = useMemo(() => buildBoardTree('project'), [buildBoardTree])
+  const itemBoardNodes = useMemo(() => buildBoardTree('item'), [buildBoardTree])
+  const projectBoards = effectiveBoards.filter(b => (b.category || 'project') !== 'item')
   const itemBoards = effectiveBoards.filter(b => b.category === 'item')
 
   // Resizable sidebar width with localStorage persistence
@@ -1060,6 +1138,500 @@ export const Sidebar: React.FC<SidebarProps> = ({
     )
   }
 
+  // Recursive Tree Node Renderer for Task Boards (Projects, Items, and Subprojects)
+  const renderBoardTreeNode = (node: BoardTreeNode): React.ReactNode => {
+    const b = node.board
+    const depth = node.depth
+    const hasChildren = node.children.length > 0
+    const isCollapsed = collapsedBoards[b.id] ?? false
+    const isItem = (b.category || 'project') === 'item'
+    const isBoardActive = currentView === 'tasks' && activeBoardId === b.id
+    const boardPendingCount = tasks.filter(t => (t.boardId || 'default') === b.id && !t.completed).length
+    const isEditing = editingBoardId === b.id
+    const isBeingDragged = draggedBoardId === b.id
+    const isDropTargetNest = boardDragOverId === b.id && boardDragOverType === 'nest'
+    const isDropTargetTask = boardDragOverId === b.id && boardDragOverType === 'task'
+
+    const handleStartCreateSub = (e: React.MouseEvent) => {
+      e.stopPropagation()
+      setCreatingSubBoardParentId(b.id)
+      setNewSubBoardName('')
+      setNewSubBoardIcon(isItem ? 'Folder' : 'CheckCircle2')
+      setCollapsedBoards(prev => {
+        const next = { ...prev, [b.id]: false }
+        try {
+          localStorage.setItem('pyrite_sidebar_collapsed_boards', JSON.stringify(next))
+        } catch {}
+        return next
+      })
+    }
+
+    return (
+      <div key={b.id} className="relative select-none">
+        {isEditing ? (
+          <div
+            style={{ paddingLeft: `${depth * 14 + 10}px` }}
+            className="flex items-center gap-1.5 py-1 pr-2 bg-[#16161a] border border-zinc-700/60 rounded-lg"
+          >
+            <input
+              type="text"
+              autoFocus
+              value={editingBoardName}
+              onChange={e => setEditingBoardName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  if (editingBoardName.trim()) {
+                    onRenameTaskBoard?.(b.id, editingBoardName.trim())
+                    setEditingBoardId(null)
+                  }
+                }
+                if (e.key === 'Escape') setEditingBoardId(null)
+              }}
+              className="flex-1 bg-transparent text-xs text-zinc-100 outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (editingBoardName.trim()) {
+                  onRenameTaskBoard?.(b.id, editingBoardName.trim())
+                  setEditingBoardId(null)
+                }
+              }}
+              className="text-[10px] bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded hover:bg-zinc-700 cursor-pointer"
+            >
+              OK
+            </button>
+          </div>
+        ) : (
+          <div
+            draggable={editingBoardId !== b.id}
+            onDragStart={e => {
+              e.stopPropagation()
+              const payload = {
+                type: 'board',
+                boardId: b.id,
+                name: b.name,
+                category: b.category || 'project',
+                parentId: b.parentId
+              }
+              ;(window as any).__pyrite_dragged_board = payload
+              setDraggedBoardId(b.id)
+              try {
+                e.dataTransfer.setData('application/json', JSON.stringify(payload))
+                e.dataTransfer.setData('text/plain', `board:${b.id}`)
+              } catch {}
+              e.dataTransfer.effectAllowed = 'move'
+            }}
+            onDragEnd={() => {
+              ;(window as any).__pyrite_dragged_board = null
+              setDraggedBoardId(null)
+              setBoardDragOverId(null)
+              setBoardDragOverType(null)
+              setHeaderDragOverCategory(null)
+            }}
+            onDragOver={e => {
+              const draggedBoard = (window as any).__pyrite_dragged_board
+              const draggedTask = (window as any).__pyrite_dragged_task
+
+              if (draggedTask) {
+                if (draggedTask.sourceBoardId !== b.id) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (boardDragOverId !== b.id || boardDragOverType !== 'task') {
+                    setBoardDragOverId(b.id)
+                    setBoardDragOverType('task')
+                  }
+                }
+              } else if (draggedBoard || draggedBoardId) {
+                const activeBoardIdToMove = draggedBoard?.boardId || draggedBoardId
+                if (
+                  activeBoardIdToMove &&
+                  activeBoardIdToMove !== b.id &&
+                  !isDescendantBoard(activeBoardIdToMove, b.id)
+                ) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (boardDragOverId !== b.id || boardDragOverType !== 'nest') {
+                    setBoardDragOverId(b.id)
+                    setBoardDragOverType('nest')
+                  }
+                }
+              }
+            }}
+            onDragLeave={e => {
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return
+              if (boardDragOverId === b.id) {
+                setBoardDragOverId(null)
+                setBoardDragOverType(null)
+              }
+            }}
+            onDrop={e => {
+              e.preventDefault()
+              e.stopPropagation()
+
+              // 1. Task drop onto board
+              let taskId = (window as any).__pyrite_dragged_task?.taskId
+              if (!taskId) {
+                try {
+                  const jsonStr = e.dataTransfer.getData('application/json')
+                  if (jsonStr) {
+                    const parsed = JSON.parse(jsonStr)
+                    if (parsed?.type === 'task') taskId = parsed.taskId
+                  }
+                } catch {}
+              }
+              if (!taskId) {
+                const text = e.dataTransfer.getData('text/plain')
+                if (text && text.startsWith('task_')) taskId = text
+              }
+
+              if (taskId) {
+                onMoveTaskToBoard?.(taskId, b.id)
+                setBoardDragOverId(null)
+                setBoardDragOverType(null)
+                return
+              }
+
+              // 2. Board drop onto board (nest as subproject/subitem)
+              let movingBoardId = (window as any).__pyrite_dragged_board?.boardId || draggedBoardId
+              if (!movingBoardId) {
+                try {
+                  const jsonStr = e.dataTransfer.getData('application/json')
+                  if (jsonStr) {
+                    const parsed = JSON.parse(jsonStr)
+                    if (parsed?.type === 'board') movingBoardId = parsed.boardId
+                  }
+                } catch {}
+              }
+              if (!movingBoardId) {
+                const text = e.dataTransfer.getData('text/plain')
+                if (text && text.startsWith('board:')) movingBoardId = text.replace('board:', '')
+              }
+
+              if (
+                movingBoardId &&
+                movingBoardId !== b.id &&
+                !isDescendantBoard(movingBoardId, b.id)
+              ) {
+                onMoveTaskBoard?.(movingBoardId, b.id, b.category || 'project')
+                setCollapsedBoards(prev => ({ ...prev, [b.id]: false }))
+              }
+
+              setBoardDragOverId(null)
+              setBoardDragOverType(null)
+              setDraggedBoardId(null)
+            }}
+            onClick={() => {
+              onSelectTaskBoard ? onSelectTaskBoard(b.id) : onOpenTasks?.()
+            }}
+            style={{
+              paddingLeft: `${depth * 14 + 8}px`,
+              ...(isBoardActive
+                ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' }
+                : undefined)
+            }}
+            className={`group flex items-center justify-between py-1.5 pr-2 rounded-lg text-[13px] cursor-pointer transition-all border ${
+              isBeingDragged
+                ? 'opacity-40 border-dashed border-zinc-600'
+                : isDropTargetNest
+                ? 'ring-2 ring-[var(--accent,#c59b27)] bg-[var(--accent-glow-subtle)] border-[var(--accent,#c59b27)] shadow-md'
+                : isDropTargetTask
+                ? 'ring-2 ring-emerald-500/80 bg-emerald-500/10 border-emerald-500'
+                : isBoardActive
+                ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'
+            }`}
+          >
+            {/* Left part: tree guide line + chevron/spacer + icon + title */}
+            <div className="flex items-center gap-1.5 truncate min-w-0">
+              {depth > 0 && (
+                <span className="w-1.5 h-3 border-l border-b border-zinc-700/70 rounded-bl-xs -ml-1 mr-0.5 shrink-0" />
+              )}
+
+              {hasChildren ? (
+                <button
+                  type="button"
+                  onClick={e => toggleBoardCollapse(b.id, e)}
+                  className="p-0.5 -ml-1 text-zinc-500 hover:text-zinc-200 transition-transform cursor-pointer shrink-0"
+                  title={isCollapsed ? 'Expandir' : 'Recolher'}
+                >
+                  <ChevronRight
+                    className={`w-3 h-3 transition-transform duration-150 ${!isCollapsed ? 'rotate-90' : ''}`}
+                  />
+                </button>
+              ) : (
+                <span className="w-2.5 shrink-0" />
+              )}
+
+              {renderBoardIcon(b.icon || (isItem ? 'Folder' : 'CheckCircle2'), 'w-3.5 h-3.5 shrink-0')}
+              <span className="truncate font-medium">{b.name}</span>
+
+              {isDropTargetNest && (
+                <span className="text-[9px] px-1 py-0.5 rounded bg-[var(--accent)] text-zinc-950 font-semibold uppercase shrink-0">
+                  Subprojeto
+                </span>
+              )}
+              {isDropTargetTask && (
+                <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500 text-zinc-950 font-semibold uppercase shrink-0">
+                  + Mover
+                </span>
+              )}
+            </div>
+
+            {/* Right part: pending count + hover "+" + hover 3-dots */}
+            <div className="flex items-center gap-1 shrink-0 ml-1">
+              {boardPendingCount > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[9.5px] font-mono bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
+                  {boardPendingCount}
+                </span>
+              )}
+
+              {/* Quick "+" button to add subproject */}
+              <button
+                type="button"
+                onClick={handleStartCreateSub}
+                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-opacity cursor-pointer"
+                title={isItem ? 'Novo Subitem' : 'Novo Subprojeto'}
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+
+              {/* 3-dots menu button */}
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation()
+                  setBoardMenuId(boardMenuId === b.id ? null : b.id)
+                }}
+                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-opacity cursor-pointer"
+                title="Opções"
+              >
+                <MoreVertical className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* 3-dots context menu dropdown */}
+            {boardMenuId === b.id && (
+              <div
+                onClick={e => e.stopPropagation()}
+                className="absolute right-0 top-full mt-1 z-30 w-44 bg-[#16161a] border border-zinc-700/80 rounded-xl shadow-xl p-1 text-xs space-y-0.5 animate-in fade-in duration-75"
+              >
+                <button
+                  type="button"
+                  onClick={e => {
+                    handleStartCreateSub(e)
+                    setBoardMenuId(null)
+                  }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white text-left cursor-pointer"
+                >
+                  <Plus className="w-3 h-3 text-[var(--accent,#c59b27)]" />
+                  <span>{isItem ? 'Novo Subitem' : 'Novo Subprojeto'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingBoardId(b.id)
+                    setEditingBoardName(b.name)
+                    setBoardMenuId(null)
+                  }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white text-left cursor-pointer"
+                >
+                  <Pencil className="w-3 h-3 text-zinc-400" />
+                  <span>Renomear</span>
+                </button>
+
+                {b.parentId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onMoveTaskBoard?.(b.id, null, b.category || 'project')
+                      setBoardMenuId(null)
+                    }}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white text-left cursor-pointer"
+                  >
+                    <Unlink className="w-3 h-3 text-zinc-400" />
+                    <span>Desanexar (Mover para raiz)</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetCat = isItem ? 'project' : 'item'
+                    onMoveTaskBoard?.(b.id, null, targetCat)
+                    setBoardMenuId(null)
+                  }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white text-left cursor-pointer"
+                >
+                  <ArrowRightLeft className="w-3 h-3 text-zinc-400" />
+                  <span>{isItem ? 'Mover para Projetos' : 'Mover para Itens'}</span>
+                </button>
+
+                <div className="flex items-center justify-between px-2 py-1 text-[10px] text-zinc-500 font-mono">
+                  <span>Ícone:</span>
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation()
+                      setIconPickerBoardId(b.id)
+                    }}
+                    className="text-[10px] text-[var(--accent,#c59b27)] hover:underline cursor-pointer"
+                  >
+                    Mais ícones...
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-1 p-1">
+                  {BOARD_ICON_OPTIONS.map(ico => (
+                    <button
+                      type="button"
+                      key={ico}
+                      onClick={() => {
+                        onChangeTaskBoardIcon?.(b.id, ico)
+                        setBoardMenuId(null)
+                      }}
+                      className={`p-1 rounded flex items-center justify-center hover:bg-zinc-800 cursor-pointer ${
+                        b.icon === ico ? 'bg-zinc-800 text-white' : 'text-zinc-400'
+                      }`}
+                    >
+                      {renderBoardIcon(ico, 'w-3 h-3')}
+                    </button>
+                  ))}
+                </div>
+
+                {iconPickerBoardId === b.id && (
+                  <div className="relative">
+                    <IconPickerPopover
+                      selectedIcon={b.icon}
+                      onSelectIcon={ico => {
+                        onChangeTaskBoardIcon?.(b.id, ico)
+                        setIconPickerBoardId(null)
+                        setBoardMenuId(null)
+                      }}
+                      onClose={() => setIconPickerBoardId(null)}
+                      align="left"
+                    />
+                  </div>
+                )}
+
+                {b.id !== 'default' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBoardToDelete(b)
+                      setBoardMenuId(null)
+                    }}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 text-left cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Excluir</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Inline subproject / subitem creation form */}
+        {creatingSubBoardParentId === b.id && (
+          <div
+            style={{ marginLeft: `${node.depth * 14 + 16}px` }}
+            className="p-2.5 bg-[#16161a] border border-zinc-700/60 rounded-xl space-y-2 my-1 animate-in fade-in duration-100"
+          >
+            <input
+              type="text"
+              autoFocus
+              value={newSubBoardName}
+              onChange={e => setNewSubBoardName(e.target.value)}
+              placeholder={isItem ? 'Nome do subitem...' : 'Nome do subprojeto...'}
+              className="w-full bg-[#121215] border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none"
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  if (newSubBoardName.trim()) {
+                    onCreateTaskBoard?.(newSubBoardName.trim(), newSubBoardIcon, b.category || 'project', b.id)
+                    setNewSubBoardName('')
+                    setCreatingSubBoardParentId(null)
+                  }
+                }
+                if (e.key === 'Escape') setCreatingSubBoardParentId(null)
+              }}
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-zinc-400 font-mono">Ícone:</span>
+              <button
+                type="button"
+                onClick={() => setIconPickerBoardId('__new_sub_board__')}
+                className="text-[10px] text-[var(--accent,#c59b27)] hover:underline cursor-pointer"
+              >
+                Mais...
+              </button>
+            </div>
+            <div className="flex items-center gap-1 flex-wrap">
+              {BOARD_ICON_OPTIONS.map(ico => (
+                <button
+                  type="button"
+                  key={ico}
+                  onClick={() => setNewSubBoardIcon(ico)}
+                  className={`p-1 rounded border transition-all cursor-pointer ${
+                    newSubBoardIcon === ico
+                      ? 'bg-zinc-700 border-zinc-500 text-white'
+                      : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {renderBoardIcon(ico, 'w-3 h-3')}
+                </button>
+              ))}
+            </div>
+            {iconPickerBoardId === '__new_sub_board__' && (
+              <div className="relative">
+                <IconPickerPopover
+                  selectedIcon={newSubBoardIcon}
+                  onSelectIcon={ico => {
+                    setNewSubBoardIcon(ico)
+                    setIconPickerBoardId(null)
+                  }}
+                  onClose={() => setIconPickerBoardId(null)}
+                  align="left"
+                />
+              </div>
+            )}
+            <div className="flex justify-end gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setCreatingSubBoardParentId(null)}
+                className="px-2 py-0.5 rounded text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (newSubBoardName.trim()) {
+                    onCreateTaskBoard?.(newSubBoardName.trim(), newSubBoardIcon, b.category || 'project', b.id)
+                    setNewSubBoardName('')
+                    setCreatingSubBoardParentId(null)
+                  }
+                }}
+                className="px-2.5 py-0.5 rounded text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium cursor-pointer"
+              >
+                Criar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Recursive children rendering */}
+        {hasChildren && !isCollapsed && (
+          <div className="space-y-0.5 mt-0.5">
+            {node.children.map(child => renderBoardTreeNode(child))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div
       style={{ width: `${sidebarWidth}px` }}
@@ -1313,7 +1885,49 @@ export const Sidebar: React.FC<SidebarProps> = ({
         
         {/* PARTE 1: ITENS (Clientes, Conteúdo, etc.) */}
         <div className="space-y-1 pt-1 pb-1">
-          <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          <div
+            onDragOver={(e) => {
+              const draggedBoard = (window as any).__pyrite_dragged_board || draggedBoardId
+              if (draggedBoard) {
+                e.preventDefault()
+                e.stopPropagation()
+                e.dataTransfer.dropEffect = 'move'
+                if (headerDragOverCategory !== 'item') setHeaderDragOverCategory('item')
+              }
+            }}
+            onDragLeave={(e) => {
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return
+              if (headerDragOverCategory === 'item') setHeaderDragOverCategory(null)
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              let movingBoardId = (window as any).__pyrite_dragged_board?.boardId || draggedBoardId
+              if (!movingBoardId) {
+                try {
+                  const jsonStr = e.dataTransfer.getData('application/json')
+                  if (jsonStr) {
+                    const parsed = JSON.parse(jsonStr)
+                    if (parsed?.type === 'board') movingBoardId = parsed.boardId
+                  }
+                } catch {}
+              }
+              if (!movingBoardId) {
+                const text = e.dataTransfer.getData('text/plain')
+                if (text && text.startsWith('board:')) movingBoardId = text.replace('board:', '')
+              }
+              if (movingBoardId) {
+                onMoveTaskBoard?.(movingBoardId, null, 'item')
+              }
+              setHeaderDragOverCategory(null)
+              setDraggedBoardId(null)
+            }}
+            className={`flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md transition-all ${
+              headerDragOverCategory === 'item'
+                ? 'ring-2 ring-[var(--accent,#c59b27)] bg-[var(--accent-glow-subtle)] text-[var(--accent,#c59b27)]'
+                : 'text-zinc-500'
+            }`}
+          >
             <button
               type="button"
               onClick={toggleItemsCollapse}
@@ -1323,6 +1937,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${!isItemsCollapsed ? 'rotate-90' : ''}`} />
               <span>Itens</span>
               {itemBoards.length > 0 && <span className="text-[9px] font-normal opacity-70">({itemBoards.length})</span>}
+              {headerDragOverCategory === 'item' && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold text-zinc-950 uppercase tracking-normal" style={{ backgroundColor: 'var(--accent)' }}>
+                  Mover para raiz
+                </span>
+              )}
             </button>
             {onCreateTaskBoard && (
               <button
@@ -1343,239 +1962,153 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {!isItemsCollapsed && (
             <>
-
-          {/* Form to create new board in Itens */}
-          {isCreatingBoard && creatingBoardCategory === 'item' && (
-            <div className="p-2.5 bg-[#16161a] border border-zinc-700/60 rounded-xl space-y-2 mb-1.5 animate-in fade-in duration-100">
-              <input
-                type="text"
-                autoFocus
-                value={newBoardName}
-                onChange={e => setNewBoardName(e.target.value)}
-                placeholder="Nome do grupo (ex: Clientes)..."
-                className="w-full bg-[#121215] border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none"
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    if (newBoardName.trim()) {
-                      onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'item')
-                      setNewBoardName('')
-                      setIsCreatingBoard(false)
-                    }
-                  }
-                  if (e.key === 'Escape') setIsCreatingBoard(false)
-                }}
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400 font-mono">Ícone:</span>
-                <button
-                  type="button"
-                  onClick={() => setIconPickerBoardId('__new_item_board__')}
-                  className="text-[10px] text-[var(--accent,#c59b27)] hover:underline cursor-pointer"
-                >
-                  Mais...
-                </button>
-              </div>
-              <div className="flex items-center gap-1 flex-wrap">
-                {BOARD_ICON_OPTIONS.map(ico => (
-                  <button
-                    type="button"
-                    key={ico}
-                    onClick={() => setNewBoardIcon(ico)}
-                    className={`p-1 rounded border transition-all cursor-pointer ${newBoardIcon === ico ? 'bg-zinc-700 border-zinc-500 text-white' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
-                  >
-                    {renderBoardIcon(ico, "w-3 h-3")}
-                  </button>
-                ))}
-              </div>
-              {iconPickerBoardId === '__new_item_board__' && (
-                <div className="relative">
-                  <IconPickerPopover
-                    selectedIcon={newBoardIcon}
-                    onSelectIcon={ico => {
-                      setNewBoardIcon(ico)
-                      setIconPickerBoardId(null)
+              {/* Form to create new board in Itens */}
+              {isCreatingBoard && creatingBoardCategory === 'item' && (
+                <div className="p-2.5 bg-[#16161a] border border-zinc-700/60 rounded-xl space-y-2 mb-1.5 animate-in fade-in duration-100">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newBoardName}
+                    onChange={e => setNewBoardName(e.target.value)}
+                    placeholder="Nome do grupo (ex: Clientes)..."
+                    className="w-full bg-[#121215] border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        if (newBoardName.trim()) {
+                          onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'item')
+                          setNewBoardName('')
+                          setIsCreatingBoard(false)
+                        }
+                      }
+                      if (e.key === 'Escape') setIsCreatingBoard(false)
                     }}
-                    onClose={() => setIconPickerBoardId(null)}
-                    align="left"
                   />
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-zinc-400 font-mono">Ícone:</span>
+                    <button
+                      type="button"
+                      onClick={() => setIconPickerBoardId('__new_item_board__')}
+                      className="text-[10px] text-[var(--accent,#c59b27)] hover:underline cursor-pointer"
+                    >
+                      Mais...
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {BOARD_ICON_OPTIONS.map(ico => (
+                      <button
+                        type="button"
+                        key={ico}
+                        onClick={() => setNewBoardIcon(ico)}
+                        className={`p-1 rounded border transition-all cursor-pointer ${newBoardIcon === ico ? 'bg-zinc-700 border-zinc-500 text-white' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
+                      >
+                        {renderBoardIcon(ico, "w-3 h-3")}
+                      </button>
+                    ))}
+                  </div>
+                  {iconPickerBoardId === '__new_item_board__' && (
+                    <div className="relative">
+                      <IconPickerPopover
+                        selectedIcon={newBoardIcon}
+                        onSelectIcon={ico => {
+                          setNewBoardIcon(ico)
+                          setIconPickerBoardId(null)
+                        }}
+                        onClose={() => setIconPickerBoardId(null)}
+                        align="left"
+                      />
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingBoard(false)}
+                      className="px-2 py-0.5 rounded text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (newBoardName.trim()) {
+                          onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'item')
+                          setNewBoardName('')
+                          setIsCreatingBoard(false)
+                        }
+                      }}
+                      className="px-2.5 py-0.5 rounded text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium cursor-pointer"
+                    >
+                      Criar
+                    </button>
+                  </div>
                 </div>
               )}
-              <div className="flex justify-end gap-1.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingBoard(false)}
-                  className="px-2 py-0.5 rounded text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
-                >
-                  Cancelar
-                </button>
+
+              {/* List item boards */}
+              {itemBoardNodes.length === 0 && !isCreatingBoard ? (
                 <button
                   type="button"
                   onClick={() => {
-                    if (newBoardName.trim()) {
-                      onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'item')
-                      setNewBoardName('')
-                      setIsCreatingBoard(false)
-                    }
+                    setCreatingBoardCategory('item')
+                    setNewBoardIcon('Folder')
+                    setIsCreatingBoard(true)
                   }}
-                  className="px-2.5 py-0.5 rounded text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium cursor-pointer"
+                  className="w-full text-left px-2.5 py-1 text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-zinc-850/40 rounded-lg cursor-pointer flex items-center gap-1.5"
                 >
-                  Criar
+                  <Plus className="w-3 h-3 text-zinc-500" />
+                  <span>Adicionar grupo (ex: Clientes)</span>
                 </button>
-              </div>
-            </div>
-          )}
-
-          {/* List item boards */}
-          {itemBoards.length === 0 && !isCreatingBoard ? (
-            <button
-              type="button"
-              onClick={() => {
-                setCreatingBoardCategory('item')
-                setNewBoardIcon('Folder')
-                setIsCreatingBoard(true)
-              }}
-              className="w-full text-left px-2.5 py-1 text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-zinc-850/40 rounded-lg cursor-pointer flex items-center gap-1.5"
-            >
-              <Plus className="w-3 h-3 text-zinc-500" />
-              <span>Adicionar grupo (ex: Clientes)</span>
-            </button>
-          ) : (
-            itemBoards.map((b) => {
-              const isBoardActive = currentView === 'tasks' && activeBoardId === b.id
-              const boardPendingCount = tasks.filter(t => (t.boardId || 'default') === b.id && !t.completed).length
-              const isEditing = editingBoardId === b.id
-
-              return (
-                <div key={b.id} className="group relative">
-                  {isEditing ? (
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-[#16161a] border border-zinc-700/60 rounded-lg">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={editingBoardName}
-                        onChange={e => setEditingBoardName(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') {
-                            if (editingBoardName.trim()) {
-                              onRenameTaskBoard?.(b.id, editingBoardName.trim())
-                              setEditingBoardId(null)
-                            }
-                          }
-                          if (e.key === 'Escape') setEditingBoardId(null)
-                        }}
-                        className="flex-1 bg-transparent text-xs text-zinc-100 outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (editingBoardName.trim()) {
-                            onRenameTaskBoard?.(b.id, editingBoardName.trim())
-                            setEditingBoardId(null)
-                          }
-                        }}
-                        className="text-[10px] bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded hover:bg-zinc-700 cursor-pointer"
-                      >
-                        OK
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      onClick={() => {
-                        onSelectTaskBoard ? onSelectTaskBoard(b.id) : onOpenTasks?.()
-                      }}
-                      className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] cursor-pointer transition-colors border ${
-                        isBoardActive
-                          ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
-                          : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'
-                      }`}
-                      style={isBoardActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
-                    >
-                      <div className="flex items-center gap-2 truncate min-w-0">
-                        {renderBoardIcon(b.icon || "Folder", "w-4 h-4 shrink-0")}
-                        <span className="truncate font-medium">{b.name}</span>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        {boardPendingCount > 0 && (
-                          <span className="px-1.5 py-0.5 rounded-full text-[9.5px] font-mono bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
-                            {boardPendingCount}
-                          </span>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={e => {
-                            e.stopPropagation()
-                            setBoardMenuId(boardMenuId === b.id ? null : b.id)
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-opacity cursor-pointer"
-                          title="Opções do grupo"
-                        >
-                          <MoreVertical className="w-3 h-3" />
-                        </button>
-                      </div>
-
-                      {boardMenuId === b.id && (
-                        <div
-                          onClick={e => e.stopPropagation()}
-                          className="absolute right-0 top-full mt-1 z-30 w-36 bg-[#16161a] border border-zinc-700/80 rounded-xl shadow-xl p-1 text-xs space-y-0.5 animate-in fade-in duration-75"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingBoardId(b.id)
-                              setEditingBoardName(b.name)
-                              setBoardMenuId(null)
-                            }}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white text-left cursor-pointer"
-                          >
-                            <Pencil className="w-3 h-3 text-zinc-400" />
-                            <span>Renomear</span>
-                          </button>
-
-                          <div className="px-2 py-1 text-[10px] text-zinc-500 font-mono">Ícone:</div>
-                          <div className="grid grid-cols-4 gap-1 p-1">
-                            {BOARD_ICON_OPTIONS.map(ico => (
-                              <button
-                                type="button"
-                                key={ico}
-                                onClick={() => {
-                                  onChangeTaskBoardIcon?.(b.id, ico)
-                                  setBoardMenuId(null)
-                                }}
-                                className={`p-1 rounded flex items-center justify-center hover:bg-zinc-800 cursor-pointer ${b.icon === ico ? 'bg-zinc-800 text-white' : 'text-zinc-400'}`}
-                              >
-                                {renderBoardIcon(ico, "w-3 h-3")}
-                              </button>
-                            ))}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setBoardToDelete(b)
-                              setBoardMenuId(null)
-                            }}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 text-left cursor-pointer"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>Excluir</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })
-          )}
+              ) : (
+                itemBoardNodes.map(renderBoardTreeNode)
+              )}
             </>
           )}
         </div>
 
         {/* PARTE 2: PROJETOS */}
         <div className="space-y-1 pt-1 pb-1">
-          <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          <div
+            onDragOver={(e) => {
+              const draggedBoard = (window as any).__pyrite_dragged_board || draggedBoardId
+              if (draggedBoard) {
+                e.preventDefault()
+                e.stopPropagation()
+                e.dataTransfer.dropEffect = 'move'
+                if (headerDragOverCategory !== 'project') setHeaderDragOverCategory('project')
+              }
+            }}
+            onDragLeave={(e) => {
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return
+              if (headerDragOverCategory === 'project') setHeaderDragOverCategory(null)
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              let movingBoardId = (window as any).__pyrite_dragged_board?.boardId || draggedBoardId
+              if (!movingBoardId) {
+                try {
+                  const jsonStr = e.dataTransfer.getData('application/json')
+                  if (jsonStr) {
+                    const parsed = JSON.parse(jsonStr)
+                    if (parsed?.type === 'board') movingBoardId = parsed.boardId
+                  }
+                } catch {}
+              }
+              if (!movingBoardId) {
+                const text = e.dataTransfer.getData('text/plain')
+                if (text && text.startsWith('board:')) movingBoardId = text.replace('board:', '')
+              }
+              if (movingBoardId) {
+                onMoveTaskBoard?.(movingBoardId, null, 'project')
+              }
+              setHeaderDragOverCategory(null)
+              setDraggedBoardId(null)
+            }}
+            className={`flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md transition-all ${
+              headerDragOverCategory === 'project'
+                ? 'ring-2 ring-[var(--accent,#c59b27)] bg-[var(--accent-glow-subtle)] text-[var(--accent,#c59b27)]'
+                : 'text-zinc-500'
+            }`}
+          >
             <button
               type="button"
               onClick={toggleProjectsCollapse}
@@ -1585,6 +2118,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${!isProjectsCollapsed ? 'rotate-90' : ''}`} />
               <span>Projetos</span>
               {projectBoards.length > 0 && <span className="text-[9px] font-normal opacity-70">({projectBoards.length})</span>}
+              {headerDragOverCategory === 'project' && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold text-zinc-950 uppercase tracking-normal" style={{ backgroundColor: 'var(--accent)' }}>
+                  Mover para raiz
+                </span>
+              )}
             </button>
             {onCreateTaskBoard && (
               <button
@@ -1605,246 +2143,104 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {!isProjectsCollapsed && (
             <>
-
-          {/* Form to create new board in Projetos */}
-          {isCreatingBoard && creatingBoardCategory === 'project' && (
-            <div className="p-2.5 bg-[#16161a] border border-zinc-700/60 rounded-xl space-y-2 mb-1.5 animate-in fade-in duration-100">
-              <input
-                type="text"
-                autoFocus
-                value={newBoardName}
-                onChange={e => setNewBoardName(e.target.value)}
-                placeholder="Nome do projeto..."
-                className="w-full bg-[#121215] border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none"
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    if (newBoardName.trim()) {
-                      onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'project')
-                      setNewBoardName('')
-                      setIsCreatingBoard(false)
-                    }
-                  }
-                  if (e.key === 'Escape') setIsCreatingBoard(false)
-                }}
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-400 font-mono">Ícone:</span>
-                <button
-                  type="button"
-                  onClick={() => setIconPickerBoardId('__new_item_board__')}
-                  className="text-[10px] text-[var(--accent,#c59b27)] hover:underline cursor-pointer"
-                >
-                  Mais...
-                </button>
-              </div>
-              <div className="flex items-center gap-1 flex-wrap">
-                {BOARD_ICON_OPTIONS.map(ico => (
-                  <button
-                    type="button"
-                    key={ico}
-                    onClick={() => setNewBoardIcon(ico)}
-                    className={`p-1 rounded border transition-all cursor-pointer ${newBoardIcon === ico ? 'bg-zinc-700 border-zinc-500 text-white' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
-                  >
-                    {renderBoardIcon(ico, "w-3 h-3")}
-                  </button>
-                ))}
-              </div>
-              {iconPickerBoardId === '__new_item_board__' && (
-                <div className="relative">
-                  <IconPickerPopover
-                    selectedIcon={newBoardIcon}
-                    onSelectIcon={ico => {
-                      setNewBoardIcon(ico)
-                      setIconPickerBoardId(null)
-                    }}
-                    onClose={() => setIconPickerBoardId(null)}
-                    align="left"
-                  />
-                </div>
-              )}
-              <div className="flex justify-end gap-1.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingBoard(false)}
-                  className="px-2 py-0.5 rounded text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (newBoardName.trim()) {
-                      onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'project')
-                      setNewBoardName('')
-                      setIsCreatingBoard(false)
-                    }
-                  }}
-                  className="px-2.5 py-0.5 rounded text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium cursor-pointer"
-                >
-                  Criar
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* List project boards */}
-          {projectBoards.map((b) => {
-            const isBoardActive = currentView === 'tasks' && activeBoardId === b.id
-            const boardPendingCount = tasks.filter(t => (t.boardId || 'default') === b.id && !t.completed).length
-            const isEditing = editingBoardId === b.id
-
-            return (
-              <div key={b.id} className="group relative">
-                {isEditing ? (
-                  <div className="flex items-center gap-1.5 px-2 py-1 bg-[#16161a] border border-zinc-700/60 rounded-lg">
-                    <input
-                      type="text"
-                      autoFocus
-                      value={editingBoardName}
-                      onChange={e => setEditingBoardName(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          if (editingBoardName.trim()) {
-                            onRenameTaskBoard?.(b.id, editingBoardName.trim())
-                            setEditingBoardId(null)
-                          }
+              {/* Form to create new board in Projetos */}
+              {isCreatingBoard && creatingBoardCategory === 'project' && (
+                <div className="p-2.5 bg-[#16161a] border border-zinc-700/60 rounded-xl space-y-2 mb-1.5 animate-in fade-in duration-100">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newBoardName}
+                    onChange={e => setNewBoardName(e.target.value)}
+                    placeholder="Nome do projeto..."
+                    className="w-full bg-[#121215] border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        if (newBoardName.trim()) {
+                          onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'project')
+                          setNewBoardName('')
+                          setIsCreatingBoard(false)
                         }
-                        if (e.key === 'Escape') setEditingBoardId(null)
-                      }}
-                      className="flex-1 bg-transparent text-xs text-zinc-100 outline-none"
-                    />
+                      }
+                      if (e.key === 'Escape') setIsCreatingBoard(false)
+                    }}
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-zinc-400 font-mono">Ícone:</span>
+                    <button
+                      type="button"
+                      onClick={() => setIconPickerBoardId('__new_item_board__')}
+                      className="text-[10px] text-[var(--accent,#c59b27)] hover:underline cursor-pointer"
+                    >
+                      Mais...
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {BOARD_ICON_OPTIONS.map(ico => (
+                      <button
+                        type="button"
+                        key={ico}
+                        onClick={() => setNewBoardIcon(ico)}
+                        className={`p-1 rounded border transition-all cursor-pointer ${newBoardIcon === ico ? 'bg-zinc-700 border-zinc-500 text-white' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
+                      >
+                        {renderBoardIcon(ico, "w-3 h-3")}
+                      </button>
+                    ))}
+                  </div>
+                  {iconPickerBoardId === '__new_item_board__' && (
+                    <div className="relative">
+                      <IconPickerPopover
+                        selectedIcon={newBoardIcon}
+                        onSelectIcon={ico => {
+                          setNewBoardIcon(ico)
+                          setIconPickerBoardId(null)
+                        }}
+                        onClose={() => setIconPickerBoardId(null)}
+                        align="left"
+                      />
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingBoard(false)}
+                      className="px-2 py-0.5 rounded text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
-                        if (editingBoardName.trim()) {
-                          onRenameTaskBoard?.(b.id, editingBoardName.trim())
-                          setEditingBoardId(null)
+                        if (newBoardName.trim()) {
+                          onCreateTaskBoard?.(newBoardName.trim(), newBoardIcon, 'project')
+                          setNewBoardName('')
+                          setIsCreatingBoard(false)
                         }
                       }}
-                      className="text-[10px] bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded hover:bg-zinc-700 cursor-pointer"
+                      className="px-2.5 py-0.5 rounded text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium cursor-pointer"
                     >
-                      OK
+                      Criar
                     </button>
                   </div>
-                ) : (
-                  <div
-                    onClick={() => {
-                      onSelectTaskBoard ? onSelectTaskBoard(b.id) : onOpenTasks?.()
-                    }}
-                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] cursor-pointer transition-colors border ${
-                      isBoardActive
-                        ? 'text-zinc-100 font-medium border-zinc-700/80 shadow-xs'
-                        : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'
-                    }`}
-                    style={isBoardActive ? { backgroundColor: 'var(--accent-glow-subtle)', borderColor: 'var(--accent-glow)' } : undefined}
-                  >
-                    <div className="flex items-center gap-2 truncate min-w-0">
-                      {renderBoardIcon(b.icon, "w-4 h-4 shrink-0")}
-                      <span className="truncate font-medium">{b.name}</span>
-                    </div>
+                </div>
+              )}
 
-                    <div className="flex items-center gap-1">
-                      {boardPendingCount > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[9.5px] font-mono bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
-                          {boardPendingCount}
-                        </span>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={e => {
-                          e.stopPropagation()
-                          setBoardMenuId(boardMenuId === b.id ? null : b.id)
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-opacity cursor-pointer"
-                        title="Opções do projeto"
-                      >
-                        <MoreVertical className="w-3 h-3" />
-                      </button>
-                    </div>
-
-                    {boardMenuId === b.id && (
-                      <div
-                        onClick={e => e.stopPropagation()}
-                        className="absolute right-0 top-full mt-1 z-30 w-36 bg-[#16161a] border border-zinc-700/80 rounded-xl shadow-xl p-1 text-xs space-y-0.5 animate-in fade-in duration-75"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingBoardId(b.id)
-                            setEditingBoardName(b.name)
-                            setBoardMenuId(null)
-                          }}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white text-left cursor-pointer"
-                        >
-                          <Pencil className="w-3 h-3 text-zinc-400" />
-                          <span>Renomear</span>
-                        </button>
-
-                        <div className="flex items-center justify-between px-2 py-1 text-[10px] text-zinc-500 font-mono">
-                          <span>Ícone:</span>
-                          <button
-                            type="button"
-                            onClick={e => {
-                              e.stopPropagation()
-                              setIconPickerBoardId(b.id)
-                            }}
-                            className="text-[10px] text-[var(--accent,#c59b27)] hover:underline cursor-pointer"
-                          >
-                            Mais ícones...
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-4 gap-1 p-1">
-                          {BOARD_ICON_OPTIONS.map(ico => (
-                            <button
-                              type="button"
-                              key={ico}
-                              onClick={() => {
-                                onChangeTaskBoardIcon?.(b.id, ico)
-                                setBoardMenuId(null)
-                              }}
-                              className={`p-1 rounded flex items-center justify-center hover:bg-zinc-800 cursor-pointer ${b.icon === ico ? 'bg-zinc-800 text-white' : 'text-zinc-400'}`}
-                            >
-                              {renderBoardIcon(ico, "w-3 h-3")}
-                            </button>
-                          ))}
-                        </div>
-
-                        {iconPickerBoardId === b.id && (
-                          <div className="relative">
-                            <IconPickerPopover
-                              selectedIcon={b.icon}
-                              onSelectIcon={ico => {
-                                onChangeTaskBoardIcon?.(b.id, ico)
-                                setIconPickerBoardId(null)
-                                setBoardMenuId(null)
-                              }}
-                              onClose={() => setIconPickerBoardId(null)}
-                              align="left"
-                            />
-                          </div>
-                        )}
-
-                        {b.id !== 'default' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setBoardToDelete(b)
-                              setBoardMenuId(null)
-                            }}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 text-left cursor-pointer"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>Excluir</span>
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+              {/* List project boards */}
+              {projectBoardNodes.length === 0 && !isCreatingBoard ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreatingBoardCategory('project')
+                    setNewBoardIcon('CheckCircle2')
+                    setIsCreatingBoard(true)
+                  }}
+                  className="w-full text-left px-2.5 py-1 text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-zinc-850/40 rounded-lg cursor-pointer flex items-center gap-1.5"
+                >
+                  <Plus className="w-3 h-3 text-zinc-500" />
+                  <span>Adicionar projeto</span>
+                </button>
+              ) : (
+                projectBoardNodes.map(renderBoardTreeNode)
+              )}
             </>
           )}
         </div>

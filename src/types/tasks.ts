@@ -13,6 +13,8 @@ export interface TaskBoard {
   icon?: string
   createdAt: number
   category?: 'project' | 'item'
+  parentId?: string | null
+  order?: number
   titleColumnName?: string
   statusIndicatorStyle?: StatusIndicatorStyle
   priorityIndicatorStyle?: 'badge' | 'stars'

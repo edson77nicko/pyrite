@@ -364,6 +364,24 @@ export const TasksView: React.FC<TasksViewProps> = ({
     return taskBoards.find(b => b.id === currentBoardId)
   }, [taskBoards, currentBoardId])
 
+  const boardBreadcrumbs = useMemo(() => {
+    if (!currentBoard) return []
+    const crumbs: TaskBoard[] = []
+    let currParentId = currentBoard.parentId
+    const visited = new Set<string>()
+    while (currParentId && !visited.has(currParentId)) {
+      visited.add(currParentId)
+      const p = taskBoards.find(b => b.id === currParentId)
+      if (p) {
+        crumbs.unshift(p)
+        currParentId = p.parentId
+      } else {
+        break
+      }
+    }
+    return crumbs
+  }, [currentBoard, taskBoards])
+
   const indicatorStyle: StatusIndicatorStyle = currentBoard?.statusIndicatorStyle || settings.statusIndicatorStyle || 'circle'
   const priorityStyle: 'badge' | 'stars' = currentBoard?.priorityIndicatorStyle || 'badge'
 
@@ -1060,19 +1078,39 @@ export const TasksView: React.FC<TasksViewProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <h1 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">
-              {currentBoard?.name || 'Tarefas'}
-            </h1>
-            <span
-              className="text-[10px] px-2 py-0.5 rounded-full font-medium"
-              style={{
-                backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
-                color: 'var(--accent, #c59b27)'
-              }}
-            >
-              {boardTasks.filter(t => !t.completed).length} pendentes
-            </span>
+          <div className="flex flex-col min-w-0">
+            {boardBreadcrumbs.length > 0 && (
+              <div className="flex items-center gap-1 text-[10.5px] text-zinc-500 font-medium mb-0.5">
+                {boardBreadcrumbs.map((crumb) => (
+                  <React.Fragment key={crumb.id}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectTaskBoard?.(crumb.id)}
+                      className="hover:text-zinc-300 transition-colors flex items-center gap-1 cursor-pointer truncate max-w-[120px]"
+                      title={`Ir para ${crumb.name}`}
+                    >
+                      {renderDynamicIcon(crumb.icon, 'w-2.5 h-2.5 shrink-0')}
+                      <span className="truncate">{crumb.name}</span>
+                    </button>
+                    <ChevronRight className="w-2.5 h-2.5 text-zinc-600 shrink-0" />
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <h1 className="text-xs font-bold text-zinc-100 uppercase tracking-wider truncate">
+                {currentBoard?.name || 'Tarefas'}
+              </h1>
+              <span
+                className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
+                style={{
+                  backgroundColor: 'var(--accent-glow-subtle, rgba(197, 155, 39, 0.12))',
+                  color: 'var(--accent, #c59b27)'
+                }}
+              >
+                {boardTasks.filter(t => !t.completed).length} pendentes
+              </span>
+            </div>
           </div>
         </div>
 
@@ -1502,6 +1540,34 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     <React.Fragment key={task.id}>
                       <tr
                         data-task-item="true"
+                        draggable={editingTitleId !== task.id}
+                        onDragStart={e => {
+                          const target = e.target as HTMLElement
+                          if (
+                            target.tagName === 'INPUT' ||
+                            target.tagName === 'TEXTAREA' ||
+                            target.closest('[data-inline-popover]') ||
+                            target.closest('button')
+                          ) {
+                            e.preventDefault()
+                            return
+                          }
+                          const payload = {
+                            type: 'task',
+                            taskId: task.id,
+                            title: task.title,
+                            sourceBoardId: task.boardId || currentBoardId
+                          }
+                          ;(window as any).__pyrite_dragged_task = payload
+                          try {
+                            e.dataTransfer.setData('application/json', JSON.stringify(payload))
+                            e.dataTransfer.setData('text/plain', task.id)
+                          } catch {}
+                          e.dataTransfer.effectAllowed = 'move'
+                        }}
+                        onDragEnd={() => {
+                          ;(window as any).__pyrite_dragged_task = null
+                        }}
                         onClick={() => onSelectTask(task)}
                         className="group transition-all cursor-pointer"
                       >
@@ -2310,10 +2376,22 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             data-task-item="true"
                             draggable={true}
                             onDragStart={e => {
-                              e.dataTransfer.setData('text/plain', task.id)
+                              const payload = {
+                                type: 'task',
+                                taskId: task.id,
+                                title: task.title,
+                                sourceBoardId: task.boardId || currentBoardId
+                              }
+                              ;(window as any).__pyrite_dragged_task = payload
+                              try {
+                                e.dataTransfer.setData('application/json', JSON.stringify(payload))
+                                e.dataTransfer.setData('text/plain', task.id)
+                              } catch {}
+                              e.dataTransfer.effectAllowed = 'move'
                               setDraggedTaskId(task.id)
                             }}
                             onDragEnd={() => {
+                              ;(window as any).__pyrite_dragged_task = null
                               setDraggedTaskId(null)
                               setDragOverColumnId(null)
                             }}
