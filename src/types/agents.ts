@@ -489,6 +489,7 @@ export interface AgentRun {
   }[]
   subagentSteps: SubagentStep[]
   peerReplies?: PeerAgentReply[]
+  learnedMemories?: string[]
   changeSet?: ChangeSet
   approval?: ApprovalRecord
   artifacts: AgentArtifact[]
@@ -579,6 +580,15 @@ export interface AgentChatMessage {
   facts?: string[]
 }
 
+export interface AgentMemoryItem {
+  id: string
+  agentId: string // ID do agente específico ou 'global' para memória compartilhada da equipe
+  content: string
+  category?: 'preference' | 'fact' | 'rule' | 'project_decision'
+  sourceConversationId?: string
+  createdAt: number
+}
+
 export interface MultiAgentStoreState {
   version: number
   agents: AgentProfileVersion[]
@@ -591,5 +601,6 @@ export interface MultiAgentStoreState {
   automations: AutomationVersion[]
   mailboxQueue: AgentQueueDelivery[]
   agentChats?: Record<string, AgentChatMessage[]>
+  memories?: AgentMemoryItem[]
   demoExamplesLoaded?: boolean
 }

@@ -12,6 +12,7 @@ import type {
   SourceSnapshot,
   SubagentStep,
   PeerAgentReply,
+  AgentMemoryItem,
   ChangeSet,
   ChangeSetOperation,
   AgentArtifact,
@@ -1000,6 +1001,7 @@ export function getInitialMultiAgentStore(): MultiAgentStoreState {
     automations: INITIAL_AUTOMATIONS,
     mailboxQueue: [],
     agentChats: {},
+    memories: [],
     demoExamplesLoaded: false
   }
 }
@@ -1037,6 +1039,7 @@ export function loadMultiAgentStoreSync(vaultKey = 'default'): MultiAgentStoreSt
           automations: parsed.automations?.length ? parsed.automations : INITIAL_AUTOMATIONS,
           mailboxQueue: parsed.mailboxQueue || [],
           agentChats: parsed.agentChats || {},
+          memories: Array.isArray(parsed.memories) ? parsed.memories : [],
           demoExamplesLoaded: Boolean(parsed.demoExamplesLoaded)
         }
       }
@@ -1047,16 +1050,40 @@ export function loadMultiAgentStoreSync(vaultKey = 'default'): MultiAgentStoreSt
   return getInitialMultiAgentStore()
 }
 
+/**
+ * Compacta snapshots pesados em execuções históricas antigas (> 25 runs atrás)
+ * para evitar estouro de quota do localStorage (5MB) e travamento de JSON.stringify.
+ */
+function pruneStoreForPersistence(state: MultiAgentStoreState): MultiAgentStoreState {
+  if (!state.runs || state.runs.length <= 25) return state
+  const compactedRuns = state.runs.map((r, idx) => {
+    if (idx < 25) return r
+    const hasHeavySnapshots = r.sourceSnapshots?.some(s => s.contentSnapshot && s.contentSnapshot.length > 500)
+    if (!hasHeavySnapshots) return r
+    return {
+      ...r,
+      sourceSnapshots: r.sourceSnapshots.map(s => ({
+        ...s,
+        contentSnapshot: s.contentSnapshot && s.contentSnapshot.length > 500
+          ? `${s.contentSnapshot.slice(0, 400)}... [snapshot compactado]`
+          : s.contentSnapshot
+      }))
+    }
+  })
+  return { ...state, runs: compactedRuns }
+}
+
 export async function saveMultiAgentStore(
   state: MultiAgentStoreState,
   vaultPath?: string | null
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const normalizedVaultKey = (vaultPath || 'default').toLowerCase().trim()
-    localStorage.setItem(`${MULTIAGENT_STORAGE_KEY}_${normalizedVaultKey}`, JSON.stringify(state))
+    const optimizedState = pruneStoreForPersistence(state)
+    localStorage.setItem(`${MULTIAGENT_STORAGE_KEY}_${normalizedVaultKey}`, JSON.stringify(optimizedState))
 
     if (typeof window !== 'undefined' && window.electronAPI?.isElectron && vaultPath && window.electronAPI.writeAgentsStore) {
-      const res = await window.electronAPI.writeAgentsStore(vaultPath, state)
+      const res = await window.electronAPI.writeAgentsStore(vaultPath, optimizedState)
       if (!res.success) {
         return { success: false, error: res.error || 'Falha ao gravar estado de agentes no disco.' }
       }
@@ -2408,18 +2435,64 @@ export function resolveAgentModel(
 }
 
 /**
+ * Resolve as diretrizes das Skills customizadas atribuídas a um agente.
+ */
+export function resolveAgentSkillsDirectives(agent?: AgentProfileVersion): string {
+  if (typeof window === 'undefined' || !agent?.skills || agent.skills.length === 0) return ''
+  try {
+    const rawSkills =
+      localStorage.getItem('pyrite_agent_custom_skills_v1') ||
+      localStorage.getItem('pyrita_agent_custom_skills_v1')
+    if (!rawSkills) return ''
+    const parsed = JSON.parse(rawSkills) as any[]
+    const activeSkills = parsed.filter(s => agent.skills!.includes(s.id))
+    let directives = ''
+    for (const s of activeSkills) {
+      const fileDirectives =
+        s.files?.map((f: any) => `### Skill: ${s.name} (${f.name})\n${f.content}`).join('\n\n') ||
+        s.description
+      directives += `\n\n[DIRETRIZ DA SKILL CONECTADA: ${s.name}]\n${fileDirectives}`
+    }
+    return directives
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Resolve as memórias de longo prazo (episódicas/semânticas) do agente e globais da equipe.
+ */
+export function resolveAgentMemoryDirectives(
+  agent?: AgentProfileVersion,
+  memories?: AgentMemoryItem[]
+): string {
+  if (!memories || memories.length === 0) return ''
+  const relevant = memories
+    .filter(m => !agent || m.agentId === agent.id || m.agentId === 'global')
+    .slice(0, 20)
+  if (relevant.length === 0) return ''
+  return (
+    '\n\n[MEMÓRIA DE LONGO PRAZO DO AGENTE E PREFERÊNCIAS APRENDIDAS]:\n' +
+    relevant.map(m => `- ${m.content}`).join('\n')
+  )
+}
+
+/**
  * Chamada real de IA para etapas do fluxo (LLM / Agente) usando o provedor configurado em
  * "Configurações de IA" (ou o provedor próprio do agente). Nunca devolve texto simulado:
  * se a IA não estiver disponível, retorna `success: false` com o motivo.
+ * Agora suporta Histórico Multi-Turno (`historyMessages`), Skills universais e Memória de Longo Prazo.
  */
 export async function callWorkflowAi(params: {
   system: string
   user: string
   agent?: AgentProfileVersion
+  historyMessages?: { role: 'user' | 'assistant'; content: string }[]
+  memories?: AgentMemoryItem[]
   temperature?: number
   abortSignal?: AbortSignal
 }): Promise<{ success: boolean; text?: string; error?: string; cancelled?: boolean }> {
-  const { system, user, agent, temperature, abortSignal } = params
+  const { system, user, agent, historyMessages, memories, temperature, abortSignal } = params
   if (typeof window === 'undefined' || !window.electronAPI?.aiChat || !window.electronAPI?.aiGetAllConfigs) {
     return { success: false, error: 'A IA só está disponível no aplicativo desktop do Pyrite.' }
   }
@@ -2442,15 +2515,28 @@ export async function callWorkflowAi(params: {
   }
 
   const chosenModel = resolveAgentModel(agent, cfg?.providers?.[provider])
+  const skillDirectives = resolveAgentSkillsDirectives(agent)
+  const memoryDirectives = resolveAgentMemoryDirectives(agent, memories)
+  const enrichedSystem = `${system}${skillDirectives}${memoryDirectives}`
+
+  const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+    { role: 'system', content: enrichedSystem }
+  ]
+  if (historyMessages && historyMessages.length > 0) {
+    for (const h of historyMessages.slice(-8)) {
+      if (h.content && h.content.trim()) {
+        messages.push({ role: h.role, content: clip(h.content, 2000) })
+      }
+    }
+  }
+  messages.push({ role: 'user', content: user })
+
   const res = await callAiChatWithAbort(
     {
       provider,
       model: chosenModel,
       temperature: temperature ?? agent?.aiConfig?.temperature ?? 0.3,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user }
-      ]
+      messages
     },
     abortSignal
   )
@@ -2472,61 +2558,71 @@ export interface InterAgentConsultResult {
 }
 
 /**
- * Consulta Inter-Agentes Dinâmica (Inspirada na arquitetura de coordenação do OpenMausBot):
- * Permite que um agente converse e consulte especialistas da equipe durante o seu turno.
- * Identifica @menções e solicitações de consultoria, invocando o agente especialista alvo
- * com sua respectiva persona, tom e modelo configurado, retornando um parecer técnico estruturado.
+ * Consulta Inter-Agentes Dinâmica e Paralela (Inspirada no Grok Heavy & OpenAI Swarm/Dots):
+ * Executa consultas a múltiplos especialistas em paralelo via `Promise.all` (reduzindo a latência
+ * de O(N) para O(1)), com suporte tanto a @menções explícitas quanto a Auto-Handoffs autônomos.
  */
 export async function executeInterAgentConsultations(params: {
   callerAgent: AgentProfileVersion
   allAgents: AgentProfileVersion[]
   prompt: string
+  explicitTargets?: { peer: AgentProfileVersion; customQuestion?: string }[]
+  memories?: AgentMemoryItem[]
   abortSignal?: AbortSignal
 }): Promise<{
   consultations: InterAgentConsultResult[]
   consultationDirectives: string
 }> {
-  const { callerAgent, allAgents, prompt, abortSignal } = params
+  const { callerAgent, allAgents, prompt, explicitTargets, memories, abortSignal } = params
   const promptLower = prompt.toLowerCase()
   const otherAgents = allAgents.filter(a => a.id !== callerAgent.id)
 
-  // Identificar menções (@Nome, @[Nome] ou expressões explícitas como "consulte o...", "peça ao...")
-  const targetPeers = otherAgents.filter(other => {
-    const nameClean = other.name.toLowerCase()
-    const nameNoSpaces = nameClean.replace(/\s+/g, '')
-    return (
-      promptLower.includes(`@${nameNoSpaces}`) ||
-      promptLower.includes(`@${nameClean}`) ||
-      promptLower.includes(`@[${nameClean}]`) ||
-      promptLower.includes(`consulte o ${nameClean}`) ||
-      promptLower.includes(`consulte a ${nameClean}`) ||
-      promptLower.includes(`peça ao ${nameClean}`) ||
-      promptLower.includes(`peça à ${nameClean}`) ||
-      promptLower.includes(`pergunte ao ${nameClean}`) ||
-      promptLower.includes(`pergunte à ${nameClean}`) ||
-      promptLower.includes(`converse com o ${nameClean}`) ||
-      promptLower.includes(`converse com a ${nameClean}`)
-    )
-  })
+  let peerQueue: { peer: AgentProfileVersion; question: string }[] = []
 
-  if (targetPeers.length === 0) {
+  if (explicitTargets && explicitTargets.length > 0) {
+    peerQueue = explicitTargets.map(t => ({
+      peer: t.peer,
+      question: t.customQuestion || prompt
+    }))
+  } else {
+    // Identificar menções (@Nome, @[Nome] ou expressões explícitas como "consulte o...", "peça ao...")
+    const matchedPeers = otherAgents.filter(other => {
+      const nameClean = other.name.toLowerCase()
+      const nameNoSpaces = nameClean.replace(/\s+/g, '')
+      return (
+        promptLower.includes(`@${nameNoSpaces}`) ||
+        promptLower.includes(`@${nameClean}`) ||
+        promptLower.includes(`@[${nameClean}]`) ||
+        promptLower.includes(`consulte o ${nameClean}`) ||
+        promptLower.includes(`consulte a ${nameClean}`) ||
+        promptLower.includes(`peça ao ${nameClean}`) ||
+        promptLower.includes(`peça à ${nameClean}`) ||
+        promptLower.includes(`pergunte ao ${nameClean}`) ||
+        promptLower.includes(`pergunte à ${nameClean}`) ||
+        promptLower.includes(`converse com o ${nameClean}`) ||
+        promptLower.includes(`converse com a ${nameClean}`)
+      )
+    })
+    peerQueue = matchedPeers.map(peer => ({ peer, question: prompt }))
+  }
+
+  if (peerQueue.length === 0) {
     return { consultations: [], consultationDirectives: '' }
   }
 
-  const results: InterAgentConsultResult[] = []
-  let directives = ''
-
-  // Limite de 3 consultas por turno para prevenir loops e controlar uso de tokens
-  for (const peer of targetPeers.slice(0, 3)) {
-    if (abortSignal?.aborted) break
+  // Execução Paralela (Scatter-Gather padrão Grok Multi-Agent) limitada a 3 especialistas simultâneos
+  const activeBatch = peerQueue.slice(0, 3)
+  const parallelPromises = activeBatch.map(async ({ peer, question }): Promise<InterAgentConsultResult | null> => {
+    if (abortSignal?.aborted) return null
     const startMs = Date.now()
     try {
-      const peerPrompt = `Seu colega de equipe "${callerAgent.name}" está solicitando sua consultoria técnica como especialista (${peer.roleDescription}) sobre a seguinte demanda:\n\n"${prompt}"\n\nPor favor, forneça sua análise técnica, parecer ou recomendações com base em sua área de atuação (${peer.roleDescription}) e estilo de trabalho (${peer.workStyle.tone}). Responda em português do Brasil de forma clara, concisa e direta.`
+      const peerPrompt = `Seu colega de equipe "${callerAgent.name}" está solicitando sua consultoria técnica como especialista (${peer.roleDescription}) sobre a seguinte demanda:\n\n"${question}"\n\nPor favor, forneça sua análise técnica, parecer ou recomendações com base em sua área de atuação (${peer.roleDescription}) e estilo de trabalho (${peer.workStyle.tone}). Responda em português do Brasil de forma clara, concisa e direta.`
 
       const peerAiRes = await callWorkflowAi({
         system: `Você é o agente especialista "${peer.name}". Papel: ${peer.roleDescription}. Tom: ${peer.workStyle.tone}.\nVocê foi consultado por seu colega de equipe "${callerAgent.name}". Responda em português de forma consultiva, técnica e direta para apoiar a decisão ou entrega dele.`,
         user: peerPrompt,
         agent: peer,
+        memories,
         abortSignal
       })
 
@@ -2546,16 +2642,22 @@ export async function executeInterAgentConsultations(params: {
           isConsultation: true,
           callerAgentId: callerAgent.id,
           callerAgentName: callerAgent.name,
-          consultationQuery: prompt,
+          consultationQuery: question,
           consultationReply: reply
         }
-
-        results.push({ peer, query: prompt, reply, step })
-        directives += `\n\n--- PARECER CONSULTIVO DE @${peer.name} (${peer.roleDescription}) ---\n${reply}\n(IMPORTANTE: Incorpore este parecer especializado em sua resposta ao usuário, citando cordialmente a colaboração de @${peer.name}.)`
+        return { peer, query: question, reply, step }
       }
     } catch (err) {
       console.warn(`[MultiAgentEngine] Falha ao consultar especialista ${peer.name}:`, err)
     }
+    return null
+  })
+
+  const settled = await Promise.all(parallelPromises)
+  const results = settled.filter((r): r is InterAgentConsultResult => r !== null)
+  let directives = ''
+  for (const r of results) {
+    directives += `\n\n--- PARECER CONSULTIVO DE @${r.peer.name} (${r.peer.roleDescription}) ---\n${r.reply}\n(IMPORTANTE: Incorpore este parecer especializado em sua resposta ao usuário, citando cordialmente a colaboração de @${r.peer.name}.)`
   }
 
   return { consultations: results, consultationDirectives: directives }
@@ -2573,6 +2675,9 @@ export async function executeAgentRun(params: {
   isTestRun: boolean
   conversationId?: string
   conversationTitle?: string
+  conversationHistory?: { role: 'user' | 'assistant'; content: string }[]
+  memories?: AgentMemoryItem[]
+  onMemoryLearned?: (item: AgentMemoryItem) => void
   projectContext?: ProjectContext
   explicitClientName?: string
   extraRequestNotes?: Note[]
@@ -2594,6 +2699,9 @@ export async function executeAgentRun(params: {
     isTestRun,
     conversationId,
     conversationTitle,
+    conversationHistory,
+    memories,
+    onMemoryLearned,
     projectContext,
     explicitClientName,
     extraRequestNotes,
@@ -2838,12 +2946,33 @@ export async function executeAgentRun(params: {
 
   const subagentSteps: SubagentStep[] = []
   const peerReplies: PeerAgentReply[] = []
+  const learnedMemories: string[] = []
 
-  // Diálogo Inter-Agentes em Tempo Real (Inspirado no OpenMausBot)
+  // Extração proativa de Memória de Longo Prazo solicitada explicitamente pelo usuário (Padrão Muse / OpenAI Memory)
+  const explicitMemoryMatch = prompt.match(
+    /(?:lembre-se\s+que|lembre\s+que|guarde\s+na\s+mem[óo]ria(?:\s+que)?|memorize(?:\s+que)?|anote\s+na\s+mem[óo]ria(?:\s+que)?)\s*[:,-]?\s*(.+)/i
+  )
+  if (explicitMemoryMatch && explicitMemoryMatch[1]) {
+    const fact = explicitMemoryMatch[1].trim().replace(/[.]+$/, '')
+    if (fact.length >= 4 && fact.length <= 350) {
+      learnedMemories.push(fact)
+      onMemoryLearned?.({
+        id: `mem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        agentId: agent.id,
+        content: fact,
+        category: 'preference',
+        sourceConversationId: conversationId,
+        createdAt: Date.now()
+      })
+    }
+  }
+
+  // Diálogo Inter-Agentes Paralelo em Tempo Real (Inspirado no Grok Heavy & OpenMausBot)
   const { consultations, consultationDirectives } = await executeInterAgentConsultations({
     callerAgent: agent,
     allAgents,
     prompt,
+    memories,
     abortSignal
   })
   for (const c of consultations) {
@@ -2992,17 +3121,102 @@ export async function executeAgentRun(params: {
         for (const snap of snapshots.filter(s => s.available)) {
           contextText += `\n\n--- Referência [${snap.title}] ---\n${clip(snap.contentSnapshot, 2500)}`
         }
+        const otherRoster = allAgents
+          .filter(a => a.id !== agent.id)
+          .map(a => `${a.name} (${a.roleDescription})`)
+          .join('; ')
+        const autonomousHandoffInstruction =
+          otherRoster && consultations.length === 0
+            ? `\nColegas especialistas na equipe: ${otherRoster}. Se a solicitação exigir conhecimento específico de um colega que ainda não foi consultado, você pode incluí-lo emitindo no início uma linha no formato exato: [CONSULTAR: NomeDoColega | sua pergunta específica].`
+            : ''
+        const memoryProtocolInstruction =
+          '\nSe o usuário declarar uma preferência duradoura, regra de negócio fixa ou fato permanente importante para conversas futuras, registre no final uma linha no formato: [MEMÓRIA: fato conciso em uma frase].'
+
         const aiRes = await callWorkflowAi({
           system:
             `Você é o agente especialista "${agent.name}". Papel: ${agent.roleDescription}. Tom: ${agent.workStyle.tone}.` +
             (personaRules.length ? `\nRegras e Diretrizes:\n- ${personaRules.join('\n- ')}` : '') +
-            '\nExecute a solicitação com precisão, autonomia e qualidade profissional. Se consultou colegas de equipe, incorpore as contribuições deles e cite-os cordialmente com @Nome. Responda em português do Brasil em formato Markdown claro e pronto para uso.',
+            autonomousHandoffInstruction +
+            memoryProtocolInstruction +
+            '\nExecute a solicitação com precisão, autonomia, continuidade conversacional e qualidade profissional. Se consultou colegas de equipe, incorpore as contribuições deles e cite-os cordialmente com @Nome. Responda em português do Brasil em formato Markdown claro e pronto para uso.',
           user: `Solicitação:\n${prompt}${contextText}${consultationDirectives}`,
           agent,
+          historyMessages: conversationHistory,
+          memories,
           abortSignal
         })
         if (aiRes.success && aiRes.text && aiRes.text.trim().length > 10) {
-          draftContent = aiRes.text.trim()
+          let rawText = aiRes.text.trim()
+
+          // 1. Verificar se o agente acionou Auto-Handoff ([CONSULTAR: Nome | Pergunta]) no estilo OpenAI Swarm/Dots
+          const consultRegex = /\[CONSULTAR:\s*([^|\]]+?)\s*\|\s*([^\]]+?)\]/gi
+          const autoTargets: { peer: AgentProfileVersion; customQuestion: string }[] = []
+          let match: RegExpExecArray | null
+          while ((match = consultRegex.exec(rawText)) !== null) {
+            const targetName = match[1].trim().toLowerCase()
+            const question = match[2].trim()
+            const foundPeer = allAgents.find(
+              a =>
+                a.id !== agent.id &&
+                (a.name.toLowerCase() === targetName ||
+                  a.name.toLowerCase().includes(targetName) ||
+                  targetName.includes(a.name.toLowerCase()))
+            )
+            if (foundPeer && !autoTargets.some(t => t.peer.id === foundPeer.id)) {
+              autoTargets.push({ peer: foundPeer, customQuestion: question })
+            }
+          }
+          rawText = rawText.replace(consultRegex, '').trim()
+
+          if (autoTargets.length > 0 && !abortSignal?.aborted) {
+            const autoConsultRes = await executeInterAgentConsultations({
+              callerAgent: agent,
+              allAgents,
+              prompt,
+              explicitTargets: autoTargets,
+              memories,
+              abortSignal
+            })
+            for (const c of autoConsultRes.consultations) {
+              subagentSteps.push(c.step)
+            }
+            if (autoConsultRes.consultationDirectives) {
+              const synthRes = await callWorkflowAi({
+                system:
+                  `Você é o agente "${agent.name}". Papel: ${agent.roleDescription}. Tom: ${agent.workStyle.tone}.\n` +
+                  'Você acabou de receber o parecer técnico dos colegas que consultou autonomamente. Consolide a resposta final para o usuário integrando esses pareceres e citando os colegas com @Nome.',
+                user: `Solicitação original:\n${prompt}\n\nSua análise inicial:\n${rawText}\n${autoConsultRes.consultationDirectives}`,
+                agent,
+                historyMessages: conversationHistory,
+                memories,
+                abortSignal
+              })
+              if (synthRes.success && synthRes.text && synthRes.text.trim().length > 10) {
+                rawText = synthRes.text.trim().replace(consultRegex, '').trim()
+              }
+            }
+          }
+
+          // 2. Extrair tags de memória [MEMÓRIA: ...] emitidas autonomamente pelo agente
+          const memRegex = /\[MEM[ÓO]RIA:\s*([^\]]+?)\]/gi
+          let memMatch: RegExpExecArray | null
+          while ((memMatch = memRegex.exec(rawText)) !== null) {
+            const fact = memMatch[1].trim().replace(/[.]+$/, '')
+            if (fact.length >= 4 && fact.length <= 350 && !learnedMemories.includes(fact)) {
+              learnedMemories.push(fact)
+              onMemoryLearned?.({
+                id: `mem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                agentId: agent.id,
+                content: fact,
+                category: 'fact',
+                sourceConversationId: conversationId,
+                createdAt: Date.now()
+              })
+            }
+          }
+          rawText = rawText.replace(memRegex, '').trim()
+
+          draftContent = rawText
         }
       } catch (err) {
         console.warn('Fallback para modelo estruturado do agente:', err)
@@ -3231,6 +3445,7 @@ export async function executeAgentRun(params: {
             system: `Você é o agente "${sp.name}". Sua função no departamento: ${squadRole}. Tom: ${sp.workStyle.tone}. Responda em português do Brasil em Markdown.`,
             user: `Instrução:\n${squadPrompt}${prevDraftContext}`,
             agent: sp,
+            memories,
             abortSignal
           })
           if (memberAiRes.success && memberAiRes.text && memberAiRes.text.trim().length > 10) {
@@ -3296,6 +3511,15 @@ export async function executeAgentRun(params: {
           contentPreview: memberContent || spOut.content,
           status: 'pending'
         })
+      }
+    }
+
+    // Síntese Final do Coordenador (Padrão Grok Multi-Agent):
+    // Atualiza o entregável principal com a versão final consolidada após a esteira de especialistas
+    if (!isProposalRole && latestReviewableDraft && latestReviewableDraft !== draftContent) {
+      draftContent = latestReviewableDraft
+      if (operations[0]) {
+        operations[0].contentPreview = draftContent
       }
     }
   }
@@ -3411,6 +3635,7 @@ export async function executeAgentRun(params: {
     reviewChecklist,
     subagentSteps,
     peerReplies: peerReplies.length > 0 ? peerReplies : undefined,
+    learnedMemories: learnedMemories.length > 0 ? learnedMemories : undefined,
     changeSet,
     artifacts: [],
     startedAt,

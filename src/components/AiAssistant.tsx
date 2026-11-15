@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import type { Note, NoteType, AgentProfileVersion, MultiAgentStoreState } from '../types'
 import type {
   AgentSpecialistRole,
+  ContextBinding,
   WorkflowDefinition,
   WorkflowNode,
   WorkflowEdge,
@@ -12,7 +13,13 @@ import type {
   SquadPipelineStep
 } from '../types/agents'
 import type { TaskItem, TaskSettings, SubTask, TaskBoard } from '../types/tasks'
-import { executeAgentRun, resolveNoteByIdOrFallback, updateAgentProfileWithVersion } from '../utils/multiAgentEngine'
+import {
+  executeAgentRun,
+  executeWorkflowRun,
+  executeInterAgentConsultations,
+  resolveNoteByIdOrFallback,
+  updateAgentProfileWithVersion
+} from '../utils/multiAgentEngine'
 import { mindMapToMarkdownOutline, parseMindMapDocument, serializeMindMapDocument, isMindMapContent, cleanNodeTitle } from '../utils/mindMapUtils'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { AiSettingsModal } from './AiSettingsModal'
@@ -46,7 +53,10 @@ import {
   FileText,
   Clock,
   CheckCircle2,
-  FilePlus
+  FilePlus,
+  Play,
+  Users,
+  Zap
 } from 'lucide-react'
 
 export type AgentRuleMode = 'analyst' | 'editor'
@@ -318,21 +328,63 @@ export function parseMessageTaskActions(text: string): { displayText: string; ac
   return { displayText, actions }
 }
 
+export const CANONICAL_AGENT_ICON_VARIANTS = [
+  'split',
+  'arch',
+  'corner',
+  'bubble',
+  'stairs',
+  'pill',
+  'hill',
+  'horizon',
+  'wave',
+  'badge',
+  'peak',
+  'crescent',
+  'beam',
+  'valley',
+  'orbit'
+] as const
+
+export function pickAgentIconVariant(rawIcon?: string, fallbackSeed = ''): string {
+  if (rawIcon) {
+    const clean = rawIcon.trim().toLowerCase()
+    if ((CANONICAL_AGENT_ICON_VARIANTS as readonly string[]).includes(clean)) {
+      return clean
+    }
+  }
+  let hash = 0
+  const str = fallbackSeed || rawIcon || 'agent'
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) >>> 0
+  }
+  return CANONICAL_AGENT_ICON_VARIANTS[hash % CANONICAL_AGENT_ICON_VARIANTS.length]
+}
+
 export interface ParsedAgentAction {
-  action: 'create' | 'update'
+  action: 'create' | 'update' | 'delete'
   id?: string
   name: string
   icon?: string
   color?: string
+  purpose?: 'text' | 'code' | 'image'
   specialistRole?: AgentSpecialistRole
   roleDescription?: string
   systemDirective?: string
   tone?: string
   rules?: string[]
+  requiredQuestions?: string[]
+  guardrails?: string[]
+  targetFolder?: string
+  outputTypes?: Array<'note' | 'tasks' | 'mindmap' | 'draw'>
+  knowledgeNotes?: string[]
+  knowledgeFolders?: string[]
+  skills?: string[]
+  memories?: string[]
 }
 
 export interface ParsedWorkflowAction {
-  action: 'create' | 'update'
+  action: 'create' | 'update' | 'delete'
   id?: string
   name: string
   description?: string
@@ -352,18 +404,30 @@ export interface ParsedWorkflowAction {
 }
 
 export interface ParsedSquadAction {
-  action: 'create' | 'update'
+  action: 'create' | 'update' | 'delete'
   id?: string
   name: string
+  icon?: string
+  color?: string
   description?: string
   objective?: string
   coordinatorAgentId?: string
   pipeline?: Array<{
-    agentId: string
+    agentId?: string
+    agentName?: string
+    specialistRole?: AgentSpecialistRole
+    icon?: string
     roleInSquad?: string
     customPrompt?: string
     expectedOutput?: 'note' | 'tasks' | 'html' | 'text'
   }>
+}
+
+export interface ParsedRunAction {
+  targetType: 'agent' | 'squad' | 'workflow'
+  targetId?: string
+  targetName?: string
+  prompt?: string
 }
 
 export function parseMasterActions(text: string): {
@@ -372,14 +436,16 @@ export function parseMasterActions(text: string): {
   agentActions: ParsedAgentAction[]
   workflowActions: ParsedWorkflowAction[]
   squadActions: ParsedSquadAction[]
+  runActions: ParsedRunAction[]
 } {
   const taskActions: ParsedTaskAction[] = []
   const agentActions: ParsedAgentAction[] = []
   const workflowActions: ParsedWorkflowAction[] = []
   const squadActions: ParsedSquadAction[] = []
+  const runActions: ParsedRunAction[] = []
 
   if (!text) {
-    return { displayText: '', taskActions, agentActions, workflowActions, squadActions }
+    return { displayText: '', taskActions, agentActions, workflowActions, squadActions, runActions }
   }
 
   // Parse task-action
@@ -414,19 +480,31 @@ export function parseMasterActions(text: string): {
     while ((match = regex.exec(text)) !== null) {
       try {
         const parsed = JSON.parse(match[1])
-        if (parsed && parsed.name) {
-          agentActions.push({
-            action: parsed.action || 'create',
-            id: parsed.id,
-            name: parsed.name,
-            icon: parsed.icon || '🤖',
-            color: parsed.color || '#6366f1',
-            specialistRole: parsed.specialistRole || 'custom',
-            roleDescription: parsed.roleDescription || '',
-            systemDirective: parsed.systemDirective || '',
-            tone: parsed.tone || '',
-            rules: Array.isArray(parsed.rules) ? parsed.rules : []
-          })
+        const items = Array.isArray(parsed) ? parsed : [parsed]
+        for (const item of items) {
+          if (item && item.name) {
+            agentActions.push({
+              action: item.action || 'create',
+              id: item.id,
+              name: item.name,
+              icon: pickAgentIconVariant(item.icon, item.name),
+              color: item.color || '#6366f1',
+              purpose: item.purpose === 'code' || item.purpose === 'image' ? item.purpose : 'text',
+              specialistRole: item.specialistRole || 'custom',
+              roleDescription: item.roleDescription || '',
+              systemDirective: item.systemDirective || '',
+              tone: item.tone || '',
+              rules: Array.isArray(item.rules) ? item.rules : [],
+              requiredQuestions: Array.isArray(item.requiredQuestions) ? item.requiredQuestions : [],
+              guardrails: Array.isArray(item.guardrails) ? item.guardrails : [],
+              targetFolder: item.targetFolder,
+              outputTypes: Array.isArray(item.outputTypes) ? item.outputTypes : undefined,
+              knowledgeNotes: Array.isArray(item.knowledgeNotes) ? item.knowledgeNotes : [],
+              knowledgeFolders: Array.isArray(item.knowledgeFolders) ? item.knowledgeFolders : [],
+              skills: Array.isArray(item.skills) ? item.skills : [],
+              memories: Array.isArray(item.memories) ? item.memories : []
+            })
+          }
         }
       } catch (e) {
         console.warn('Falha ao processar bloco agent-action:', e)
@@ -441,15 +519,18 @@ export function parseMasterActions(text: string): {
     while ((match = regex.exec(text)) !== null) {
       try {
         const parsed = JSON.parse(match[1])
-        if (parsed && parsed.name) {
-          workflowActions.push({
-            action: parsed.action || 'create',
-            id: parsed.id,
-            name: parsed.name,
-            description: parsed.description || '',
-            nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
-            edges: Array.isArray(parsed.edges) ? parsed.edges : []
-          })
+        const items = Array.isArray(parsed) ? parsed : [parsed]
+        for (const item of items) {
+          if (item && item.name) {
+            workflowActions.push({
+              action: item.action || 'create',
+              id: item.id,
+              name: item.name,
+              description: item.description || '',
+              nodes: Array.isArray(item.nodes) ? item.nodes : [],
+              edges: Array.isArray(item.edges) ? item.edges : []
+            })
+          }
         }
       } catch (e) {
         console.warn('Falha ao processar bloco workflow-action:', e)
@@ -464,19 +545,45 @@ export function parseMasterActions(text: string): {
     while ((match = regex.exec(text)) !== null) {
       try {
         const parsed = JSON.parse(match[1])
-        if (parsed && parsed.name) {
-          squadActions.push({
-            action: parsed.action || 'create',
-            id: parsed.id,
-            name: parsed.name,
-            description: parsed.description || '',
-            objective: parsed.objective || parsed.description || '',
-            coordinatorAgentId: parsed.coordinatorAgentId,
-            pipeline: Array.isArray(parsed.pipeline) ? parsed.pipeline : []
-          })
+        const items = Array.isArray(parsed) ? parsed : [parsed]
+        for (const item of items) {
+          if (item && item.name) {
+            squadActions.push({
+              action: item.action || 'create',
+              id: item.id,
+              name: item.name,
+              icon: item.icon || 'Users',
+              color: item.color || '#6366f1',
+              description: item.description || '',
+              objective: item.objective || item.description || '',
+              coordinatorAgentId: item.coordinatorAgentId,
+              pipeline: Array.isArray(item.pipeline) ? item.pipeline : []
+            })
+          }
         }
       } catch (e) {
         console.warn('Falha ao processar bloco squad-action:', e)
+      }
+    }
+  }
+
+  // Parse run-action (execução imediata de agente, departamento ou workflow direto do chat)
+  if (text.includes('```run-action')) {
+    const regex = /```run-action\s*([\s\S]*?)\s*```/g
+    let match
+    while ((match = regex.exec(text)) !== null) {
+      try {
+        const parsed = JSON.parse(match[1])
+        if (parsed && (parsed.targetType || parsed.targetId || parsed.targetName)) {
+          runActions.push({
+            targetType: parsed.targetType || 'agent',
+            targetId: parsed.targetId,
+            targetName: parsed.targetName,
+            prompt: parsed.prompt
+          })
+        }
+      } catch (e) {
+        console.warn('Falha ao processar bloco run-action:', e)
       }
     }
   }
@@ -486,11 +593,14 @@ export function parseMasterActions(text: string): {
     .replace(/```agent-action\s*[\s\S]*?\s*```/g, '')
     .replace(/```workflow-action\s*[\s\S]*?\s*```/g, '')
     .replace(/```squad-action\s*[\s\S]*?\s*```/g, '')
+    .replace(/```run-action\s*[\s\S]*?\s*```/g, '')
+    .replace(/\[MEM[ÓO]RIA:\s*[^\]]+?\]/gi, '')
+    .replace(/\[CONSULTAR:\s*[^|\]]+?\s*\|\s*[^\]]+?\]/gi, '')
     .replace(/<<<(?:PATCH_NOTE|patch_note)>>>[\s\S]*?(?:<<<(?:END_PATCH_NOTE|end_patch_note)>>>|$)/gi, '')
     .replace(/<<<(?:REPLACE_NOTE|replace_note)>>>[\s\S]*?(?:<<<(?:END_REPLACE_NOTE|end_replace_note)>>>|$)/gi, '')
     .trim()
 
-  return { displayText, taskActions, agentActions, workflowActions, squadActions }
+  return { displayText, taskActions, agentActions, workflowActions, squadActions, runActions }
 }
 
 export function parseThoughtBlocks(text: string): { thoughts: string[]; cleanText: string } {
@@ -778,51 +888,96 @@ export const TaskActionsCollapsible: React.FC<TaskActionsCollapsibleProps> = ({
 export const AgentActionsCollapsible: React.FC<{
   actions: ParsedAgentAction[]
   onOpenAgent: (agentId?: string) => void
-}> = ({ actions, onOpenAgent }) => {
-  const [isOpen, setIsOpen] = useState(false)
+  onUseAgentHere?: (agentIdOrName: string) => void
+}> = ({ actions, onOpenAgent, onUseAgentHere }) => {
+  const [isOpen, setIsOpen] = useState(true)
   const total = actions.length
   if (total === 0) return null
   const first = actions[0]
+  const verb = first.action === 'delete' ? 'Removeu' : first.action === 'update' ? 'Atualizou' : 'Criou'
 
   return (
-    <div className="my-1.5 text-xs">
-      <div className="flex items-center gap-2 py-0.5 group">
+    <div className="my-1.5 rounded-xl border border-indigo-500/25 bg-[#12131c] p-2.5 text-xs space-y-2 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => setIsOpen(o => !o)}
-          className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-xs select-none min-w-0"
+          className="flex items-center gap-1.5 text-zinc-200 hover:text-white transition-colors cursor-pointer text-xs font-medium select-none min-w-0"
         >
+          <AgentIcon variant={first.icon || 'split'} size={18} className="shrink-0 rounded-md" />
           <span className="truncate">
-            {total === 1 ? `Criou agente "${first.name}" na equipe` : `Criou ${total} agentes na equipe`}
+            {total === 1 ? `${verb} agente "${first.name}"` : `${verb} ${total} agentes especialistas`}
           </span>
-          <ChevronRight className={`w-3 h-3 text-zinc-500 group-hover:text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
         </button>
 
-        <button
-          type="button"
-          onClick={() => onOpenAgent(first.id)}
-          className="text-[11px] text-zinc-500 hover:text-indigo-300 flex items-center gap-0.5 ml-auto shrink-0 transition-colors cursor-pointer"
-        >
-          <span>Abrir na equipe</span>
-          <span>→</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onUseAgentHere && first.action !== 'delete' && (
+            <button
+              type="button"
+              onClick={() => onUseAgentHere(first.id || first.name)}
+              className="text-[10px] px-2 py-0.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 font-medium transition-colors cursor-pointer"
+              title="Selecionar este agente para conversar direto aqui no Assistente Global"
+            >
+              Usar aqui
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onOpenAgent(first.id)}
+            className="text-[10px] text-zinc-400 hover:text-indigo-300 flex items-center gap-0.5 shrink-0 transition-colors cursor-pointer"
+          >
+            <span>Abrir</span>
+            <span>→</span>
+          </button>
+        </div>
       </div>
 
       {isOpen && (
-        <div className="mt-1 ml-1 pl-3 border-l border-zinc-800 space-y-2 py-1 max-h-56 overflow-y-auto custom-chat-scrollbar">
+        <div className="pl-2 border-l border-indigo-500/25 space-y-2 py-0.5 max-h-60 overflow-y-auto custom-chat-scrollbar">
           {actions.map((act, idx) => (
-            <div key={idx} className="text-[11px] space-y-1">
-              <div className="flex items-center gap-1.5">
-                <span>{act.icon || '🤖'}</span>
-                <span className="font-medium text-zinc-200">{act.name}</span>
-                {act.specialistRole && (
-                  <span className="px-1 py-0.2 rounded text-[9px] font-mono bg-zinc-800 text-zinc-400">
-                    {act.specialistRole}
-                  </span>
+            <div key={idx} className="text-[11px] space-y-1 bg-zinc-900/50 rounded-lg p-2 border border-zinc-800/70">
+              <div className="flex items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <AgentIcon variant={act.icon || 'split'} size={16} className="shrink-0 rounded-xs" />
+                  <span className="font-semibold text-zinc-100 truncate">{act.name}</span>
+                  {act.purpose && (
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
+                      {act.purpose === 'code' ? 'Código' : act.purpose === 'image' ? 'Imagem' : 'Texto'}
+                    </span>
+                  )}
+                </div>
+                {onUseAgentHere && act.action !== 'delete' && total > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => onUseAgentHere(act.id || act.name)}
+                    className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-indigo-300 cursor-pointer shrink-0"
+                  >
+                    Ativar aqui
+                  </button>
                 )}
               </div>
               {act.roleDescription && (
-                <p className="text-zinc-400 text-[10px] leading-relaxed pl-5">{act.roleDescription}</p>
+                <p className="text-zinc-400 text-[10px] leading-relaxed">{act.roleDescription}</p>
+              )}
+              {((act.rules && act.rules.length > 0) || (act.knowledgeNotes && act.knowledgeNotes.length > 0)) && (
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  {act.rules && act.rules.length > 0 && (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800/80 text-zinc-400">
+                      {act.rules.length} diretrizes
+                    </span>
+                  )}
+                  {act.targetFolder && (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800/80 text-zinc-400">
+                      Pasta: {act.targetFolder}
+                    </span>
+                  )}
+                  {act.knowledgeNotes && act.knowledgeNotes.length > 0 && (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-300">
+                      {act.knowledgeNotes.length} notas vinculadas
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           ))}
@@ -835,53 +990,68 @@ export const AgentActionsCollapsible: React.FC<{
 export const WorkflowActionsCollapsible: React.FC<{
   actions: ParsedWorkflowAction[]
   onOpenWorkflow: (workflowId?: string) => void
-}> = ({ actions, onOpenWorkflow }) => {
-  const [isOpen, setIsOpen] = useState(false)
+  onRunWorkflowHere?: (workflowIdOrName: string) => void
+}> = ({ actions, onOpenWorkflow, onRunWorkflowHere }) => {
+  const [isOpen, setIsOpen] = useState(true)
   const total = actions.length
   if (total === 0) return null
   const first = actions[0]
   const stagesCount = first.nodes?.length || 0
 
   return (
-    <div className="my-1.5 text-xs">
-      <div className="flex items-center gap-2 py-0.5 group">
+    <div className="my-1.5 rounded-xl border border-emerald-500/25 bg-[#101815] p-2.5 text-xs space-y-2 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => setIsOpen(o => !o)}
-          className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-xs select-none min-w-0"
+          className="flex items-center gap-1.5 text-zinc-200 hover:text-white transition-colors cursor-pointer text-xs font-medium select-none min-w-0"
         >
+          <Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
           <span className="truncate">
             {total === 1
-              ? `Criou fluxo "${first.name}" (${stagesCount} etapas)`
-              : `Criou ${total} fluxos no Flow Canvas`}
+              ? `Fluxo "${first.name}" (${stagesCount} etapas)`
+              : `${total} fluxos no Flow Canvas`}
           </span>
-          <ChevronRight className={`w-3 h-3 text-zinc-500 group-hover:text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
         </button>
 
-        <button
-          type="button"
-          onClick={() => onOpenWorkflow(first.id)}
-          className="text-[11px] text-zinc-500 hover:text-emerald-300 flex items-center gap-0.5 ml-auto shrink-0 transition-colors cursor-pointer"
-        >
-          <span>Abrir Flow</span>
-          <span>→</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onRunWorkflowHere && first.action !== 'delete' && (
+            <button
+              type="button"
+              onClick={() => onRunWorkflowHere(first.id || first.name)}
+              className="text-[10px] px-2 py-0.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+              title="Executar este fluxo de trabalho agora mesmo aqui no Assistente"
+            >
+              <Play className="w-2.5 h-2.5 fill-current" />
+              <span>Executar aqui</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onOpenWorkflow(first.id)}
+            className="text-[10px] text-zinc-400 hover:text-emerald-300 flex items-center gap-0.5 shrink-0 transition-colors cursor-pointer"
+          >
+            <span>Flow</span>
+            <span>→</span>
+          </button>
+        </div>
       </div>
 
       {isOpen && (
-        <div className="mt-1 ml-1 pl-3 border-l border-zinc-800 space-y-2 py-1 max-h-56 overflow-y-auto custom-chat-scrollbar">
+        <div className="pl-2 border-l border-emerald-500/25 space-y-2 py-0.5 max-h-56 overflow-y-auto custom-chat-scrollbar">
           {actions.map((wf, idx) => (
-            <div key={idx} className="text-[11px] space-y-1">
-              <div className="font-medium text-zinc-200">{wf.name}</div>
+            <div key={idx} className="text-[11px] space-y-1 bg-zinc-900/50 rounded-lg p-2 border border-zinc-800/70">
+              <div className="font-semibold text-zinc-100">{wf.name}</div>
               {wf.description && <p className="text-zinc-400 text-[10px]">{wf.description}</p>}
               {wf.nodes && wf.nodes.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1 pt-0.5">
                   {wf.nodes.map((node, ni) => (
                     <React.Fragment key={ni}>
-                      <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-300">
+                      <span className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700/60 text-[10px] text-zinc-200">
                         {node.label || node.kind || `Nó ${ni + 1}`}
                       </span>
-                      {ni < (wf.nodes?.length || 0) - 1 && <span className="text-zinc-600 text-[10px]">→</span>}
+                      {ni < (wf.nodes?.length || 0) - 1 && <span className="text-emerald-500/70 text-[10px]">→</span>}
                     </React.Fragment>
                   ))}
                 </div>
@@ -897,51 +1067,74 @@ export const WorkflowActionsCollapsible: React.FC<{
 export const SquadActionsCollapsible: React.FC<{
   actions: ParsedSquadAction[]
   onOpenSquad: (squadId?: string) => void
-}> = ({ actions, onOpenSquad }) => {
-  const [isOpen, setIsOpen] = useState(false)
+  onUseSquadHere?: (squadIdOrName: string) => void
+}> = ({ actions, onOpenSquad, onUseSquadHere }) => {
+  const [isOpen, setIsOpen] = useState(true)
   const total = actions.length
   if (total === 0) return null
   const first = actions[0]
   const membersCount = first.pipeline?.length || 0
 
   return (
-    <div className="my-1.5 text-xs">
-      <div className="flex items-center gap-2 py-0.5 group">
+    <div className="my-1.5 rounded-xl border border-amber-500/25 bg-[#181510] p-2.5 text-xs space-y-2 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => setIsOpen(o => !o)}
-          className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-xs select-none min-w-0"
+          className="flex items-center gap-1.5 text-zinc-200 hover:text-white transition-colors cursor-pointer text-xs font-medium select-none min-w-0"
         >
+          <Users className="w-3.5 h-3.5 text-amber-400 shrink-0" />
           <span className="truncate">
             {total === 1
-              ? `Criou squad "${first.name}" (${membersCount} especialistas)`
-              : `Criou ${total} squads na equipe`}
+              ? `Departamento "${first.name}" (${membersCount} especialistas)`
+              : `${total} departamentos na equipe`}
           </span>
-          <ChevronRight className={`w-3 h-3 text-zinc-500 group-hover:text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+          <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
         </button>
 
-        <button
-          type="button"
-          onClick={() => onOpenSquad(first.id)}
-          className="text-[11px] text-zinc-500 hover:text-amber-300 flex items-center gap-0.5 ml-auto shrink-0 transition-colors cursor-pointer"
-        >
-          <span>Abrir Departamentos</span>
-          <span>→</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onUseSquadHere && first.action !== 'delete' && (
+            <button
+              type="button"
+              onClick={() => onUseSquadHere(first.id || first.name)}
+              className="text-[10px] px-2 py-0.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-semibold transition-colors cursor-pointer"
+              title="Ativar este Departamento para conversar direto aqui no Assistente Global"
+            >
+              Ativar aqui
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onOpenSquad(first.id)}
+            className="text-[10px] text-zinc-400 hover:text-amber-300 flex items-center gap-0.5 shrink-0 transition-colors cursor-pointer"
+          >
+            <span>Abrir</span>
+            <span>→</span>
+          </button>
+        </div>
       </div>
 
       {isOpen && (
-        <div className="mt-1 ml-1 pl-3 border-l border-zinc-800 space-y-1.5 py-1 max-h-56 overflow-y-auto custom-chat-scrollbar">
+        <div className="pl-2 border-l border-amber-500/25 space-y-1.5 py-0.5 max-h-56 overflow-y-auto custom-chat-scrollbar">
           {actions.map((sq, idx) => (
-            <div key={idx} className="text-[11px] space-y-1">
-              <div className="font-medium text-zinc-200">{sq.name}</div>
-              {sq.description && <p className="text-zinc-400 text-[10px]">{sq.description}</p>}
+            <div key={idx} className="text-[11px] space-y-1 bg-zinc-900/50 rounded-lg p-2 border border-zinc-800/70">
+              <div className="font-semibold text-zinc-100">{sq.name}</div>
+              {(sq.objective || sq.description) && (
+                <p className="text-zinc-400 text-[10px]">{sq.objective || sq.description}</p>
+              )}
               {sq.pipeline && sq.pipeline.length > 0 && (
-                <div className="space-y-0.5 pt-0.5">
+                <div className="space-y-1 pt-0.5">
                   {sq.pipeline.map((step, si) => (
-                    <div key={si} className="text-[10px] text-zinc-400 flex items-center gap-1">
-                      <span className="text-amber-400">#{si + 1}</span>
-                      <span>{step.roleInSquad || step.agentId}</span>
+                    <div key={si} className="text-[10px] text-zinc-300 flex items-center justify-between gap-2 bg-zinc-950/60 px-2 py-1 rounded">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="text-amber-400 font-mono font-bold">#{si + 1}</span>
+                        <span className="truncate font-medium">{step.agentName || step.roleInSquad || step.agentId}</span>
+                      </div>
+                      {step.expectedOutput && (
+                        <span className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 shrink-0">
+                          {step.expectedOutput}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -961,14 +1154,14 @@ export interface QuickPreset {
 }
 
 export const MASTER_QUICK_PRESETS: QuickPreset[] = [
+  { label: '🤖 Criar Agente Completo', prompt: 'Crie um agente especialista completo com avatar, finalidade, diretrizes, perguntas obrigatórias e pasta de entrega para: ', category: 'Multiagente' },
+  { label: '🏢 Montar Departamento (Squad)', prompt: 'Monte um departamento completo com os agentes especialistas necessários e esteira colaborativa para: ', category: 'Multiagente' },
+  { label: '⚡ Criar Fluxo de Trabalho', prompt: 'Crie um fluxo de trabalho visual completo no Flow Canvas (com entrada, agentes, condições e entrega) para: ', category: 'Flow' },
+  { label: '🎯 Decompor em Tarefas', prompt: 'Analise o contexto atual e crie um plano de execução estruturado com tarefas acionáveis e subtarefas detalhadas.', category: 'Projetos' },
   { label: '🔗 Conexões no Vault', prompt: 'Analise o contexto e sugira conexões semânticas com outras ideias do cofre, indicando links bidirecionais [[...]].', category: 'Conhecimento' },
   { label: '🧩 Mapa Conceitual', prompt: 'Crie um mapa mental conceitual com as ideias centrais presentes neste contexto.', category: 'Visual' },
-  { label: '🏷️ Taxonomia & Tags', prompt: 'Sugira uma taxonomia de tags e categorias para organizar este material no cofre.', category: 'Organização' },
   { label: '📋 Resumo Executivo', prompt: 'Gere um resumo executivo em tópicos com os pontos mais importantes do contexto.', category: 'Síntese' },
-  { label: '✨ Melhorar Redação', prompt: 'Reescreva e aprimore o texto do contexto com maior elegância, fluidez e clareza.', category: 'Escrita' },
-  { label: '⚡ Criar Workflow', prompt: 'Crie um fluxo de trabalho visual estruturado no Flow Canvas para este objetivo.', category: 'Flow' },
-  { label: '👥 Criar Squad', prompt: 'Crie um squad colaborativo com especialistas para executar este projeto em pipeline.', category: 'Equipe' },
-  { label: '🎯 Decompor em Tarefas', prompt: 'Analise o contexto atual e crie um plano de execução estruturado com tarefas acionáveis e subtarefas detalhadas.', category: 'Projetos' }
+  { label: '✨ Melhorar Redação', prompt: 'Reescreva e aprimore o texto do contexto com maior elegância, fluidez e clareza.', category: 'Escrita' }
 ]
 
 export interface AgentConversation {
@@ -1136,6 +1329,114 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       )
     } catch {}
     onOpenTeamAgentsView?.()
+  }
+
+  const handleUseAgentInChat = (agentIdOrName: string) => {
+    if (!multiAgentStore?.agents) return
+    const q = agentIdOrName.trim().toLowerCase()
+    const found = multiAgentStore.agents.find(
+      a => a.id.toLowerCase() === q || a.name.toLowerCase() === q || a.name.toLowerCase().includes(q)
+    )
+    if (found) {
+      setSelectedTeamAgentId(found.id)
+      setSelectedSquadId('')
+      try {
+        localStorage.setItem('pyrite_ai_selected_team_agent_id', found.id)
+        localStorage.setItem('pyrite_ai_selected_squad_id', '')
+      } catch {}
+      setToastNotice(`🤖 Agente "${found.name}" ativado neste chat!`)
+      setTimeout(() => setToastNotice(null), 3500)
+      inputRef.current?.focus()
+    }
+  }
+
+  const handleUseSquadInChat = (squadIdOrName: string) => {
+    if (!multiAgentStore?.teams) return
+    const q = squadIdOrName.trim().toLowerCase()
+    const found = multiAgentStore.teams.find(
+      t => t.id.toLowerCase() === q || t.name.toLowerCase() === q || t.name.toLowerCase().includes(q)
+    )
+    if (found) {
+      setSelectedSquadId(found.id)
+      setSelectedTeamAgentId('')
+      try {
+        localStorage.setItem('pyrite_ai_selected_squad_id', found.id)
+        localStorage.setItem('pyrite_ai_selected_team_agent_id', '')
+      } catch {}
+      setToastNotice(`👥 Departamento "${found.name}" ativado neste chat!`)
+      setTimeout(() => setToastNotice(null), 3500)
+      inputRef.current?.focus()
+    }
+  }
+
+  const handleRunWorkflowInChat = async (
+    workflowIdOrName: string,
+    customPrompt?: string,
+    overrideStore?: MultiAgentStoreState
+  ) => {
+    const storeToUse = overrideStore || multiAgentStore
+    if (!storeToUse?.workflows) return
+    const q = workflowIdOrName.trim().toLowerCase()
+    const wf = storeToUse.workflows.find(
+      w => w.id.toLowerCase() === q || w.name.toLowerCase() === q || w.name.toLowerCase().includes(q)
+    )
+    if (!wf) return
+
+    setIsGenerating(true)
+    const runMsgId = `wf_run_${Date.now()}`
+    setMessages(prev => [
+      ...prev,
+      { id: runMsgId, sender: 'ai', text: `Pensando...` }
+    ])
+
+    try {
+      const wfRun = await executeWorkflowRun({
+        workflow: wf,
+        allAgents: storeToUse.agents,
+        allNotes,
+        allProjects: storeToUse.projects || [],
+        prompt: customPrompt || `Executar fluxo "${wf.name}" na nota "${effectiveNote.title}"`,
+        isTestRun: false
+      })
+
+      if (onUpdateAgentStore) {
+        onUpdateAgentStore({
+          ...storeToUse,
+          runs: [wfRun, ...(storeToUse.runs || [])]
+        })
+      }
+
+      const completedCount = (wfRun.workflowNodeStates || []).filter(s => s.status === 'completed').length
+      const summaryMd =
+        wfRun.draftContent ||
+        `Fluxo **${wf.name}** executado com sucesso (${completedCount}/${wf.nodes.length} etapas concluídas).`
+
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === runMsgId
+            ? {
+                ...m,
+                text: `> ⚡ **Fluxo "${wf.name}" executado diretamente no chat (${completedCount}/${wf.nodes.length} etapas)**\n\n${summaryMd}`
+              }
+            : m
+        )
+      )
+      setToastNotice(`⚡ Fluxo "${wf.name}" concluído com sucesso!`)
+      setTimeout(() => setToastNotice(null), 4000)
+    } catch (err: any) {
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === runMsgId
+            ? {
+                ...m,
+                text: `⚠️ **Falha ao executar o fluxo "${wf.name}":** ${err?.message || 'Erro interno.'}`
+              }
+            : m
+        )
+      )
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   const handleExecuteTaskAction = (act: ParsedTaskAction, key: string) => {
@@ -2085,112 +2386,197 @@ ${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList
   * NUNCA use asteriscos ('**', '***') para indicar etapas ou níveis de profundidade, e NUNCA envolva títulos em negrito ('**Título**'). Use apenas texto limpo precedido de traço '-' e indentação correta. O motor gráfico cuida de todo o design e peso visual dos nós.`
 
         const currentAgentsList = (multiAgentStore?.agents || []).map(
-          a => `- ${a.icon || '🤖'} **${a.name}** (id: "${a.id}", função: "${a.specialistRole}"): ${a.roleDescription || a.workStyle?.tone || ''}`
+          a => `- **${a.name}** (id: "${a.id}", ícone: "${a.icon}", finalidade: "${a.aiConfig?.purpose || 'text'}", função: "${a.specialistRole}"): ${a.roleDescription || a.workStyle?.tone || ''}`
         ).join('\n')
 
         const currentSquadsList = (multiAgentStore?.teams || []).map(
-          t => `- 👥 **${t.name}** (id: "${t.id}"): ${t.description || t.objective || ''} (${t.pipeline?.length || t.nodes?.length || 0} membros)`
+          t => `- 👥 **${t.name}** (id: "${t.id}"): ${t.description || t.objective || ''} (${t.pipeline?.length || t.nodes?.length || 0} especialistas)`
         ).join('\n')
 
         const currentWorkflowsList = (multiAgentStore?.workflows || []).map(
           w => `- ⚡ **${w.name}** (id: "${w.id}", status: "${w.status}"): ${w.description || ''} (${w.nodes?.length || 0} etapas)`
         ).join('\n')
 
-        const ecosystemDirective = `PODERES DE MESTRE DO ASSISTENTE PYRITE (ORQUESTRADOR SUPREMO):
-Você é o Assistente Mestre do Pyrite. Você tem visão e comando total sobre TODOS os recursos da ferramenta:
-1. Notas e Documentos: notas markdown, mapas mentais interativos, diagramas/canvas e arquivos HTML nativos.
-2. Projetos e Tarefas: tarefas, prazos, prioridades, tags e subtarefas em quadros kanban/listas.
-3. Agentes Especialistas da Minha Equipe: você conhece todos os agentes, pode usar seus conhecimentos ou CRIAR NOVOS AGENTES especialistas sob demanda!
-4. Squads / Equipes: você pode orquestrar e CRIAR novos squads colaborativos encadeando agentes em pipeline.
-5. Workflows Visuais (Flow): você pode desenhar e CRIAR fluxos de trabalho visuais completos com nós interligados no canvas (entradas, agentes, chamadas diretas de IA, condições, aprovações humanas, criação de tarefas e entregáveis no cofre).
+        // Memórias de longo prazo (globais + agente selecionado)
+        const activeMemories = (multiAgentStore?.memories || [])
+          .filter(m => !selectedTeamAgent || m.agentId === selectedTeamAgent.id || m.agentId === 'global')
+          .slice(0, 20)
+        const memoriesBlock = activeMemories.length > 0
+          ? `\nMEMÓRIA DE LONGO PRAZO DO ECOSSISTEMA (${activeMemories.length} fatos persistentes):\n${activeMemories.map(m => `- ${m.content}`).join('\n')}\n`
+          : ''
+
+        // Consultas inter-agentes paralelas caso o usuário mencione @NomeDoAgente no Assistente Global
+        let globalConsultationBlock = ''
+        if (multiAgentStore?.agents && multiAgentStore.agents.length > 0 && raw.trim()) {
+          const callerPersona: AgentProfileVersion = selectedTeamAgent || {
+            id: 'global-master-assistant',
+            version: 1,
+            name: 'Assistente Global',
+            icon: 'split',
+            color: '#c59b27',
+            specialistRole: 'coordinator',
+            roleDescription: 'Orquestrador Global do Cofre Pyrite',
+            workStyle: { tone: 'Executivo, claro e estratégico', rules: [], requiredQuestions: [], guardrails: [] },
+            knowledgeBindings: [],
+            allowedActions: ['read_context', 'prepare_draft'],
+            deliverables: { targetFolder: 'Início', namingPattern: '{agente}', outputTypes: ['note'], requireApprovalForExisting: false },
+            aiConfig: { useDefault: true },
+            limits: { maxDurationSec: 120, maxSteps: 8, maxSubtasks: 5, maxDelegationDepth: 2, allowDelegation: true },
+            triggerMode: 'on_demand',
+            state: 'available',
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          }
+          const consultRes = await executeInterAgentConsultations({
+            callerAgent: callerPersona,
+            allAgents: multiAgentStore.agents,
+            prompt: raw,
+            memories: multiAgentStore.memories
+          })
+          if (consultRes.consultationDirectives) {
+            globalConsultationBlock = consultRes.consultationDirectives
+          }
+        }
+
+        const ecosystemDirective = `PODERES DE MESTRE DO ASSISTENTE GLOBAL PYRITE (ORQUESTRADOR 100% AUTÔNOMO):
+Você é o Assistente Mestre do Pyrite. O usuário pode construir, configurar e operar TODO o sistema de multiagentes apenas conversando com você em texto simples, sem precisar abrir a página de Multiagentes!
+Você domina:
+1. Notas, Mapas Mentais e Arquivos HTML Nativos.
+2. Projetos e Tarefas em Quadros Kanban/Listas.
+3. Criação/Edição/Exclusão de AGENTES ESPECIALISTAS COMPLETOS (com avatar oficial, finalidade Texto/Código/Imagem, regras, perguntas obrigatórias, guardrails, pasta de entrega, notas/pastas vinculadas, skills e memória de longo prazo).
+4. Criação/Edição/Exclusão de DEPARTAMENTOS (SQUADS) completos com esteira colaborativa (se o departamento precisar de agentes que ainda não existem, você pode emitir os blocos \`agent-action\` antes do \`squad-action\`, ou listar os especialistas direto no \`pipeline\` do \`squad-action\` que o Pyrite criará automaticamente os agentes faltantes!).
+5. Criação/Edição/Exclusão de FLUXOS DE TRABALHO (WORKFLOWS) visuais completos no Flow Canvas, conectando gatilhos, leitura de notas, agentes especialistas, IA, condições lógicas (true/false), aprovação humana, tarefas e entregáveis.
+6. Execução Imediata (\`run-action\`) de qualquer Agente, Departamento ou Fluxo de Trabalho diretamente aqui no chat!
 
 ECOSSISTEMA ATUAL CADASTRADO NO COFRE DO USUÁRIO:
 [Agentes da Equipe]:
 ${currentAgentsList || 'Nenhum agente cadastrado ainda.'}
 
-[Squads / Equipes de Agentes]:
-${currentSquadsList || 'Nenhum squad cadastrado ainda.'}
+[Departamentos / Squads de Agentes]:
+${currentSquadsList || 'Nenhum departamento cadastrado ainda.'}
 
 [Fluxos de Trabalho / Workflows no Flow]:
 ${currentWorkflowsList || 'Nenhum workflow cadastrado ainda.'}
+${memoriesBlock}
+COMO CRIAR, ATUALIZAR OU EXCLUIR RECURSOS COM 100% DE PRECISÃO VIA TEXTO SIMPLES:
 
-COMO CRIAR OU EDITAR RECURSOS VIA PROMPT:
-Quando o usuário pedir para criar ou configurar um AGENTE ESPECIALISTA:
+1) CRIAR / ATUALIZAR / EXCLUIR AGENTE COMPLETO (\`agent-action\`):
+Variantes de ícone oficiais do Pyrite (escolha a mais adequada, NUNCA use emoji no campo icon):
+"split" | "arch" | "corner" | "bubble" | "stairs" | "pill" | "hill" | "horizon" | "wave" | "badge" | "peak" | "crescent" | "beam" | "valley" | "orbit"
 \`\`\`agent-action
 {
   "action": "create",
-  "name": "Nome Elegante do Agente",
-  "icon": "🎯",
+  "name": "Nome do Agente Especialista",
+  "icon": "orbit",
   "color": "#6366f1",
+  "purpose": "text",
   "specialistRole": "proposal_specialist" | "knowledge_curator" | "project_planner" | "cartographer" | "diagram_designer" | "reviewer" | "coordinator" | "custom",
-  "roleDescription": "Descrição das responsabilidades do agente",
-  "systemDirective": "Instruções comportamentais detalhadas e diretivas de sistema do agente",
-  "tone": "Profissional, analítico...",
-  "rules": ["Regra 1", "Regra 2"]
+  "roleDescription": "Descrição clara da especialidade e missão do agente",
+  "tone": "Tom de voz e estilo de trabalho (ex: Consultivo, técnico e direto)",
+  "systemDirective": "Diretiva mestra detalhada de atuação",
+  "rules": ["Regra prática 1", "Regra prática 2", "Regra prática 3"],
+  "requiredQuestions": ["Pergunta obrigatória caso falte dado crítico"],
+  "guardrails": ["Trava de segurança / o que nunca fazer"],
+  "targetFolder": "Agentes",
+  "outputTypes": ["note", "tasks"],
+  "knowledgeNotes": ["Título de nota do cofre para vincular se solicitado"],
+  "knowledgeFolders": ["Nome de pasta do cofre para vincular se solicitado"],
+  "memories": ["Fato permanente inicial para a memória do agente"]
+}
+\`\`\`
+(Para finalidade de código use \`"purpose": "code"\`; para imagem use \`"purpose": "image"\`; para excluir use \`"action": "delete"\`).
+
+2) CRIAR / ATUALIZAR / EXCLUIR DEPARTAMENTO / SQUAD (\`squad-action\`):
+Você pode referenciar agentes existentes pelo \`id\` ou \`name\`, ou definir novos especialistas diretamente no \`pipeline\` (com \`agentName\`, \`specialistRole\`, \`icon\`, \`roleInSquad\`, \`customPrompt\`, \`expectedOutput\`) que o Pyrite criará automaticamente qualquer agente que ainda não exista!
+\`\`\`squad-action
+{
+  "action": "create",
+  "name": "Departamento de Marketing & Growth",
+  "icon": "Rocket",
+  "description": " Missão executiva do departamento",
+  "objective": "Objetivo central da esteira colaborativa",
+  "coordinatorAgentId": "Estrategista Chefe",
+  "pipeline": [
+    {
+      "agentName": "Estrategista Chefe",
+      "specialistRole": "coordinator",
+      "icon": "arch",
+      "roleInSquad": "Planejamento e Posicionamento",
+      "customPrompt": "Estruture o ângulo estratégico, público-alvo e proposta de valor.",
+      "expectedOutput": "text"
+    },
+    {
+      "agentName": "Copywriter Sênior",
+      "specialistRole": "custom",
+      "icon": "wave",
+      "roleInSquad": "Redação Persuasiva",
+      "customPrompt": "Redija a cópia final completa com base na estratégia.",
+      "expectedOutput": "note"
+    },
+    {
+      "agentName": "Revisor de Qualidade",
+      "specialistRole": "reviewer",
+      "icon": "badge",
+      "roleInSquad": "Auditoria e Polimento Final",
+      "customPrompt": "Revise clareza, persuasão e consistência antes da entrega.",
+      "expectedOutput": "note"
+    }
+  ]
 }
 \`\`\`
 
-Quando o usuário pedir para criar um FLUXO DE TRABALHO (WORKFLOW) no Flow:
+3) CRIAR / ATUALIZAR / EXCLUIR FLUXO DE TRABALHO (\`workflow-action\`):
+Kinds válidos de nós: \`input\`, \`read_note\`, \`run_agent\`, \`llm\`, \`condition\`, \`approval\`, \`create_task\`, \`manage_properties\`, \`deliverable\`, \`finish\`.
+Nos nós \`run_agent\`, você pode passar \`"agentId"\` com o ID ou Nome do agente (se o agente não existir, o Pyrite o criará automaticamente!). Nos nós \`condition\`, use edges com \`"branch": "true"\` e \`"branch": "false"\`.
 \`\`\`workflow-action
 {
   "action": "create",
-  "name": "Nome do Fluxo",
-  "description": "Objetivo do fluxo...",
+  "name": "Nome do Fluxo Visual",
+  "description": "Objetivo do fluxo automatizado",
   "nodes": [
     {
       "id": "node_1",
       "kind": "input",
-      "label": "Gatilho de Entrada",
-      "config": { "triggerType": "manual" }
+      "label": "Entrada do Fluxo",
+      "config": { "triggerType": "manual", "promptTemplate": "Instrução inicial do fluxo" }
     },
     {
       "id": "node_2",
       "kind": "run_agent",
-      "label": "Análise por Agente",
-      "config": { "agentId": "id_do_agente_aqui" }
+      "label": "Execução pelo Especialista",
+      "config": { "agentId": "Nome ou ID do Agente", "promptTemplate": "Instrução específica da etapa" }
     },
     {
       "id": "node_3",
       "kind": "deliverable",
-      "label": "Salvar Entrega",
-      "config": {}
+      "label": "Salvar Nota no Cofre",
+      "config": { "targetFolder": "Fluxos", "outputType": "note" }
     }
   ],
   "edges": [
-    { "sourceNodeId": "node_1", "targetNodeId": "node_2" },
-    { "sourceNodeId": "node_2", "targetNodeId": "node_3" }
+    { "sourceNodeId": "node_1", "targetNodeId": "node_2", "branch": "default" },
+    { "sourceNodeId": "node_2", "targetNodeId": "node_3", "branch": "default" }
   ]
 }
 \`\`\`
-(Kinds válidos de nós: input, read_note, run_agent, llm, condition, approval, create_task, manage_properties, deliverable, finish)
 
-Quando o usuário pedir para criar um SQUAD (TIME DE AGENTES):
-\`\`\`squad-action
+4) EXECUTAR IMEDIATAMENTE UM AGENTE, DEPARTAMENTO OU FLUXO (\`run-action\`):
+Se o usuário pedir para RODAR / EXECUTAR agora um agente, departamento ou workflow (mesmo que você tenha acabado de criá-lo na mesma mensagem):
+\`\`\`run-action
 {
-  "action": "create",
-  "name": "Nome do Squad",
-  "description": "Objetivo do squad colaborativo",
-  "coordinatorAgentId": "id_do_coordenador",
-  "pipeline": [
-    {
-      "agentId": "id_do_agente_1",
-      "roleInSquad": "Papel inicial",
-      "customPrompt": "Instruções específicas para a etapa 1",
-      "expectedOutput": "note"
-    },
-    {
-      "agentId": "id_do_agente_2",
-      "roleInSquad": "Revisão e Aprimoramento",
-      "customPrompt": "Instruções específicas para a etapa 2",
-      "expectedOutput": "note"
-    }
-  ]
+  "targetType": "agent" | "squad" | "workflow",
+  "targetName": "Nome do Agente, Departamento ou Fluxo",
+  "prompt": "Instrução detalhada para a execução imediata"
 }
 \`\`\`
+
+5) MEMÓRIA DE LONGO PRAZO E CONSULTA A COLEGAS:
+- Se o usuário pedir para lembrar de uma regra ou preferência permanente, inclua no final: \`[MEMÓRIA: fato conciso em uma frase]\`.
+- Se precisar consultar um agente especialista da equipe durante sua resposta, você pode emitir \`[CONSULTAR: NomeDoAgente | pergunta específica]\`.
 
 REGRA DE APRESENTAÇÃO LIMPA (PADRÃO GEMINI / ANTIGRAVITY):
-O Pyrite executa e cadastra esses agentes, fluxos e squads AUTOMATICAMENTE e exibe cards recolhíveis elegantes de uma linha com botões de navegação direta.
-Portanto, NUNCA repita os dados em tabelas massivas ou blocos de código redundantes no texto markdown. Seja conciso, executivo e acolhedor (1 a 4 frases), informando o que você criou e configurou e convidando o usuário a explorar no painel.`
+O Pyrite executa e cadastra esses agentes, departamentos e fluxos AUTOMATICAMENTE e exibe cards interativos com botões "Usar aqui", "Ativar aqui" e "Executar aqui".
+Portanto, NUNCA repita os JSONs em tabelas massivas no texto markdown. Seja conciso, executivo e acolhedor (1 a 4 frases), confirmando o que criou/configurou.`
 
         const systemPrompt = `Você é o Agente de IA do Pyrite, assistente de alto nível para gestão de conhecimento e pensamento (estilo Obsidian) com foco em produtividade e pensamento em rede.
 
@@ -2202,6 +2588,7 @@ ${mindMapDirective}
 ${artifactsDirective}
 ${tasksDirective}
 ${skillsDirectiveBlock}
+${globalConsultationBlock}
 Contexto de Tarefas no Cofre:
 ${tasksSummary}
 
@@ -2456,7 +2843,34 @@ Diretrizes gerais:
           }
 
           const newAiId = `ai_${Date.now()}`
-          const { taskActions: autoActions, agentActions: autoAgentActions, workflowActions: autoWfActions, squadActions: autoSquadActions } = parseMasterActions(responseText)
+          const {
+            taskActions: autoActions,
+            agentActions: autoAgentActions,
+            workflowActions: autoWfActions,
+            squadActions: autoSquadActions,
+            runActions: autoRunActions
+          } = parseMasterActions(responseText)
+
+          // Extrair memórias de longo prazo [MEMÓRIA: ...] ou pedido explícito do usuário no chat global
+          const learnedGlobalFacts: string[] = []
+          const memRegex = /\[MEM[ÓO]RIA:\s*([^\]]+?)\]/gi
+          let memMatch: RegExpExecArray | null
+          while ((memMatch = memRegex.exec(responseText)) !== null) {
+            const fact = memMatch[1].trim().replace(/[.]+$/, '')
+            if (fact.length >= 4 && fact.length <= 350 && !learnedGlobalFacts.includes(fact)) {
+              learnedGlobalFacts.push(fact)
+            }
+          }
+          const explicitUserMemMatch = raw.match(
+            /(?:lembre-se(?:\s+sempre)?(?:\s+de)?\s+que|guarde(?:\s+na\s+mem[óo]ria)?\s+que|memorize\s+que)\s+([^\n.!]+[.!]?)/i
+          )
+          if (explicitUserMemMatch && explicitUserMemMatch[1]) {
+            const fact = explicitUserMemMatch[1].trim().replace(/[.!]+$/, '')
+            if (fact.length >= 5 && fact.length <= 300 && !learnedGlobalFacts.includes(fact)) {
+              learnedGlobalFacts.push(fact)
+            }
+          }
+
           if (autoActions.length > 0 && onCreateTask) {
             const targetBoardId = autoActions[0].boardId || activeConversation?.linkedBoardId || activeBoardId || 'default'
             const boardObj = taskBoards.find(b => b.id === targetBoardId)
@@ -2471,37 +2885,96 @@ Diretrizes gerais:
             setTimeout(() => setToastNotice(null), 4000)
           }
 
-          if (multiAgentStore && onUpdateAgentStore && (autoAgentActions.length > 0 || autoWfActions.length > 0 || autoSquadActions.length > 0)) {
-            let nextStore = { ...multiAgentStore }
+          let updatedStoreAfterActions: MultiAgentStoreState | undefined = multiAgentStore
 
-            // 1. Process agent actions
-            for (const act of autoAgentActions) {
-              const agentId = act.id || `agent-${act.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || Date.now()}`
-              const existingAgent = nextStore.agents.find(a => a.id === agentId)
-              const newAgent: AgentProfileVersion = {
-                id: agentId,
-                version: existingAgent ? existingAgent.version + 1 : 1,
-                name: act.name,
-                icon: act.icon || '🤖',
-                color: act.color || '#6366f1',
-                specialistRole: act.specialistRole || 'custom',
-                roleDescription: act.roleDescription || `Especialista em ${act.name}`,
+          if (
+            multiAgentStore &&
+            onUpdateAgentStore &&
+            (autoAgentActions.length > 0 ||
+              autoWfActions.length > 0 ||
+              autoSquadActions.length > 0 ||
+              learnedGlobalFacts.length > 0)
+          ) {
+            let nextStore: MultiAgentStoreState = {
+              ...multiAgentStore,
+              memories: [...(multiAgentStore.memories || [])]
+            }
+
+            // Persistir memórias aprendidas neste turno
+            const targetMemAgentId = selectedTeamAgent?.id || 'global'
+            for (const fact of learnedGlobalFacts) {
+              const alreadySaved = (nextStore.memories || []).some(
+                m => m.agentId === targetMemAgentId && m.content.toLowerCase() === fact.toLowerCase()
+              )
+              if (!alreadySaved) {
+                nextStore.memories = [
+                  {
+                    id: `mem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    agentId: targetMemAgentId,
+                    content: fact,
+                    category: 'fact',
+                    createdAt: Date.now()
+                  },
+                  ...(nextStore.memories || [])
+                ]
+              }
+            }
+
+            // Helper para resolver ou auto-criar um Agente Especialista completo pelo Nome ou ID
+            const resolveOrCreateAgent = (
+              refIdOrName: string | undefined,
+              fallbackSpec?: {
+                name?: string
+                roleInSquad?: string
+                specialistRole?: AgentSpecialistRole
+                icon?: string
+                customPrompt?: string
+              }
+            ): string => {
+              const rawRef = (refIdOrName || fallbackSpec?.name || fallbackSpec?.roleInSquad || '').trim()
+              if (!rawRef) {
+                return nextStore.agents[0]?.id || 'agent-proposal-specialist'
+              }
+              const q = rawRef.toLowerCase()
+              const existing = nextStore.agents.find(
+                a =>
+                  a.id.toLowerCase() === q ||
+                  a.name.toLowerCase() === q ||
+                  a.name.toLowerCase().includes(q) ||
+                  q.includes(a.name.toLowerCase())
+              )
+              if (existing) return existing.id
+
+              // Auto-provisiona o agente especialista completo caso não exista no cofre!
+              const cleanName = fallbackSpec?.name || rawRef.replace(/^agent[-_]/i, '').replace(/[-_]/g, ' ')
+              const newId = `agent-${cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || Date.now()}`
+              const autoCreatedAgent: AgentProfileVersion = {
+                id: newId,
+                version: 1,
+                name: cleanName,
+                icon: pickAgentIconVariant(fallbackSpec?.icon, cleanName),
+                color: '#6366f1',
+                specialistRole: fallbackSpec?.specialistRole || 'custom',
+                roleDescription: fallbackSpec?.roleInSquad || `Especialista em ${cleanName}`,
                 workStyle: {
-                  tone: act.tone || 'Profissional, objetivo e analítico',
-                  rules: act.rules && act.rules.length > 0 ? act.rules : ['Operar com foco em resultados e qualidade máxima.'],
+                  tone: 'Profissional, analítico e orientado a resultados',
+                  rules: [
+                    fallbackSpec?.customPrompt || `Atuar como especialista em ${cleanName} com máxima precisão.`,
+                    'Entregar respostas estruturadas e acionáveis em português do Brasil.'
+                  ],
                   requiredQuestions: [],
                   guardrails: []
                 },
-                knowledgeBindings: existingAgent?.knowledgeBindings || [],
+                knowledgeBindings: [],
                 allowedActions: ['read_context', 'prepare_draft', 'propose_patch', 'create_tasks'],
-                deliverables: existingAgent?.deliverables || {
+                deliverables: {
                   targetFolder: 'Agentes',
                   namingPattern: '{agente} - {data}',
                   outputTypes: ['note', 'tasks', 'mindmap', 'draw'],
                   requireApprovalForExisting: false
                 },
-                aiConfig: existingAgent?.aiConfig || { useDefault: true },
-                limits: existingAgent?.limits || {
+                aiConfig: { useDefault: true, purpose: 'text' },
+                limits: {
                   maxDurationSec: 180,
                   maxSteps: 10,
                   maxSubtasks: 6,
@@ -2510,82 +2983,196 @@ Diretrizes gerais:
                 },
                 triggerMode: 'on_demand',
                 state: 'available',
-                createdAt: existingAgent?.createdAt || Date.now(),
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+              }
+              nextStore = updateAgentProfileWithVersion(nextStore, autoCreatedAgent)
+              return newId
+            }
+
+            // 1. Process agent actions (create / update / delete)
+            for (const act of autoAgentActions) {
+              const qName = act.name.trim().toLowerCase()
+              const existingByNameOrId = nextStore.agents.find(
+                a => (act.id && a.id === act.id) || a.name.toLowerCase() === qName
+              )
+              const agentId =
+                existingByNameOrId?.id ||
+                act.id ||
+                `agent-${act.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || Date.now()}`
+
+              if (act.action === 'delete') {
+                nextStore = {
+                  ...nextStore,
+                  agents: nextStore.agents.filter(a => a.id !== agentId)
+                }
+                act.id = agentId
+                continue
+              }
+
+              // Resolver bindings de notas e pastas informadas pelo usuário no texto simples
+              const resolvedBindings: ContextBinding[] = [...(existingByNameOrId?.knowledgeBindings || [])]
+              for (const noteName of act.knowledgeNotes || []) {
+                const foundNote = allNotes.find(
+                  n =>
+                    n.title.toLowerCase() === noteName.toLowerCase() ||
+                    n.title.toLowerCase().includes(noteName.toLowerCase())
+                )
+                if (foundNote && !resolvedBindings.some(b => b.noteId === foundNote.id)) {
+                  resolvedBindings.push({
+                    id: `bind_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    role: 'permanent_ref',
+                    targetType: 'note',
+                    noteId: foundNote.id,
+                    noteTitle: foundNote.title,
+                    required: false,
+                    precedence: 5,
+                    updatePolicy: 'follow_latest'
+                  })
+                }
+              }
+              for (const folderName of act.knowledgeFolders || []) {
+                if (!resolvedBindings.some(b => b.folderPath === folderName)) {
+                  resolvedBindings.push({
+                    id: `bind_f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    role: 'permanent_ref',
+                    targetType: 'folder',
+                    folderPath: folderName,
+                    noteTitle: `Pasta: ${folderName}`,
+                    required: false,
+                    precedence: 5,
+                    updatePolicy: 'follow_latest'
+                  })
+                }
+              }
+
+              // Mesclar systemDirective nas rules para nunca perder instruções ricas
+              const combinedRules = [...(act.rules || [])]
+              if (act.systemDirective && !combinedRules.includes(act.systemDirective)) {
+                combinedRules.unshift(act.systemDirective)
+              }
+              if (combinedRules.length === 0) {
+                combinedRules.push(
+                  ...(existingByNameOrId?.workStyle.rules || [
+                    'Operar com foco em resultados, precisão técnica e qualidade máxima.'
+                  ])
+                )
+              }
+
+              // Gravar memórias iniciais do agente se fornecidas
+              if (act.memories && act.memories.length > 0) {
+                for (const mText of act.memories) {
+                  nextStore.memories = [
+                    {
+                      id: `mem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                      agentId,
+                      content: mText,
+                      category: 'rule',
+                      createdAt: Date.now()
+                    },
+                    ...(nextStore.memories || [])
+                  ]
+                }
+              }
+
+              const newAgent: AgentProfileVersion = {
+                id: agentId,
+                version: existingByNameOrId ? existingByNameOrId.version + 1 : 1,
+                name: act.name,
+                icon: pickAgentIconVariant(act.icon || existingByNameOrId?.icon, act.name),
+                color: act.color || existingByNameOrId?.color || '#6366f1',
+                specialistRole: act.specialistRole || existingByNameOrId?.specialistRole || 'custom',
+                roleDescription:
+                  act.roleDescription || existingByNameOrId?.roleDescription || `Especialista em ${act.name}`,
+                workStyle: {
+                  tone: act.tone || existingByNameOrId?.workStyle.tone || 'Profissional, objetivo e analítico',
+                  rules: combinedRules,
+                  requiredQuestions:
+                    act.requiredQuestions && act.requiredQuestions.length > 0
+                      ? act.requiredQuestions
+                      : existingByNameOrId?.workStyle.requiredQuestions || [],
+                  guardrails:
+                    act.guardrails && act.guardrails.length > 0
+                      ? act.guardrails
+                      : existingByNameOrId?.workStyle.guardrails || []
+                },
+                knowledgeBindings: resolvedBindings,
+                skills: act.skills && act.skills.length > 0 ? act.skills : existingByNameOrId?.skills,
+                allowedActions: ['read_context', 'prepare_draft', 'propose_patch', 'create_tasks'],
+                deliverables: {
+                  targetFolder:
+                    act.targetFolder || existingByNameOrId?.deliverables.targetFolder || 'Agentes',
+                  namingPattern: existingByNameOrId?.deliverables.namingPattern || '{agente} - {data}',
+                  outputTypes:
+                    act.outputTypes && act.outputTypes.length > 0
+                      ? act.outputTypes
+                      : existingByNameOrId?.deliverables.outputTypes || ['note', 'tasks', 'mindmap', 'draw'],
+                  requireApprovalForExisting: false
+                },
+                aiConfig: {
+                  ...(existingByNameOrId?.aiConfig || { useDefault: true }),
+                  purpose: act.purpose || existingByNameOrId?.aiConfig?.purpose || 'text'
+                },
+                limits: existingByNameOrId?.limits || {
+                  maxDurationSec: 180,
+                  maxSteps: 10,
+                  maxSubtasks: 6,
+                  maxDelegationDepth: 2,
+                  allowDelegation: true
+                },
+                triggerMode: 'on_demand',
+                state: 'available',
+                createdAt: existingByNameOrId?.createdAt || Date.now(),
                 updatedAt: Date.now()
               }
               nextStore = updateAgentProfileWithVersion(nextStore, newAgent)
               act.id = agentId
             }
 
-            // 2. Process workflow actions
-            for (const act of autoWfActions) {
-              const wfId = act.id || `wf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
-              const rawNodes = act.nodes || []
-              const nodes: WorkflowNode[] = rawNodes.length > 0
-                ? rawNodes.map((n, idx) => ({
-                    id: n.id || `node_${idx + 1}`,
-                    kind: (n.kind as WorkflowNodeKind) || (idx === 0 ? 'input' : idx === rawNodes.length - 1 ? 'deliverable' : 'run_agent'),
-                    label: n.label || `Etapa ${idx + 1}`,
-                    position: { x: 80 + idx * 260, y: 220 },
-                    config: n.config || {}
-                  }))
-                : [
-                    { id: 'n1', kind: 'input', label: 'Início', position: { x: 80, y: 220 }, config: { triggerType: 'manual' } },
-                    { id: 'n2', kind: 'run_agent', label: 'Executar Agente', position: { x: 340, y: 220 }, config: {} },
-                    { id: 'n3', kind: 'deliverable', label: 'Saída', position: { x: 600, y: 220 }, config: {} }
-                  ]
+            // 2. Process squad actions (Departamentos — com auto-provisionamento de agentes faltantes!)
+            for (const act of autoSquadActions) {
+              const currentTeams = nextStore.teams || []
+              const existingTeam = currentTeams.find(
+                t => (act.id && t.id === act.id) || t.name.toLowerCase() === act.name.trim().toLowerCase()
+              )
+              const squadId =
+                existingTeam?.id ||
+                act.id ||
+                `squad_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
 
-              let edges: WorkflowEdge[] = act.edges && act.edges.length > 0
-                ? act.edges.map((e, idx) => ({
-                    id: e.id || `edge_${idx + 1}`,
-                    sourceNodeId: e.sourceNodeId || nodes[Math.max(0, idx)]?.id || '',
-                    targetNodeId: e.targetNodeId || nodes[Math.min(nodes.length - 1, idx + 1)]?.id || '',
-                    branch: (e.branch as any) || 'default',
-                    label: e.label
-                  }))
-                : nodes.slice(0, -1).map((curr, idx) => ({
-                    id: `edge_${idx + 1}`,
-                    sourceNodeId: curr.id,
-                    targetNodeId: nodes[idx + 1].id,
-                    branch: 'default'
-                  }))
-
-              const currentWfs = nextStore.workflows || []
-              const existingWf = currentWfs.find(w => w.id === wfId)
-              const newWf: WorkflowDefinition = {
-                id: wfId,
-                version: existingWf ? existingWf.version + 1 : 1,
-                status: 'published',
-                active: true,
-                name: act.name,
-                description: act.description || '',
-                nodes,
-                edges,
-                createdAt: existingWf?.createdAt || Date.now(),
-                updatedAt: Date.now()
+              if (act.action === 'delete') {
+                nextStore = {
+                  ...nextStore,
+                  teams: currentTeams.filter(t => t.id !== squadId)
+                }
+                act.id = squadId
+                continue
               }
 
-              const nextWorkflows = existingWf
-                ? currentWfs.map(w => w.id === wfId ? newWf : w)
-                : [newWf, ...currentWfs]
-              nextStore = { ...nextStore, workflows: nextWorkflows }
-              act.id = wfId
-            }
+              const pipeline: SquadPipelineStep[] = (act.pipeline || []).map((step, idx) => {
+                const resolvedAgentId = resolveOrCreateAgent(step.agentId || step.agentName, {
+                  name: step.agentName || step.roleInSquad || `Especialista ${idx + 1}`,
+                  roleInSquad: step.roleInSquad,
+                  specialistRole: step.specialistRole,
+                  icon: step.icon,
+                  customPrompt: step.customPrompt
+                })
+                const agObj = nextStore.agents.find(a => a.id === resolvedAgentId)
+                step.agentName = agObj?.name || step.agentName || step.roleInSquad
+                return {
+                  id: `step_${idx + 1}`,
+                  agentId: resolvedAgentId,
+                  roleInSquad: step.roleInSquad || agObj?.roleDescription || `Etapa ${idx + 1}`,
+                  order: idx + 1,
+                  enabled: true,
+                  customPrompt: step.customPrompt || '',
+                  expectedOutput: step.expectedOutput || 'note'
+                }
+              })
 
-            // 3. Process squad actions
-            for (const act of autoSquadActions) {
-              const squadId = act.id || `squad_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
-              const pipeline: SquadPipelineStep[] = (act.pipeline || []).map((step, idx) => ({
-                id: `step_${idx + 1}`,
-                agentId: step.agentId || nextStore.agents[0]?.id || 'agent-proposal-specialist',
-                roleInSquad: step.roleInSquad || `Etapa ${idx + 1}`,
-                order: idx,
-                enabled: true,
-                customPrompt: step.customPrompt || '',
-                expectedOutput: step.expectedOutput || 'note'
-              }))
-
-              const coordinatorId = act.coordinatorAgentId || pipeline[0]?.agentId || nextStore.agents[0]?.id || 'agent-team-coordinator'
+              const coordinatorId = act.coordinatorAgentId
+                ? resolveOrCreateAgent(act.coordinatorAgentId)
+                : pipeline[0]?.agentId || nextStore.agents[0]?.id || 'agent-team-coordinator'
 
               const nodes: TeamMemberNode[] = pipeline.map((step, idx) => ({
                 id: `member_${idx + 1}`,
@@ -2603,12 +3190,12 @@ Diretrizes gerais:
                 relation: 'delegates_to'
               }))
 
-              const currentTeams = nextStore.teams || []
-              const existingTeam = currentTeams.find(t => t.id === squadId)
               const newTeam: TeamDefinition = {
                 id: squadId,
                 version: existingTeam ? existingTeam.version + 1 : 1,
                 name: act.name,
+                icon: act.icon || existingTeam?.icon || 'Users',
+                color: act.color || existingTeam?.color || '#6366f1',
                 description: act.description || '',
                 objective: act.objective || act.description || '',
                 coordinatorAgentId: coordinatorId,
@@ -2621,23 +3208,190 @@ Diretrizes gerais:
               }
 
               const nextTeams = existingTeam
-                ? currentTeams.map(t => t.id === squadId ? newTeam : t)
+                ? currentTeams.map(t => (t.id === squadId ? newTeam : t))
                 : [newTeam, ...currentTeams]
               nextStore = { ...nextStore, teams: nextTeams }
               act.id = squadId
             }
 
+            // 3. Process workflow actions (com resolução de agentes, notas e auto-layout de branches!)
+            for (const act of autoWfActions) {
+              const currentWfs = nextStore.workflows || []
+              const existingWf = currentWfs.find(
+                w => (act.id && w.id === act.id) || w.name.toLowerCase() === act.name.trim().toLowerCase()
+              )
+              const wfId =
+                existingWf?.id ||
+                act.id ||
+                `wf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
+
+              if (act.action === 'delete') {
+                nextStore = {
+                  ...nextStore,
+                  workflows: currentWfs.filter(w => w.id !== wfId)
+                }
+                act.id = wfId
+                continue
+              }
+
+              const rawNodes = act.nodes || []
+              const rawEdges = act.edges || []
+
+              const nodes: WorkflowNode[] =
+                rawNodes.length > 0
+                  ? rawNodes.map((n, idx) => {
+                      const nodeId = n.id || `node_${idx + 1}`
+                      const kind =
+                        (n.kind as WorkflowNodeKind) ||
+                        (idx === 0
+                          ? 'input'
+                          : idx === rawNodes.length - 1
+                          ? 'deliverable'
+                          : 'run_agent')
+                      const cfg = { ...(n.config || {}) }
+
+                      if (kind === 'run_agent') {
+                        const resolvedAgId = resolveOrCreateAgent(
+                          cfg.agentId || cfg.agentName || n.label,
+                          {
+                            name: cfg.agentName || cfg.agentId || n.label,
+                            customPrompt: cfg.promptTemplate
+                          }
+                        )
+                        cfg.agentId = resolvedAgId
+                      } else if (kind === 'read_note' && (cfg.noteTitle || cfg.noteId)) {
+                        const targetNote = resolveNoteByIdOrFallback(
+                          allNotes,
+                          cfg.noteId,
+                          cfg.noteTitle || n.label
+                        )
+                        if (targetNote) {
+                          cfg.noteId = targetNote.id
+                          cfg.noteTitle = targetNote.title
+                        }
+                      }
+
+                      // Verificar se este nó vem de uma ramificação true/false para ajustar Y no canvas
+                      const incomingBranchEdge = rawEdges.find(e => e.targetNodeId === nodeId)
+                      const yCoord =
+                        incomingBranchEdge?.branch === 'true' || incomingBranchEdge?.branch === 'approved'
+                          ? 140
+                          : incomingBranchEdge?.branch === 'false' || incomingBranchEdge?.branch === 'rejected'
+                          ? 310
+                          : 220
+
+                      return {
+                        id: nodeId,
+                        kind,
+                        label: n.label || `Etapa ${idx + 1}`,
+                        position: { x: 80 + idx * 260, y: yCoord },
+                        config: cfg
+                      }
+                    })
+                  : [
+                      {
+                        id: 'n1',
+                        kind: 'input',
+                        label: 'Início',
+                        position: { x: 80, y: 220 },
+                        config: { triggerType: 'manual' }
+                      },
+                      {
+                        id: 'n2',
+                        kind: 'run_agent',
+                        label: 'Executar Agente',
+                        position: { x: 340, y: 220 },
+                        config: { agentId: nextStore.agents[0]?.id }
+                      },
+                      {
+                        id: 'n3',
+                        kind: 'deliverable',
+                        label: 'Saída',
+                        position: { x: 600, y: 220 },
+                        config: {}
+                      }
+                    ]
+
+              const edges: WorkflowEdge[] =
+                rawEdges.length > 0
+                  ? rawEdges.map((e, idx) => ({
+                      id: e.id || `edge_${idx + 1}`,
+                      sourceNodeId: e.sourceNodeId || nodes[Math.max(0, idx)]?.id || '',
+                      targetNodeId: e.targetNodeId || nodes[Math.min(nodes.length - 1, idx + 1)]?.id || '',
+                      branch: (e.branch as any) || 'default',
+                      label: e.label
+                    }))
+                  : nodes.slice(0, -1).map((curr, idx) => ({
+                      id: `edge_${idx + 1}`,
+                      sourceNodeId: curr.id,
+                      targetNodeId: nodes[idx + 1].id,
+                      branch: 'default'
+                    }))
+
+              const newWf: WorkflowDefinition = {
+                id: wfId,
+                version: existingWf ? existingWf.version + 1 : 1,
+                status: 'published',
+                active: true,
+                name: act.name,
+                description: act.description || '',
+                nodes,
+                edges,
+                createdAt: existingWf?.createdAt || Date.now(),
+                updatedAt: Date.now()
+              }
+
+              const nextWorkflows = existingWf
+                ? currentWfs.map(w => (w.id === wfId ? newWf : w))
+                : [newWf, ...currentWfs]
+              nextStore = { ...nextStore, workflows: nextWorkflows }
+              act.id = wfId
+            }
+
+            updatedStoreAfterActions = nextStore
             onUpdateAgentStore(nextStore)
 
             const createdParts: string[] = []
-            if (autoAgentActions.length > 0) createdParts.push(`${autoAgentActions.length} ${autoAgentActions.length === 1 ? 'agente' : 'agentes'}`)
-            if (autoWfActions.length > 0) createdParts.push(`${autoWfActions.length} ${autoWfActions.length === 1 ? 'fluxo' : 'fluxos'}`)
-            if (autoSquadActions.length > 0) createdParts.push(`${autoSquadActions.length} ${autoSquadActions.length === 1 ? 'squad' : 'squads'}`)
-            setToastNotice(`✨ Ecossistema atualizado: ${createdParts.join(', ')} criados com sucesso!`)
-            setTimeout(() => setToastNotice(null), 4500)
+            if (autoAgentActions.length > 0)
+              createdParts.push(
+                `${autoAgentActions.length} ${autoAgentActions.length === 1 ? 'agente' : 'agentes'}`
+              )
+            if (autoSquadActions.length > 0)
+              createdParts.push(
+                `${autoSquadActions.length} ${autoSquadActions.length === 1 ? 'departamento' : 'departamentos'}`
+              )
+            if (autoWfActions.length > 0)
+              createdParts.push(
+                `${autoWfActions.length} ${autoWfActions.length === 1 ? 'fluxo' : 'fluxos'}`
+              )
+            if (learnedGlobalFacts.length > 0)
+              createdParts.push(
+                `${learnedGlobalFacts.length} ${learnedGlobalFacts.length === 1 ? 'memória' : 'memórias'}`
+              )
+            if (createdParts.length > 0) {
+              setToastNotice(`✨ Ecossistema atualizado: ${createdParts.join(', ')}!`)
+              setTimeout(() => setToastNotice(null), 4500)
+            }
           }
 
-          setMessages(prev => [...prev, { id: newAiId, sender: 'ai', text: responseText, proposedEdit: activeProposedEdit }])
+          setMessages(prev => [
+            ...prev,
+            { id: newAiId, sender: 'ai', text: responseText, proposedEdit: activeProposedEdit }
+          ])
+
+          // 4. Process run-action (execução imediata solicitada em texto simples pelo usuário!)
+          if (autoRunActions.length > 0 && updatedStoreAfterActions) {
+            for (const runAct of autoRunActions) {
+              const ref = runAct.targetId || runAct.targetName || ''
+              if (runAct.targetType === 'workflow') {
+                await handleRunWorkflowInChat(ref, runAct.prompt || raw, updatedStoreAfterActions)
+              } else if (runAct.targetType === 'squad') {
+                handleUseSquadInChat(ref)
+              } else {
+                handleUseAgentInChat(ref)
+              }
+            }
+          }
         } else {
           setMessages(prev => [
             ...prev,
@@ -2736,14 +3490,34 @@ Diretrizes gerais:
   }
 
 
-  // Filtered notes for `@` autocomplete
+  // Filtered notes and team agents for `@` autocomplete
   const filteredAtNotes = useMemo(() => {
     if (!atSearchOpen) return []
     const q = atQuery.toLowerCase()
     return allNotes
       .filter(n => n.title.toLowerCase().includes(q) || (n.folder && n.folder.toLowerCase().includes(q)))
-      .slice(0, 6)
+      .slice(0, 5)
   }, [allNotes, atQuery, atSearchOpen])
+
+  const filteredAtAgents = useMemo(() => {
+    if (!atSearchOpen) return []
+    const q = atQuery.toLowerCase()
+    return (multiAgentStore?.agents || [])
+      .filter(
+        a =>
+          a.name.toLowerCase().includes(q) ||
+          (a.roleDescription && a.roleDescription.toLowerCase().includes(q))
+      )
+      .slice(0, 4)
+  }, [multiAgentStore?.agents, atQuery, atSearchOpen])
+
+  const handleSelectAtAgent = (agent: AgentProfileVersion) => {
+    const tag = `@${agent.name.replace(/\s+/g, '')} `
+    const replaced = input.replace(/@([a-zA-Z0-9\u00C0-\u017F\s_-]*)$/, tag)
+    setInput(replaced)
+    setAtSearchOpen(false)
+    inputRef.current?.focus()
+  }
 
   // Filtered skills and presets for `/` autocomplete
   const filteredSlashItems = useMemo(() => {
@@ -3273,6 +4047,7 @@ Diretrizes gerais:
                               <AgentActionsCollapsible
                                 actions={agentActions}
                                 onOpenAgent={(id) => navigateToTeamSection('agents', id)}
+                                onUseAgentHere={handleUseAgentInChat}
                               />
                             )}
 
@@ -3280,6 +4055,7 @@ Diretrizes gerais:
                               <WorkflowActionsCollapsible
                                 actions={workflowActions}
                                 onOpenWorkflow={(id) => navigateToTeamSection('workflows', id)}
+                                onRunWorkflowHere={(idOrName) => handleRunWorkflowInChat(idOrName)}
                               />
                             )}
 
@@ -3287,6 +4063,7 @@ Diretrizes gerais:
                               <SquadActionsCollapsible
                                 actions={squadActions}
                                 onOpenSquad={(id) => navigateToTeamSection('squads', id)}
+                                onUseSquadHere={handleUseSquadInChat}
                               />
                             )}
 
@@ -3386,29 +4163,61 @@ Diretrizes gerais:
 
       {/* 4. MODERN CHAT INPUT CARD WITH '/' (SKILLS) & '@' (NOTES) AUTOCOMPLETE */}
       <form onSubmit={handleSendMessage} className="p-2.5 border-t border-zinc-800/80 bg-[#0c0c0f] flex flex-col gap-1.5 relative">
-        {/* Floating Autocomplete for '@' (Notes Context) */}
-        {atSearchOpen && filteredAtNotes.length > 0 && (
-          <div className="absolute bottom-full left-2.5 right-2.5 mb-2 bg-[#12131a] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl z-50 space-y-0.5 max-h-56 overflow-y-auto custom-chat-scrollbar animate-in fade-in zoom-in-95 duration-100">
-            <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
-              <span>SOMAR NOTA AO CONTEXTO (@)</span>
-              <span className="text-[9px] text-zinc-500">{filteredAtNotes.length} opções</span>
-            </div>
-            {filteredAtNotes.map(n => (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => handleSelectAtNote(n)}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800/80 text-zinc-200 flex items-center justify-between text-xs cursor-pointer transition-colors"
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  <FileText className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                  <span className="truncate font-medium">{n.title}</span>
+        {/* Floating Autocomplete for '@' (Agents & Notes Context) */}
+        {atSearchOpen && (filteredAtAgents.length > 0 || filteredAtNotes.length > 0) && (
+          <div className="absolute bottom-full left-2.5 right-2.5 mb-2 bg-[#12131a] border border-zinc-700/80 rounded-xl p-1.5 shadow-2xl z-50 space-y-1 max-h-64 overflow-y-auto custom-chat-scrollbar animate-in fade-in zoom-in-95 duration-100">
+            {filteredAtAgents.length > 0 && (
+              <div className="space-y-0.5">
+                <div className="px-2 py-1 text-[10px] font-mono text-cyan-400 border-b border-zinc-800 flex items-center justify-between">
+                  <span>CONSULTAR AGENTE ESPECIALISTA (@)</span>
+                  <span className="text-[9px] text-zinc-500">{filteredAtAgents.length} agentes</span>
                 </div>
-                <span className="text-[10px] text-zinc-500 font-mono shrink-0 ml-1">
-                  {n.folder || 'Início'}
-                </span>
-              </button>
-            ))}
+                {filteredAtAgents.map(ag => (
+                  <button
+                    key={ag.id}
+                    type="button"
+                    onClick={() => handleSelectAtAgent(ag)}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800/80 text-zinc-200 flex items-center justify-between text-xs cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <AgentIcon variant={ag.icon || 'split'} size={18} className="shrink-0 rounded-xs" />
+                      <div className="truncate">
+                        <div className="truncate font-semibold text-zinc-100">{ag.name}</div>
+                        <div className="truncate text-[10px] text-zinc-500">{ag.roleDescription}</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-cyan-300 font-mono shrink-0 ml-1">
+                      @{ag.name.replace(/\s+/g, '')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {filteredAtNotes.length > 0 && (
+              <div className="space-y-0.5">
+                <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
+                  <span>SOMAR NOTA AO CONTEXTO (@)</span>
+                  <span className="text-[9px] text-zinc-500">{filteredAtNotes.length} notas</span>
+                </div>
+                {filteredAtNotes.map(n => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => handleSelectAtNote(n)}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800/80 text-zinc-200 flex items-center justify-between text-xs cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <FileText className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                      <span className="truncate font-medium">{n.title}</span>
+                    </div>
+                    <span className="text-[10px] text-zinc-500 font-mono shrink-0 ml-1">
+                      {n.folder || 'Início'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

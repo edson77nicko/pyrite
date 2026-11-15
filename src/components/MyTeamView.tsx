@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type {
   AgentActionPermission,
   AgentArtifact,
+  AgentMemoryItem,
   AgentProfileVersion,
   AgentRun,
   ContextBinding,
@@ -328,8 +329,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const [isAgentListOpen, setIsAgentListOpen] = useState(true)
   const [isAgentSettingsOpen, setIsAgentSettingsOpen] = useState(false)
   const [expandedSettingsSection, setExpandedSettingsSection] = useState<
-    'instructions' | 'memories' | 'skills' | 'files' | null
+    'instructions' | 'long_term_memory' | 'memories' | 'skills' | 'files' | null
   >(null)
+  const [newMemoryFactInput, setNewMemoryFactInput] = useState('')
   const [reasoningEffort, setReasoningEffort] = useState<'Baixo' | 'Médio' | 'Alto'>('Baixo')
   const [isComposerPlusOpen, setIsComposerPlusOpen] = useState(false)
   const [expandedDraftRunIds, setExpandedDraftRunIds] = useState<Record<string, boolean>>({})
@@ -1276,6 +1278,24 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
       const targetConvId = opts.existingRunToUpdate?.conversationId || currentConversationId
       const targetConvTitle = opts.existingRunToUpdate?.conversationTitle || currentConversation?.title || effectivePrompt.slice(0, 35)
 
+      const priorTurnsInConversation: { role: 'user' | 'assistant'; content: string }[] =
+        allChatRunsForAgent
+          .filter(
+            r =>
+              (r.conversationId || r.id) === targetConvId &&
+              r.id !== opts.existingRunToUpdate?.id &&
+              r.status === 'completed'
+          )
+          .slice()
+          .reverse()
+          .slice(-6)
+          .flatMap(r => [
+            { role: 'user' as const, content: r.prompt },
+            { role: 'assistant' as const, content: r.draftContent || getRunSummaryText(r) }
+          ])
+
+      const newlyLearnedMemories: AgentMemoryItem[] = []
+
       const resultRun = await executeAgentRun({
         agent: selectedAgent,
         allAgents: store.agents,
@@ -1284,6 +1304,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         prompt: effectivePrompt,
         conversationId: targetConvId,
         conversationTitle: targetConvTitle,
+        conversationHistory: priorTurnsInConversation,
+        memories: storeRef.current.memories || [],
+        onMemoryLearned: mem => {
+          newlyLearnedMemories.push(mem)
+        },
         isTestRun: opts.isTest,
         projectContext: effectiveProject,
         explicitClientName: effectiveProject?.clientName,
@@ -1310,9 +1335,23 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         ? latestStore.runs.map(r => (r.id === resultRun.id ? resultRun : r))
         : [resultRun, ...latestStore.runs]
 
+      const existingMemories = latestStore.memories || []
+      const deduplicatedNewMemories = newlyLearnedMemories.filter(
+        nm =>
+          !existingMemories.some(
+            em =>
+              em.agentId === nm.agentId &&
+              em.content.toLowerCase() === nm.content.toLowerCase()
+          )
+      )
+
       await onUpdateStore({
         ...latestStore,
-        runs: finalRuns
+        runs: finalRuns,
+        memories:
+          deduplicatedNewMemories.length > 0
+            ? [...deduplicatedNewMemories, ...existingMemories]
+            : existingMemories
       })
       setActiveConversationId(targetConvId)
       setSelectedRunId(resultRun.id)
@@ -2575,7 +2614,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                         (run.calculation.missingFields.length === 0 &&
                           run.calculation.conflicts.every(c => c.resolution !== 'unresolved') &&
                           run.calculation.fixedSectionViolations.length === 0)
-                      const isDraftExpanded = expandedDraftRunIds[run.id] ?? (run.id === activeRun?.id)
+                      const isDraftExpanded = expandedDraftRunIds[run.id] ?? true
 
                       return (
                         <div key={run.id} className="space-y-4">
@@ -2714,6 +2753,21 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                   >
                                     Recalcular com valor escolhido
                                   </button>
+                                </div>
+                              )}
+
+                              {/* Memórias aprendidas neste turno */}
+                              {run.learnedMemories && run.learnedMemories.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  {run.learnedMemories.map((memText, mIdx) => (
+                                    <span
+                                      key={mIdx}
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-300 text-[11px]"
+                                    >
+                                      <Brain className="w-3 h-3 text-violet-400 shrink-0" />
+                                      <span>Memória salva: {memText}</span>
+                                    </span>
+                                  ))}
                                 </div>
                               )}
 
@@ -3628,6 +3682,117 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                 size="sm"
                               />
                             </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 1.5 Memória de Longo Prazo do Agente */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedSettingsSection(s =>
+                              s === 'long_term_memory' ? null : 'long_term_memory'
+                            )
+                          }
+                          className="w-full px-3 py-2.5 flex items-center justify-between text-xs hover:bg-zinc-800/40 cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2 text-zinc-200 font-medium">
+                            <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                            <span>Memória do Agente</span>
+                          </div>
+                          <span className="text-zinc-400 flex items-center gap-1">
+                            {(store.memories || []).filter(m => m.agentId === selectedAgent.id || m.agentId === 'global').length} fatos{' '}
+                            <ChevronRight
+                              className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${
+                                expandedSettingsSection === 'long_term_memory' ? 'rotate-90' : ''
+                              }`}
+                            />
+                          </span>
+                        </button>
+                        {expandedSettingsSection === 'long_term_memory' && (
+                          <div className="p-3 bg-[#131316] border-t border-zinc-800/70 space-y-2.5 text-xs">
+                            <div className="text-[11px] text-zinc-400 leading-relaxed">
+                              Fatos e preferências aprendidos em conversas ou adicionados manualmente.
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                value={newMemoryFactInput}
+                                onChange={e => setNewMemoryFactInput(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && newMemoryFactInput.trim()) {
+                                    e.preventDefault()
+                                    const fact: AgentMemoryItem = {
+                                      id: `mem_manual_${Date.now()}`,
+                                      agentId: selectedAgent.id,
+                                      content: newMemoryFactInput.trim(),
+                                      category: 'rule',
+                                      createdAt: Date.now()
+                                    }
+                                    onUpdateStore({
+                                      ...store,
+                                      memories: [fact, ...(store.memories || [])]
+                                    })
+                                    setNewMemoryFactInput('')
+                                  }
+                                }}
+                                placeholder="Ex: Sempre usar tabela comparativa..."
+                                className="flex-1 bg-[#18181b] border border-zinc-800 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!newMemoryFactInput.trim()) return
+                                  const fact: AgentMemoryItem = {
+                                    id: `mem_manual_${Date.now()}`,
+                                    agentId: selectedAgent.id,
+                                    content: newMemoryFactInput.trim(),
+                                    category: 'rule',
+                                    createdAt: Date.now()
+                                  }
+                                  onUpdateStore({
+                                    ...store,
+                                    memories: [fact, ...(store.memories || [])]
+                                  })
+                                  setNewMemoryFactInput('')
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-medium cursor-pointer shrink-0"
+                              >
+                                Salvar
+                              </button>
+                            </div>
+                            {(store.memories || []).filter(m => m.agentId === selectedAgent.id || m.agentId === 'global').length === 0 ? (
+                              <div className="text-[11px] text-zinc-500 py-1">
+                                Nenhuma memória gravada ainda. Diga &ldquo;Lembre-se que...&rdquo; no chat ou adicione acima.
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5 max-h-44 overflow-y-auto pr-0.5">
+                                {(store.memories || [])
+                                  .filter(m => m.agentId === selectedAgent.id || m.agentId === 'global')
+                                  .map(mem => (
+                                    <div
+                                      key={mem.id}
+                                      className="px-2.5 py-1.5 rounded-xl bg-[#18181b] border border-zinc-800/60 text-zinc-300 text-[11px] flex items-start justify-between gap-2 group"
+                                    >
+                                      <span className="leading-snug break-words">{mem.content}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          onUpdateStore({
+                                            ...store,
+                                            memories: (store.memories || []).filter(x => x.id !== mem.id)
+                                          })
+                                        }
+                                        className="text-zinc-500 hover:text-rose-400 opacity-70 group-hover:opacity-100 shrink-0 mt-0.5 cursor-pointer"
+                                        title="Excluir memória"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
