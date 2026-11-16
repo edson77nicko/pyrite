@@ -14,16 +14,21 @@ import {
   ArrowDownAZ,
   ArrowUpAZ,
   FileText,
-  ChevronDown
+  ChevronDown,
+  Palette
 } from 'lucide-react'
 import {
   clampColumnWidth,
   insertTableColumn,
   removeTableColumn,
+  insertTableRow,
+  removeTableRow,
+  setTableColor,
   parseMarkdownTable,
   serializeMarkdownTable
 } from '../utils/markdownTable'
 import type { MarkdownTable } from '../utils/markdownTable'
+import { NOTION_BG_COLORS } from './NotionColorPicker'
 import type { Note } from '../types'
 
 interface Props {
@@ -70,7 +75,13 @@ export function EditableTable({
 
   // UI popover & confirmation states
   const [openAlignMenu, setOpenAlignMenu] = useState(false)
+  const [openColorMenu, setOpenColorMenu] = useState(false)
+  const [colorScope, setColorScope] = useState<'cell' | 'row' | 'col'>('cell')
   const [deletePending, setDeletePending] = useState(false)
+
+  // Floating toolbar dynamic positioning (positions on/above selected row)
+  const [toolbarTop, setToolbarTop] = useState<number>(-44)
+  const [toolbarLeft, setToolbarLeft] = useState<number | null>(null)
 
   // Wikilink autocomplete state
   const [wikiSuggest, setWikiSuggest] = useState<{
@@ -97,6 +108,63 @@ export function EditableTable({
     onChange(serializeMarkdownTable(next))
   }, [onChange])
 
+  // Dynamically compute toolbar position to appear on or above the selected row
+  const updateToolbarPosition = useCallback(() => {
+    if (!rootRef.current) return
+
+    const activeRow = selectedRow !== null ? selectedRow : selectedCell ? selectedCell.row : null
+
+    // If selection is on column or header row or no active row, position above the table
+    if (activeRow === null || activeRow === -1 || selectedCol !== null) {
+      setToolbarTop(-44)
+      setToolbarLeft(null)
+      return
+    }
+
+    const rootRect = rootRef.current.getBoundingClientRect()
+    const rowEl = rootRef.current.querySelector(`tbody tr[data-row-index="${activeRow}"]`) as HTMLElement | null
+
+    if (!rowEl) {
+      setToolbarTop(-44)
+      setToolbarLeft(null)
+      return
+    }
+
+    const rowRect = rowEl.getBoundingClientRect()
+    // Position toolbar directly on/above the selected row
+    const targetTop = Math.max(-44, rowRect.top - rootRect.top - 42)
+    setToolbarTop(targetTop)
+
+    // Horizontally center near active cell if cell is selected, clamped to root bounds
+    if (selectedCell && selectedCell.row === activeRow) {
+      const cellEl = rootRef.current.querySelector(
+        `td[data-cell-row="${selectedCell.row}"][data-cell-col="${selectedCell.col}"]`
+      ) as HTMLElement | null
+
+      if (cellEl) {
+        const cellRect = cellEl.getBoundingClientRect()
+        const cellCenterX = cellRect.left + cellRect.width / 2 - rootRect.left
+        const halfWidth = 220
+        const minLeft = halfWidth + 8
+        const maxLeft = Math.max(minLeft, rootRect.width - halfWidth - 8)
+        const clampedLeft = Math.max(minLeft, Math.min(maxLeft, cellCenterX))
+        setToolbarLeft(clampedLeft)
+        return
+      }
+    }
+
+    setToolbarLeft(null)
+  }, [selectedRow, selectedCell, selectedCol])
+
+  useEffect(() => {
+    updateToolbarPosition()
+  }, [updateToolbarPosition, table.rows.length])
+
+  useEffect(() => {
+    window.addEventListener('resize', updateToolbarPosition)
+    return () => window.removeEventListener('resize', updateToolbarPosition)
+  }, [updateToolbarPosition])
+
   // Deselect on clicks outside
   useEffect(() => {
     const handlePointerDown = (e: PointerEvent) => {
@@ -112,6 +180,7 @@ export function EditableTable({
         setSelectedCol(null)
         setSelectedRow(null)
         setOpenAlignMenu(false)
+        setOpenColorMenu(false)
         setDeletePending(false)
         setWikiSuggest(null)
       }
@@ -133,6 +202,45 @@ export function EditableTable({
     return () => document.removeEventListener('pointerdown', dismiss)
   }, [wikiSuggest])
 
+  // Color picker logic (cell, row, or column)
+  const getColorTarget = (): { type: 'cell' | 'row' | 'col'; row?: number; col?: number } | null => {
+    if (selectedCol !== null) {
+      return { type: 'col', col: selectedCol }
+    }
+    if (selectedRow !== null) {
+      return { type: 'row', row: selectedRow }
+    }
+    if (selectedCell) {
+      if (colorScope === 'cell') {
+        return { type: 'cell', row: selectedCell.row, col: selectedCell.col }
+      }
+      if (colorScope === 'row') {
+        return { type: 'row', row: selectedCell.row }
+      }
+      if (colorScope === 'col') {
+        return { type: 'col', col: selectedCell.col }
+      }
+    }
+    return null
+  }
+
+  const applyColor = (color: string) => {
+    const target = getColorTarget()
+    if (!target) return
+    commit(setTableColor(latest.current, target, color))
+  }
+
+  const getCurrentColor = (): string => {
+    if (selectedCol !== null) return table.colColors?.[selectedCol] || 'transparent'
+    if (selectedRow !== null) return table.rowColors?.[selectedRow] || 'transparent'
+    if (selectedCell) {
+      if (colorScope === 'cell') return table.cellColors?.[`${selectedCell.row}:${selectedCell.col}`] || 'transparent'
+      if (colorScope === 'row') return table.rowColors?.[selectedCell.row] || 'transparent'
+      if (colorScope === 'col') return table.colColors?.[selectedCell.col] || 'transparent'
+    }
+    return 'transparent'
+  }
+
   // Focus and start editing a specific cell
   const startEditing = (cell: Cell, selectAll = false) => {
     if (readOnly) return
@@ -140,6 +248,8 @@ export function EditableTable({
     setSelectedCol(null)
     setSelectedRow(null)
     setEditingCell(cell)
+    setOpenColorMenu(false)
+    setOpenAlignMenu(false)
     requestAnimationFrame(() => {
       const el = rootRef.current?.querySelector<HTMLTextAreaElement>(
         `[data-row="${cell.row}"][data-column="${cell.col}"]`
@@ -178,14 +288,7 @@ export function EditableTable({
 
   // Add row
   const addRow = (index: number, duplicate = false) => {
-    const current = latest.current
-    const newRow = duplicate && index > 0
-      ? [...current.rows[index - 1]]
-      : current.columns.map(() => '')
-    commit({
-      ...current,
-      rows: [...current.rows.slice(0, index), newRow, ...current.rows.slice(index)]
-    })
+    commit(insertTableRow(latest.current, index, duplicate))
     startEditing({ row: index, col: 0 })
   }
 
@@ -204,12 +307,51 @@ export function EditableTable({
       val,
       ...arr.slice(index + 1)
     ]
+
+    let colColors: Record<number, string> | undefined
+    if (current.colColors) {
+      colColors = {}
+      for (const [k, v] of Object.entries(current.colColors)) {
+        const c = Number(k)
+        if (c > index) {
+          colColors[c + 1] = v
+        } else {
+          colColors[c] = v
+        }
+      }
+      if (current.colColors[index]) {
+        colColors[index + 1] = current.colColors[index]
+      }
+    }
+
+    let cellColors: Record<string, string> | undefined
+    if (current.cellColors) {
+      cellColors = {}
+      for (const [k, v] of Object.entries(current.cellColors)) {
+        const [rStr, cStr] = k.split(':')
+        const r = Number(rStr)
+        const c = Number(cStr)
+        if (c > index) {
+          cellColors[`${r}:${c + 1}`] = v
+        } else {
+          cellColors[`${r}:${c}`] = v
+        }
+      }
+      for (let r = -1; r < current.rows.length; r++) {
+        if (current.cellColors[`${r}:${index}`]) {
+          cellColors[`${r}:${index + 1}`] = current.cellColors[`${r}:${index}`]
+        }
+      }
+    }
+
     commit({
       ...current,
       columns: insert(current.columns, `${current.columns[index]} (cópia)`),
       rows: current.rows.map(r => insert(r, r[index] || '')),
       alignments: insert(current.alignments, current.alignments[index] || 'left'),
-      widths: insert(current.widths, current.widths[index] || 180)
+      widths: insert(current.widths, current.widths[index] || 180),
+      colColors: colColors && Object.keys(colColors).length > 0 ? colColors : undefined,
+      cellColors: cellColors && Object.keys(cellColors).length > 0 ? cellColors : undefined
     })
     setSelectedCol(index + 1)
   }
@@ -641,10 +783,7 @@ export function EditableTable({
         setSelectedRow(null)
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault()
-        commit({
-          ...table,
-          rows: table.rows.filter((_, idx) => idx !== selectedRow)
-        })
+        commit(removeTableRow(table, selectedRow))
         setSelectedRow(null)
       }
     }
@@ -675,11 +814,22 @@ export function EditableTable({
     >
       {/* 1. FLOATING POPOVER TOOLBAR (FigJam Canvas Style in Neutral Mode Tones) */}
       {hasSelection && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 z-40 bg-[#18181b]/95 backdrop-blur-md border border-zinc-700/80 rounded-xl shadow-2xl px-2 py-1 flex items-center gap-1 text-xs text-zinc-300 pointer-events-auto animate-in fade-in zoom-in-95 duration-100 pyrite-table-popover">
+        <div
+          style={{
+            top: `${toolbarTop}px`,
+            ...(toolbarLeft !== null ? { left: `${toolbarLeft}px` } : {})
+          }}
+          className={`absolute z-40 bg-[#18181b]/95 backdrop-blur-md border border-zinc-700/80 rounded-xl shadow-2xl px-2 py-1 flex items-center gap-1 text-xs text-zinc-300 pointer-events-auto animate-in fade-in zoom-in-95 duration-100 pyrite-table-popover ${
+            toolbarLeft !== null ? '-translate-x-1/2' : 'left-1/2 -translate-x-1/2'
+          }`}
+        >
           {/* A. Text Alignment Dropdown */}
           <div className="relative">
             <button
-              onClick={() => setOpenAlignMenu(prev => !prev)}
+              onClick={() => {
+                setOpenAlignMenu(prev => !prev)
+                setOpenColorMenu(false)
+              }}
               className="flex items-center gap-1 px-2 py-1 rounded-lg hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
               title="Alinhamento do texto"
             >
@@ -764,7 +914,106 @@ export function EditableTable({
 
           <div className="w-px h-4 bg-zinc-700/80 mx-0.5" />
 
-          {/* C. Contextual Actions based on Selection Target */}
+          {/* C. Color Palette Dropdown (Cell, Row, Column) */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                setOpenColorMenu(prev => !prev)
+                setOpenAlignMenu(false)
+              }}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                openColorMenu ? 'bg-zinc-700 text-white' : 'hover:text-white hover:bg-zinc-800'
+              }`}
+              title="Cor de fundo (célula, linha ou coluna)"
+            >
+              <Palette className="w-3.5 h-3.5 text-zinc-200" />
+              <ChevronDown className="w-2.5 h-2.5 text-zinc-400" />
+            </button>
+
+            {openColorMenu && (
+              <div className="absolute left-0 top-full mt-1.5 w-48 bg-[#1a1a1e] border border-zinc-700/80 rounded-xl shadow-2xl p-2 z-50 flex flex-col gap-1.5 animate-in fade-in duration-100">
+                {/* Scope Switcher when a cell is selected */}
+                {selectedCell && (
+                  <div className="flex bg-zinc-900 p-0.5 rounded-lg text-[11px] font-medium text-zinc-400 border border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => setColorScope('cell')}
+                      className={`flex-1 py-1 rounded text-center transition-colors cursor-pointer ${
+                        colorScope === 'cell' ? 'bg-zinc-700 text-white shadow-xs font-semibold' : 'hover:text-zinc-200'
+                      }`}
+                    >
+                      Célula
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setColorScope('row')}
+                      className={`flex-1 py-1 rounded text-center transition-colors cursor-pointer ${
+                        colorScope === 'row' ? 'bg-zinc-700 text-white shadow-xs font-semibold' : 'hover:text-zinc-200'
+                      }`}
+                    >
+                      Linha
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setColorScope('col')}
+                      className={`flex-1 py-1 rounded text-center transition-colors cursor-pointer ${
+                        colorScope === 'col' ? 'bg-zinc-700 text-white shadow-xs font-semibold' : 'hover:text-zinc-200'
+                      }`}
+                    >
+                      Coluna
+                    </button>
+                  </div>
+                )}
+
+                {selectedRow !== null && (
+                  <div className="text-[11px] font-semibold text-zinc-300 px-1 py-0.5">
+                    Linha {selectedRow + 1}
+                  </div>
+                )}
+
+                {selectedCol !== null && (
+                  <div className="text-[11px] font-semibold text-zinc-300 px-1 py-0.5">
+                    Coluna {selectedCol + 1}
+                  </div>
+                )}
+
+                {/* List of Notion Background Colors */}
+                <div className="max-h-56 overflow-y-auto space-y-0.5 pr-0.5 scrollbar-thin">
+                  {NOTION_BG_COLORS.map(item => {
+                    const activeColor = getCurrentColor()
+                    const isSelected = (item.color === 'transparent' && (activeColor === 'transparent' || !activeColor)) || item.color === activeColor
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => applyColor(item.color)}
+                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs ${
+                          isSelected ? 'bg-zinc-700 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-3.5 h-3.5 rounded border border-zinc-600/70 shrink-0"
+                            style={{
+                              backgroundColor: item.color === 'transparent' ? 'transparent' : item.color,
+                              borderColor: item.color === 'transparent' ? undefined : item.preview
+                            }}
+                          />
+                          <span className="text-xs truncate">{item.label}</span>
+                        </div>
+                        {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="w-px h-4 bg-zinc-700/80 mx-0.5" />
+
+          {/* D. Contextual Actions based on Selection Target */}
           {selectedCol !== null ? (
             <>
               <button
@@ -820,10 +1069,7 @@ export function EditableTable({
               </button>
               <button
                 onClick={() => {
-                  commit({
-                    ...table,
-                    rows: table.rows.filter((_, idx) => idx !== selectedRow)
-                  })
+                  commit(removeTableRow(table, selectedRow))
                   setSelectedRow(null)
                 }}
                 className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 transition-colors cursor-pointer"
@@ -862,7 +1108,7 @@ export function EditableTable({
 
           <div className="w-px h-4 bg-zinc-700/80 mx-0.5" />
 
-          {/* D. Delete Table Option */}
+          {/* E. Delete Table Option */}
           <button
             onClick={() => setDeletePending(true)}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-rose-500/20 transition-colors cursor-pointer"
@@ -875,7 +1121,15 @@ export function EditableTable({
 
       {/* Delete Table Confirmation Pill */}
       {deletePending && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 z-50 bg-[#1e1416] border border-rose-500/50 rounded-xl shadow-2xl px-3 py-1.5 flex items-center gap-2 text-xs text-rose-200 animate-in fade-in duration-100">
+        <div
+          style={{
+            top: `${toolbarTop}px`,
+            ...(toolbarLeft !== null ? { left: `${toolbarLeft}px` } : {})
+          }}
+          className={`absolute z-50 bg-[#1e1416] border border-rose-500/50 rounded-xl shadow-2xl px-3 py-1.5 flex items-center gap-2 text-xs text-rose-200 animate-in fade-in duration-100 ${
+            toolbarLeft !== null ? '-translate-x-1/2' : 'left-1/2 -translate-x-1/2'
+          }`}
+        >
           <span>Excluir esta tabela?</span>
           <button
             onClick={onDelete}
@@ -894,7 +1148,10 @@ export function EditableTable({
 
       {/* 2. TABLE GRID WITH CLEAN UNCLIPPED TOP/LEFT CONTROLS & DEDICATED HOVER REGIONS */}
       <div className="flex items-start">
-        <div className="flex-1 overflow-x-auto overflow-y-visible pt-6 pb-2">
+        <div
+          className="flex-1 overflow-x-auto overflow-y-visible pt-6 pb-2"
+          onScroll={updateToolbarPosition}
+        >
           <div style={{ width: `${totalTableWidth}px` }} className="relative">
             <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 shadow-sm backdrop-blur-xs">
               <table
@@ -921,10 +1178,12 @@ export function EditableTable({
                       const isColHovered = hoveredCol === cIdx
                       // Strictly show handles ONLY when this specific column is hovered or selected
                       const showColHandles = !readOnly && (isColSelected || isColHovered)
+                      const cellCustomBg = table.cellColors?.[`-1:${cIdx}`] || table.rowColors?.[-1] || table.colColors?.[cIdx]
 
                       return (
                         <th
                           key={cIdx}
+                          data-col-index={cIdx}
                           onMouseEnter={() => setHoveredCol(cIdx)}
                           onMouseLeave={() => setHoveredCol(prev => prev === cIdx ? null : prev)}
                           onClick={(e) => {
@@ -941,7 +1200,10 @@ export function EditableTable({
                               startEditing({ row: -1, col: cIdx }, true)
                             }
                           }}
-                          style={{ textAlign: table.alignments[cIdx] || 'left' }}
+                          style={{
+                            textAlign: table.alignments[cIdx] || 'left',
+                            backgroundColor: cellCustomBg || undefined
+                          }}
                           className={`relative group/colheader px-3 py-2 font-semibold text-zinc-200 border-r border-zinc-800/50 cursor-pointer select-text transition-colors overflow-hidden ${
                             isColSelected ? 'bg-zinc-700/30' : 'hover:bg-zinc-800/40'
                           }`}
@@ -1040,6 +1302,7 @@ export function EditableTable({
                     return (
                       <tr
                         key={rIdx}
+                        data-row-index={rIdx}
                         onMouseEnter={() => setHoveredRow(rIdx)}
                         onMouseLeave={() => setHoveredRow(prev => prev === rIdx ? null : prev)}
                         className={`border-b border-zinc-800/40 transition-colors ${
@@ -1093,17 +1356,15 @@ export function EditableTable({
                                 />
 
                                 {/* Bottom Inserter Dot (for last row) */}
-                                {rIdx === table.rows.length - 1 && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      addRow(rIdx + 1)
-                                    }}
-                                    onMouseEnter={() => setHoveredRow(rIdx)}
-                                    className="absolute bottom-0 translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer bg-zinc-500 hover:bg-zinc-300 hover:scale-125 shadow-xs transition-all z-30 pyrite-table-dot"
-                                    title={`Inserir linha depois da linha ${rIdx + 1}`}
-                                  />
-                                )}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    addRow(rIdx + 1)
+                                  }}
+                                  onMouseEnter={() => setHoveredRow(rIdx)}
+                                  className="absolute bottom-0 translate-y-1/2 w-2.5 h-2.5 rounded-full cursor-pointer bg-zinc-500 hover:bg-zinc-300 hover:scale-125 shadow-xs transition-all z-30 pyrite-table-dot"
+                                  title={`Inserir linha depois da linha ${rIdx + 1}`}
+                                />
                               </div>
                             )}
                           </td>
@@ -1114,10 +1375,13 @@ export function EditableTable({
                           const isCellSelected = selectedCell?.row === rIdx && selectedCell?.col === cIdx
                           const isCellEditing = editingCell?.row === rIdx && editingCell?.col === cIdx
                           const isColSelected = selectedCol === cIdx
+                          const cellCustomBg = table.cellColors?.[`${rIdx}:${cIdx}`] || table.rowColors?.[rIdx] || table.colColors?.[cIdx]
 
                           return (
                             <td
                               key={cIdx}
+                              data-cell-row={rIdx}
+                              data-cell-col={cIdx}
                               onMouseEnter={() => {
                                 setHoveredCol(cIdx)
                                 setHoveredRow(rIdx)
@@ -1126,7 +1390,10 @@ export function EditableTable({
                                 setHoveredCol(prev => prev === cIdx ? null : prev)
                                 setHoveredRow(prev => prev === rIdx ? null : prev)
                               }}
-                              style={{ textAlign: table.alignments[cIdx] || 'left' }}
+                              style={{
+                                textAlign: table.alignments[cIdx] || 'left',
+                                backgroundColor: cellCustomBg || undefined
+                              }}
                               className={`relative px-3 py-2 border-r border-zinc-800/40 transition-colors overflow-hidden ${
                                 isCellSelected
                                   ? 'ring-2 ring-zinc-400 dark:ring-zinc-400 ring-inset bg-zinc-700/20 text-white z-10'

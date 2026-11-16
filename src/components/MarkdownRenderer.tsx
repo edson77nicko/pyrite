@@ -9,7 +9,7 @@ import {
   parseButtonsBlock,
   parseHeaderMeta
 } from '../utils/artifactParser'
-import { splitTableRow } from '../utils/markdownTable'
+import { splitTableRow, TABLE_METADATA } from '../utils/markdownTable'
 import { healCorruptedHtml } from './LivePreviewEditor'
 
 interface MarkdownRendererProps {
@@ -468,6 +468,15 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         i++
       }
 
+      // Check if next line has table metadata (widths, colors)
+      let metadata: any = null
+      if (i < lines.length && TABLE_METADATA.test(lines[i].trim())) {
+        try {
+          metadata = JSON.parse(lines[i].trim().match(TABLE_METADATA)![1])
+        } catch {}
+        i++
+      }
+
       if (tableLines.length >= 2) {
         const headerRow = splitTableRow(tableLines[0])
         const dataRows = tableLines.slice(2).map(splitTableRow)
@@ -477,23 +486,44 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-zinc-900 border-b border-zinc-800 text-zinc-200">
-                  {headerRow.map((col, idx) => (
-                    <th key={idx} className="px-4 py-2.5 font-semibold">
-                      {renderInlineFormatted(col)}
-                    </th>
-                  ))}
+                  {headerRow.map((col, idx) => {
+                    const bg = metadata?.cellColors?.[`-1:${idx}`] || metadata?.rowColors?.['-1'] || metadata?.colColors?.[idx]
+                    return (
+                      <th
+                        key={idx}
+                        className="px-4 py-2.5 font-semibold"
+                        style={bg ? { backgroundColor: bg } : undefined}
+                      >
+                        {renderInlineFormatted(col)}
+                      </th>
+                    )
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
-                {dataRows.map((row, rIdx) => (
-                  <tr key={rIdx} className="hover:bg-zinc-900/50 transition-colors odd:bg-zinc-950 even:bg-zinc-900/30">
-                    {row.map((cell, cIdx) => (
-                      <td key={cIdx} className="px-4 py-2 text-zinc-300">
-                        {renderInlineFormatted(cell)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                {dataRows.map((row, rIdx) => {
+                  const rowBg = metadata?.rowColors?.[rIdx]
+                  return (
+                    <tr
+                      key={rIdx}
+                      className="hover:bg-zinc-900/50 transition-colors odd:bg-zinc-950 even:bg-zinc-900/30"
+                      style={rowBg ? { backgroundColor: rowBg } : undefined}
+                    >
+                      {row.map((cell, cIdx) => {
+                        const cellBg = metadata?.cellColors?.[`${rIdx}:${cIdx}`] || rowBg || metadata?.colColors?.[cIdx]
+                        return (
+                          <td
+                            key={cIdx}
+                            className="px-4 py-2 text-zinc-300"
+                            style={cellBg ? { backgroundColor: cellBg } : undefined}
+                          >
+                            {renderInlineFormatted(cell)}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
