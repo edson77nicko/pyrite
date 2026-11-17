@@ -975,15 +975,40 @@ export function resolveNoteByIdOrFallback(
   folderPath?: string
 ): Note | undefined {
   if (noteId) {
-    return allNotes.find(n => n.id === noteId)
+    const byId = allNotes.find(n => n.id === noteId)
+    if (byId) return byId
   }
   if (noteTitle) {
-    const normalizedTitle = noteTitle.toLowerCase().trim()
-    return allNotes.find(
-      n =>
-        n.title.toLowerCase().trim() === normalizedTitle &&
-        (!folderPath || n.folder === folderPath)
+    const stripExt = (s: string) => s.toLowerCase().trim().replace(/\.md$/i, '')
+    const normalizedTitle = stripExt(noteTitle)
+    const normFolder = (folderPath || '').toLowerCase().trim()
+
+    // 1. Título exato + pasta exata (quando pasta informada)
+    if (normFolder) {
+      const exactFolderMatch = allNotes.find(
+        n => stripExt(n.title) === normalizedTitle && (n.folder || '').toLowerCase().trim() === normFolder
+      )
+      if (exactFolderMatch) return exactFolderMatch
+
+      // 2. Título exato + sufixo de pasta (ex: "Mundo Raro" -> "IAComDigital/Mundo Raro")
+      const suffixFolderMatch = allNotes.find(
+        n =>
+          stripExt(n.title) === normalizedTitle &&
+          ((n.folder || '').toLowerCase().trim().endsWith(`/${normFolder}`) ||
+            (n.folder || '').toLowerCase().trim().includes(normFolder))
+      )
+      if (suffixFolderMatch) return suffixFolderMatch
+    }
+
+    // 3. Título exato em qualquer pasta
+    const exactTitleMatch = allNotes.find(n => stripExt(n.title) === normalizedTitle)
+    if (exactTitleMatch) return exactTitleMatch
+
+    // 4. Título parcial (fallback seguro)
+    const partialMatch = allNotes.find(
+      n => stripExt(n.title).includes(normalizedTitle) || normalizedTitle.includes(stripExt(n.title))
     )
+    if (partialMatch) return partialMatch
   }
   return undefined
 }
@@ -4285,12 +4310,21 @@ async function traverseWorkflowGraph(params: {
 
     if (node.kind === 'read_note') {
       setNodeState(node.id, 'running')
+      const hasPromptText = Boolean(node.config.promptTemplate && node.config.promptTemplate.trim())
+      const hasNoteOrFolderRef = Boolean(node.config.noteId || node.config.noteTitle || node.config.folderPath)
+      const statusParts: string[] = []
+      const outputParts: string[] = []
+
       // 1. Se tiver texto livre de prompt, ele passa a ser a instrução (tarefa) das etapas seguintes
-      if (node.config.promptTemplate && node.config.promptTemplate.trim()) {
-        const promptText = node.config.promptTemplate.trim()
+      if (hasPromptText) {
+        const promptText = node.config.promptTemplate!.trim()
         flowInstruction = flowInstruction ? `${flowInstruction}\n\n${promptText}` : promptText
-        setNodeState(node.id, 'completed', `Prompt definido (${promptText.length} caracteres)`, promptText)
-      } else {
+        statusParts.push(`Prompt (${promptText.length} chars)`)
+        outputParts.push(promptText)
+      }
+
+      // 2. Se também tiver referência a nota ou pasta, carrega o conteúdo no contexto do fluxo
+      if (hasNoteOrFolderRef) {
         const found = resolveNoteByIdOrFallback(
           allNotes,
           node.config.noteId,
@@ -4301,12 +4335,8 @@ async function traverseWorkflowGraph(params: {
           if (!extraNotes.some(en => en.id === found.id)) {
             extraNotes.push(found)
           }
-          setNodeState(
-            node.id,
-            'completed',
-            `Nota lida: [[${found.title}]]`,
-            `Nota lida: [[${found.title}]]\n\n${found.content.slice(0, 600)}${found.content.length > 600 ? '...' : ''}`
-          )
+          statusParts.push(`Nota lida: [[${found.title}]]`)
+          outputParts.push(`Nota lida: [[${found.title}]]\n\n${found.content.slice(0, 600)}${found.content.length > 600 ? '...' : ''}`)
         } else if (node.config.folderPath) {
           const folderMatches = allNotes.filter(
             n => n.folder === node.config.folderPath || n.folder.startsWith(node.config.folderPath + '/')
@@ -4314,18 +4344,22 @@ async function traverseWorkflowGraph(params: {
           for (const fn of folderMatches) {
             if (!extraNotes.some(en => en.id === fn.id)) extraNotes.push(fn)
           }
-          setNodeState(
-            node.id,
-            'completed',
-            `Pasta lida: ${node.config.folderPath} (${folderMatches.length} nota(s))`,
-            `Pasta ${node.config.folderPath}: ${folderMatches.length} nota(s) carregada(s) como contexto.`
-          )
-        } else {
+          statusParts.push(`Pasta lida: ${node.config.folderPath} (${folderMatches.length} nota(s))`)
+          outputParts.push(`Pasta ${node.config.folderPath}: ${folderMatches.length} nota(s) carregada(s) como contexto.`)
+        } else if (!hasPromptText) {
           failureMessage = `Bloco "${node.label}": nota indisponível (${node.config.noteTitle || node.config.noteId || 'sem título'}).`
           setNodeState(node.id, 'failed', failureMessage, failureMessage)
           continue
         }
       }
+
+      if (statusParts.length === 0) {
+        failureMessage = `Bloco "${node.label}": configure um prompt ou nota de referência.`
+        setNodeState(node.id, 'failed', failureMessage, failureMessage)
+        continue
+      }
+
+      setNodeState(node.id, 'completed', statusParts.join(' · '), outputParts.join('\n\n'))
 
       for (const edge of workflow.edges.filter(e => e.sourceNodeId === node.id)) {
         activeQueue.push(edge.targetNodeId)

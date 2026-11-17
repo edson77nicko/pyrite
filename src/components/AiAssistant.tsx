@@ -14,6 +14,7 @@ import type {
 } from '../types/agents'
 import type { TaskItem, TaskSettings, SubTask, TaskBoard } from '../types/tasks'
 import {
+  computeWorkflowNextRunISO,
   executeAgentRun,
   executeWorkflowRun,
   executeInterAgentConsultations,
@@ -430,6 +431,58 @@ export interface ParsedRunAction {
   prompt?: string
 }
 
+export function sanitizeAndParseJson(rawBlock: string): any {
+  const trimmed = (rawBlock || '').trim()
+  if (!trimmed) return null
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    // Remover comentários // fora de strings e vírgulas sobrando antes de } ou ]
+    let cleaned = ''
+    let inString = false
+    let escape = false
+    for (let i = 0; i < trimmed.length; i++) {
+      const ch = trimmed[i]
+      if (escape) {
+        cleaned += ch
+        escape = false
+        continue
+      }
+      if (ch === '\\' && inString) {
+        cleaned += ch
+        escape = true
+        continue
+      }
+      if (ch === '"') {
+        inString = !inString
+        cleaned += ch
+        continue
+      }
+      if (!inString && ch === '/' && trimmed[i + 1] === '/') {
+        while (i < trimmed.length && trimmed[i] !== '\n') i++
+        cleaned += '\n'
+        continue
+      }
+      cleaned += ch
+    }
+    cleaned = cleaned.replace(/,\s*([}\]])/g, '$1')
+    try {
+      return JSON.parse(cleaned)
+    } catch {
+      const objStart = cleaned.indexOf('{')
+      const arrStart = cleaned.indexOf('[')
+      const start =
+        objStart !== -1 && (arrStart === -1 || objStart < arrStart) ? objStart : arrStart
+      const end =
+        start === objStart ? cleaned.lastIndexOf('}') : cleaned.lastIndexOf(']')
+      if (start !== -1 && end > start) {
+        return JSON.parse(cleaned.slice(start, end + 1))
+      }
+      throw new Error('JSON inválido no bloco de ação')
+    }
+  }
+}
+
 export function parseMasterActions(text: string): {
   displayText: string
   taskActions: ParsedTaskAction[]
@@ -448,159 +501,215 @@ export function parseMasterActions(text: string): {
     return { displayText: '', taskActions, agentActions, workflowActions, squadActions, runActions }
   }
 
-  // Parse task-action
-  if (text.includes('```task-action')) {
-    const regex = /```task-action\s*([\s\S]*?)\s*```/g
+  const pushAgentItem = (item: any) => {
+    if (!item || !item.name) return
+    agentActions.push({
+      action: item.action || 'create',
+      id: item.id,
+      name: item.name,
+      icon: pickAgentIconVariant(item.icon, item.name),
+      color: item.color || '#6366f1',
+      purpose: item.purpose === 'code' || item.purpose === 'image' ? item.purpose : 'text',
+      specialistRole: item.specialistRole || 'custom',
+      roleDescription: item.roleDescription || '',
+      systemDirective: item.systemDirective || '',
+      tone: item.tone || '',
+      rules: Array.isArray(item.rules) ? item.rules : [],
+      requiredQuestions: Array.isArray(item.requiredQuestions) ? item.requiredQuestions : [],
+      guardrails: Array.isArray(item.guardrails) ? item.guardrails : [],
+      targetFolder: item.targetFolder,
+      outputTypes: Array.isArray(item.outputTypes) ? item.outputTypes : undefined,
+      knowledgeNotes: Array.isArray(item.knowledgeNotes) ? item.knowledgeNotes : [],
+      knowledgeFolders: Array.isArray(item.knowledgeFolders) ? item.knowledgeFolders : [],
+      skills: Array.isArray(item.skills) ? item.skills : [],
+      memories: Array.isArray(item.memories) ? item.memories : []
+    })
+  }
+
+  const pushWorkflowItem = (item: any) => {
+    if (!item || !item.name) return
+    workflowActions.push({
+      action: item.action || 'create',
+      id: item.id,
+      name: item.name,
+      description: item.description || '',
+      nodes: Array.isArray(item.nodes) ? item.nodes : [],
+      edges: Array.isArray(item.edges) ? item.edges : []
+    })
+  }
+
+  const pushSquadItem = (item: any) => {
+    if (!item || !item.name) return
+    squadActions.push({
+      action: item.action || 'create',
+      id: item.id,
+      name: item.name,
+      icon: item.icon || 'Users',
+      color: item.color || '#6366f1',
+      description: item.description || '',
+      objective: item.objective || item.description || '',
+      coordinatorAgentId: item.coordinatorAgentId,
+      pipeline: Array.isArray(item.pipeline) ? item.pipeline : []
+    })
+  }
+
+  const pushTaskItem = (item: any) => {
+    if (!item || !item.title) return
+    taskActions.push({
+      action: item.action || 'create',
+      title: item.title,
+      priority: item.priority || 'medium',
+      deadline: item.deadline,
+      tags: Array.isArray(item.tags) ? item.tags : [],
+      subtasks: Array.isArray(item.subtasks) ? item.subtasks : [],
+      description: item.description || '',
+      boardId: item.boardId || undefined
+    })
+  }
+
+  const pushRunItem = (item: any) => {
+    if (!item || (!item.targetType && !item.targetId && !item.targetName)) return
+    runActions.push({
+      targetType: item.targetType || 'agent',
+      targetId: item.targetId,
+      targetName: item.targetName,
+      prompt: item.prompt
+    })
+  }
+
+  // Parse task-action / task_action
+  if (/```task[-_]action/i.test(text)) {
+    const regex = /```task[-_]action\s*([\s\S]*?)(?:\s*```|$)/gi
     let match
     while ((match = regex.exec(text)) !== null) {
       try {
-        const parsed = JSON.parse(match[1])
-        if (parsed && parsed.title) {
-          taskActions.push({
-            action: parsed.action || 'create',
-            title: parsed.title,
-            priority: parsed.priority || 'medium',
-            deadline: parsed.deadline,
-            tags: Array.isArray(parsed.tags) ? parsed.tags : [],
-            subtasks: Array.isArray(parsed.subtasks) ? parsed.subtasks : [],
-            description: parsed.description || '',
-            boardId: parsed.boardId || undefined
-          })
-        }
+        const parsed = sanitizeAndParseJson(match[1])
+        const items = Array.isArray(parsed) ? parsed : [parsed]
+        items.forEach(pushTaskItem)
       } catch (e) {
         console.warn('Falha ao processar bloco task-action:', e)
       }
     }
   }
 
-  // Parse agent-action
-  if (text.includes('```agent-action')) {
-    const regex = /```agent-action\s*([\s\S]*?)\s*```/g
+  // Parse agent-action / agent_action
+  if (/```agent[-_]action/i.test(text)) {
+    const regex = /```agent[-_]action\s*([\s\S]*?)(?:\s*```|$)/gi
     let match
     while ((match = regex.exec(text)) !== null) {
       try {
-        const parsed = JSON.parse(match[1])
+        const parsed = sanitizeAndParseJson(match[1])
         const items = Array.isArray(parsed) ? parsed : [parsed]
-        for (const item of items) {
-          if (item && item.name) {
-            agentActions.push({
-              action: item.action || 'create',
-              id: item.id,
-              name: item.name,
-              icon: pickAgentIconVariant(item.icon, item.name),
-              color: item.color || '#6366f1',
-              purpose: item.purpose === 'code' || item.purpose === 'image' ? item.purpose : 'text',
-              specialistRole: item.specialistRole || 'custom',
-              roleDescription: item.roleDescription || '',
-              systemDirective: item.systemDirective || '',
-              tone: item.tone || '',
-              rules: Array.isArray(item.rules) ? item.rules : [],
-              requiredQuestions: Array.isArray(item.requiredQuestions) ? item.requiredQuestions : [],
-              guardrails: Array.isArray(item.guardrails) ? item.guardrails : [],
-              targetFolder: item.targetFolder,
-              outputTypes: Array.isArray(item.outputTypes) ? item.outputTypes : undefined,
-              knowledgeNotes: Array.isArray(item.knowledgeNotes) ? item.knowledgeNotes : [],
-              knowledgeFolders: Array.isArray(item.knowledgeFolders) ? item.knowledgeFolders : [],
-              skills: Array.isArray(item.skills) ? item.skills : [],
-              memories: Array.isArray(item.memories) ? item.memories : []
-            })
-          }
-        }
+        items.forEach(pushAgentItem)
       } catch (e) {
         console.warn('Falha ao processar bloco agent-action:', e)
       }
     }
   }
 
-  // Parse workflow-action
-  if (text.includes('```workflow-action')) {
-    const regex = /```workflow-action\s*([\s\S]*?)\s*```/g
+  // Parse workflow-action / workflow_action
+  if (/```workflow[-_]action/i.test(text)) {
+    const regex = /```workflow[-_]action\s*([\s\S]*?)(?:\s*```|$)/gi
     let match
     while ((match = regex.exec(text)) !== null) {
       try {
-        const parsed = JSON.parse(match[1])
+        const parsed = sanitizeAndParseJson(match[1])
         const items = Array.isArray(parsed) ? parsed : [parsed]
-        for (const item of items) {
-          if (item && item.name) {
-            workflowActions.push({
-              action: item.action || 'create',
-              id: item.id,
-              name: item.name,
-              description: item.description || '',
-              nodes: Array.isArray(item.nodes) ? item.nodes : [],
-              edges: Array.isArray(item.edges) ? item.edges : []
-            })
-          }
-        }
+        items.forEach(pushWorkflowItem)
       } catch (e) {
         console.warn('Falha ao processar bloco workflow-action:', e)
       }
     }
   }
 
-  // Parse squad-action
-  if (text.includes('```squad-action')) {
-    const regex = /```squad-action\s*([\s\S]*?)\s*```/g
+  // Parse squad-action / squad_action
+  if (/```squad[-_]action/i.test(text)) {
+    const regex = /```squad[-_]action\s*([\s\S]*?)(?:\s*```|$)/gi
     let match
     while ((match = regex.exec(text)) !== null) {
       try {
-        const parsed = JSON.parse(match[1])
+        const parsed = sanitizeAndParseJson(match[1])
         const items = Array.isArray(parsed) ? parsed : [parsed]
-        for (const item of items) {
-          if (item && item.name) {
-            squadActions.push({
-              action: item.action || 'create',
-              id: item.id,
-              name: item.name,
-              icon: item.icon || 'Users',
-              color: item.color || '#6366f1',
-              description: item.description || '',
-              objective: item.objective || item.description || '',
-              coordinatorAgentId: item.coordinatorAgentId,
-              pipeline: Array.isArray(item.pipeline) ? item.pipeline : []
-            })
-          }
-        }
+        items.forEach(pushSquadItem)
       } catch (e) {
         console.warn('Falha ao processar bloco squad-action:', e)
       }
     }
   }
 
-  // Parse run-action (execução imediata de agente, departamento ou workflow direto do chat)
-  if (text.includes('```run-action')) {
-    const regex = /```run-action\s*([\s\S]*?)\s*```/g
+  // Parse run-action / run_action (execução imediata de agente, departamento ou workflow direto do chat)
+  if (/```run[-_]action/i.test(text)) {
+    const regex = /```run[-_]action\s*([\s\S]*?)(?:\s*```|$)/gi
     let match
     while ((match = regex.exec(text)) !== null) {
       try {
-        const parsed = JSON.parse(match[1])
-        if (parsed && (parsed.targetType || parsed.targetId || parsed.targetName)) {
-          runActions.push({
-            targetType: parsed.targetType || 'agent',
-            targetId: parsed.targetId,
-            targetName: parsed.targetName,
-            prompt: parsed.prompt
-          })
-        }
+        const parsed = sanitizeAndParseJson(match[1])
+        const items = Array.isArray(parsed) ? parsed : [parsed]
+        items.forEach(pushRunItem)
       } catch (e) {
         console.warn('Falha ao processar bloco run-action:', e)
       }
     }
   }
 
-  const displayText = text
-    .replace(/```task-action\s*[\s\S]*?\s*```/g, '')
-    .replace(/```agent-action\s*[\s\S]*?\s*```/g, '')
-    .replace(/```workflow-action\s*[\s\S]*?\s*```/g, '')
-    .replace(/```squad-action\s*[\s\S]*?\s*```/g, '')
-    .replace(/```run-action\s*[\s\S]*?\s*```/g, '')
+  // Fallback para blocos ```json genéricos caso o LLM tenha emitido a estrutura no formato JSON padrão
+  const consumedGenericJsonBlocks: string[] = []
+  if (/```json\s*[\s\S]*?```/i.test(text)) {
+    const jsonRegex = /```json\s*([\s\S]*?)\s*```/gi
+    let match
+    while ((match = jsonRegex.exec(text)) !== null) {
+      try {
+        const parsed = sanitizeAndParseJson(match[1])
+        const items = Array.isArray(parsed) ? parsed : [parsed]
+        let matchedAction = false
+        for (const item of items) {
+          if (!item || typeof item !== 'object') continue
+          if (Array.isArray(item.nodes) && item.name) {
+            if (!workflowActions.some(w => w.name === item.name)) pushWorkflowItem(item)
+            matchedAction = true
+          } else if (Array.isArray(item.pipeline) && item.name) {
+            if (!squadActions.some(s => s.name === item.name)) pushSquadItem(item)
+            matchedAction = true
+          } else if ((item.specialistRole || item.systemDirective || item.roleDescription) && item.name) {
+            if (!agentActions.some(a => a.name === item.name)) pushAgentItem(item)
+            matchedAction = true
+          } else if (item.targetType && (item.targetName || item.targetId)) {
+            pushRunItem(item)
+            matchedAction = true
+          }
+        }
+        if (matchedAction) {
+          consumedGenericJsonBlocks.push(match[0])
+        }
+      } catch {
+        // Ignorar JSON genérico ilustrativo que não seja ação do Pyrite
+      }
+    }
+  }
+
+  let displayText = text
+    .replace(/```task[-_]action\s*[\s\S]*?(?:\s*```|$)/gi, '')
+    .replace(/```agent[-_]action\s*[\s\S]*?(?:\s*```|$)/gi, '')
+    .replace(/```workflow[-_]action\s*[\s\S]*?(?:\s*```|$)/gi, '')
+    .replace(/```squad[-_]action\s*[\s\S]*?(?:\s*```|$)/gi, '')
+    .replace(/```run[-_]action\s*[\s\S]*?(?:\s*```|$)/gi, '')
     .replace(/\[MEM[ÓO]RIA:\s*[^\]]+?\]/gi, '')
     .replace(/\[CONSULTAR:\s*[^|\]]+?\s*\|\s*[^\]]+?\]/gi, '')
     .replace(/<<<(?:PATCH_NOTE|patch_note)>>>[\s\S]*?(?:<<<(?:END_PATCH_NOTE|end_patch_note)>>>|$)/gi, '')
     .replace(/<<<(?:REPLACE_NOTE|replace_note)>>>[\s\S]*?(?:<<<(?:END_REPLACE_NOTE|end_replace_note)>>>|$)/gi, '')
-    .trim()
 
-  return { displayText, taskActions, agentActions, workflowActions, squadActions, runActions }
+  for (const rawBlock of consumedGenericJsonBlocks) {
+    displayText = displayText.replace(rawBlock, '')
+  }
+
+  return {
+    displayText: displayText.trim(),
+    taskActions,
+    agentActions,
+    workflowActions,
+    squadActions,
+    runActions
+  }
 }
 
 export function parseThoughtBlocks(text: string): { thoughts: string[]; cleanText: string } {
@@ -924,7 +1033,7 @@ export const AgentActionsCollapsible: React.FC<{
           )}
           <button
             type="button"
-            onClick={() => onOpenAgent(first.id)}
+            onClick={() => onOpenAgent(first.id || first.name)}
             className="text-[10px] text-zinc-400 hover:text-indigo-300 flex items-center gap-0.5 shrink-0 transition-colors cursor-pointer"
           >
             <span>Abrir</span>
@@ -1029,7 +1138,7 @@ export const WorkflowActionsCollapsible: React.FC<{
           )}
           <button
             type="button"
-            onClick={() => onOpenWorkflow(first.id)}
+            onClick={() => onOpenWorkflow(first.id || first.name)}
             className="text-[10px] text-zinc-400 hover:text-emerald-300 flex items-center gap-0.5 shrink-0 transition-colors cursor-pointer"
           >
             <span>Flow</span>
@@ -1105,7 +1214,7 @@ export const SquadActionsCollapsible: React.FC<{
           )}
           <button
             type="button"
-            onClick={() => onOpenSquad(first.id)}
+            onClick={() => onOpenSquad(first.id || first.name)}
             className="text-[10px] text-zinc-400 hover:text-amber-300 flex items-center gap-0.5 shrink-0 transition-colors cursor-pointer"
           >
             <span>Abrir</span>
@@ -1143,6 +1252,57 @@ export const SquadActionsCollapsible: React.FC<{
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+export const RunActionsCollapsible: React.FC<{
+  actions: ParsedRunAction[]
+  onRunWorkflow?: (idOrName: string, prompt?: string) => void
+  onUseAgent?: (idOrName: string) => void
+  onUseSquad?: (idOrName: string) => void
+}> = ({ actions, onRunWorkflow, onUseAgent, onUseSquad }) => {
+  if (!actions || actions.length === 0) return null
+  return (
+    <div className="my-1 space-y-1">
+      {actions.map((act, idx) => {
+        const targetLabel = act.targetName || act.targetId || 'Recurso'
+        const typeLabel =
+          act.targetType === 'workflow'
+            ? 'Fluxo'
+            : act.targetType === 'squad'
+            ? 'Departamento'
+            : 'Agente'
+        return (
+          <div
+            key={idx}
+            className="flex items-center justify-between gap-2 rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-2.5 py-1.5 text-[11px] text-zinc-300"
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="truncate">
+                Acionando {typeLabel}: <strong className="text-zinc-100">{targetLabel}</strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (act.targetType === 'workflow') {
+                  onRunWorkflow?.(targetLabel, act.prompt)
+                } else if (act.targetType === 'squad') {
+                  onUseSquad?.(targetLabel)
+                } else {
+                  onUseAgent?.(targetLabel)
+                }
+              }}
+              className="text-[10px] px-2 py-0.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-300 font-medium shrink-0 flex items-center gap-1 cursor-pointer"
+            >
+              <Play className="w-2.5 h-2.5 fill-current" />
+              <span>Executar</span>
+            </button>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -1301,29 +1461,63 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     [multiAgentStore?.teams, selectedSquadId]
   )
 
+  // Ref sempre atualizado da store de multiagentes para evitar stale closure em chamadas assíncronas encadeadas
+  const multiAgentStoreRef = useRef<MultiAgentStoreState | undefined>(multiAgentStore)
+  multiAgentStoreRef.current = multiAgentStore
+
+  const commitStoreUpdate = async (nextStore: MultiAgentStoreState): Promise<boolean> => {
+    multiAgentStoreRef.current = nextStore
+    if (!onUpdateAgentStore) return false
+    const res = await Promise.resolve(onUpdateAgentStore(nextStore) as any)
+    if (res && typeof res === 'object' && 'success' in res && !res.success) {
+      setToastNotice(`⚠️ Falha ao salvar na base de agentes: ${res.error || 'erro desconhecido'}`)
+      setTimeout(() => setToastNotice(null), 5000)
+      return false
+    }
+    return true
+  }
+
   // Feedback notifications for 1-click actions
   const [insertedNotice, setInsertedNotice] = useState<string | null>(null)
   const [copiedNotice, setCopiedNotice] = useState<string | null>(null)
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [executedTaskActions, setExecutedTaskActions] = useState<Record<string, boolean>>({})
 
-  const navigateToTeamSection = (section: 'agents' | 'squads' | 'workflows', targetId?: string) => {
+  const navigateToTeamSection = (section: 'agents' | 'squads' | 'workflows', targetIdOrName?: string) => {
+    let resolvedId = targetIdOrName
+    const currentStore = multiAgentStoreRef.current || multiAgentStore
+    if (targetIdOrName && currentStore) {
+      const q = targetIdOrName.trim().toLowerCase()
+      if (section === 'agents') {
+        resolvedId =
+          currentStore.agents.find(a => a.id.toLowerCase() === q || a.name.toLowerCase() === q)?.id ||
+          resolvedId
+      } else if (section === 'workflows') {
+        resolvedId =
+          (currentStore.workflows || []).find(w => w.id.toLowerCase() === q || w.name.toLowerCase() === q)?.id ||
+          resolvedId
+      } else if (section === 'squads') {
+        resolvedId =
+          (currentStore.teams || []).find(t => t.id.toLowerCase() === q || t.name.toLowerCase() === q)?.id ||
+          resolvedId
+      }
+    }
     try {
       localStorage.setItem('pyrite_myteam_active_section', section)
-      if (section === 'agents' && targetId) {
-        localStorage.setItem('pyrite_myteam_selected_agent_id', targetId)
-      } else if (section === 'workflows' && targetId) {
-        localStorage.setItem('pyrite_myteam_selected_workflow_id', targetId)
-      } else if (section === 'squads' && targetId) {
-        localStorage.setItem('pyrite_myteam_selected_team_id', targetId)
+      if (section === 'agents' && resolvedId) {
+        localStorage.setItem('pyrite_myteam_selected_agent_id', resolvedId)
+      } else if (section === 'workflows' && resolvedId) {
+        localStorage.setItem('pyrite_myteam_selected_workflow_id', resolvedId)
+      } else if (section === 'squads' && resolvedId) {
+        localStorage.setItem('pyrite_myteam_selected_team_id', resolvedId)
       }
       window.dispatchEvent(
         new CustomEvent('pyrite-open-team-item', {
           detail: {
             section,
-            agentId: section === 'agents' ? targetId : undefined,
-            workflowId: section === 'workflows' ? targetId : undefined,
-            teamId: section === 'squads' ? targetId : undefined
+            agentId: section === 'agents' ? resolvedId : undefined,
+            workflowId: section === 'workflows' ? resolvedId : undefined,
+            teamId: section === 'squads' ? resolvedId : undefined
           }
         })
       )
@@ -1332,9 +1526,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   }
 
   const handleUseAgentInChat = (agentIdOrName: string) => {
-    if (!multiAgentStore?.agents) return
+    const storeToUse = multiAgentStoreRef.current || multiAgentStore
+    if (!storeToUse?.agents) return
     const q = agentIdOrName.trim().toLowerCase()
-    const found = multiAgentStore.agents.find(
+    const found = storeToUse.agents.find(
       a => a.id.toLowerCase() === q || a.name.toLowerCase() === q || a.name.toLowerCase().includes(q)
     )
     if (found) {
@@ -1351,9 +1546,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
   }
 
   const handleUseSquadInChat = (squadIdOrName: string) => {
-    if (!multiAgentStore?.teams) return
+    const storeToUse = multiAgentStoreRef.current || multiAgentStore
+    if (!storeToUse?.teams) return
     const q = squadIdOrName.trim().toLowerCase()
-    const found = multiAgentStore.teams.find(
+    const found = storeToUse.teams.find(
       t => t.id.toLowerCase() === q || t.name.toLowerCase() === q || t.name.toLowerCase().includes(q)
     )
     if (found) {
@@ -1369,18 +1565,124 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     }
   }
 
+  const handleRunAgentOrSquadInChat = async (
+    targetType: 'agent' | 'squad',
+    targetIdOrName: string,
+    customPrompt?: string,
+    overrideStore?: MultiAgentStoreState
+  ) => {
+    const storeToUse = overrideStore || multiAgentStoreRef.current || multiAgentStore
+    if (!storeToUse) return
+    const q = targetIdOrName.trim().toLowerCase()
+
+    const matchedTeam =
+      targetType === 'squad'
+        ? (storeToUse.teams || []).find(
+            t => t.id.toLowerCase() === q || t.name.toLowerCase() === q || t.name.toLowerCase().includes(q)
+          )
+        : undefined
+
+    const matchedAgent = matchedTeam
+      ? storeToUse.agents.find(a => a.id === matchedTeam.coordinatorAgentId) || storeToUse.agents[0]
+      : storeToUse.agents.find(
+          a => a.id.toLowerCase() === q || a.name.toLowerCase() === q || a.name.toLowerCase().includes(q)
+        )
+
+    if (!matchedAgent) {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `run_err_${Date.now()}`,
+          sender: 'ai',
+          text: `⚠️ Não encontrei o ${targetType === 'squad' ? 'departamento' : 'agente'} **"${targetIdOrName}"** na sua equipe.`
+        }
+      ])
+      return
+    }
+
+    if (matchedTeam) {
+      handleUseSquadInChat(matchedTeam.id)
+    } else {
+      handleUseAgentInChat(matchedAgent.id)
+    }
+
+    if (!customPrompt || !customPrompt.trim()) return
+
+    setIsGenerating(true)
+    const runMsgId = `agent_run_${Date.now()}`
+    setMessages(prev => [...prev, { id: runMsgId, sender: 'ai', text: 'Pensando...' }])
+
+    try {
+      const run = await executeAgentRun({
+        agent: matchedAgent,
+        allAgents: storeToUse.agents,
+        allNotes,
+        allProjects: storeToUse.projects || [],
+        prompt: customPrompt,
+        extraRequestNotes: isNoteContextActive && effectiveNote?.id ? [effectiveNote] : [],
+        useTeamDelegation: Boolean(matchedTeam),
+        teamDefinition: matchedTeam,
+        memories: storeToUse.memories || [],
+        isTestRun: false
+      })
+      const latest = multiAgentStoreRef.current || storeToUse
+      await commitStoreUpdate({
+        ...latest,
+        runs: [run, ...(latest.runs || [])]
+      })
+
+      const outText =
+        run.status === 'failed'
+          ? `⚠️ **Falha ao executar ${matchedTeam ? matchedTeam.name : matchedAgent.name}:** ${run.error || 'Erro interno.'}`
+          : run.draftContent ||
+            run.changeSet?.operations[0]?.contentPreview ||
+            `Execução concluída por **${matchedTeam ? matchedTeam.name : matchedAgent.name}**.`
+
+      setMessages(prev => prev.map(m => (m.id === runMsgId ? { ...m, text: outText } : m)))
+    } catch (err: any) {
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === runMsgId
+            ? { ...m, text: `⚠️ **Erro ao executar:** ${err?.message || 'Falha interna.'}` }
+            : m
+        )
+      )
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
   const handleRunWorkflowInChat = async (
     workflowIdOrName: string,
     customPrompt?: string,
     overrideStore?: MultiAgentStoreState
   ) => {
-    const storeToUse = overrideStore || multiAgentStore
-    if (!storeToUse?.workflows) return
+    const storeToUse = overrideStore || multiAgentStoreRef.current || multiAgentStore
+    const workflowsList = storeToUse?.workflows || []
     const q = workflowIdOrName.trim().toLowerCase()
-    const wf = storeToUse.workflows.find(
+    const wf = workflowsList.find(
       w => w.id.toLowerCase() === q || w.name.toLowerCase() === q || w.name.toLowerCase().includes(q)
     )
-    if (!wf) return
+    if (!wf) {
+      const promptHint = customPrompt
+        ? `Criar e executar o fluxo "${workflowIdOrName}": ${customPrompt}`
+        : `Crie o fluxo "${workflowIdOrName}" e execute-o agora.`
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `wf_missing_${Date.now()}`,
+          sender: 'ai',
+          text:
+            `⚠️ O fluxo **"${workflowIdOrName}"** não foi encontrado salvo no seu Flow Canvas.\n\n` +
+            `:::buttons [Deseja criar e executar agora?]\n` +
+            `- ⚡ Criar e executar "${workflowIdOrName}" | ${promptHint}\n` +
+            `:::`
+        }
+      ])
+      setToastNotice(`⚠️ Fluxo "${workflowIdOrName}" não encontrado no Flow Canvas.`)
+      setTimeout(() => setToastNotice(null), 4000)
+      return
+    }
 
     setIsGenerating(true)
     const runMsgId = `wf_run_${Date.now()}`
@@ -1392,21 +1694,64 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     try {
       const wfRun = await executeWorkflowRun({
         workflow: wf,
-        allAgents: storeToUse.agents,
+        allAgents: storeToUse!.agents,
         allNotes,
-        allProjects: storeToUse.projects || [],
+        allProjects: storeToUse!.projects || [],
         prompt: customPrompt || `Executar fluxo "${wf.name}" na nota "${effectiveNote.title}"`,
         isTestRun: false
       })
 
-      if (onUpdateAgentStore) {
-        onUpdateAgentStore({
-          ...storeToUse,
-          runs: [wfRun, ...(storeToUse.runs || [])]
-        })
+      const latest = multiAgentStoreRef.current || storeToUse!
+      await commitStoreUpdate({
+        ...latest,
+        runs: [wfRun, ...(latest.runs || [])]
+      })
+
+      const states = wfRun.workflowNodeStates || []
+      const completedCount = states.filter(s => s.status === 'completed').length
+
+      if (wfRun.status === 'failed' || wfRun.error) {
+        const failedSteps = states
+          .filter(s => s.status === 'failed')
+          .map(s => `- **${s.label}**: ${s.outputSummary || s.output || 'falhou'}`)
+          .join('\n')
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === runMsgId
+              ? {
+                  ...m,
+                  text:
+                    `⚠️ **Erro ao executar o fluxo "${wf.name}"** (${completedCount}/${wf.nodes.length} etapas concluídas):\n` +
+                    `${wfRun.error || 'Falha durante a execução.'}` +
+                    (failedSteps ? `\n\n${failedSteps}` : '')
+                }
+              : m
+          )
+        )
+        setToastNotice(`⚠️ Fluxo "${wf.name}" falhou: ${wfRun.error || 'verifique o chat'}`)
+        setTimeout(() => setToastNotice(null), 4500)
+        return
       }
 
-      const completedCount = (wfRun.workflowNodeStates || []).filter(s => s.status === 'completed').length
+      if (wfRun.status === 'waiting_approval') {
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === runMsgId
+              ? {
+                  ...m,
+                  text:
+                    `> ⏸️ **Fluxo "${wf.name}" pausado aguardando aprovação** (${completedCount}/${wf.nodes.length} etapas)\n\n` +
+                    `${wfRun.draftContent || 'Aprove a etapa pendente no Flow Canvas ou na barra superior para continuar.'}`
+                }
+              : m
+          )
+        )
+        return
+      }
+
+      const createdNotesLinks = (wfRun.artifacts || [])
+        .map(a => `- 📝 [[${a.title}]] *(pasta: ${a.folder})*`)
+        .join('\n')
       const summaryMd =
         wfRun.draftContent ||
         `Fluxo **${wf.name}** executado com sucesso (${completedCount}/${wf.nodes.length} etapas concluídas).`
@@ -1416,7 +1761,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           m.id === runMsgId
             ? {
                 ...m,
-                text: `> ⚡ **Fluxo "${wf.name}" executado diretamente no chat (${completedCount}/${wf.nodes.length} etapas)**\n\n${summaryMd}`
+                text:
+                  `> ⚡ **Fluxo "${wf.name}" executado no chat (${completedCount}/${wf.nodes.length} etapas concluídas)**\n\n` +
+                  (createdNotesLinks ? `**Entregas salvas no cofre:**\n${createdNotesLinks}\n\n---\n\n` : '') +
+                  summaryMd
               }
             : m
         )
@@ -2385,20 +2733,24 @@ ${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList
   * NUNCA misture traço com hashtag (ex: NUNCA escreva '- ### Título').
   * NUNCA use asteriscos ('**', '***') para indicar etapas ou níveis de profundidade, e NUNCA envolva títulos em negrito ('**Título**'). Use apenas texto limpo precedido de traço '-' e indentação correta. O motor gráfico cuida de todo o design e peso visual dos nós.`
 
-        const currentAgentsList = (multiAgentStore?.agents || []).map(
+        const activeStoreSnapshot = multiAgentStoreRef.current || multiAgentStore
+        const currentAgentsList = (activeStoreSnapshot?.agents || []).map(
           a => `- **${a.name}** (id: "${a.id}", ícone: "${a.icon}", finalidade: "${a.aiConfig?.purpose || 'text'}", função: "${a.specialistRole}"): ${a.roleDescription || a.workStyle?.tone || ''}`
         ).join('\n')
 
-        const currentSquadsList = (multiAgentStore?.teams || []).map(
+        const currentSquadsList = (activeStoreSnapshot?.teams || []).map(
           t => `- 👥 **${t.name}** (id: "${t.id}"): ${t.description || t.objective || ''} (${t.pipeline?.length || t.nodes?.length || 0} especialistas)`
         ).join('\n')
 
-        const currentWorkflowsList = (multiAgentStore?.workflows || []).map(
+        const currentWorkflowsList = (activeStoreSnapshot?.workflows || []).map(
           w => `- ⚡ **${w.name}** (id: "${w.id}", status: "${w.status}"): ${w.description || ''} (${w.nodes?.length || 0} etapas)`
         ).join('\n')
 
+        const availableFoldersText = folderList.map(f => `"${f.folder}"`).slice(0, 25).join(', ')
+        const activeNoteFolder = effectiveNote?.folder || 'Entregas'
+
         // Memórias de longo prazo (globais + agente selecionado)
-        const activeMemories = (multiAgentStore?.memories || [])
+        const activeMemories = (activeStoreSnapshot?.memories || [])
           .filter(m => !selectedTeamAgent || m.agentId === selectedTeamAgent.id || m.agentId === 'global')
           .slice(0, 20)
         const memoriesBlock = activeMemories.length > 0
@@ -2407,7 +2759,7 @@ ${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList
 
         // Consultas inter-agentes paralelas caso o usuário mencione @NomeDoAgente no Assistente Global
         let globalConsultationBlock = ''
-        if (multiAgentStore?.agents && multiAgentStore.agents.length > 0 && raw.trim()) {
+        if (activeStoreSnapshot?.agents && activeStoreSnapshot.agents.length > 0 && raw.trim()) {
           const callerPersona: AgentProfileVersion = selectedTeamAgent || {
             id: 'global-master-assistant',
             version: 1,
@@ -2429,9 +2781,9 @@ ${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList
           }
           const consultRes = await executeInterAgentConsultations({
             callerAgent: callerPersona,
-            allAgents: multiAgentStore.agents,
+            allAgents: activeStoreSnapshot.agents,
             prompt: raw,
-            memories: multiAgentStore.memories
+            memories: activeStoreSnapshot.memories
           })
           if (consultRes.consultationDirectives) {
             globalConsultationBlock = consultRes.consultationDirectives
@@ -2440,13 +2792,11 @@ ${allBoardsText ? `- ${allBoardsText}\n` : ''}${statusesList ? `- ${statusesList
 
         const ecosystemDirective = `PODERES DE MESTRE DO ASSISTENTE GLOBAL PYRITE (ORQUESTRADOR 100% AUTÔNOMO):
 Você é o Assistente Mestre do Pyrite. O usuário pode construir, configurar e operar TODO o sistema de multiagentes apenas conversando com você em texto simples, sem precisar abrir a página de Multiagentes!
-Você domina:
-1. Notas, Mapas Mentais e Arquivos HTML Nativos.
-2. Projetos e Tarefas em Quadros Kanban/Listas.
-3. Criação/Edição/Exclusão de AGENTES ESPECIALISTAS COMPLETOS (com avatar oficial, finalidade Texto/Código/Imagem, regras, perguntas obrigatórias, guardrails, pasta de entrega, notas/pastas vinculadas, skills e memória de longo prazo).
-4. Criação/Edição/Exclusão de DEPARTAMENTOS (SQUADS) completos com esteira colaborativa (se o departamento precisar de agentes que ainda não existem, você pode emitir os blocos \`agent-action\` antes do \`squad-action\`, ou listar os especialistas direto no \`pipeline\` do \`squad-action\` que o Pyrite criará automaticamente os agentes faltantes!).
-5. Criação/Edição/Exclusão de FLUXOS DE TRABALHO (WORKFLOWS) visuais completos no Flow Canvas, conectando gatilhos, leitura de notas, agentes especialistas, IA, condições lógicas (true/false), aprovação humana, tarefas e entregáveis.
-6. Execução Imediata (\`run-action\`) de qualquer Agente, Departamento ou Fluxo de Trabalho diretamente aqui no chat!
+
+⚠️ REGRA CRÍTICA E INVIOLÁVEL DE EXECUÇÃO REAL:
+O Pyrite SÓ grava um agente, departamento, fluxo ou disparo no banco de dados quando você EMITE o respectivo bloco JSON executável (\`\`\`agent-action, \`\`\`squad-action, \`\`\`workflow-action ou \`\`\`run-action) dentro da sua resposta!
+- NUNCA responda "Criei o fluxo/agente/departamento" ou "Executei" se você não incluiu o bloco executável correspondente na mesma mensagem! Isso causaria uma alucinação falsa onde nada é salvo no Pyrite!
+- Escreva o bloco JSON executável COMPLETO e válido primeiro, e depois adicione 1 a 3 frases curtas para o usuário explicando o que foi criado/configurado (o Pyrite oculta automaticamente o código JSON bruto e exibe um card visual interativo no chat).
 
 ECOSSISTEMA ATUAL CADASTRADO NO COFRE DO USUÁRIO:
 [Agentes da Equipe]:
@@ -2457,11 +2807,13 @@ ${currentSquadsList || 'Nenhum departamento cadastrado ainda.'}
 
 [Fluxos de Trabalho / Workflows no Flow]:
 ${currentWorkflowsList || 'Nenhum workflow cadastrado ainda.'}
-${memoriesBlock}
-COMO CRIAR, ATUALIZAR OU EXCLUIR RECURSOS COM 100% DE PRECISÃO VIA TEXTO SIMPLES:
 
-1) CRIAR / ATUALIZAR / EXCLUIR AGENTE COMPLETO (\`agent-action\`):
-Variantes de ícone oficiais do Pyrite (escolha a mais adequada, NUNCA use emoji no campo icon):
+[Pastas Reais do Cofre]: ${availableFoldersText || '"Início"'} (Pasta da nota ativa: "${activeNoteFolder}")
+${memoriesBlock}
+COMO CRIAR, ATUALIZAR OU EXCLUIR RECURSOS VIA TEXTO SIMPLES:
+
+1) CRIAR / ATUALIZAR / EXCLUIR AGENTE COMPLETO (\`\`\`agent-action):
+Variantes de ícone oficiais do Pyrite (NUNCA use emoji no campo icon):
 "split" | "arch" | "corner" | "bubble" | "stairs" | "pill" | "hill" | "horizon" | "wave" | "badge" | "peak" | "crescent" | "beam" | "valley" | "orbit"
 \`\`\`agent-action
 {
@@ -2484,16 +2836,14 @@ Variantes de ícone oficiais do Pyrite (escolha a mais adequada, NUNCA use emoji
   "memories": ["Fato permanente inicial para a memória do agente"]
 }
 \`\`\`
-(Para finalidade de código use \`"purpose": "code"\`; para imagem use \`"purpose": "image"\`; para excluir use \`"action": "delete"\`).
 
-2) CRIAR / ATUALIZAR / EXCLUIR DEPARTAMENTO / SQUAD (\`squad-action\`):
-Você pode referenciar agentes existentes pelo \`id\` ou \`name\`, ou definir novos especialistas diretamente no \`pipeline\` (com \`agentName\`, \`specialistRole\`, \`icon\`, \`roleInSquad\`, \`customPrompt\`, \`expectedOutput\`) que o Pyrite criará automaticamente qualquer agente que ainda não exista!
+2) CRIAR / ATUALIZAR / EXCLUIR DEPARTAMENTO / SQUAD (\`\`\`squad-action):
 \`\`\`squad-action
 {
   "action": "create",
   "name": "Departamento de Marketing & Growth",
   "icon": "Rocket",
-  "description": " Missão executiva do departamento",
+  "description": "Missão executiva do departamento",
   "objective": "Objetivo central da esteira colaborativa",
   "coordinatorAgentId": "Estrategista Chefe",
   "pipeline": [
@@ -2502,7 +2852,7 @@ Você pode referenciar agentes existentes pelo \`id\` ou \`name\`, ou definir no
       "specialistRole": "coordinator",
       "icon": "arch",
       "roleInSquad": "Planejamento e Posicionamento",
-      "customPrompt": "Estruture o ângulo estratégico, público-alvo e proposta de valor.",
+      "customPrompt": "Estruture o ângulo estratégico.",
       "expectedOutput": "text"
     },
     {
@@ -2510,24 +2860,20 @@ Você pode referenciar agentes existentes pelo \`id\` ou \`name\`, ou definir no
       "specialistRole": "custom",
       "icon": "wave",
       "roleInSquad": "Redação Persuasiva",
-      "customPrompt": "Redija a cópia final completa com base na estratégia.",
-      "expectedOutput": "note"
-    },
-    {
-      "agentName": "Revisor de Qualidade",
-      "specialistRole": "reviewer",
-      "icon": "badge",
-      "roleInSquad": "Auditoria e Polimento Final",
-      "customPrompt": "Revise clareza, persuasão e consistência antes da entrega.",
+      "customPrompt": "Redija a entrega final.",
       "expectedOutput": "note"
     }
   ]
 }
 \`\`\`
 
-3) CRIAR / ATUALIZAR / EXCLUIR FLUXO DE TRABALHO (\`workflow-action\`):
+3) CRIAR / ATUALIZAR / EXCLUIR FLUXO DE TRABALHO (\`\`\`workflow-action):
 Kinds válidos de nós: \`input\`, \`read_note\`, \`run_agent\`, \`llm\`, \`condition\`, \`approval\`, \`create_task\`, \`manage_properties\`, \`deliverable\`, \`finish\`.
-Nos nós \`run_agent\`, você pode passar \`"agentId"\` com o ID ou Nome do agente (se o agente não existir, o Pyrite o criará automaticamente!). Nos nós \`condition\`, use edges com \`"branch": "true"\` e \`"branch": "false"\`.
+Regras obrigatórias de esquema de Fluxo:
+- Se o fluxo for diário/agendado ("todos os dias", "semanalmente"): o nó \`input\` DEVE ter \`"triggerType": "schedule"\`, \`"scheduleFrequency": "daily" | "weekdays" | "weekly" | "monthly"\`, \`"scheduleTime": "09:00"\`. Se for sob demanda, use \`"triggerType": "manual"\`.
+- Todo nó \`deliverable\` DEVE ter \`"targetFolder"\` (ex: \`"${activeNoteFolder}"\`) e \`"namingPattern"\` (ex: \`"{fluxo} - {data}"\`).
+- Para ler uma nota do cofre, use um nó \`read_note\` com \`"noteTitle": "Título exato"\`.
+- Nos nós \`llm\` ou \`run_agent\`, coloque a instrução detalhada em \`"promptTemplate"\`.
 \`\`\`workflow-action
 {
   "action": "create",
@@ -2537,31 +2883,38 @@ Nos nós \`run_agent\`, você pode passar \`"agentId"\` com o ID ou Nome do agen
     {
       "id": "node_1",
       "kind": "input",
-      "label": "Entrada do Fluxo",
-      "config": { "triggerType": "manual", "promptTemplate": "Instrução inicial do fluxo" }
+      "label": "Gatilho Diário (09:00)",
+      "config": { "triggerType": "schedule", "scheduleFrequency": "daily", "scheduleTime": "09:00" }
     },
     {
       "id": "node_2",
-      "kind": "run_agent",
-      "label": "Execução pelo Especialista",
-      "config": { "agentId": "Nome ou ID do Agente", "promptTemplate": "Instrução específica da etapa" }
+      "kind": "read_note",
+      "label": "Ler Referência",
+      "config": { "noteTitle": "Título da Nota" }
     },
     {
       "id": "node_3",
+      "kind": "run_agent",
+      "label": "Gerar Conteúdo",
+      "config": { "agentId": "Nome ou ID do Agente", "promptTemplate": "Instrução detalhada da tarefa" }
+    },
+    {
+      "id": "node_4",
       "kind": "deliverable",
       "label": "Salvar Nota no Cofre",
-      "config": { "targetFolder": "Fluxos", "outputType": "note" }
+      "config": { "targetFolder": "${activeNoteFolder}", "namingPattern": "Entrega - {fluxo} - {data}", "outputType": "note" }
     }
   ],
   "edges": [
     { "sourceNodeId": "node_1", "targetNodeId": "node_2", "branch": "default" },
-    { "sourceNodeId": "node_2", "targetNodeId": "node_3", "branch": "default" }
+    { "sourceNodeId": "node_2", "targetNodeId": "node_3", "branch": "default" },
+    { "sourceNodeId": "node_3", "targetNodeId": "node_4", "branch": "default" }
   ]
 }
 \`\`\`
 
-4) EXECUTAR IMEDIATAMENTE UM AGENTE, DEPARTAMENTO OU FLUXO (\`run-action\`):
-Se o usuário pedir para RODAR / EXECUTAR agora um agente, departamento ou workflow (mesmo que você tenha acabado de criá-lo na mesma mensagem):
+4) EXECUTAR IMEDIATAMENTE UM AGENTE, DEPARTAMENTO OU FLUXO (\`\`\`run-action):
+Se o usuário pedir para RODAR / EXECUTAR agora um agente, departamento ou workflow existente (ou acabado de criar na mesma mensagem):
 \`\`\`run-action
 {
   "targetType": "agent" | "squad" | "workflow",
@@ -2569,14 +2922,11 @@ Se o usuário pedir para RODAR / EXECUTAR agora um agente, departamento ou workf
   "prompt": "Instrução detalhada para a execução imediata"
 }
 \`\`\`
+Quando emitir \`run-action\`, escreva também 1 frase breve confirmando o disparo (nunca envie apenas o bloco isolado sem texto).
 
 5) MEMÓRIA DE LONGO PRAZO E CONSULTA A COLEGAS:
-- Se o usuário pedir para lembrar de uma regra ou preferência permanente, inclua no final: \`[MEMÓRIA: fato conciso em uma frase]\`.
-- Se precisar consultar um agente especialista da equipe durante sua resposta, você pode emitir \`[CONSULTAR: NomeDoAgente | pergunta específica]\`.
-
-REGRA DE APRESENTAÇÃO LIMPA (PADRÃO GEMINI / ANTIGRAVITY):
-O Pyrite executa e cadastra esses agentes, departamentos e fluxos AUTOMATICAMENTE e exibe cards interativos com botões "Usar aqui", "Ativar aqui" e "Executar aqui".
-Portanto, NUNCA repita os JSONs em tabelas massivas no texto markdown. Seja conciso, executivo e acolhedor (1 a 4 frases), confirmando o que criou/configurou.`
+- Se o usuário pedir para lembrar de uma regra permanente, inclua no final: \`[MEMÓRIA: fato conciso em uma frase]\`.
+- Se precisar consultar um agente especialista da equipe durante sua resposta, emita \`[CONSULTAR: NomeDoAgente | pergunta específica]\`.`
 
         const systemPrompt = `Você é o Agente de IA do Pyrite, assistente de alto nível para gestão de conhecimento e pensamento (estilo Obsidian) com foco em produtividade e pensamento em rede.
 
@@ -2645,10 +2995,120 @@ Diretrizes gerais:
           temperature: 0.7
         })
 
-        setMessages(prev => prev.filter(m => m.id !== loadingId))
-
         if (res.success && res.text) {
           let responseText = res.text
+
+          // Detecção de Auto-Cura (Self-Healing): se o usuário pediu para criar um Fluxo/Agente/Departamento
+          // OU se o modelo respondeu "Criei o fluxo/agente/departamento..." sem emitir o bloco JSON executável,
+          // disparamos uma segunda passagem rápida estruturada (temperature 0.15) antes de finalizar o turno!
+          const initialMasterParsed = parseMasterActions(responseText)
+          const rawLower = raw.toLowerCase()
+          const respLower = responseText.toLowerCase()
+
+          const userAskedWorkflow =
+            /\b(?:crie|criar|monte|montar|configure|configurar|gere|gerar|fa[çc]a|fazer|construa|construir|desenhe|desenhar)\s+(?:um\s+|uma\s+|novo\s+|nova\s+)?(?:fluxo|workflow|automa[çc][ãa]o)\b/i.test(
+              rawLower
+            )
+          const aiClaimedWorkflow =
+            /\b(?:criei|montei|configurei|cadastrei|atualizei|fluxo\s+criado|workflow\s+criado)\b[\s\S]{0,60}\b(?:fluxo|workflow|flow\s*canvas)\b/i.test(
+              respLower
+            )
+
+          const userAskedSquad =
+            /\b(?:crie|criar|monte|montar|configure|configurar|gere|gerar|fa[çc]a|fazer|construa|construir)\s+(?:um\s+|uma\s+|novo\s+|nova\s+)?(?:departamento|squad|equipe|time)\b/i.test(
+              rawLower
+            )
+          const aiClaimedSquad =
+            /\b(?:criei|montei|configurei|cadastrei)\b[\s\S]{0,60}\b(?:departamento|squad|equipe)\b/i.test(
+              respLower
+            )
+
+          const userAskedAgent =
+            /\b(?:crie|criar|monte|montar|configure|configurar|gere|gerar|fa[çc]a|fazer|construa|construir)\s+(?:um\s+|uma\s+|novo\s+|nova\s+)?(?:agente|especialista|assistente)\b/i.test(
+              rawLower
+            )
+          const aiClaimedAgent =
+            /\b(?:criei|montei|configurei|cadastrei)\b[\s\S]{0,60}\b(?:agente|especialista)\b/i.test(
+              respLower
+            )
+
+          const missingWorkflow = (userAskedWorkflow || aiClaimedWorkflow) && initialMasterParsed.workflowActions.length === 0
+          const missingSquad = (userAskedSquad || aiClaimedSquad) && initialMasterParsed.squadActions.length === 0
+          const missingAgent =
+            (userAskedAgent || aiClaimedAgent) &&
+            !userAskedSquad &&
+            !userAskedWorkflow &&
+            initialMasterParsed.agentActions.length === 0
+
+          const storeForHeal = multiAgentStoreRef.current || multiAgentStore
+          if (storeForHeal && onUpdateAgentStore && (missingWorkflow || missingSquad || missingAgent)) {
+            try {
+              const targetTypesList = [
+                missingAgent ? 'agent-action' : null,
+                missingSquad ? 'squad-action' : null,
+                missingWorkflow ? 'workflow-action' : null
+              ]
+                .filter(Boolean)
+                .join(', ')
+
+              const healPrompt = `Você é o compilador estrutural do Pyrite. A resposta conversacional anterior descreveu ou respondeu a um pedido de criação, mas ESQUECEU de emitir o(s) bloco(s) executável(is) obrigatório(s): ${targetTypesList}.
+Sua ÚNICA tarefa agora é gerar EXCLUSIVAMENTE o(s) bloco(s) JSON cercado(s) correto(s) (${targetTypesList}) correspondente(s) ao pedido e contexto abaixo. NÃO escreva explicações fora dos blocos.
+
+[Pedido do usuário]:
+${raw}
+
+[Resposta descritiva da IA]:
+${responseText.slice(0, 2500)}
+
+[Nota ativa em contexto]: Título="${effectiveNote.title}", Pasta="${effectiveNote.folder || 'Início'}"
+[Pastas disponíveis no cofre]: ${availableFoldersText || '"Início"'}
+[Notas no cofre]: ${allNotes.map(n => `"${n.title}" (${n.folder || 'Início'})`).slice(0, 25).join(', ')}
+[Agentes existentes]: ${(storeForHeal.agents || []).map(a => `"${a.name}" (id: "${a.id}")`).join(', ')}
+
+Regras estritas para \`\`\`workflow-action:
+- Se houver agendamento diário ("todos os dias", "diariamente"), o nó \`input\` DEVE conter \`"triggerType": "schedule", "scheduleFrequency": "daily", "scheduleTime": "09:00"\`.
+- Todo nó \`deliverable\` DEVE ter \`"targetFolder"\` (ex: "${activeNoteFolder}") e \`"namingPattern"\`.
+- Sempre conecte todos os nós sequencialmente em \`"edges"\` com \`"sourceNodeId"\` e \`"targetNodeId"\`.`
+
+              const healRes = await window.electronAPI.aiChat({
+                provider: activeProvider,
+                model: activeModel,
+                messages: [
+                  { role: 'system', content: 'Emita APENAS o(s) bloco(s) markdown executável(is) solicitados (```workflow-action, ```agent-action ou ```squad-action) com JSON 100% válido.' },
+                  { role: 'user', content: healPrompt }
+                ],
+                temperature: 0.15
+              })
+
+              if (healRes.success && healRes.text) {
+                const healedParsed = parseMasterActions(healRes.text)
+                if (
+                  healedParsed.workflowActions.length > 0 ||
+                  healedParsed.squadActions.length > 0 ||
+                  healedParsed.agentActions.length > 0
+                ) {
+                  responseText = `${healRes.text.trim()}\n\n${responseText}`.trim()
+                }
+              }
+            } catch (healErr) {
+              console.warn('Falha na auto-síntese estrutural de criação:', healErr)
+            }
+
+            // Se mesmo após a tentativa de auto-cura ainda faltou o bloco e o modelo afirmou ter criado, avisar honestamente
+            const verifyParsed = parseMasterActions(responseText)
+            if (missingWorkflow && verifyParsed.workflowActions.length === 0) {
+              responseText +=
+                '\n\n> ⚠️ **Aviso do Pyrite:** O modelo não retornou a estrutura técnica do fluxo para gravação no Flow Canvas. Peça: *"Gere novamente em formato workflow-action"* para registrar o fluxo.'
+            } else if (missingSquad && verifyParsed.squadActions.length === 0) {
+              responseText +=
+                '\n\n> ⚠️ **Aviso do Pyrite:** O modelo não retornou a estrutura técnica do departamento para gravação. Tente detalhar os especialistas desejados.'
+            } else if (missingAgent && verifyParsed.agentActions.length === 0) {
+              responseText +=
+                '\n\n> ⚠️ **Aviso do Pyrite:** O modelo não retornou a estrutura técnica do agente para gravação. Tente especificar o nome e função do agente.'
+            }
+          }
+
+          setMessages(prev => prev.filter(m => m.id !== loadingId))
 
           // Check for Note / HTML Edits (Surgical <<<PATCH_NOTE>>> or Full <<<REPLACE_NOTE>>>)
           let activeProposedEdit: NoteEditAction | undefined = undefined
@@ -2885,10 +3345,11 @@ Diretrizes gerais:
             setTimeout(() => setToastNotice(null), 4000)
           }
 
-          let updatedStoreAfterActions: MultiAgentStoreState | undefined = multiAgentStore
+          let updatedStoreAfterActions: MultiAgentStoreState | undefined =
+            multiAgentStoreRef.current || multiAgentStore
 
           if (
-            multiAgentStore &&
+            updatedStoreAfterActions &&
             onUpdateAgentStore &&
             (autoAgentActions.length > 0 ||
               autoWfActions.length > 0 ||
@@ -2896,8 +3357,8 @@ Diretrizes gerais:
               learnedGlobalFacts.length > 0)
           ) {
             let nextStore: MultiAgentStoreState = {
-              ...multiAgentStore,
-              memories: [...(multiAgentStore.memories || [])]
+              ...updatedStoreAfterActions,
+              memories: [...(updatedStoreAfterActions.memories || [])]
             }
 
             // Persistir memórias aprendidas neste turno
@@ -3214,7 +3675,7 @@ Diretrizes gerais:
               act.id = squadId
             }
 
-            // 3. Process workflow actions (com resolução de agentes, notas e auto-layout de branches!)
+            // 3. Process workflow actions (com resolução inteligente de agentes, notas, pastas, triggers e auto-conexão!)
             for (const act of autoWfActions) {
               const currentWfs = nextStore.workflows || []
               const existingWf = currentWfs.find(
@@ -3236,6 +3697,20 @@ Diretrizes gerais:
 
               const rawNodes = act.nodes || []
               const rawEdges = act.edges || []
+              let computedNextRunAt: string | undefined
+
+              const resolveMatchingFolder = (rawFolder?: string): string => {
+                const candidate = (rawFolder || '').trim()
+                if (!candidate) return activeNoteFolder || 'Entregas'
+                const exact = folderList.find(f => f.folder.toLowerCase() === candidate.toLowerCase())
+                if (exact) return exact.folder
+                const suffix = folderList.find(
+                  f =>
+                    f.folder.toLowerCase().endsWith(`/${candidate.toLowerCase()}`) ||
+                    f.folder.toLowerCase().includes(candidate.toLowerCase())
+                )
+                return suffix ? suffix.folder : candidate
+              }
 
               const nodes: WorkflowNode[] =
                 rawNodes.length > 0
@@ -3248,9 +3723,39 @@ Diretrizes gerais:
                           : idx === rawNodes.length - 1
                           ? 'deliverable'
                           : 'run_agent')
-                      const cfg = { ...(n.config || {}) }
+                      const cfg: Record<string, any> = { ...(n.config || {}) }
 
-                      if (kind === 'run_agent') {
+                      // Normalizar aliases comuns gerados por LLMs
+                      if (!cfg.promptTemplate && (cfg.prompt || cfg.instruction || cfg.instructions)) {
+                        cfg.promptTemplate = String(cfg.prompt || cfg.instruction || cfg.instructions)
+                      }
+
+                      if (kind === 'input') {
+                        const rawTrig = String(cfg.triggerType || '').toLowerCase()
+                        if (
+                          rawTrig === 'daily' ||
+                          rawTrig === 'weekly' ||
+                          rawTrig === 'cron' ||
+                          rawTrig === 'scheduled' ||
+                          rawTrig === 'timer' ||
+                          cfg.scheduleFrequency ||
+                          /\b(?:di[áa]rio|todos\s+os\s+dias|daily|semanal|agendad)\b/i.test(
+                            `${n.label || ''} ${act.description || ''} ${act.name}`
+                          )
+                        ) {
+                          cfg.triggerType = 'schedule'
+                          cfg.scheduleFrequency = cfg.scheduleFrequency || 'daily'
+                          cfg.scheduleTime = cfg.scheduleTime || '09:00'
+                          cfg.nextRunAt = computeWorkflowNextRunISO(
+                            cfg.scheduleFrequency,
+                            cfg.scheduleTime,
+                            cfg.scheduleDays
+                          )
+                          computedNextRunAt = cfg.nextRunAt
+                        } else if (!cfg.triggerType) {
+                          cfg.triggerType = 'manual'
+                        }
+                      } else if (kind === 'run_agent') {
                         const resolvedAgId = resolveOrCreateAgent(
                           cfg.agentId || cfg.agentName || n.label,
                           {
@@ -3259,20 +3764,48 @@ Diretrizes gerais:
                           }
                         )
                         cfg.agentId = resolvedAgId
-                      } else if (kind === 'read_note' && (cfg.noteTitle || cfg.noteId)) {
-                        const targetNote = resolveNoteByIdOrFallback(
-                          allNotes,
-                          cfg.noteId,
-                          cfg.noteTitle || n.label
-                        )
-                        if (targetNote) {
-                          cfg.noteId = targetNote.id
-                          cfg.noteTitle = targetNote.title
+                      } else if (kind === 'read_note') {
+                        if (cfg.folderPath) {
+                          cfg.folderPath = resolveMatchingFolder(cfg.folderPath)
                         }
+                        if (cfg.noteTitle || cfg.noteId || n.label) {
+                          const targetNote = resolveNoteByIdOrFallback(
+                            allNotes,
+                            cfg.noteId,
+                            cfg.noteTitle || (!cfg.promptTemplate ? n.label : undefined),
+                            cfg.folderPath
+                          )
+                          if (targetNote) {
+                            cfg.noteId = targetNote.id
+                            cfg.noteTitle = targetNote.title
+                            cfg.folderPath = targetNote.folder
+                          } else if (!cfg.promptTemplate && !cfg.folderPath) {
+                            // Evitar falha silenciosa caso a nota ainda não exista: converte referência para promptTemplate contextual
+                            cfg.promptTemplate = `Considere a referência solicitada: ${cfg.noteTitle || n.label}`
+                            delete cfg.noteTitle
+                            delete cfg.noteId
+                          }
+                        }
+                      } else if (kind === 'condition') {
+                        if (!cfg.rule && (cfg.condition || cfg.expression)) {
+                          cfg.rule = String(cfg.condition || cfg.expression)
+                        }
+                        if (!cfg.conditionType) {
+                          cfg.conditionType = cfg.rule ? 'ai_rule' : 'always'
+                        }
+                      } else if (kind === 'deliverable') {
+                        cfg.targetFolder = resolveMatchingFolder(cfg.targetFolder || cfg.folder)
+                        if (!cfg.namingPattern) {
+                          cfg.namingPattern =
+                            cfg.title || cfg.noteTitle || cfg.fileName || `Entrega - ${act.name} - {data}`
+                        }
+                        cfg.outputType = cfg.outputType || 'note'
                       }
 
                       // Verificar se este nó vem de uma ramificação true/false para ajustar Y no canvas
-                      const incomingBranchEdge = rawEdges.find(e => e.targetNodeId === nodeId)
+                      const incomingBranchEdge = rawEdges.find(
+                        e => (e.targetNodeId || (e as any).target || (e as any).to) === nodeId
+                      )
                       const yCoord =
                         incomingBranchEdge?.branch === 'true' || incomingBranchEdge?.branch === 'approved'
                           ? 140
@@ -3308,25 +3841,61 @@ Diretrizes gerais:
                         kind: 'deliverable',
                         label: 'Saída',
                         position: { x: 600, y: 220 },
-                        config: {}
+                        config: { targetFolder: activeNoteFolder || 'Entregas', namingPattern: `Entrega - ${act.name} - {data}`, outputType: 'note' }
                       }
                     ]
 
-              const edges: WorkflowEdge[] =
+              const validNodeIds = new Set(nodes.map(nd => nd.id))
+              let edges: WorkflowEdge[] =
                 rawEdges.length > 0
-                  ? rawEdges.map((e, idx) => ({
-                      id: e.id || `edge_${idx + 1}`,
-                      sourceNodeId: e.sourceNodeId || nodes[Math.max(0, idx)]?.id || '',
-                      targetNodeId: e.targetNodeId || nodes[Math.min(nodes.length - 1, idx + 1)]?.id || '',
-                      branch: (e.branch as any) || 'default',
-                      label: e.label
-                    }))
-                  : nodes.slice(0, -1).map((curr, idx) => ({
-                      id: `edge_${idx + 1}`,
-                      sourceNodeId: curr.id,
-                      targetNodeId: nodes[idx + 1].id,
+                  ? rawEdges
+                      .map((e: any, idx) => ({
+                        id: e.id || `edge_${idx + 1}`,
+                        sourceNodeId: e.sourceNodeId || e.source || e.from || nodes[Math.max(0, idx)]?.id || '',
+                        targetNodeId:
+                          e.targetNodeId || e.target || e.to || nodes[Math.min(nodes.length - 1, idx + 1)]?.id || '',
+                        branch: (e.branch as any) || 'default',
+                        label: e.label
+                      }))
+                      .filter(
+                        e =>
+                          validNodeIds.has(e.sourceNodeId) &&
+                          validNodeIds.has(e.targetNodeId) &&
+                          e.sourceNodeId !== e.targetNodeId
+                      )
+                  : []
+
+              // Garantir que nenhum nó funcional fique solto/desconectado no fluxo criado pela IA
+              if (nodes.length > 1 && edges.length === 0) {
+                edges = nodes.slice(0, -1).map((curr, idx) => ({
+                  id: `edge_${idx + 1}`,
+                  sourceNodeId: curr.id,
+                  targetNodeId: nodes[idx + 1].id,
+                  branch: 'default'
+                }))
+              } else if (nodes.length > 1) {
+                for (let ni = 0; ni < nodes.length; ni++) {
+                  const nd = nodes[ni]
+                  if (nd.kind === 'sticky_note' || nd.kind === 'text_block') continue
+                  const hasIn = edges.some(e => e.targetNodeId === nd.id)
+                  const hasOut = edges.some(e => e.sourceNodeId === nd.id)
+                  if (!hasIn && ni > 0) {
+                    edges.push({
+                      id: `edge_auto_in_${ni}`,
+                      sourceNodeId: nodes[ni - 1].id,
+                      targetNodeId: nd.id,
                       branch: 'default'
-                    }))
+                    })
+                  } else if (!hasOut && ni < nodes.length - 1 && nd.kind !== 'finish' && nd.kind !== 'deliverable') {
+                    edges.push({
+                      id: `edge_auto_out_${ni}`,
+                      sourceNodeId: nd.id,
+                      targetNodeId: nodes[ni + 1].id,
+                      branch: 'default'
+                    })
+                  }
+                }
+              }
 
               const newWf: WorkflowDefinition = {
                 id: wfId,
@@ -3337,6 +3906,7 @@ Diretrizes gerais:
                 description: act.description || '',
                 nodes,
                 edges,
+                nextRunAt: computedNextRunAt || existingWf?.nextRunAt,
                 createdAt: existingWf?.createdAt || Date.now(),
                 updatedAt: Date.now()
               }
@@ -3349,7 +3919,7 @@ Diretrizes gerais:
             }
 
             updatedStoreAfterActions = nextStore
-            onUpdateAgentStore(nextStore)
+            await commitStoreUpdate(nextStore)
 
             const createdParts: string[] = []
             if (autoAgentActions.length > 0)
@@ -3386,9 +3956,9 @@ Diretrizes gerais:
               if (runAct.targetType === 'workflow') {
                 await handleRunWorkflowInChat(ref, runAct.prompt || raw, updatedStoreAfterActions)
               } else if (runAct.targetType === 'squad') {
-                handleUseSquadInChat(ref)
+                await handleRunAgentOrSquadInChat('squad', ref, runAct.prompt, updatedStoreAfterActions)
               } else {
-                handleUseAgentInChat(ref)
+                await handleRunAgentOrSquadInChat('agent', ref, runAct.prompt, updatedStoreAfterActions)
               }
             }
           }
@@ -4006,7 +4576,7 @@ Diretrizes gerais:
                 ) : (
                   (() => {
                     const { thoughts, cleanText: thoughtFreeText } = parseThoughtBlocks(m.text)
-                    const { displayText, taskActions, agentActions, workflowActions, squadActions } = parseMasterActions(thoughtFreeText)
+                    const { displayText, taskActions, agentActions, workflowActions, squadActions, runActions } = parseMasterActions(thoughtFreeText)
 
                     return (
                       <div className="w-full text-zinc-200 px-1 py-1 space-y-2">
@@ -4064,6 +4634,15 @@ Diretrizes gerais:
                                 actions={squadActions}
                                 onOpenSquad={(id) => navigateToTeamSection('squads', id)}
                                 onUseSquadHere={handleUseSquadInChat}
+                              />
+                            )}
+
+                            {runActions.length > 0 && (
+                              <RunActionsCollapsible
+                                actions={runActions}
+                                onRunWorkflow={(idOrName, p) => handleRunWorkflowInChat(idOrName, p)}
+                                onUseAgent={handleUseAgentInChat}
+                                onUseSquad={handleUseSquadInChat}
                               />
                             )}
 
